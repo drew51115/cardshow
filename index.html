@@ -1803,9 +1803,9 @@
       <button class="modal-close" onclick="closeShowModal()">✕</button>
     </div>
     <div class="modal-body" style="display:flex;flex-direction:column;gap:0.65rem">
-      <input class="show-input" id="smName"     placeholder="Show name (e.g. LA Card Expo 2025)" style="margin:0">
-      <input class="show-input" id="smDate"     placeholder="Date (e.g. April 5, 2025)" style="margin:0">
-      <input class="show-input" id="smLocation" placeholder="Location (e.g. Pasadena Convention Center)" style="margin:0">
+      <input class="show-input" id="smName"     placeholder="Show name (e.g. Newport Showcase Card Show)" style="margin:0">
+      <input class="show-input" id="smDate"     placeholder="Date (e.g. May 23, 2026)" style="margin:0">
+      <input class="show-input" id="smLocation" placeholder="Location (e.g. Newport Beach, CA)" style="margin:0">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.65rem">
         <div>
           <div class="section-label" style="margin-bottom:0.35rem">Status</div>
@@ -4629,9 +4629,9 @@ function seedSampleShows() {
   const group3 = new Set(allSellers);
 
   const s1 = genShowId(), s2 = genShowId(), s3 = genShowId();
-  shows[s1] = { id: s1, name: 'LA Card Expo 2025',      date: 'April 12, 2025', location: 'Pasadena Convention Center', status: 'active',   accessCode: 'LAEXPO', sellers: group1, publishedAt: null };
-  shows[s2] = { id: s2, name: 'Chicago Sports Card Show',date: 'May 3, 2025',   location: 'Navy Pier, Chicago',         status: 'upcoming', accessCode: 'CHI503', sellers: group2, publishedAt: null };
-  shows[s3] = { id: s3, name: 'NYC Collectors Fair',     date: 'June 21, 2025', location: 'Javits Center, New York',    status: 'upcoming', accessCode: 'NYC621', sellers: group3, publishedAt: null };
+  shows[s1] = { id: s1, name: 'Newport Showcase Card Show', date: 'May 23, 2026', location: 'Newport Beach, CA', status: 'active', accessCode: 'NEWPORT', sellers: group1, publishedAt: null };
+  shows[s2] = { id: s2, name: 'Chicago Sports Card Show',date: 'May 3, 2026',   location: 'Navy Pier, Chicago',         status: 'upcoming', accessCode: 'CHI503', sellers: group2, publishedAt: null };
+  shows[s3] = { id: s3, name: 'NYC Collectors Fair',     date: 'June 21, 2026', location: 'Javits Center, New York',    status: 'upcoming', accessCode: 'NYC621', sellers: group3, publishedAt: null };
 
   // Publish sample inventory to shows
   inventory.forEach(r => {
