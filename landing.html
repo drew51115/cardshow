@@ -1,0 +1,1146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CardShow — The Future of Card Shows</title>
+<meta name="description" content="One platform connecting buyers, sellers and show organizers. Search every card at every table before you walk in the door.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Instrument+Serif:ital@0;1&family=DM+Mono:wght@400;500&family=Barlow+Condensed:wght@600;700;800;900&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+
+/* ════════════════════════════════════════
+   TOKENS
+════════════════════════════════════════ */
+:root {
+  --gold:    #f5c842;
+  --gold2:   #d4a820;
+  --black:   #07080c;
+  --surface: #0d1018;
+  --card:    #131828;
+  --border:  #1e2640;
+  --text:    #e8eaf5;
+  --muted:   #5a6585;
+  --buyer:   #3b82f6;
+  --seller:  #22c55e;
+  --org:     #f5c842;
+}
+
+/* ════════════════════════════════════════
+   RESET + BASE
+════════════════════════════════════════ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--black);
+  color: var(--text);
+  font-family: 'DM Sans', sans-serif;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Noise overlay */
+body::after {
+  content: '';
+  position: fixed; inset: 0; z-index: 1000; pointer-events: none;
+  opacity: 0.028;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+img { display: block; max-width: 100%; }
+a { color: inherit; text-decoration: none; }
+
+/* ════════════════════════════════════════
+   UTILITY
+════════════════════════════════════════ */
+.container {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0 2rem;
+}
+
+.label {
+  font-family: 'DM Mono', monospace;
+  font-size: 0.72rem; letter-spacing: 0.16em;
+  text-transform: uppercase; color: var(--gold);
+  display: flex; align-items: center; gap: 10px;
+}
+.label::before {
+  content: ''; display: block;
+  width: 28px; height: 2px; background: var(--gold);
+  flex-shrink: 0; border-radius: 2px;
+}
+
+.btn {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  padding: 0.85rem 1.8rem; border-radius: 8px;
+  font-family: 'DM Sans', sans-serif; font-weight: 600;
+  font-size: 0.9rem; cursor: pointer; border: none;
+  transition: all 0.2s; text-decoration: none;
+  letter-spacing: 0.01em;
+}
+.btn-gold { background: var(--gold); color: var(--black); }
+.btn-gold:hover { background: #f0c030; transform: translateY(-2px); box-shadow: 0 8px 30px rgba(245,200,66,0.3); }
+.btn-outline {
+  background: transparent; color: var(--text);
+  border: 1px solid var(--border);
+}
+.btn-outline:hover { border-color: var(--gold); color: var(--gold); }
+
+/* ════════════════════════════════════════
+   NAV
+════════════════════════════════════════ */
+nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 900;
+  height: 64px;
+  background: rgba(7,8,12,0.88);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(30,38,64,0.6);
+  display: flex; align-items: center;
+}
+.nav-inner {
+  display: flex; align-items: center; justify-content: space-between;
+  width: 100%;
+}
+.nav-logo {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 1.8rem; letter-spacing: 0.1em;
+  color: var(--gold); line-height: 1;
+}
+.nav-logo span { color: rgba(232,234,245,0.45); }
+.nav-links {
+  display: flex; align-items: center; gap: 2rem;
+  list-style: none;
+}
+.nav-links a {
+  font-size: 0.86rem; color: var(--muted);
+  transition: color 0.15s; font-weight: 500;
+}
+.nav-links a:hover { color: var(--text); }
+.nav-cta { display: flex; gap: 0.75rem; }
+
+/* ════════════════════════════════════════
+   HERO
+════════════════════════════════════════ */
+.hero {
+  min-height: 100vh;
+  display: flex; align-items: center;
+  padding: 120px 0 80px;
+  position: relative; overflow: hidden;
+}
+
+/* Radial glow bg */
+.hero-glow {
+  position: absolute; top: -20%; left: 50%; transform: translateX(-50%);
+  width: 900px; height: 900px; border-radius: 50%;
+  background: radial-gradient(ellipse,
+    rgba(245,200,66,0.07) 0%,
+    rgba(245,200,66,0.02) 40%,
+    transparent 70%
+  );
+  pointer-events: none;
+}
+
+/* Grid texture */
+.hero-grid {
+  position: absolute; inset: 0; pointer-events: none;
+  background-image:
+    linear-gradient(rgba(245,200,66,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(245,200,66,0.03) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: radial-gradient(ellipse 80% 80% at 50% 40%, black 40%, transparent 100%);
+}
+
+.hero-content {
+  position: relative; z-index: 2;
+  text-align: center;
+  max-width: 900px; margin: 0 auto;
+}
+
+.hero-eyebrow {
+  margin-bottom: 1.8rem;
+  justify-content: center;
+}
+
+.hero-headline {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: clamp(72px, 10vw, 128px);
+  line-height: 0.9; letter-spacing: 0.02em;
+  color: var(--text);
+  margin-bottom: 0.3rem;
+}
+.hero-headline em {
+  color: var(--gold); font-style: normal;
+  display: block;
+}
+
+.hero-sub {
+  font-family: 'Instrument Serif', serif;
+  font-style: italic; font-size: clamp(1.2rem, 2.5vw, 1.7rem);
+  color: var(--muted); margin: 1.6rem auto 2.8rem;
+  max-width: 600px; line-height: 1.5;
+}
+
+.hero-ctas {
+  display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;
+}
+
+/* Audience pills */
+.hero-pills {
+  display: flex; gap: 0.6rem; justify-content: center; flex-wrap: wrap;
+  margin-top: 4rem;
+}
+.pill {
+  display: flex; align-items: center; gap: 0.5rem;
+  padding: 0.45rem 1rem; border-radius: 50px;
+  font-size: 0.8rem; font-weight: 500; font-family: 'DM Mono', monospace;
+  letter-spacing: 0.04em;
+}
+.pill-buyer  { background: rgba(59,130,246,0.1);  color: #60a5fa; border: 1px solid rgba(59,130,246,0.25); }
+.pill-seller { background: rgba(34,197,94,0.1);   color: #4ade80; border: 1px solid rgba(34,197,94,0.25); }
+.pill-org    { background: rgba(245,200,66,0.1);  color: var(--gold); border: 1px solid rgba(245,200,66,0.25); }
+
+/* Scroll indicator */
+.scroll-hint {
+  position: absolute; bottom: 2.5rem; left: 50%; transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 0.5rem;
+  font-family: 'DM Mono', monospace; font-size: 0.65rem;
+  letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted);
+  animation: bounce 2s ease infinite;
+}
+@keyframes bounce {
+  0%,100% { transform: translateX(-50%) translateY(0); }
+  50%      { transform: translateX(-50%) translateY(6px); }
+}
+
+/* ════════════════════════════════════════
+   PROBLEM STRIP
+════════════════════════════════════════ */
+.problem-strip {
+  background: var(--gold);
+  padding: 1.4rem 0;
+  overflow: hidden;
+  position: relative;
+}
+.problem-strip-inner {
+  display: flex; gap: 3rem; align-items: center;
+  animation: marquee 24s linear infinite;
+  width: max-content;
+}
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+.strip-item {
+  display: flex; align-items: center; gap: 0.75rem;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 800; font-size: 1.1rem;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--black); white-space: nowrap;
+}
+.strip-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: rgba(0,0,0,0.25); flex-shrink: 0;
+}
+
+/* ════════════════════════════════════════
+   PROBLEM / VALUE PROP SECTION
+════════════════════════════════════════ */
+.section { padding: 120px 0; }
+.section-sm { padding: 80px 0; }
+
+.split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5rem; align-items: center;
+}
+.split-reverse { direction: rtl; }
+.split-reverse > * { direction: ltr; }
+
+.section-label { margin-bottom: 1.2rem; }
+.section-headline {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: clamp(48px, 5vw, 72px);
+  line-height: 0.9; letter-spacing: 0.02em; color: var(--text);
+  margin-bottom: 1.4rem;
+}
+.section-headline em { color: var(--gold); font-style: normal; }
+.section-body {
+  font-size: 1.05rem; color: var(--muted); line-height: 1.7;
+  margin-bottom: 1.8rem;
+}
+
+/* Feature list */
+.feature-list {
+  list-style: none; display: flex; flex-direction: column; gap: 0.9rem;
+}
+.feature-list li {
+  display: flex; align-items: flex-start; gap: 0.75rem;
+  font-size: 0.95rem; color: var(--text); line-height: 1.4;
+}
+.feature-list li::before {
+  content: ''; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--gold); flex-shrink: 0; margin-top: 0.38rem;
+}
+
+/* ════════════════════════════════════════
+   UI MOCKUP CARDS
+════════════════════════════════════════ */
+.mockup-frame {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 40px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(245,200,66,0.06);
+  position: relative;
+}
+
+.mockup-topbar {
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  padding: 0.8rem 1.2rem;
+  display: flex; align-items: center; gap: 0.6rem;
+}
+.mockup-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--border);
+}
+.mockup-url {
+  font-family: 'DM Mono', monospace; font-size: 0.7rem;
+  color: var(--muted); letter-spacing: 0.04em;
+  background: var(--surface); border-radius: 4px;
+  padding: 0.2rem 0.6rem; margin-left: 0.4rem;
+}
+
+.mock-card {
+  margin: 1.2rem; background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px; padding: 1rem;
+}
+.mock-card + .mock-card { margin-top: 0; }
+.mock-player {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 1.4rem; letter-spacing: 0.04em; color: var(--text);
+  line-height: 1; margin-bottom: 0.2rem;
+}
+.mock-title { font-size: 0.75rem; color: var(--muted); margin-bottom: 0.6rem; line-height: 1.3; }
+.mock-footer {
+  display: flex; justify-content: space-between; align-items: center;
+  border-top: 1px solid var(--border); padding-top: 0.6rem; margin-top: 0.4rem;
+}
+.mock-price {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 1.3rem; color: var(--gold); letter-spacing: 0.04em;
+}
+.mock-badge {
+  padding: 0.18rem 0.55rem; border-radius: 20px;
+  font-size: 0.68rem; font-weight: 600;
+  font-family: 'DM Mono', monospace;
+}
+.badge-blue  { background: rgba(59,130,246,0.15); color: #60a5fa; border: 1px solid rgba(59,130,246,0.3); }
+.badge-green { background: rgba(34,197,94,0.15);  color: #4ade80; border: 1px solid rgba(34,197,94,0.3); }
+.badge-gold  { background: rgba(245,200,66,0.1);  color: var(--gold); border: 1px solid rgba(245,200,66,0.2); }
+.badge-amber { background: rgba(245,158,11,0.13); color: #fbbf24; border: 1px solid rgba(245,158,11,0.3); }
+.badge-red   { background: rgba(239,68,68,0.13);  color: #f87171; border: 1px solid rgba(239,68,68,0.3); }
+.badge-grey  { background: rgba(148,163,184,0.12);color: #94a3b8; border: 1px solid rgba(148,163,184,0.25); }
+
+.deal-bar {
+  height: 6px; border-radius: 6px; margin-top: 0.6rem;
+  background: linear-gradient(90deg, #f87171 0%, #fbbf24 30%, #94a3b8 50%, #60a5fa 70%, #4ade80 100%);
+  position: relative;
+}
+.deal-marker {
+  position: absolute; top: -4px;
+  width: 14px; height: 14px; border-radius: 50%;
+  border: 2px solid var(--card);
+  box-shadow: 0 0 0 2px currentColor;
+}
+
+/* ════════════════════════════════════════
+   AUDIENCE TRIPTYCH
+════════════════════════════════════════ */
+.triptych {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 1.5px;
+  background: var(--border);
+  border-radius: 20px; overflow: hidden;
+}
+.triptych-panel {
+  background: var(--surface);
+  padding: 3rem 2.5rem;
+  position: relative; overflow: hidden;
+  transition: background 0.3s;
+}
+.triptych-panel:hover { background: var(--card); }
+.triptych-panel::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0;
+  height: 4px;
+}
+.triptych-buyer::before   { background: var(--buyer); }
+.triptych-seller::before  { background: var(--seller); }
+.triptych-org::before     { background: var(--org); }
+
+.panel-icon {
+  font-size: 2.5rem; margin-bottom: 1.4rem;
+  display: block;
+  filter: drop-shadow(0 4px 16px rgba(0,0,0,0.4));
+}
+.panel-role {
+  font-family: 'DM Mono', monospace; font-size: 0.7rem;
+  letter-spacing: 0.14em; text-transform: uppercase;
+  margin-bottom: 0.6rem;
+}
+.triptych-buyer  .panel-role { color: var(--buyer); }
+.triptych-seller .panel-role { color: var(--seller); }
+.triptych-org    .panel-role { color: var(--org); }
+
+.panel-headline {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 2.4rem; letter-spacing: 0.04em;
+  color: var(--text); line-height: 1; margin-bottom: 1rem;
+}
+.panel-body {
+  font-size: 0.9rem; color: var(--muted); line-height: 1.65;
+}
+.panel-features {
+  list-style: none; margin-top: 1.4rem;
+  display: flex; flex-direction: column; gap: 0.6rem;
+}
+.panel-features li {
+  font-size: 0.84rem; color: var(--text);
+  display: flex; align-items: flex-start; gap: 0.6rem; line-height: 1.35;
+}
+.panel-features li::before {
+  content: ''; width: 6px; height: 6px; border-radius: 50%;
+  flex-shrink: 0; margin-top: 0.3rem;
+}
+.triptych-buyer  .panel-features li::before { background: var(--buyer); }
+.triptych-seller .panel-features li::before { background: var(--seller); }
+.triptych-org    .panel-features li::before { background: var(--org); }
+
+/* ════════════════════════════════════════
+   HOW IT WORKS — STEPS
+════════════════════════════════════════ */
+.steps-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 2px; background: var(--border); border-radius: 16px; overflow: hidden;
+}
+.step {
+  background: var(--surface);
+  padding: 2.5rem 2rem;
+  position: relative;
+  transition: background 0.2s;
+}
+.step:hover { background: var(--card); }
+.step-num {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 5rem; line-height: 1; color: rgba(245,200,66,0.08);
+  position: absolute; top: 1rem; right: 1.5rem;
+  letter-spacing: 0.02em;
+}
+.step-icon { font-size: 2rem; margin-bottom: 1rem; display: block; }
+.step-title {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 800; font-size: 1.2rem;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--text); margin-bottom: 0.6rem;
+}
+.step-body { font-size: 0.88rem; color: var(--muted); line-height: 1.6; }
+
+/* ════════════════════════════════════════
+   STAT ROW
+════════════════════════════════════════ */
+.stat-row {
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  gap: 2px; background: var(--border);
+  border-radius: 16px; overflow: hidden;
+  margin: 4rem 0;
+}
+.stat-box {
+  background: var(--surface); padding: 2.5rem 2rem; text-align: center;
+}
+.stat-val {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 3.5rem; color: var(--gold); letter-spacing: 0.04em;
+  line-height: 1; display: block;
+}
+.stat-label {
+  font-family: 'DM Mono', monospace; font-size: 0.7rem;
+  letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--muted); margin-top: 0.4rem;
+}
+
+/* ════════════════════════════════════════
+   INTEGRATIONS
+════════════════════════════════════════ */
+.integrations-row {
+  display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center;
+  margin-top: 2rem;
+}
+.integration-pill {
+  display: flex; align-items: center; gap: 0.6rem;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 50px; padding: 0.6rem 1.2rem;
+  font-size: 0.85rem; color: var(--muted); font-weight: 500;
+  transition: all 0.2s;
+}
+.integration-pill:hover { border-color: var(--gold); color: var(--text); }
+.integration-pill span { font-size: 1.1rem; }
+
+/* ════════════════════════════════════════
+   DEAL SCORE EXPLAINER
+════════════════════════════════════════ */
+.deal-tiers {
+  display: grid; grid-template-columns: repeat(5, 1fr);
+  gap: 1rem; margin-top: 2rem;
+}
+.deal-tier {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 12px; padding: 1.2rem 0.9rem; text-align: center;
+  transition: transform 0.2s;
+}
+.deal-tier:hover { transform: translateY(-4px); }
+.deal-tier-icon { font-size: 1.6rem; margin-bottom: 0.5rem; display: block; }
+.deal-tier-label {
+  font-family: 'DM Mono', monospace; font-size: 0.72rem;
+  font-weight: 600; letter-spacing: 0.04em; margin-bottom: 0.3rem;
+}
+.deal-tier-sub { font-size: 0.75rem; color: var(--muted); line-height: 1.4; }
+
+/* ════════════════════════════════════════
+   QR SECTION
+════════════════════════════════════════ */
+.qr-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 24px; padding: 5rem;
+  text-align: center; position: relative; overflow: hidden;
+}
+.qr-section::before {
+  content: '';
+  position: absolute; top: -200px; left: 50%; transform: translateX(-50%);
+  width: 600px; height: 600px; border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(245,200,66,0.07), transparent 70%);
+}
+.qr-mock {
+  display: inline-block;
+  background: #fff; border-radius: 16px; padding: 16px;
+  margin: 2.5rem auto;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.4), 0 0 0 1px rgba(245,200,66,0.15);
+}
+.qr-mock canvas { display: block; }
+
+/* ════════════════════════════════════════
+   CTA FINAL
+════════════════════════════════════════ */
+.final-cta {
+  padding: 160px 0 120px;
+  text-align: center;
+  position: relative;
+}
+.final-cta-glow {
+  position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
+  width: 800px; height: 400px;
+  background: radial-gradient(ellipse, rgba(245,200,66,0.06), transparent 65%);
+  pointer-events: none;
+}
+.final-cta-headline {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: clamp(56px, 8vw, 112px);
+  line-height: 0.88; letter-spacing: 0.02em; color: var(--text);
+  margin-bottom: 0.4rem;
+}
+.final-cta-headline em { color: var(--gold); font-style: normal; display: block; }
+.final-cta-sub {
+  font-family: 'Instrument Serif', serif; font-style: italic;
+  font-size: 1.3rem; color: var(--muted); margin: 1.5rem auto 2.5rem;
+  max-width: 500px; line-height: 1.5;
+}
+.final-cta-btns {
+  display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;
+  margin-bottom: 3rem;
+}
+.final-contact {
+  font-family: 'DM Mono', monospace; font-size: 0.78rem;
+  color: var(--muted); letter-spacing: 0.06em;
+}
+.final-contact a { color: var(--gold); }
+
+/* ════════════════════════════════════════
+   FOOTER
+════════════════════════════════════════ */
+footer {
+  border-top: 1px solid var(--border);
+  padding: 2.5rem 0;
+  display: flex; align-items: center;
+}
+.footer-inner {
+  display: flex; align-items: center;
+  justify-content: space-between; width: 100%;
+}
+.footer-logo {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 1.4rem; letter-spacing: 0.1em; color: var(--gold);
+}
+.footer-logo span { color: rgba(232,234,245,0.3); }
+.footer-links {
+  display: flex; gap: 1.5rem; list-style: none;
+}
+.footer-links a {
+  font-size: 0.82rem; color: var(--muted); transition: color 0.15s;
+}
+.footer-links a:hover { color: var(--text); }
+.footer-tag {
+  font-family: 'DM Mono', monospace; font-size: 0.68rem;
+  color: rgba(245,200,66,0.25); letter-spacing: 0.1em;
+}
+
+/* ════════════════════════════════════════
+   ENTRANCE ANIMATIONS
+════════════════════════════════════════ */
+.reveal {
+  opacity: 0;
+  transform: translateY(28px);
+  transition: opacity 0.7s ease, transform 0.7s ease;
+}
+.reveal.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+.reveal-d1 { transition-delay: 0.1s; }
+.reveal-d2 { transition-delay: 0.2s; }
+.reveal-d3 { transition-delay: 0.3s; }
+.reveal-d4 { transition-delay: 0.4s; }
+
+/* ════════════════════════════════════════
+   RESPONSIVE
+════════════════════════════════════════ */
+@media (max-width: 900px) {
+  .split { grid-template-columns: 1fr; gap: 3rem; }
+  .split-reverse { direction: ltr; }
+  .triptych { grid-template-columns: 1fr; }
+  .steps-grid { grid-template-columns: 1fr; }
+  .stat-row { grid-template-columns: 1fr 1fr; }
+  .deal-tiers { grid-template-columns: repeat(3, 1fr); }
+  .nav-links { display: none; }
+  .qr-section { padding: 3rem 1.5rem; }
+}
+@media (max-width: 600px) {
+  .deal-tiers { grid-template-columns: 1fr 1fr; }
+  .stat-row { grid-template-columns: 1fr 1fr; }
+  .hero-headline { font-size: 56px; }
+  .section { padding: 80px 0; }
+}
+
+</style>
+</head>
+<body>
+
+<!-- ════════ NAV ════════ -->
+<nav>
+  <div class="container nav-inner">
+    <div class="nav-logo">Card<span>Show</span></div>
+    <ul class="nav-links">
+      <li><a href="#buyers">Buyers</a></li>
+      <li><a href="#sellers">Sellers</a></li>
+      <li><a href="#organizers">Organizers</a></li>
+      <li><a href="#how-it-works">How It Works</a></li>
+    </ul>
+    <div class="nav-cta">
+      <a href="https://card-show.netlify.app/" class="btn btn-outline" style="padding:0.55rem 1.2rem;font-size:0.82rem">Open Demo →</a>
+      <a href="mailto:stephen.a.wilhelm@gmail.com?subject=CardShow%20Partnership%20Inquiry" class="btn btn-gold" style="padding:0.55rem 1.2rem;font-size:0.82rem">Get in Touch</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ════════ HERO ════════ -->
+<section class="hero">
+  <div class="hero-glow"></div>
+  <div class="hero-grid"></div>
+  <div class="container">
+    <div class="hero-content">
+      <div class="label hero-eyebrow reveal">Introducing CardShow</div>
+      <h1 class="hero-headline reveal reveal-d1">
+        Every Card.<br>Every Seller.
+        <em>One Search.</em>
+      </h1>
+      <p class="hero-sub reveal reveal-d2">
+        The unified inventory platform that connects buyers, sellers and show organizers — before, during, and after every card show.
+      </p>
+      <div class="hero-ctas reveal reveal-d3">
+        <a href="https://card-show.netlify.app/" class="btn btn-gold" style="font-size:1rem;padding:1rem 2.2rem">
+          Try the Live Demo →
+        </a>
+        <a href="#how-it-works" class="btn btn-outline" style="font-size:1rem;padding:1rem 2.2rem">
+          See How It Works
+        </a>
+      </div>
+      <div class="hero-pills reveal reveal-d4">
+        <span class="pill pill-buyer">🔍 Buyers</span>
+        <span class="pill pill-seller">📦 Sellers</span>
+        <span class="pill pill-org">🎪 Show Organizers</span>
+      </div>
+    </div>
+  </div>
+  <div class="scroll-hint">Scroll <span>↓</span></div>
+</section>
+
+<!-- ════════ MARQUEE STRIP ════════ -->
+<div class="problem-strip">
+  <div class="problem-strip-inner">
+    <!-- duplicated for seamless loop -->
+    <div class="strip-item"><div class="strip-dot"></div>Browse before you arrive</div>
+    <div class="strip-item"><div class="strip-dot"></div>Live deal scores vs. market</div>
+    <div class="strip-item"><div class="strip-dot"></div>One QR code. Full inventory.</div>
+    <div class="strip-item"><div class="strip-dot"></div>Upload any spreadsheet format</div>
+    <div class="strip-item"><div class="strip-dot"></div>WhatsApp sellers instantly</div>
+    <div class="strip-item"><div class="strip-dot"></div>PSA · BGS · CGC · SGC · Raw</div>
+    <div class="strip-item"><div class="strip-dot"></div>Card Dealer Pro · Flipwise · Ludex</div>
+    <div class="strip-item"><div class="strip-dot"></div>Browse before you arrive</div>
+    <div class="strip-item"><div class="strip-dot"></div>Live deal scores vs. market</div>
+    <div class="strip-item"><div class="strip-dot"></div>One QR code. Full inventory.</div>
+    <div class="strip-item"><div class="strip-dot"></div>Upload any spreadsheet format</div>
+    <div class="strip-item"><div class="strip-dot"></div>WhatsApp sellers instantly</div>
+    <div class="strip-item"><div class="strip-dot"></div>PSA · BGS · CGC · SGC · Raw</div>
+    <div class="strip-item"><div class="strip-dot"></div>Card Dealer Pro · Flipwise · Ludex</div>
+  </div>
+</div>
+
+<!-- ════════ THE PROBLEM ════════ -->
+<section class="section" style="padding-bottom:0">
+  <div class="container">
+    <div class="split">
+      <div>
+        <div class="label section-label reveal">The Problem</div>
+        <h2 class="section-headline reveal reveal-d1">Shows are great.<br>Finding cards <em>isn't.</em></h2>
+        <p class="section-body reveal reveal-d2">
+          Buyers waste hours wandering tables hunting for one card. Sellers manage inventory across five different tools. Show organizers have no way to showcase what's available to drive attendance.
+        </p>
+        <ul class="feature-list reveal reveal-d3">
+          <li>No searchable inventory before the show starts</li>
+          <li>Sellers stuck juggling spreadsheets, Card Dealer Pro, Flipwise, Ludex</li>
+          <li>Buyers miss cards at tables they never visited</li>
+          <li>Organizers can't show potential attendees what's coming</li>
+        </ul>
+      </div>
+      <div class="reveal reveal-d2">
+        <div class="mockup-frame">
+          <div class="mockup-topbar">
+            <div class="mockup-dot"></div>
+            <div class="mockup-dot"></div>
+            <div class="mockup-dot"></div>
+            <div class="mockup-url">card-show.netlify.app</div>
+          </div>
+          <div style="padding:1.2rem;display:flex;flex-direction:column;gap:0.75rem">
+            <div class="mock-card">
+              <div style="font-size:0.65rem;font-family:'DM Mono',monospace;color:var(--gold);letter-spacing:0.08em;margin-bottom:0.3rem">Basketball 🏀</div>
+              <div class="mock-player">Cooper Flagg</div>
+              <div class="mock-title">2025-26 Topps Chrome RC Auto · Sapphire</div>
+              <div style="display:flex;gap:0.4rem;margin-bottom:0.5rem">
+                <span class="mock-badge badge-blue">PSA 10</span>
+                <span class="mock-badge badge-gold">Sapphire</span>
+                <span class="mock-badge badge-green">🔥 Great Deal · −23%</span>
+              </div>
+              <div class="mock-footer">
+                <div class="mock-price">$11,500</div>
+                <div style="font-size:0.65rem;color:var(--muted);font-family:'DM Mono',monospace">TAP FOR DETAILS →</div>
+              </div>
+            </div>
+            <div class="mock-card">
+              <div style="font-size:0.65rem;font-family:'DM Mono',monospace;color:var(--gold);letter-spacing:0.08em;margin-bottom:0.3rem">Baseball ⚾</div>
+              <div class="mock-player">Paul Skenes</div>
+              <div class="mock-title">2024 Topps Chrome RC Auto · Lava</div>
+              <div style="display:flex;gap:0.4rem;margin-bottom:0.5rem">
+                <span class="mock-badge badge-amber">BGS 9.5</span>
+                <span class="mock-badge badge-grey">≈ Fair Price</span>
+              </div>
+              <div class="mock-footer">
+                <div class="mock-price">$2,800</div>
+                <div style="font-size:0.65rem;color:var(--muted);font-family:'DM Mono',monospace">TAP FOR DETAILS →</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════ AUDIENCE TRIPTYCH ════════ -->
+<section class="section" id="buyers">
+  <div class="container">
+    <div style="text-align:center;margin-bottom:3.5rem">
+      <div class="label reveal" style="justify-content:center">Built for everyone</div>
+      <h2 class="section-headline reveal reveal-d1" style="text-align:center">
+        One Platform.<br><em>Three Audiences.</em>
+      </h2>
+    </div>
+
+    <div class="triptych reveal reveal-d2">
+
+      <div class="triptych-panel triptych-buyer" id="sellers">
+        <span class="panel-icon">🔍</span>
+        <div class="panel-role">For Buyers</div>
+        <div class="panel-headline">Find Your Card.</div>
+        <p class="panel-body">Browse every card from every seller at the show — before you even leave home. Filter by player, sport, grade, price, or deal score.</p>
+        <ul class="panel-features">
+          <li>Search all sellers in one place</li>
+          <li>Live deal scores vs. market value</li>
+          <li>Filter by PSA, BGS, CGC, SGC or Raw</li>
+          <li>Message sellers directly on WhatsApp</li>
+          <li>Scan a QR at the entrance to go live</li>
+        </ul>
+      </div>
+
+      <div class="triptych-panel triptych-seller" id="organizers">
+        <span class="panel-icon">📦</span>
+        <div class="panel-role">For Sellers</div>
+        <div class="panel-headline">Upload Once.</div>
+        <p class="panel-body">Drop your existing spreadsheet. CardShow maps your columns automatically, whether you use Card Dealer Pro, Flipwise, Ludex, or Excel.</p>
+        <ul class="panel-features">
+          <li>Smart CSV/XLSX column mapper</li>
+          <li>Works with all grading services</li>
+          <li>Mark cards sold in real time</li>
+          <li>Unique QR code for your table</li>
+          <li>Buyers contact you via WhatsApp</li>
+        </ul>
+      </div>
+
+      <div class="triptych-panel triptych-org">
+        <span class="panel-icon">🎪</span>
+        <div class="panel-role">For Organizers</div>
+        <div class="panel-headline">Grow Your Show.</div>
+        <p class="panel-body">Create shows, authorize sellers, generate buyer-access QR codes, and give attendees a reason to show up — because they can already see what's there.</p>
+        <ul class="panel-features">
+          <li>Create and manage multiple shows</li>
+          <li>Control which sellers have access</li>
+          <li>Generate marketing + signage QR codes</li>
+          <li>Admin dashboard across all inventory</li>
+          <li>Show-wide filters and deal tracking</li>
+        </ul>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ════════ HOW IT WORKS ════════ -->
+<section class="section-sm" id="how-it-works" style="background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+  <div class="container">
+    <div style="text-align:center;margin-bottom:3rem">
+      <div class="label reveal" style="justify-content:center">Simple by design</div>
+      <h2 class="section-headline reveal reveal-d1" style="text-align:center">
+        From spreadsheet to <em>live show</em><br>in minutes.
+      </h2>
+    </div>
+    <div class="steps-grid reveal reveal-d2">
+      <div class="step">
+        <div class="step-num">01</div>
+        <span class="step-icon">📋</span>
+        <div class="step-title">Sellers Upload</div>
+        <p class="step-body">Drop any CSV or spreadsheet. Our smart column mapper auto-detects your format — Card Dealer Pro, Flipwise, Ludex, or custom. No reformatting required.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">02</div>
+        <span class="step-icon">⚡</span>
+        <div class="step-title">Organizer Publishes</div>
+        <p class="step-body">The show admin creates the event, authorizes sellers, and publishes inventory live. One click generates QR codes for marketing and entrance signage.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">03</div>
+        <span class="step-icon">📲</span>
+        <div class="step-title">Buyers Browse</div>
+        <p class="step-body">Scan the QR, enter the access code, and browse every card at the show — filtered, sorted, with live deal scores. Message any seller directly on WhatsApp.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════ STATS ════════ -->
+<section class="section-sm">
+  <div class="container">
+    <div class="stat-row reveal">
+      <div class="stat-box">
+        <span class="stat-val">528+</span>
+        <div class="stat-label">Sample cards in demo</div>
+      </div>
+      <div class="stat-box">
+        <span class="stat-val">32</span>
+        <div class="stat-label">Seller handles</div>
+      </div>
+      <div class="stat-box">
+        <span class="stat-val">4</span>
+        <div class="stat-label">Grading services</div>
+      </div>
+      <div class="stat-box">
+        <span class="stat-val">5</span>
+        <div class="stat-label">Deal score tiers</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════ DEAL SCORE ════════ -->
+<section class="section" style="padding-top:0">
+  <div class="container">
+    <div class="split split-reverse">
+      <div>
+        <div class="label section-label reveal">Pricing Intelligence</div>
+        <h2 class="section-headline reveal reveal-d1">Know If You're<br>Getting a <em>Deal.</em></h2>
+        <p class="section-body reveal reveal-d2">
+          Every card with a market comp gets a color-coded deal score — like SeatGeek for sports cards. Buyers see at a glance whether a price is a steal or a stretch.
+        </p>
+        <div class="deal-tiers reveal reveal-d3">
+          <div class="deal-tier">
+            <span class="deal-tier-icon">🔥</span>
+            <div class="deal-tier-label" style="color:#4ade80">Great Deal</div>
+            <div class="deal-tier-sub">20%+ below market</div>
+          </div>
+          <div class="deal-tier">
+            <span class="deal-tier-icon">✓</span>
+            <div class="deal-tier-label" style="color:#60a5fa">Good Value</div>
+            <div class="deal-tier-sub">5–20% below market</div>
+          </div>
+          <div class="deal-tier">
+            <span class="deal-tier-icon">≈</span>
+            <div class="deal-tier-label" style="color:#94a3b8">Fair Price</div>
+            <div class="deal-tier-sub">Within 5% of market</div>
+          </div>
+          <div class="deal-tier">
+            <span class="deal-tier-icon">↑</span>
+            <div class="deal-tier-label" style="color:#fbbf24">Above Market</div>
+            <div class="deal-tier-sub">5–20% above market</div>
+          </div>
+          <div class="deal-tier">
+            <span class="deal-tier-icon">⚠</span>
+            <div class="deal-tier-label" style="color:#f87171">High Ask</div>
+            <div class="deal-tier-sub">20%+ above market</div>
+          </div>
+        </div>
+        <p class="reveal reveal-d4" style="font-size:0.8rem;color:var(--muted);margin-top:1rem;font-family:'DM Mono',monospace;letter-spacing:0.04em">
+          Live eBay pricing integration coming via Netlify serverless functions.
+        </p>
+      </div>
+      <div class="reveal reveal-d2">
+        <div class="mockup-frame">
+          <div class="mockup-topbar">
+            <div class="mockup-dot"></div><div class="mockup-dot"></div><div class="mockup-dot"></div>
+            <div class="mockup-url">Deal Score · card-show.netlify.app</div>
+          </div>
+          <div style="padding:1.5rem">
+            <div style="font-family:'DM Mono',monospace;font-size:0.62rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);margin-bottom:0.8rem">Deal Score vs. Market</div>
+            <div style="display:flex;align-items:center;gap:1rem;margin-bottom:0.6rem">
+              <div class="deal-bar" style="flex:1">
+                <div class="deal-marker" style="left:18%;color:#4ade80"></div>
+              </div>
+              <div style="font-size:0.88rem;font-weight:600;color:#4ade80;white-space:nowrap">🔥 Great Deal</div>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-family:'DM Mono',monospace;font-size:0.65rem;color:var(--muted);margin-bottom:1.5rem">
+              <span>⚠ High Ask</span>
+              <span style="color:#4ade80">$11,500 · $3,500 below market</span>
+              <span>🔥 Great Deal</span>
+            </div>
+            <div style="background:var(--card);border-radius:10px;padding:0.9rem;text-align:center;font-family:'DM Mono',monospace;font-size:0.72rem;color:var(--muted)">
+              Market value: <span style="color:var(--text);font-weight:600">$15,000</span>
+              <span style="color:rgba(90,101,133,0.6)"> · seller-supplied comp</span>
+            </div>
+            <div style="margin-top:1.2rem;border-top:1px solid var(--border);padding-top:1.2rem">
+              <div style="font-family:'DM Mono',monospace;font-size:0.62rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);margin-bottom:0.6rem">Other cards from @bleeding_ink_sports</div>
+              <div style="display:flex;flex-direction:column;gap:0.5rem">
+                <div style="display:flex;justify-content:space-between;align-items:center;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:0.6rem 0.8rem">
+                  <span style="font-size:0.8rem">Shohei Ohtani Gold Auto /50</span>
+                  <span class="mock-badge badge-green">🔥 −21%</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:0.6rem 0.8rem">
+                  <span style="font-size:0.8rem">Luka Doncic Silver Prizm PSA 10</span>
+                  <span class="mock-badge badge-blue">✓ −16%</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:0.6rem 0.8rem">
+                  <span style="font-size:0.8rem">Patrick Mahomes Gold Prizm /10</span>
+                  <span class="mock-badge badge-grey">≈ Fair</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════ INTEGRATIONS ════════ -->
+<section class="section-sm" style="background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+  <div class="container" style="text-align:center">
+    <div class="label reveal" style="justify-content:center;margin-bottom:1rem">Works with your existing tools</div>
+    <h3 style="font-family:'Bebas Neue',sans-serif;font-size:2.2rem;letter-spacing:0.04em;color:var(--text);margin-bottom:0.3rem" class="reveal reveal-d1">
+      Drop in your spreadsheet. <span style="color:var(--gold)">We handle the rest.</span>
+    </h3>
+    <p style="color:var(--muted);font-size:0.95rem;max-width:500px;margin:0 auto 0.5rem" class="reveal reveal-d2">
+      CardShow auto-detects columns from any format. No reformatting, no manual mapping.
+    </p>
+    <div class="integrations-row reveal reveal-d3">
+      <div class="integration-pill"><span>📋</span> Card Dealer Pro</div>
+      <div class="integration-pill"><span>🔄</span> Flipwise</div>
+      <div class="integration-pill"><span>📱</span> Ludex</div>
+      <div class="integration-pill"><span>📊</span> Excel / CSV</div>
+      <div class="integration-pill"><span>📑</span> Google Sheets</div>
+      <div class="integration-pill"><span>🏷️</span> PSA / BGS / CGC / SGC</div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════ QR SECTION ════════ -->
+<section class="section">
+  <div class="container">
+    <div class="qr-section reveal">
+      <div class="label" style="justify-content:center;margin-bottom:1rem">Instant access</div>
+      <h2 class="section-headline" style="text-align:center;font-size:clamp(40px,5vw,64px)">
+        One scan. <em>Every card.</em>
+      </h2>
+      <p style="color:var(--muted);font-size:1rem;max-width:520px;margin:1rem auto 0;line-height:1.6;text-align:center">
+        Each show gets a unique QR code for marketing materials and entrance signage. Buyers scan in, enter the access code, and browse every seller's inventory instantly — no app download required.
+      </p>
+      <div class="qr-mock">
+        <canvas id="qrDemo" width="180" height="180"></canvas>
+      </div>
+      <div style="display:inline-flex;align-items:center;gap:0.6rem;background:rgba(245,200,66,0.08);border:1px solid rgba(245,200,66,0.2);border-radius:8px;padding:0.6rem 1.4rem;font-family:'DM Mono',monospace;font-size:1.1rem;font-weight:600;letter-spacing:0.18em;color:var(--gold);margin-bottom:1.5rem">
+        NEWPORT
+      </div>
+      <p style="font-size:0.78rem;color:var(--muted);font-family:'DM Mono',monospace;letter-spacing:0.04em">
+        Newport Showcase Card Show · May 23, 2026 · Newport Beach, CA
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ════════ FINAL CTA ════════ -->
+<section class="final-cta">
+  <div class="final-cta-glow"></div>
+  <div class="container">
+    <div class="label reveal" style="justify-content:center;margin-bottom:1.5rem">Ready to get started?</div>
+    <h2 class="final-cta-headline reveal reveal-d1">
+      The Future of
+      <em>Card Shows</em>
+      Is Searchable.
+    </h2>
+    <p class="final-cta-sub reveal reveal-d2">
+      Try the live demo, reach out to integrate your show, or partner with us to bring CardShow to your sellers.
+    </p>
+    <div class="final-cta-btns reveal reveal-d3">
+      <a href="https://card-show.netlify.app/" class="btn btn-gold" style="font-size:1.05rem;padding:1.1rem 2.4rem">
+        Open Live Demo →
+      </a>
+      <a href="https://card-show.netlify.app/seller-browse.html?seller=the_slab_lab_vegas" class="btn btn-outline" style="font-size:1.05rem;padding:1.1rem 2.4rem">
+        Browse a Seller
+      </a>
+    </div>
+    <div class="final-contact reveal reveal-d4">
+      Show organizer or partnership inquiry? &nbsp;
+      <a href="mailto:stephen.a.wilhelm@gmail.com?subject=CardShow%20Partnership%20Inquiry">stephen.a.wilhelm@gmail.com</a>
+    </div>
+  </div>
+</section>
+
+<!-- ════════ FOOTER ════════ -->
+<footer>
+  <div class="container footer-inner">
+    <div class="footer-logo">Card<span>Show</span></div>
+    <ul class="footer-links">
+      <li><a href="https://card-show.netlify.app/">Demo</a></li>
+      <li><a href="https://card-show.netlify.app/seller-browse.html?seller=bleeding_ink_sports">Seller Browse</a></li>
+      <li><a href="mailto:stephen.a.wilhelm@gmail.com">Contact</a></li>
+    </ul>
+    <div class="footer-tag">⚡ Stop hunting. Start finding.</div>
+  </div>
+</footer>
+
+<script>
+// ── SCROLL REVEAL ──
+const observer = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      e.target.classList.add('visible');
+      observer.unobserve(e.target);
+    }
+  });
+}, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
+
+document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+// Trigger hero reveals immediately
+document.querySelectorAll('.hero .reveal').forEach(el => {
+  setTimeout(() => el.classList.add('visible'), 100);
+});
+
+// ── QR DEMO CANVAS ──
+(function drawQR() {
+  const canvas = document.getElementById('qrDemo');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const S = 180, cell = S / 21;
+
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, S, S);
+
+  const pattern = [
+    [1,1,1,1,1,1,1,0,1,0,0,1,0,0,1,1,1,1,1,1,1],
+    [1,0,0,0,0,0,1,0,0,1,1,0,1,0,1,0,0,0,0,0,1],
+    [1,0,1,1,1,0,1,0,1,0,0,1,0,0,1,0,1,1,1,0,1],
+    [1,0,1,1,1,0,1,0,0,1,1,0,0,1,1,0,1,1,1,0,1],
+    [1,0,1,1,1,0,1,0,1,0,1,0,1,0,1,0,1,1,1,0,1],
+    [1,0,0,0,0,0,1,0,0,1,0,1,0,0,1,0,0,0,0,0,1],
+    [1,1,1,1,1,1,1,0,1,0,1,0,1,0,1,1,1,1,1,1,1],
+    [0,0,0,0,0,0,0,0,0,1,0,1,0,0,0,0,0,0,0,0,0],
+    [1,0,1,0,1,1,1,1,0,0,1,0,0,1,1,0,1,0,1,1,0],
+    [0,1,0,1,0,0,0,1,1,0,0,1,1,0,0,1,0,0,1,0,1],
+    [1,0,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1],
+    [0,1,1,0,0,0,0,1,0,1,0,0,1,0,1,0,1,0,1,1,0],
+    [1,0,1,1,0,1,1,0,1,0,0,1,0,1,0,1,1,0,0,1,1],
+    [0,0,0,0,0,0,0,0,1,1,0,0,1,0,0,0,0,0,1,0,0],
+    [1,1,1,1,1,1,1,0,0,0,1,0,0,1,1,0,1,1,0,0,1],
+    [1,0,0,0,0,0,1,0,1,0,0,1,0,0,0,1,0,0,1,1,0],
+    [1,0,1,1,1,0,1,0,0,1,0,0,1,0,1,0,0,1,0,0,1],
+    [1,0,1,1,1,0,1,1,1,0,1,0,0,1,0,1,0,1,1,0,0],
+    [1,0,1,1,1,0,1,0,0,0,0,1,1,0,1,0,1,0,0,1,1],
+    [1,0,0,0,0,0,1,0,1,0,1,0,0,1,0,1,0,1,0,0,0],
+    [1,1,1,1,1,1,1,0,0,1,0,1,1,0,1,0,0,1,1,0,1],
+  ];
+
+  ctx.fillStyle = '#07080c';
+  for (let r = 0; r < 21; r++) {
+    for (let c = 0; c < 21; c++) {
+      if (r >= 8 && r <= 12 && c >= 8 && c <= 12) continue;
+      if (pattern[r]?.[c]) {
+        ctx.beginPath();
+        ctx.roundRect(c*cell+1.5, r*cell+1.5, cell-3, cell-3, 2.5);
+        ctx.fill();
+      }
+    }
+  }
+
+  // Gold center logo
+  ctx.fillStyle = '#f5c842';
+  ctx.beginPath();
+  ctx.roundRect(64, 64, 52, 52, 9);
+  ctx.fill();
+  ctx.fillStyle = '#07080c';
+  ctx.font = 'bold 20px "Bebas Neue", sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('CS', 90, 91);
+})();
+
+// ── SMOOTH NAV LINKS ──
+document.querySelectorAll('a[href^="#"]').forEach(link => {
+  link.addEventListener('click', e => {
+    e.preventDefault();
+    const target = document.querySelector(link.getAttribute('href'));
+    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+});
+</script>
+
+</body>
+</html>
