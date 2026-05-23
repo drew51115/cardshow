@@ -4282,7 +4282,8 @@ function enterAsBuyer() {
   currentSeller = null;
   document.getElementById('authOverlay').classList.add('hidden');
   document.getElementById('navTabSeller').style.display = 'none';
-  document.getElementById('navTabBuyer').style.display  = '';
+  document.getElementById('navTabBuyer').style.display  = 'none';
+  document.getElementById('navTabs').style.display      = 'none';
   document.getElementById('adminFilterBar').classList.remove('visible');
   document.getElementById('sellerQrPanel').classList.remove('visible');
   showNavUser('Guest', 'Buyer', 'seller');
@@ -4309,6 +4310,7 @@ function signOut() {
   document.getElementById('navTabSeller').style.display = '';
   document.getElementById('navTabSeller').textContent = '⬡ Seller';
   document.getElementById('navTabBuyer').style.display = '';
+  document.getElementById('navTabs').style.display = '';
   document.getElementById('navUser').style.display = 'none';
   document.getElementById('adminFilterBar').classList.remove('visible');
   document.getElementById('sellerQrPanel').classList.remove('visible');
