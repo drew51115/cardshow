@@ -373,22 +373,24 @@
   .toast.show { transform: translateY(0); opacity: 1; }
 
   /* ── BUYER VIEW ── */
+  html, body { max-width: 100vw; overflow-x: hidden; }
+
   .buyer-view {
     max-width: 1200px;
     margin: 0 auto;
-    padding: 2rem;
+    padding: 1.25rem 1rem;
   }
 
   .buyer-header {
     text-align: center;
-    margin-bottom: 2.5rem;
+    margin-bottom: 1.5rem;
   }
   .buyer-header h1 {
     font-family: 'Bebas Neue', sans-serif;
-    font-size: 3.5rem;
+    font-size: 2.8rem;
     letter-spacing: 0.08em;
     line-height: 1;
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.35rem;
   }
   .buyer-header h1 em {
     color: var(--accent);
@@ -396,15 +398,15 @@
   }
   .buyer-header p {
     color: var(--muted);
-    font-size: 0.95rem;
+    font-size: 0.88rem;
   }
 
   /* Show selector */
   .show-selector {
     display: flex;
-    gap: 0.75rem;
+    gap: 0.5rem;
     justify-content: center;
-    margin-bottom: 2rem;
+    margin-bottom: 1.2rem;
     flex-wrap: wrap;
   }
   .show-pill {
@@ -434,13 +436,13 @@
   .filter-bar {
     display: grid;
     grid-template-columns: 1fr auto auto auto auto;
-    gap: 0.75rem;
-    margin-bottom: 1.5rem;
+    gap: 0.5rem;
+    margin-bottom: 0.9rem;
     align-items: center;
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 1rem;
+    border-radius: 10px;
+    padding: 0.65rem 0.75rem;
   }
   .filter-search {
     position: relative;
@@ -450,10 +452,10 @@
     background: var(--card);
     border: 1px solid var(--border);
     border-radius: 8px;
-    padding: 0.6rem 0.9rem 0.6rem 2.2rem;
+    padding: 0.5rem 0.75rem 0.5rem 2rem;
     color: var(--text);
     font-family: 'DM Sans', sans-serif;
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     outline: none;
     transition: border-color 0.2s;
   }
@@ -461,25 +463,25 @@
   .filter-search input::placeholder { color: var(--muted); }
   .filter-search .search-icon {
     position: absolute;
-    left: 0.7rem;
+    left: 0.65rem;
     top: 50%;
     transform: translateY(-50%);
     color: var(--muted);
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     pointer-events: none;
   }
   .filter-select {
     background: var(--card);
     border: 1px solid var(--border);
     border-radius: 8px;
-    padding: 0.6rem 0.9rem;
+    padding: 0.5rem 0.7rem;
     color: var(--text);
     font-family: 'DM Sans', sans-serif;
-    font-size: 0.85rem;
+    font-size: 0.82rem;
     outline: none;
     cursor: pointer;
     transition: border-color 0.2s;
-    min-width: 130px;
+    min-width: 120px;
   }
   .filter-select:focus { border-color: var(--accent); }
 
@@ -488,11 +490,11 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 1rem;
+    margin-bottom: 0.75rem;
   }
   .results-count {
     font-family: 'DM Mono', monospace;
-    font-size: 0.78rem;
+    font-size: 0.74rem;
     color: var(--muted);
     letter-spacing: 0.04em;
   }
@@ -501,15 +503,15 @@
   /* Card grid */
   .card-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 1rem;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 0.65rem;
   }
 
   .card-item {
     background: var(--card);
     border: 1px solid var(--border);
-    border-radius: 14px;
-    padding: 1.2rem;
+    border-radius: 10px;
+    padding: 0.75rem;
     transition: all 0.2s;
     cursor: pointer;
     position: relative;
@@ -536,48 +538,50 @@
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    margin-bottom: 0.75rem;
+    margin-bottom: 0.4rem;
   }
   .card-item-year {
     font-family: 'DM Mono', monospace;
-    font-size: 0.72rem;
+    font-size: 0.62rem;
     color: var(--muted);
-    letter-spacing: 0.06em;
+    letter-spacing: 0.04em;
   }
   .card-item-player {
     font-family: 'Bebas Neue', sans-serif;
-    font-size: 1.35rem;
+    font-size: 1.1rem;
     letter-spacing: 0.04em;
     line-height: 1;
-    margin-bottom: 0.25rem;
+    margin-bottom: 0.15rem;
   }
   .card-item-title {
-    font-size: 0.8rem;
+    font-size: 0.72rem;
     color: var(--muted);
-    line-height: 1.4;
-    margin-bottom: 0.75rem;
+    line-height: 1.35;
+    margin-bottom: 0.45rem;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
   }
   .card-item-footer {
     display: flex;
     align-items: center;
     justify-content: space-between;
     border-top: 1px solid var(--border);
-    padding-top: 0.75rem;
-    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+    margin-top: 0.3rem;
   }
   .card-item-seller {
     font-family: 'DM Mono', monospace;
-    font-size: 0.7rem;
+    font-size: 0.62rem;
     color: var(--muted);
   }
   .card-item-price {
     font-family: 'Bebas Neue', sans-serif;
-    font-size: 1.5rem;
+    font-size: 1.2rem;
     color: var(--accent);
     letter-spacing: 0.04em;
   }
-
-
 
   .no-results {
     grid-column: 1/-1;
@@ -593,6 +597,75 @@
     .sidebar { border-right: none; border-bottom: 1px solid var(--border); }
     .filter-bar { grid-template-columns: 1fr 1fr; }
     .filter-search { grid-column: 1/-1; }
+  }
+
+  /* ── MOBILE ── */
+  @media (max-width: 640px) {
+    /* Prevent horizontal scroll globally */
+    html, body { max-width: 100vw; overflow-x: hidden; }
+
+    /* Buyer view full-width */
+    .buyer-view { padding: 0.75rem; }
+
+    /* Two-column compact card grid on mobile */
+    .card-grid {
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.5rem;
+    }
+
+    /* Even more compact card on mobile */
+    .card-item { padding: 0.6rem; border-radius: 8px; }
+    .card-item-player { font-size: 0.95rem; }
+    .card-item-title { font-size: 0.65rem; -webkit-line-clamp: 1; }
+    .card-item-price { font-size: 1rem; }
+    .card-item-year { font-size: 0.58rem; }
+    .card-item-seller { display: none; } /* hide seller handle on tiny screens */
+    .card-item:hover { transform: none; } /* disable lift on touch */
+
+    /* Badges smaller on mobile */
+    .badge { font-size: 0.6rem; padding: 0.15rem 0.4rem; }
+    .deal-badge { font-size: 0.6rem; padding: 0.15rem 0.45rem; }
+
+    /* Tighten the "tap for details" hint */
+    .card-item > div[style*="TAP FOR"] { font-size: 0.55rem; margin-top: 0.35rem; }
+
+    /* Filter bar stacks fully on mobile */
+    .filter-bar {
+      grid-template-columns: 1fr;
+      gap: 0.5rem;
+      padding: 0.75rem;
+    }
+    .filter-select { min-width: unset; width: 100%; }
+    #filterSeller { display: none; } /* hide seller filter — too narrow */
+
+    /* Show selector pills wrap */
+    .show-selector { flex-wrap: wrap; gap: 0.4rem; padding: 0 0.75rem; }
+    .show-pill { font-size: 0.72rem; padding: 0.3rem 0.7rem; }
+
+    /* Results meta wraps */
+    .results-meta { flex-direction: column; align-items: flex-start; gap: 0.5rem; padding: 0 0.75rem 0.5rem; }
+    #dealLegend { display: none; } /* hide legend on mobile — too wide */
+
+    /* Modal fits mobile screen */
+    .modal { max-width: 100%; margin: 0.5rem; border-radius: 14px; }
+    .modal-grid { grid-template-columns: 1fr 1fr; gap: 0.45rem; }
+    .modal-price { font-size: 1.8rem; }
+    .modal-player { font-size: 1.5rem; }
+    .modal-actions { flex-direction: column; }
+    .modal-actions .btn-wa-full,
+    .modal-actions .btn-modal-close { width: 100%; justify-content: center; }
+
+    /* Buyer view header padding */
+    .buyer-header { margin-bottom: 1.2rem; }
+    .buyer-header h1 { font-size: 2.2rem; }
+    .buyer-header p { font-size: 0.8rem; }
+  }
+
+  @media (max-width: 380px) {
+    /* Single column on very small phones */
+    .card-grid { grid-template-columns: 1fr; }
+    .card-item-title { -webkit-line-clamp: 2; }
+    .card-item-seller { display: none; }
   }
 
   /* ── CARD DETAIL MODAL ── */
@@ -1415,6 +1488,64 @@
     color: var(--black) !important;
   }
 
+
+  /* ── DEAL SCORE ── */
+  .deal-badge {
+    display: inline-flex; align-items: center; gap: 0.3rem;
+    padding: 0.22rem 0.6rem; border-radius: 20px;
+    font-size: 0.7rem; font-weight: 700;
+    font-family: 'DM Mono', monospace; letter-spacing: 0.04em;
+    white-space: nowrap;
+  }
+  .deal-great  { background: rgba(34,197,94,0.15);  color: #4ade80; border: 1px solid rgba(34,197,94,0.35); }
+  .deal-good   { background: rgba(59,130,246,0.15);  color: #60a5fa; border: 1px solid rgba(59,130,246,0.35); }
+  .deal-fair   { background: rgba(148,163,184,0.12); color: #94a3b8; border: 1px solid rgba(148,163,184,0.25); }
+  .deal-high   { background: rgba(245,158,11,0.13);  color: #fbbf24; border: 1px solid rgba(245,158,11,0.3); }
+  .deal-steep  { background: rgba(239,68,68,0.13);   color: #f87171; border: 1px solid rgba(239,68,68,0.3); }
+
+  /* Deal score bar inside modal */
+  .deal-meter-wrap {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 0.85rem 0.9rem;
+    grid-column: 1 / -1;
+  }
+  .deal-meter-label {
+    font-family: 'DM Mono', monospace; font-size: 0.64rem;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 0.55rem;
+  }
+  .deal-meter-row {
+    display: flex; align-items: center; gap: 0.75rem;
+  }
+  .deal-meter-track {
+    flex: 1; height: 8px; border-radius: 8px;
+    background: var(--border); position: relative; overflow: visible;
+  }
+  .deal-meter-fill {
+    position: absolute; top: 0; left: 0; height: 100%;
+    border-radius: 8px; transition: width 0.4s ease;
+  }
+  .deal-meter-marker {
+    position: absolute; top: 50%; transform: translate(-50%, -50%);
+    width: 14px; height: 14px; border-radius: 50%;
+    border: 2px solid var(--card); box-shadow: 0 0 0 2px currentColor;
+  }
+  .deal-prices {
+    display: flex; justify-content: space-between;
+    margin-top: 0.45rem;
+    font-family: 'DM Mono', monospace; font-size: 0.68rem; color: var(--muted);
+  }
+  .deal-prices .asking { font-weight: 700; }
+  .deal-verdict {
+    font-size: 0.84rem; font-weight: 600; white-space: nowrap;
+  }
+
+
+  @keyframes shimmer {
+    0%   { background-position: 200% center; }
+    100% { background-position: -200% center; }
+  }
+
 </style>
 </head>
 <body>
@@ -1620,6 +1751,13 @@
           <option value="1000-10000">$1K–$10K</option>
           <option value="10000+">$10K+</option>
         </select>
+        <select class="admin-filter-select" id="afDeal" onchange="applyInventoryFilters()">
+          <option value="">All deals</option>
+          <option value="has_mv">Has market value</option>
+          <option value="great">🔥 Great Deals only</option>
+          <option value="good">✓ Good Value+</option>
+          <option value="above">↑ Above market</option>
+        </select>
         <div class="admin-filter-results">Showing <span id="afResultCount">0</span> cards</div>
         <button class="btn-clear-filters" onclick="clearAdminFilters()">✕ Clear</button>
       </div>
@@ -1637,6 +1775,7 @@
               <th>Grade / Service</th>
               <th>Cert #</th>
               <th>Condition</th>
+              <th>Market Value</th>
               <th>Price</th>
               <th>Availability</th>
             </tr>
@@ -1694,11 +1833,26 @@
         <option value="150-500">$150–$500</option>
         <option value="500+">$500+</option>
       </select>
+      <select class="filter-select" onchange="filterBuyer()" id="filterDeal">
+        <option value="">All deals</option>
+        <option value="great">🔥 Great Deals</option>
+        <option value="good">✓ Good Value+</option>
+        <option value="fair">≈ Fair Price+</option>
+        <option value="has_mv">Has market value</option>
+      </select>
       <button class="btn btn-ghost" onclick="clearFilters()">Clear</button>
     </div>
 
     <div class="results-meta">
       <div class="results-count">Showing <span id="resultsCount">0</span> cards</div>
+      <div id="dealLegend" style="display:flex;gap:0.4rem;flex-wrap:wrap;align-items:center">
+        <span style="font-family:'DM Mono',monospace;font-size:0.65rem;color:var(--muted);letter-spacing:0.06em;margin-right:0.2rem">DEAL SCORE:</span>
+        <span class="badge deal-great" style="font-size:0.64rem;padding:0.15rem 0.5rem">🔥 Great Deal</span>
+        <span class="badge deal-good"  style="font-size:0.64rem;padding:0.15rem 0.5rem">✓ Good Value</span>
+        <span class="badge deal-fair"  style="font-size:0.64rem;padding:0.15rem 0.5rem">≈ Fair Price</span>
+        <span class="badge deal-high"  style="font-size:0.64rem;padding:0.15rem 0.5rem">↑ Above Market</span>
+        <span class="badge deal-steep" style="font-size:0.64rem;padding:0.15rem 0.5rem">⚠ High Ask</span>
+      </div>
     </div>
 
     <div class="card-grid" id="buyerGrid">
@@ -2022,24 +2176,24 @@ const SAMPLE = [
   // ── bleeding_ink_sports ──
   { Seller: 'bleeding_ink_sports', 'Card Title': '2023 Prizm C.J. Stroud #339 Silver Prizm RC', Player: 'C.J. Stroud', Year: 2023, 'Set ': 'Prizm', Number: '339', 'Parallel/Variant': 'Silver Prizm', Grade: 10, Price: 200, Status: 'Available' },
   { Seller: 'bleeding_ink_sports', 'Card Title': '2025-26 Topps Chrome Cooper Flagg RC Auto', Player: 'Cooper Flagg', Year: 2025, 'Set ': 'Topps Chrome', Number: 'TCAR-CF', 'Parallel/Variant': 'Base Auto', Grade: null, Price: 4200, Condition: 'Near Mint', Status: 'Available' },
-  { Seller: 'bleeding_ink_sports', 'Card Title': '2025-26 Topps Chrome Cooper Flagg Sapphire RC', Player: 'Cooper Flagg', Year: 2025, 'Set ': 'Topps Chrome Sapphire', Number: 'TCAR-CF', 'Parallel/Variant': 'Sapphire', Grade: 10, 'Cert #': '87654321', Price: 11500, Status: 'Available' },
-  { Seller: 'bleeding_ink_sports', 'Card Title': '2024 Topps Shohei Ohtani 50/50 Gold Auto /50', Player: 'Shohei Ohtani', Year: 2024, 'Set ': 'Topps Update', Number: '50', 'Parallel/Variant': 'Gold Auto', Grade: 10, 'Cert #': '12345678', Price: 75000, Status: 'Available' },
+  { Seller: 'bleeding_ink_sports', 'Card Title': '2025-26 Topps Chrome Cooper Flagg Sapphire RC', Player: 'Cooper Flagg', Year: 2025, 'Set ': 'Topps Chrome Sapphire', Number: 'TCAR-CF', 'Parallel/Variant': 'Sapphire', Grade: 10, 'Cert #': '87654321', 'Market Value': 15000, Price: 11500, Status: 'Available' },
+  { Seller: 'bleeding_ink_sports', 'Card Title': '2024 Topps Shohei Ohtani 50/50 Gold Auto /50', Player: 'Shohei Ohtani', Year: 2024, 'Set ': 'Topps Update', Number: '50', 'Parallel/Variant': 'Gold Auto', Grade: 10, 'Cert #': '12345678', 'Market Value': 95000, Price: 75000, Status: 'Available' },
   { Seller: 'bleeding_ink_sports', 'Card Title': '2024 Prizm Patrick Mahomes Gold Prizm /10', Player: 'Patrick Mahomes', Year: 2024, 'Set ': 'Prizm', Number: '1', 'Parallel/Variant': 'Gold Prizm', Grade: 9, Price: 1800, Status: 'Available' },
   { Seller: 'bleeding_ink_sports', 'Card Title': '2020 Topps Chrome Caitlin Clark Prospects Auto', Player: 'Caitlin Clark', Year: 2024, 'Set ': 'Topps Chrome', Number: 'CTA-CC', 'Parallel/Variant': 'Refractor Auto', Grade: 10, Price: 950, Status: 'Available' },
-  { Seller: 'bleeding_ink_sports', 'Card Title': '2003-04 Topps Chrome LeBron James RC #111', Player: 'LeBron James', Year: 2003, 'Set ': 'Topps Chrome', Number: '111', 'Parallel/Variant': 'Base', Grade: 8, Price: 3200, Status: 'Available' },
+  { Seller: 'bleeding_ink_sports', 'Card Title': '2003-04 Topps Chrome LeBron James RC #111', Player: 'LeBron James', Year: 2003, 'Set ': 'Topps Chrome', Number: '111', 'Parallel/Variant': 'Base', Grade: 8, 'Market Value': 2800, Price: 3200, Status: 'Available' },
   { Seller: 'bleeding_ink_sports', 'Card Title': '2024 Panini Prizm Paul Skenes Debut Patch Auto', Player: 'Paul Skenes', Year: 2024, 'Set ': 'Panini Prizm', Number: 'DA-PS', 'Parallel/Variant': 'Lava Auto', Grade: null, Price: 2100, Condition: 'Near Mint', Status: 'Available' },
-  { Seller: 'bleeding_ink_sports', 'Card Title': '2022 Topps Chrome Victor Wembanyama RC Auto', Player: 'Victor Wembanyama', Year: 2023, 'Set ': 'Topps Chrome', Number: 'VW-1', 'Parallel/Variant': 'Refractor Auto', Grade: 10, Price: 8800, Status: 'Available' },
+  { Seller: 'bleeding_ink_sports', 'Card Title': '2022 Topps Chrome Victor Wembanyama RC Auto', Player: 'Victor Wembanyama', Year: 2023, 'Set ': 'Topps Chrome', Number: 'VW-1', 'Parallel/Variant': 'Refractor Auto', Grade: 10, 'Market Value': 12000, Price: 8800, Status: 'Available' },
   { Seller: 'bleeding_ink_sports', 'Card Title': '2019-20 Prizm Ja Morant RC Silver Prizm', Player: 'Ja Morant', Year: 2019, 'Set ': 'Prizm', Number: '249', 'Parallel/Variant': 'Silver Prizm', Grade: 10, Price: 520, Status: 'Available' },
 
   // ── refbrand ──
   { Seller: 'refbrand', 'Card Title': '2018 Optic Luka Doncic Rated Rookie #177', Player: 'Luka Doncic', Year: 2018, 'Set ': 'Optic', Number: '177', 'Parallel/Variant': 'Rated Rookie', Grade: null, Price: 150, Condition: 'Near Mint', Status: 'Available' },
   { Seller: 'refbrand', 'Card Title': '2018-19 Prizm Luka Doncic RC Silver Prizm', Player: 'Luka Doncic', Year: 2018, 'Set ': 'Prizm', Number: '280', 'Parallel/Variant': 'Silver Prizm', Grade: 10, 'Cert #': '11223344', Price: 2800, Status: 'Available' },
   { Seller: 'refbrand', 'Card Title': '2023 Topps Chrome Rookie Wander Franco Auto', Player: 'Wander Franco', Year: 2023, 'Set ': 'Topps Chrome', Number: 'WF-1', 'Parallel/Variant': 'Refractor Auto', Grade: 9, Price: 310, Status: 'Available' },
-  { Seller: 'refbrand', 'Card Title': '2024 Topps Elly De La Cruz RC Superfractor 1/1', Player: 'Elly De La Cruz', Year: 2024, 'Set ': 'Topps', Number: '1', 'Parallel/Variant': 'Superfractor', Grade: null, Price: 18000, Condition: 'Near Mint', Status: 'Available' },
+  { Seller: 'refbrand', 'Card Title': '2024 Topps Elly De La Cruz RC Superfractor 1/1', Player: 'Elly De La Cruz', Year: 2024, 'Set ': 'Topps', Number: '1', 'Parallel/Variant': 'Superfractor', Grade: null, 'Market Value': 14000, Price: 18000, Condition: 'Near Mint', Status: 'Available' },
   { Seller: 'refbrand', 'Card Title': '2021 Prizm Trevor Lawrence Rookie Silver', Player: 'Trevor Lawrence', Year: 2021, 'Set ': 'Prizm', Number: '301', 'Parallel/Variant': 'Silver Prizm', Grade: 10, Price: 480, Status: 'Available' },
-  { Seller: 'refbrand', 'Card Title': '2022 Topps Chrome Julio Rodriguez RC Auto /50', Player: 'Julio Rodriguez', Year: 2022, 'Set ': 'Topps Chrome', Number: 'JRA-50', 'Parallel/Variant': 'Orange Auto', Grade: 10, Price: 890, Status: 'Available' },
+  { Seller: 'refbrand', 'Card Title': '2022 Topps Chrome Julio Rodriguez RC Auto /50', Player: 'Julio Rodriguez', Year: 2022, 'Set ': 'Topps Chrome', Number: 'JRA-50', 'Parallel/Variant': 'Orange Auto', Grade: 10, 'Market Value': 790, Price: 890, Status: 'Available' },
   { Seller: 'refbrand', 'Card Title': '2020-21 Prizm Anthony Edwards RC Silver Prizm', Player: 'Anthony Edwards', Year: 2020, 'Set ': 'Prizm', Number: '258', 'Parallel/Variant': 'Silver Prizm', Grade: 10, Price: 1200, Status: 'Available' },
-  { Seller: 'refbrand', 'Card Title': '1986-87 Fleer Michael Jordan RC #57', Player: 'Michael Jordan', Year: 1986, 'Set ': 'Fleer', Number: '57', 'Parallel/Variant': 'Base', Grade: 6, Price: 18500, Status: 'Available' },
+  { Seller: 'refbrand', 'Card Title': '1986-87 Fleer Michael Jordan RC #57', Player: 'Michael Jordan', Year: 1986, 'Set ': 'Fleer', Number: '57', 'Parallel/Variant': 'Base', Grade: 6, 'Market Value': 19000, Price: 18500, Status: 'Available' },
   { Seller: 'refbrand', 'Card Title': '2023 Topps Chrome Corbin Carroll RC Auto', Player: 'Corbin Carroll', Year: 2023, 'Set ': 'Topps Chrome', Number: 'CCA-1', 'Parallel/Variant': 'Refractor Auto', Grade: null, Price: 220, Condition: 'Near Mint', Status: 'Available' },
   { Seller: 'refbrand', 'Card Title': '2024 Optic Caleb Williams Rookie Auto', Player: 'Caleb Williams', Year: 2024, 'Set ': 'Optic', Number: 'CWA-1', 'Parallel/Variant': 'Rated Rookie Auto', Grade: 10, Price: 640, Status: 'Available' },
 
@@ -2050,17 +2204,17 @@ const SAMPLE = [
   { Seller: 'chrome_kings_atl', 'Card Title': '2024 Prizm Drake Maye RC Silver Prizm', Player: 'Drake Maye', Year: 2024, 'Set ': 'Prizm', Number: 'DM-1', 'Parallel/Variant': 'Silver Prizm', Grade: 10, Price: 420, Status: 'Available' },
   { Seller: 'chrome_kings_atl', 'Card Title': '2022 Bowman Chrome Druw Jones Prospect Auto', Player: 'Druw Jones', Year: 2022, 'Set ': 'Bowman Chrome', Number: 'BPA-DJ', 'Parallel/Variant': 'Prospect Auto', Grade: null, Price: 95, Condition: 'Near Mint', Status: 'Available' },
   { Seller: 'chrome_kings_atl', 'Card Title': '2025 Topps Series 1 Roman Anthony RC Auto', Player: 'Roman Anthony', Year: 2025, 'Set ': 'Topps Series 1', Number: 'RA-1', 'Parallel/Variant': 'On-Card Auto', Grade: null, Price: 340, Condition: 'Near Mint', Status: 'Available' },
-  { Seller: 'chrome_kings_atl', 'Card Title': '2023-24 Prizm Wembanyama RC Silver Prizm', Player: 'Victor Wembanyama', Year: 2023, 'Set ': 'Prizm', Number: '1', 'Parallel/Variant': 'Silver Prizm', Grade: 10, Price: 4200, Status: 'Available' },
-  { Seller: 'chrome_kings_atl', 'Card Title': '2024 Topps Chrome Yoshinobu Yamamoto RC Auto', Player: 'Yoshinobu Yamamoto', Year: 2024, 'Set ': 'Topps Chrome', Number: 'YYA-1', 'Parallel/Variant': 'Refractor Auto', Grade: 9, Price: 780, Status: 'Available' },
+  { Seller: 'chrome_kings_atl', 'Card Title': '2023-24 Prizm Wembanyama RC Silver Prizm', Player: 'Victor Wembanyama', Year: 2023, 'Set ': 'Prizm', Number: '1', 'Parallel/Variant': 'Silver Prizm', Grade: 10, 'Market Value': 4700, Price: 4200, Status: 'Available' },
+  { Seller: 'chrome_kings_atl', 'Card Title': '2024 Topps Chrome Yoshinobu Yamamoto RC Auto', Player: 'Yoshinobu Yamamoto', Year: 2024, 'Set ': 'Topps Chrome', Number: 'YYA-1', 'Parallel/Variant': 'Refractor Auto', Grade: 9, 'Market Value': 800, Price: 780, Status: 'Available' },
   { Seller: 'chrome_kings_atl', 'Card Title': '2021 Prizm Mac Jones RC Silver Prizm', Player: 'Mac Jones', Year: 2021, 'Set ': 'Prizm', Number: '339', 'Parallel/Variant': 'Silver Prizm', Grade: 9, Price: 55, Status: 'Available' },
-  { Seller: 'chrome_kings_atl', 'Card Title': '2019-20 Prizm Zion Williamson RC Silver Prizm', Player: 'Zion Williamson', Year: 2019, 'Set ': 'Prizm', Number: '248', 'Parallel/Variant': 'Silver Prizm', Grade: 10, Price: 1600, Status: 'Available' },
+  { Seller: 'chrome_kings_atl', 'Card Title': '2019-20 Prizm Zion Williamson RC Silver Prizm', Player: 'Zion Williamson', Year: 2019, 'Set ': 'Prizm', Number: '248', 'Parallel/Variant': 'Silver Prizm', Grade: 10, 'Market Value': 1380, Price: 1600, Status: 'Available' },
 
   // ── wax_vault_chicago ──
   { Seller: 'wax_vault_chicago', 'Card Title': '1952 Topps Mickey Mantle #311', Player: 'Mickey Mantle', Year: 1952, 'Set ': 'Topps', Number: '311', 'Parallel/Variant': 'Base', Grade: 4, Price: 42000, Status: 'Available' },
   { Seller: 'wax_vault_chicago', 'Card Title': '2000 Playoff Contenders Tom Brady RC Auto #144', Player: 'Tom Brady', Year: 2000, 'Set ': 'Playoff Contenders', Number: '144', 'Parallel/Variant': 'Rookie Ticket Auto', Grade: 8, Price: 38000, Status: 'Available' },
-  { Seller: 'wax_vault_chicago', 'Card Title': '2023 Topps Chrome Gunnar Henderson RC Auto', Player: 'Gunnar Henderson', Year: 2023, 'Set ': 'Topps Chrome', Number: 'GHA-1', 'Parallel/Variant': 'Refractor Auto', Grade: 10, Price: 620, Status: 'Available' },
+  { Seller: 'wax_vault_chicago', 'Card Title': '2023 Topps Chrome Gunnar Henderson RC Auto', Player: 'Gunnar Henderson', Year: 2023, 'Set ': 'Topps Chrome', Number: 'GHA-1', 'Parallel/Variant': 'Refractor Auto', Grade: 10, 'Market Value': 640, Price: 620, Status: 'Available' },
   { Seller: 'wax_vault_chicago', 'Card Title': '2024-25 Hoops Bronny James RC', Player: 'Bronny James', Year: 2024, 'Set ': 'Hoops', Number: '255', 'Parallel/Variant': 'Base', Grade: null, Price: 45, Condition: 'Near Mint', Status: 'Available' },
-  { Seller: 'wax_vault_chicago', 'Card Title': '2025 Topps Chrome Jonah Tong RC Auto /16', Player: 'Jonah Tong', Year: 2025, 'Set ': 'Topps Chrome', Number: 'JTA-1', 'Parallel/Variant': '1952 Retro Auto', Grade: null, Price: 1100, Condition: 'Near Mint', Status: 'Available' },
+  { Seller: 'wax_vault_chicago', 'Card Title': '2025 Topps Chrome Jonah Tong RC Auto /16', Player: 'Jonah Tong', Year: 2025, 'Set ': 'Topps Chrome', Number: 'JTA-1', 'Parallel/Variant': '1952 Retro Auto', Grade: null, 'Market Value': 1400, Price: 1100, Condition: 'Near Mint', Status: 'Available' },
   { Seller: 'wax_vault_chicago', 'Card Title': '2022 Topps Chrome Framber Valdez All-Star Auto', Player: 'Framber Valdez', Year: 2022, 'Set ': 'Topps Chrome', Number: 'FVA-1', 'Parallel/Variant': 'Refractor Auto', Grade: null, Price: 85, Condition: 'Near Mint', Status: 'Available' },
   { Seller: 'wax_vault_chicago', 'Card Title': '2023-24 Prizm Scoot Henderson RC Silver Prizm', Player: 'Scoot Henderson', Year: 2023, 'Set ': 'Prizm', Number: '267', 'Parallel/Variant': 'Silver Prizm', Grade: 10, Price: 180, Status: 'Available' },
   { Seller: 'wax_vault_chicago', 'Card Title': '2024 Topps Shota Imanaga RC Auto', Player: 'Shota Imanaga', Year: 2024, 'Set ': 'Topps', Number: 'SIA-1', 'Parallel/Variant': 'Rookie Auto', Grade: null, Price: 145, Condition: 'Near Mint', Status: 'Available' },
@@ -2070,12 +2224,12 @@ const SAMPLE = [
   // ── the_foil_lab ──
   { Seller: 'the_foil_lab', 'Card Title': '2024 Optic Marvin Harrison Jr RC Rated Rookie Auto', Player: 'Marvin Harrison Jr', Year: 2024, 'Set ': 'Optic', Number: 'MHJA-1', 'Parallel/Variant': 'Rated Rookie Auto', Grade: 10, Price: 880, Status: 'Available' },
   { Seller: 'the_foil_lab', 'Card Title': '2024 Prizm Jayden Daniels RC Silver Prizm', Player: 'Jayden Daniels', Year: 2024, 'Set ': 'Prizm', Number: 'JD-1', 'Parallel/Variant': 'Silver Prizm', Grade: 10, Price: 540, Status: 'Available' },
-  { Seller: 'the_foil_lab', 'Card Title': '2025-26 Topps Midnight Cooper Flagg RPA #3/5', Player: 'Cooper Flagg', Year: 2025, 'Set ': 'Topps Midnight', Number: '3', 'Parallel/Variant': 'Rookie Jersey Patch Auto', Grade: null, Price: 10600, Condition: 'Near Mint', Status: 'Available' },
+  { Seller: 'the_foil_lab', 'Card Title': '2025-26 Topps Midnight Cooper Flagg RPA #3/5', Player: 'Cooper Flagg', Year: 2025, 'Set ': 'Topps Midnight', Number: '3', 'Parallel/Variant': 'Rookie Jersey Patch Auto', Grade: null, 'Market Value': 9500, Price: 10600, Condition: 'Near Mint', Status: 'Available' },
   { Seller: 'the_foil_lab', 'Card Title': '2024 Topps Chrome Michael Harris II RC Gold /50', Player: 'Michael Harris II', Year: 2024, 'Set ': 'Topps Chrome', Number: 'MHA-50', 'Parallel/Variant': 'Gold Refractor Auto', Grade: null, Price: 190, Condition: 'Near Mint', Status: 'Available' },
   { Seller: 'the_foil_lab', 'Card Title': '2023-24 Prizm Chet Holmgren RC Silver Prizm', Player: 'Chet Holmgren', Year: 2023, 'Set ': 'Prizm', Number: '288', 'Parallel/Variant': 'Silver Prizm', Grade: 10, Price: 380, Status: 'Available' },
   { Seller: 'the_foil_lab', 'Card Title': '2022 Topps Update Jeremy Peña World Series RC', Player: 'Jeremy Peña', Year: 2022, 'Set ': 'Topps Update', Number: 'US301', 'Parallel/Variant': 'Base', Grade: null, Price: 28, Condition: 'Near Mint', Status: 'Available' },
   { Seller: 'the_foil_lab', 'Card Title': '2024-25 Hoops Bronny James RC Holo', Player: 'Bronny James', Year: 2024, 'Set ': 'Hoops', Number: '255', 'Parallel/Variant': 'Holo Prizm', Grade: 10, Price: 120, Status: 'Available' },
-  { Seller: 'the_foil_lab', 'Card Title': '2019 Prizm Justin Jefferson RC Silver Prizm', Player: 'Justin Jefferson', Year: 2019, 'Set ': 'Prizm', Number: '344', 'Parallel/Variant': 'Silver Prizm', Grade: 10, Price: 1400, Status: 'Available' },
+  { Seller: 'the_foil_lab', 'Card Title': '2019 Prizm Justin Jefferson RC Silver Prizm', Player: 'Justin Jefferson', Year: 2019, 'Set ': 'Prizm', Number: '344', 'Parallel/Variant': 'Silver Prizm', Grade: 10, 'Market Value': 1430, Price: 1400, Status: 'Available' },
   { Seller: 'the_foil_lab', 'Card Title': '2024 Bowman Chrome Wyatt Langford Prospect Auto', Player: 'Wyatt Langford', Year: 2024, 'Set ': 'Bowman Chrome', Number: 'BPA-WL', 'Parallel/Variant': 'Prospect Auto', Grade: null, Price: 120, Condition: 'Near Mint', Status: 'Available' },
   { Seller: 'the_foil_lab', 'Card Title': '2024 Topps Chrome Shohei Ohtani RC Dodgers', Player: 'Shohei Ohtani', Year: 2024, 'Set ': 'Topps Chrome', Number: 'SO-2', 'Parallel/Variant': 'Base Refractor', Grade: null, Price: 95, Condition: 'Near Mint', Status: 'Available' },
 
@@ -2084,24 +2238,24 @@ const SAMPLE = [
   { Seller: 'slab_city_sd', 'Card Title': '2020 Topps Chrome Ke\'Bryan Hayes RC Auto', Player: "Ke'Bryan Hayes", Year: 2020, 'Set ': 'Topps Chrome', Number: 'KHA-1', 'Parallel/Variant': 'Refractor Auto', Grade: 10, Price: 65, Status: 'Available' },
   { Seller: 'slab_city_sd', 'Card Title': '2024 Topps Series 1 Jackson Holliday RC', Player: 'Jackson Holliday', Year: 2024, 'Set ': 'Topps Series 1', Number: '310', 'Parallel/Variant': 'Base', Grade: 10, Price: 35, Status: 'Available' },
   { Seller: 'slab_city_sd', 'Card Title': '2023 Prizm Bryce Young RC Silver Prizm', Player: 'Bryce Young', Year: 2023, 'Set ': 'Prizm', Number: 'BY-1', 'Parallel/Variant': 'Silver Prizm', Grade: 10, Price: 220, Status: 'Available' },
-  { Seller: 'slab_city_sd', 'Card Title': '2024 Optic Caitlin Clark WNBA RC Holo', Player: 'Caitlin Clark', Year: 2024, 'Set ': 'Optic WNBA', Number: 'CC-1', 'Parallel/Variant': 'Holo', Grade: 10, Price: 1200, Status: 'Available' },
-  { Seller: 'slab_city_sd', 'Card Title': '2024 Prizm WNBA Caitlin Clark Silver Prizm', Player: 'Caitlin Clark', Year: 2024, 'Set ': 'Prizm WNBA', Number: 'CC-2', 'Parallel/Variant': 'Silver Prizm', Grade: null, Price: 480, Condition: 'Near Mint', Status: 'Available' },
+  { Seller: 'slab_city_sd', 'Card Title': '2024 Optic Caitlin Clark WNBA RC Holo', Player: 'Caitlin Clark', Year: 2024, 'Set ': 'Optic WNBA', Number: 'CC-1', 'Parallel/Variant': 'Holo', Grade: 10, 'Market Value': 1380, Price: 1200, Status: 'Available' },
+  { Seller: 'slab_city_sd', 'Card Title': '2024 Prizm WNBA Caitlin Clark Silver Prizm', Player: 'Caitlin Clark', Year: 2024, 'Set ': 'Prizm WNBA', Number: 'CC-2', 'Parallel/Variant': 'Silver Prizm', Grade: null, 'Market Value': 500, Price: 480, Condition: 'Near Mint', Status: 'Available' },
   { Seller: 'slab_city_sd', 'Card Title': '2022-23 Prizm Paolo Banchero RC Silver Prizm', Player: 'Paolo Banchero', Year: 2022, 'Set ': 'Prizm', Number: '273', 'Parallel/Variant': 'Silver Prizm', Grade: 10, Price: 420, Status: 'Available' },
-  { Seller: 'slab_city_sd', 'Card Title': '2020-21 Topps Chrome LaMelo Ball RC Auto', Player: 'LaMelo Ball', Year: 2020, 'Set ': 'Topps Chrome', Number: 'LBA-1', 'Parallel/Variant': 'Refractor Auto', Grade: 10, Price: 980, Status: 'Available' },
-  { Seller: 'slab_city_sd', 'Card Title': '2024 Bowman Atomic Paul Skenes Prospect Auto', Player: 'Paul Skenes', Year: 2024, 'Set ': 'Bowman Atomic', Number: 'BPA-PS', 'Parallel/Variant': 'Atomic Auto', Grade: 9, Price: 1750, Status: 'Available' },
+  { Seller: 'slab_city_sd', 'Card Title': '2020-21 Topps Chrome LaMelo Ball RC Auto', Player: 'LaMelo Ball', Year: 2020, 'Set ': 'Topps Chrome', Number: 'LBA-1', 'Parallel/Variant': 'Refractor Auto', Grade: 10, 'Market Value': 880, Price: 980, Status: 'Available' },
+  { Seller: 'slab_city_sd', 'Card Title': '2024 Bowman Atomic Paul Skenes Prospect Auto', Player: 'Paul Skenes', Year: 2024, 'Set ': 'Bowman Atomic', Number: 'BPA-PS', 'Parallel/Variant': 'Atomic Auto', Grade: 9, 'Market Value': 2100, Price: 1750, Status: 'Available' },
   { Seller: 'slab_city_sd', 'Card Title': '2021 Topps Chrome Adley Rutschman RC Auto', Player: 'Adley Rutschman', Year: 2021, 'Set ': 'Topps Chrome', Number: 'ARA-1', 'Parallel/Variant': 'Refractor Auto', Grade: null, Price: 280, Condition: 'Near Mint', Status: 'Available' },
 
   // ── golden_era_cards ──
   { Seller: 'golden_era_cards', 'Card Title': '1969 Topps Reggie Jackson RC #260', Player: 'Reggie Jackson', Year: 1969, 'Set ': 'Topps', Number: '260', 'Parallel/Variant': 'Base', Grade: 7, Price: 1800, Status: 'Available' },
   { Seller: 'golden_era_cards', 'Card Title': '1979 Topps Jerry Rice RC #216', Player: 'Jerry Rice', Year: 1986, 'Set ': 'Topps', Number: '161T', 'Parallel/Variant': 'Base', Grade: 8, Price: 3400, Status: 'Available' },
-  { Seller: 'golden_era_cards', 'Card Title': '1989 Upper Deck Ken Griffey Jr RC #1', Player: 'Ken Griffey Jr', Year: 1989, 'Set ': 'Upper Deck', Number: '1', 'Parallel/Variant': 'Base', Grade: 9, Price: 2100, Status: 'Available' },
+  { Seller: 'golden_era_cards', 'Card Title': '1989 Upper Deck Ken Griffey Jr RC #1', Player: 'Ken Griffey Jr', Year: 1989, 'Set ': 'Upper Deck', Number: '1', 'Parallel/Variant': 'Base', Grade: 9, 'Market Value': 1900, Price: 2100, Status: 'Available' },
   { Seller: 'golden_era_cards', 'Card Title': '1984-85 Star Michael Jordan RC', Player: 'Michael Jordan', Year: 1984, 'Set ': 'Star', Number: '101', 'Parallel/Variant': 'Base', Grade: 7, Price: 12000, Status: 'Available' },
-  { Seller: 'golden_era_cards', 'Card Title': '1996-97 Topps Chrome Kobe Bryant RC #138', Player: 'Kobe Bryant', Year: 1996, 'Set ': 'Topps Chrome', Number: '138', 'Parallel/Variant': 'Base', Grade: 8, Price: 8500, Status: 'Available' },
+  { Seller: 'golden_era_cards', 'Card Title': '1996-97 Topps Chrome Kobe Bryant RC #138', Player: 'Kobe Bryant', Year: 1996, 'Set ': 'Topps Chrome', Number: '138', 'Parallel/Variant': 'Base', Grade: 8, 'Market Value': 8800, Price: 8500, Status: 'Available' },
   { Seller: 'golden_era_cards', 'Card Title': '1979 O-Pee-Chee Wayne Gretzky RC #18', Player: 'Wayne Gretzky', Year: 1979, 'Set ': 'O-Pee-Chee', Number: '18', 'Parallel/Variant': 'Base', Grade: 6, Price: 21000, Status: 'Available' },
   { Seller: 'golden_era_cards', 'Card Title': '1948 Leaf Joe DiMaggio #1', Player: 'Joe DiMaggio', Year: 1948, 'Set ': 'Leaf', Number: '1', 'Parallel/Variant': 'Base', Grade: 3, Price: 6500, Status: 'Available' },
   { Seller: 'golden_era_cards', 'Card Title': '1955 Topps Sandy Koufax RC #123', Player: 'Sandy Koufax', Year: 1955, 'Set ': 'Topps', Number: '123', 'Parallel/Variant': 'Base', Grade: 5, Price: 4800, Status: 'Available' },
   { Seller: 'golden_era_cards', 'Card Title': '1986 Fleer Michael Jordan Sticker #8', Player: 'Michael Jordan', Year: 1986, 'Set ': 'Fleer', Number: '8', 'Parallel/Variant': 'Sticker', Grade: 9, Price: 4200, Status: 'Available' },
-  { Seller: 'golden_era_cards', 'Card Title': '1993 SP Derek Jeter RC Foil #279', Player: 'Derek Jeter', Year: 1993, 'Set ': 'SP', Number: '279', 'Parallel/Variant': 'Foil', Grade: 8, Price: 3100, Status: 'Available' },
+  { Seller: 'golden_era_cards', 'Card Title': '1993 SP Derek Jeter RC Foil #279', Player: 'Derek Jeter', Year: 1993, 'Set ': 'SP', Number: '279', 'Parallel/Variant': 'Foil', Grade: 8, 'Market Value': 3800, Price: 3100, Status: 'Available' },
 
   // ── prizm_palace_nyc ──
   { Seller: 'prizm_palace_nyc', 'Card Title': '2024 Prizm Marvin Harrison Jr RC Silver Prizm', Player: 'Marvin Harrison Jr', Year: 2024, 'Set ': 'Prizm', Number: 'MHJ-1', 'Parallel/Variant': 'Silver Prizm', Grade: 10, Price: 380, Status: 'Available' },
@@ -2110,16 +2264,16 @@ const SAMPLE = [
   { Seller: 'prizm_palace_nyc', 'Card Title': '2024 Prizm Michael Penix Jr RC Silver Prizm', Player: 'Michael Penix Jr', Year: 2024, 'Set ': 'Prizm', Number: 'MP-1', 'Parallel/Variant': 'Silver Prizm', Grade: 10, Price: 110, Status: 'Available' },
   { Seller: 'prizm_palace_nyc', 'Card Title': '2022-23 Prizm Bennedict Mathurin RC Silver', Player: 'Bennedict Mathurin', Year: 2022, 'Set ': 'Prizm', Number: '298', 'Parallel/Variant': 'Silver Prizm', Grade: 10, Price: 65, Status: 'Available' },
   { Seller: 'prizm_palace_nyc', 'Card Title': '2025-26 Topps Chrome Cooper Flagg Golden Mirror', Player: 'Cooper Flagg', Year: 2025, 'Set ': 'Topps Chrome', Number: 'CF-GM', 'Parallel/Variant': 'Golden Mirror', Grade: null, Price: 27500, Condition: 'Near Mint', Status: 'Available' },
-  { Seller: 'prizm_palace_nyc', 'Card Title': '2024 Topps Chrome Bobby Witt Jr. Gold Ref /50', Player: 'Bobby Witt Jr', Year: 2024, 'Set ': 'Topps Chrome', Number: 'BWA-50', 'Parallel/Variant': 'Gold Refractor', Grade: 10, Price: 650, Status: 'Available' },
-  { Seller: 'prizm_palace_nyc', 'Card Title': '2024 Optic Angel Reese WNBA RC Holo', Player: 'Angel Reese', Year: 2024, 'Set ': 'Optic WNBA', Number: 'AR-1', 'Parallel/Variant': 'Holo', Grade: 10, Price: 340, Status: 'Available' },
+  { Seller: 'prizm_palace_nyc', 'Card Title': '2024 Topps Chrome Bobby Witt Jr. Gold Ref /50', Player: 'Bobby Witt Jr', Year: 2024, 'Set ': 'Topps Chrome', Number: 'BWA-50', 'Parallel/Variant': 'Gold Refractor', Grade: 10, 'Market Value': 660, Price: 650, Status: 'Available' },
+  { Seller: 'prizm_palace_nyc', 'Card Title': '2024 Optic Angel Reese WNBA RC Holo', Player: 'Angel Reese', Year: 2024, 'Set ': 'Optic WNBA', Number: 'AR-1', 'Parallel/Variant': 'Holo', Grade: 10, 'Market Value': 290, Price: 340, Status: 'Available' },
   { Seller: 'prizm_palace_nyc', 'Card Title': '2024 Prizm WNBA Angel Reese Silver Prizm', Player: 'Angel Reese', Year: 2024, 'Set ': 'Prizm WNBA', Number: 'AR-2', 'Parallel/Variant': 'Silver Prizm', Grade: null, Price: 185, Condition: 'Near Mint', Status: 'Available' },
   { Seller: 'prizm_palace_nyc', 'Card Title': '2021-22 Prizm Evan Mobley RC Silver Prizm', Player: 'Evan Mobley', Year: 2021, 'Set ': 'Prizm', Number: '302', 'Parallel/Variant': 'Silver Prizm', Grade: 10, Price: 195, Status: 'Available' },
 
   // ── rookie_run_houston ──
-  { Seller: 'rookie_run_houston', 'Card Title': '2024 Topps Chrome Paul Skenes RC Auto', Player: 'Paul Skenes', Year: 2024, 'Set ': 'Topps Chrome', Number: 'PSA-1', 'Parallel/Variant': 'Refractor Auto', Grade: 10, Price: 2800, Status: 'Available' },
+  { Seller: 'rookie_run_houston', 'Card Title': '2024 Topps Chrome Paul Skenes RC Auto', Player: 'Paul Skenes', Year: 2024, 'Set ': 'Topps Chrome', Number: 'PSA-1', 'Parallel/Variant': 'Refractor Auto', Grade: 10, 'Market Value': 3200, Price: 2800, Status: 'Available' },
   { Seller: 'rookie_run_houston', 'Card Title': '2024 Bowman Chrome Skenes Prospect Blue Auto /150', Player: 'Paul Skenes', Year: 2024, 'Set ': 'Bowman Chrome', Number: 'BPA-PS2', 'Parallel/Variant': 'Blue Auto', Grade: null, Price: 1100, Condition: 'Near Mint', Status: 'Available' },
   { Seller: 'rookie_run_houston', 'Card Title': '2023 Prizm CJ Stroud RC Green Prizm /75', Player: 'C.J. Stroud', Year: 2023, 'Set ': 'Prizm', Number: 'CJS-75', 'Parallel/Variant': 'Green Prizm', Grade: 10, Price: 480, Status: 'Available' },
-  { Seller: 'rookie_run_houston', 'Card Title': '2023-24 Topps Chrome Wembanyama RC Logoman 1/1', Player: 'Victor Wembanyama', Year: 2023, 'Set ': 'Topps Chrome', Number: '1', 'Parallel/Variant': 'Logoman 1/1', Grade: null, Price: 95000, Condition: 'Near Mint', Status: 'Available' },
+  { Seller: 'rookie_run_houston', 'Card Title': '2023-24 Topps Chrome Wembanyama RC Logoman 1/1', Player: 'Victor Wembanyama', Year: 2023, 'Set ': 'Topps Chrome', Number: '1', 'Parallel/Variant': 'Logoman 1/1', Grade: null, 'Market Value': 120000, Price: 95000, Condition: 'Near Mint', Status: 'Available' },
   { Seller: 'rookie_run_houston', 'Card Title': '2022 Topps Chrome Framber Valdez Base Refractor', Player: 'Framber Valdez', Year: 2022, 'Set ': 'Topps Chrome', Number: 'FV-1', 'Parallel/Variant': 'Base Refractor', Grade: null, Price: 22, Condition: 'Near Mint', Status: 'Available' },
   { Seller: 'rookie_run_houston', 'Card Title': '2024-25 Prizm Stephon Castle RC Silver Prizm', Player: 'Stephon Castle', Year: 2024, 'Set ': 'Prizm', Number: 'SC-1', 'Parallel/Variant': 'Silver Prizm', Grade: 10, Price: 135, Status: 'Available' },
   { Seller: 'rookie_run_houston', 'Card Title': '2024-25 Hoops Reed Sheppard RC', Player: 'Reed Sheppard', Year: 2024, 'Set ': 'Hoops', Number: '268', 'Parallel/Variant': 'Base', Grade: null, Price: 22, Condition: 'Near Mint', Status: 'Available' },
@@ -2128,19 +2282,19 @@ const SAMPLE = [
   { Seller: 'rookie_run_houston', 'Card Title': '2024-25 Prizm Donovan Clingan RC Silver Prizm', Player: 'Donovan Clingan', Year: 2024, 'Set ': 'Prizm', Number: 'DC-1', 'Parallel/Variant': 'Silver Prizm', Grade: 10, Price: 55, Status: 'Available' },
 
   // ── patch_work_pdx ──
-  { Seller: 'patch_work_pdx', 'Card Title': '2024 Topps Chrome Bobby Witt Jr RC Auto', Player: 'Bobby Witt Jr', Year: 2024, 'Set ': 'Topps Chrome', Number: 'BWA-1', 'Parallel/Variant': 'Refractor Auto', Grade: null, Price: 1400, Condition: 'Near Mint', Status: 'Available' },
+  { Seller: 'patch_work_pdx', 'Card Title': '2024 Topps Chrome Bobby Witt Jr RC Auto', Player: 'Bobby Witt Jr', Year: 2024, 'Set ': 'Topps Chrome', Number: 'BWA-1', 'Parallel/Variant': 'Refractor Auto', Grade: null, 'Market Value': 1600, Price: 1400, Condition: 'Near Mint', Status: 'Available' },
   { Seller: 'patch_work_pdx', 'Card Title': '2023-24 Prizm Brandon Miller RC Silver Prizm', Player: 'Brandon Miller', Year: 2023, 'Set ': 'Prizm', Number: '279', 'Parallel/Variant': 'Silver Prizm', Grade: 10, Price: 95, Status: 'Available' },
   { Seller: 'patch_work_pdx', 'Card Title': '2024 Topps Shohei Ohtani First Dodgers RC', Player: 'Shohei Ohtani', Year: 2024, 'Set ': 'Topps Series 1', Number: '1', 'Parallel/Variant': 'Base SP', Grade: null, Price: 420, Condition: 'Near Mint', Status: 'Available' },
   { Seller: 'patch_work_pdx', 'Card Title': '2022-23 Topps Chrome Jayson Tatum Gold Ref /50', Player: 'Jayson Tatum', Year: 2022, 'Set ': 'Topps Chrome', Number: 'JTA-50', 'Parallel/Variant': 'Gold Refractor', Grade: 10, Price: 780, Status: 'Available' },
   { Seller: 'patch_work_pdx', 'Card Title': '2024 Prizm Malik Nabers RC Silver Prizm', Player: 'Malik Nabers', Year: 2024, 'Set ': 'Prizm', Number: 'MN-1', 'Parallel/Variant': 'Silver Prizm', Grade: 10, Price: 210, Status: 'Available' },
   { Seller: 'patch_work_pdx', 'Card Title': '2024 Bowman Chrome Junior Caminero Auto /99', Player: 'Junior Caminero', Year: 2024, 'Set ': 'Bowman Chrome', Number: 'JCA-99', 'Parallel/Variant': 'Sapphire Auto', Grade: null, Price: 2400, Condition: 'Near Mint', Status: 'Available' },
   { Seller: 'patch_work_pdx', 'Card Title': '2023-24 Prizm Amen Thompson RC Silver Prizm', Player: 'Amen Thompson', Year: 2023, 'Set ': 'Prizm', Number: '284', 'Parallel/Variant': 'Silver Prizm', Grade: 10, Price: 65, Status: 'Available' },
-  { Seller: 'patch_work_pdx', 'Card Title': '2021-22 Topps Chrome Stephen Curry Gold Ref /50', Player: 'Stephen Curry', Year: 2021, 'Set ': 'Topps Chrome', Number: 'SCA-50', 'Parallel/Variant': 'Gold Refractor', Grade: 10, Price: 4800, Status: 'Available' },
+  { Seller: 'patch_work_pdx', 'Card Title': '2021-22 Topps Chrome Stephen Curry Gold Ref /50', Player: 'Stephen Curry', Year: 2021, 'Set ': 'Topps Chrome', Number: 'SCA-50', 'Parallel/Variant': 'Gold Refractor', Grade: 10, 'Market Value': 5200, Price: 4800, Status: 'Available' },
   { Seller: 'patch_work_pdx', 'Card Title': '2024 Optic Rome Odunze RC Rated Rookie Auto', Player: 'Rome Odunze', Year: 2024, 'Set ': 'Optic', Number: 'RO-1', 'Parallel/Variant': 'Rated Rookie Auto', Grade: 10, Price: 175, Status: 'Available' },
   { Seller: 'patch_work_pdx', 'Card Title': '2024-25 Prizm Alexandre Sarr RC Silver Prizm', Player: 'Alexandre Sarr', Year: 2024, 'Set ': 'Prizm', Number: 'AS-1', 'Parallel/Variant': 'Silver Prizm', Grade: 10, Price: 120, Status: 'Available' },
 
   // ── diamond_cut_dallas ──
-  { Seller: 'diamond_cut_dallas', 'Card Title': '2024 Prizm Patrick Mahomes Silver Prizm', Player: 'Patrick Mahomes', Year: 2024, 'Set ': 'Prizm', Number: 'PM-1', 'Parallel/Variant': 'Silver Prizm', Grade: 10, Price: 320, Status: 'Available' },
+  { Seller: 'diamond_cut_dallas', 'Card Title': '2024 Prizm Patrick Mahomes Silver Prizm', Player: 'Patrick Mahomes', Year: 2024, 'Set ': 'Prizm', Number: 'PM-1', 'Parallel/Variant': 'Silver Prizm', Grade: 10, 'Market Value': 290, Price: 320, Status: 'Available' },
   { Seller: 'diamond_cut_dallas', 'Card Title': '2023 Topps Chrome Elly De La Cruz RC Auto', Player: 'Elly De La Cruz', Year: 2023, 'Set ': 'Topps Chrome', Number: 'EDA-1', 'Parallel/Variant': 'Refractor Auto', Grade: 10, Price: 760, Status: 'Available' },
   { Seller: 'diamond_cut_dallas', 'Card Title': '2024-25 Hoops Zaccharie Risacher RC', Player: 'Zaccharie Risacher', Year: 2024, 'Set ': 'Hoops', Number: '261', 'Parallel/Variant': 'Base', Grade: null, Price: 18, Condition: 'Near Mint', Status: 'Available' },
   { Seller: 'diamond_cut_dallas', 'Card Title': '2023 Topps Chrome Gunnar Henderson Gold Auto /50', Player: 'Gunnar Henderson', Year: 2023, 'Set ': 'Topps Chrome', Number: 'GHA-50', 'Parallel/Variant': 'Gold Auto', Grade: null, Price: 920, Condition: 'Near Mint', Status: 'Available' },
@@ -2159,14 +2313,14 @@ const SAMPLE = [
   { Seller: 'spectrum_breaks_sea', 'Card Title': '2024-25 Prizm Matas Buzelis RC Silver Prizm', Player: 'Matas Buzelis', Year: 2024, 'Set ': 'Prizm', Number: 'MB-1', 'Parallel/Variant': 'Silver Prizm', Grade: 10, Price: 95, Status: 'Available' },
   { Seller: 'spectrum_breaks_sea', 'Card Title': '2022 Topps Chrome Steven Kwan RC Auto', Player: 'Steven Kwan', Year: 2022, 'Set ': 'Topps Chrome', Number: 'SKA-1', 'Parallel/Variant': 'Refractor Auto', Grade: null, Price: 65, Condition: 'Near Mint', Status: 'Available' },
   { Seller: 'spectrum_breaks_sea', 'Card Title': '2024-25 Topps Chrome Ja Morant Gold Ref /50', Player: 'Ja Morant', Year: 2024, 'Set ': 'Topps Chrome', Number: 'JMA-50', 'Parallel/Variant': 'Gold Refractor', Grade: 10, Price: 680, Status: 'Available' },
-  { Seller: 'spectrum_breaks_sea', 'Card Title': '2024 Bowman Chrome Roki Sasaki Prospect Auto', Player: 'Roki Sasaki', Year: 2024, 'Set ': 'Bowman Chrome', Number: 'BPA-RS', 'Parallel/Variant': 'Prospect Auto', Grade: null, Price: 890, Condition: 'Near Mint', Status: 'Available' },
+  { Seller: 'spectrum_breaks_sea', 'Card Title': '2024 Bowman Chrome Roki Sasaki Prospect Auto', Player: 'Roki Sasaki', Year: 2024, 'Set ': 'Bowman Chrome', Number: 'BPA-RS', 'Parallel/Variant': 'Prospect Auto', Grade: null, 'Market Value': 960, Price: 890, Condition: 'Near Mint', Status: 'Available' },
   { Seller: 'spectrum_breaks_sea', 'Card Title': '2024-25 Prizm Tidjane Salaun RC Silver Prizm', Player: 'Tidjane Salaun', Year: 2024, 'Set ': 'Prizm', Number: 'TS-1', 'Parallel/Variant': 'Silver Prizm', Grade: 10, Price: 55, Status: 'Available' },
-  { Seller: 'spectrum_breaks_sea', 'Card Title': '2021-22 Topps Chrome Steph Curry 1/1 Superfractor', Player: 'Stephen Curry', Year: 2021, 'Set ': 'Topps Chrome', Number: 'SC-1/1', 'Parallel/Variant': 'Superfractor 1/1', Grade: null, Price: 34000, Condition: 'Near Mint', Status: 'Available' },
+  { Seller: 'spectrum_breaks_sea', 'Card Title': '2021-22 Topps Chrome Steph Curry 1/1 Superfractor', Player: 'Stephen Curry', Year: 2021, 'Set ': 'Topps Chrome', Number: 'SC-1/1', 'Parallel/Variant': 'Superfractor 1/1', Grade: null, 'Market Value': 40000, Price: 34000, Condition: 'Near Mint', Status: 'Available' },
 
   // ── foil_factory_miami (BGS specialist) ──
   { Seller: 'foil_factory_miami', 'Card Title': '2003-04 Topps Chrome LeBron James RC #111', Player: 'LeBron James', Year: 2003, 'Set ': 'Topps Chrome', Number: '111', 'Parallel/Variant': 'Base', Grade: 9.5, Grader: 'BGS', Price: 8400, Status: 'Available' },
   { Seller: 'foil_factory_miami', 'Card Title': '2018-19 Prizm Luka Doncic RC Silver Prizm', Player: 'Luka Doncic', Year: 2018, 'Set ': 'Prizm', Number: '280', 'Parallel/Variant': 'Silver Prizm', Grade: 9.5, Grader: 'BGS', Price: 3200, Status: 'Available' },
-  { Seller: 'foil_factory_miami', 'Card Title': '2009-10 Topps Chrome Steph Curry RC Refractor', Player: 'Stephen Curry', Year: 2009, 'Set ': 'Topps Chrome', Number: '101', 'Parallel/Variant': 'Refractor', Grade: 9.5, Grader: 'BGS', Price: 5800, Status: 'Available' },
+  { Seller: 'foil_factory_miami', 'Card Title': '2009-10 Topps Chrome Steph Curry RC Refractor', Player: 'Stephen Curry', Year: 2009, 'Set ': 'Topps Chrome', Number: '101', 'Parallel/Variant': 'Refractor', Grade: 9.5, Grader: 'BGS', 'Market Value': 4800, Price: 5800, Status: 'Available' },
   { Seller: 'foil_factory_miami', 'Card Title': "2020 Topps Chrome Ke'Bryan Hayes RC Auto", Player: "Ke'Bryan Hayes", Year: 2020, 'Set ': 'Topps Chrome', Number: 'KHA-1', 'Parallel/Variant': 'Refractor Auto', Grade: 9.5, Grader: 'BGS', Price: 110, Status: 'Available' },
   { Seller: 'foil_factory_miami', 'Card Title': '2021 Prizm Trevor Lawrence RC Silver', Player: 'Trevor Lawrence', Year: 2021, 'Set ': 'Prizm', Number: '301', 'Parallel/Variant': 'Silver Prizm', Grade: 9, Grader: 'BGS', Price: 340, Status: 'Available' },
   { Seller: 'foil_factory_miami', 'Card Title': '1996-97 Topps Chrome Kobe Bryant RC #138', Player: 'Kobe Bryant', Year: 1996, 'Set ': 'Topps Chrome', Number: '138', 'Parallel/Variant': 'Base', Grade: 9.5, Grader: 'BGS', Price: 12000, Status: 'Available' },
@@ -2191,7 +2345,7 @@ const SAMPLE = [
   { Seller: 'vintage_vault_bos', 'Card Title': '1955 Topps Sandy Koufax RC #123', Player: 'Sandy Koufax', Year: 1955, 'Set ': 'Topps', Number: '123', 'Parallel/Variant': 'Base', Grade: 7, Grader: 'SGC', Price: 6200, Status: 'Available' },
   { Seller: 'vintage_vault_bos', 'Card Title': '1948 Leaf Joe DiMaggio #1', Player: 'Joe DiMaggio', Year: 1948, 'Set ': 'Leaf', Number: '1', 'Parallel/Variant': 'Base', Grade: 4.5, Grader: 'SGC', Price: 7800, Status: 'Available' },
   { Seller: 'vintage_vault_bos', 'Card Title': '1969 Topps Reggie Jackson RC #260', Player: 'Reggie Jackson', Year: 1969, 'Set ': 'Topps', Number: '260', 'Parallel/Variant': 'Base', Grade: 8, Grader: 'SGC', Price: 2200, Status: 'Available' },
-  { Seller: 'vintage_vault_bos', 'Card Title': '1979 O-Pee-Chee Wayne Gretzky RC #18', Player: 'Wayne Gretzky', Year: 1979, 'Set ': 'O-Pee-Chee', Number: '18', 'Parallel/Variant': 'Base', Grade: 7, Grader: 'SGC', Price: 24000, Status: 'Available' },
+  { Seller: 'vintage_vault_bos', 'Card Title': '1979 O-Pee-Chee Wayne Gretzky RC #18', Player: 'Wayne Gretzky', Year: 1979, 'Set ': 'O-Pee-Chee', Number: '18', 'Parallel/Variant': 'Base', Grade: 7, Grader: 'SGC', 'Market Value': 28000, Price: 24000, Status: 'Available' },
   { Seller: 'vintage_vault_bos', 'Card Title': '1986 Fleer Michael Jordan Sticker #8', Player: 'Michael Jordan', Year: 1986, 'Set ': 'Fleer', Number: '8', 'Parallel/Variant': 'Sticker', Grade: 9, Grader: 'SGC', Price: 3800, Status: 'Available' },
   { Seller: 'vintage_vault_bos', 'Card Title': '1984-85 Star Michael Jordan RC #101', Player: 'Michael Jordan', Year: 1984, 'Set ': 'Star', Number: '101', 'Parallel/Variant': 'Base', Grade: 8, Grader: 'SGC', Price: 14500, Status: 'Available' },
   { Seller: 'vintage_vault_bos', 'Card Title': '1986 Topps Jerry Rice RC #161T', Player: 'Jerry Rice', Year: 1986, 'Set ': 'Topps', Number: '161T', 'Parallel/Variant': 'Base', Grade: 8.5, Grader: 'SGC', Price: 4100, Status: 'Available' },
@@ -2236,7 +2390,7 @@ const SAMPLE = [
   { Seller: 'cgc_central_nyc', 'Card Title': '2003-04 Topps Chrome LeBron James RC Refractor', Player: 'LeBron James', Year: 2003, 'Set ': 'Topps Chrome', Number: '111R', 'Parallel/Variant': 'Refractor', Grade: 9, Grader: 'CGC', Price: 14000, Status: 'Available' },
 
   // ── black_label_atl (BGS 10 / Pristine hunters) ──
-  { Seller: 'black_label_atl', 'Card Title': '2024-25 Topps Chrome Cooper Flagg Gold Auto /50', Player: 'Cooper Flagg', Year: 2025, 'Set ': 'Topps Chrome', Number: 'TCAR-CF3', 'Parallel/Variant': 'Gold Auto', Grade: 9.5, Grader: 'BGS', Price: 6800, Status: 'Available' },
+  { Seller: 'black_label_atl', 'Card Title': '2024-25 Topps Chrome Cooper Flagg Gold Auto /50', Player: 'Cooper Flagg', Year: 2025, 'Set ': 'Topps Chrome', Number: 'TCAR-CF3', 'Parallel/Variant': 'Gold Auto', Grade: 9.5, Grader: 'BGS', 'Market Value': 7200, Price: 6800, Status: 'Available' },
   { Seller: 'black_label_atl', 'Card Title': '2022-23 Topps Chrome Nikola Jokic Gold Ref /50', Player: 'Nikola Jokic', Year: 2022, 'Set ': 'Topps Chrome', Number: 'NJA-50', 'Parallel/Variant': 'Gold Refractor', Grade: 9.5, Grader: 'BGS', Price: 2600, Status: 'Available' },
   { Seller: 'black_label_atl', 'Card Title': '2024 Topps Chrome Shohei Ohtani Gold Ref /50', Player: 'Shohei Ohtani', Year: 2024, 'Set ': 'Topps Chrome', Number: 'SO-1', 'Parallel/Variant': 'Gold Refractor', Grade: 9, Grader: 'BGS', Price: 2800, Status: 'Available' },
   { Seller: 'black_label_atl', 'Card Title': '2022-23 Prizm Bennedict Mathurin RC Silver', Player: 'Bennedict Mathurin', Year: 2022, 'Set ': 'Prizm', Number: '298', 'Parallel/Variant': 'Silver Prizm', Grade: 10, Grader: 'BGS', Price: 95, Status: 'Available' },
@@ -2249,13 +2403,13 @@ const SAMPLE = [
 
   // ── all_grade_garage_stl (all four graders mixed) ──
   { Seller: 'all_grade_garage_stl', 'Card Title': '2019-20 Prizm Luka Doncic Base RC', Player: 'Luka Doncic', Year: 2019, 'Set ': 'Prizm', Number: '280', 'Parallel/Variant': 'Base', Grade: 10, Grader: 'PSA', Price: 1200, Status: 'Available' },
-  { Seller: 'all_grade_garage_stl', 'Card Title': '2019-20 Prizm Luka Doncic Silver Prizm', Player: 'Luka Doncic', Year: 2019, 'Set ': 'Prizm', Number: '280S', 'Parallel/Variant': 'Silver Prizm', Grade: 9.5, Grader: 'BGS', Price: 4200, Status: 'Available' },
+  { Seller: 'all_grade_garage_stl', 'Card Title': '2019-20 Prizm Luka Doncic Silver Prizm', Player: 'Luka Doncic', Year: 2019, 'Set ': 'Prizm', Number: '280S', 'Parallel/Variant': 'Silver Prizm', Grade: 9.5, Grader: 'BGS', 'Market Value': 4400, Price: 4200, Status: 'Available' },
   { Seller: 'all_grade_garage_stl', 'Card Title': '2019-20 Prizm Luka Doncic Silver Prizm', Player: 'Luka Doncic', Year: 2019, 'Set ': 'Prizm', Number: '280S', 'Parallel/Variant': 'Silver Prizm', Grade: 9, Grader: 'CGC', Price: 2800, Status: 'Available' },
   { Seller: 'all_grade_garage_stl', 'Card Title': '2025 Topps Chrome Roman Anthony RC Auto', Player: 'Roman Anthony', Year: 2025, 'Set ': 'Topps Chrome', Number: 'RA-1', 'Parallel/Variant': 'On-Card Auto', Grade: 10, Grader: 'PSA', Price: 420, Status: 'Available' },
   { Seller: 'all_grade_garage_stl', 'Card Title': '2025 Topps Chrome Roman Anthony RC Auto', Player: 'Roman Anthony', Year: 2025, 'Set ': 'Topps Chrome', Number: 'RA-1', 'Parallel/Variant': 'On-Card Auto', Grade: 9.5, Grader: 'BGS', Price: 380, Status: 'Available' },
   { Seller: 'all_grade_garage_stl', 'Card Title': '2024 Optic Rome Odunze RC Rated Rookie Auto', Player: 'Rome Odunze', Year: 2024, 'Set ': 'Optic', Number: 'RO-1', 'Parallel/Variant': 'Rated Rookie Auto', Grade: 9.5, Grader: 'CGC', Price: 215, Status: 'Available' },
   { Seller: 'all_grade_garage_stl', 'Card Title': '2024 Bowman Chrome Junior Caminero Auto /99', Player: 'Junior Caminero', Year: 2024, 'Set ': 'Bowman Chrome', Number: 'JCA-99', 'Parallel/Variant': 'Sapphire Auto', Grade: 9, Grader: 'SGC', Price: 1800, Status: 'Available' },
-  { Seller: 'all_grade_garage_stl', 'Card Title': '2012-13 Topps Chrome Kyrie Irving RC', Player: 'Kyrie Irving', Year: 2012, 'Set ': 'Topps Chrome', Number: '1', 'Parallel/Variant': 'Base', Grade: 10, Grader: 'PSA', Price: 680, Status: 'Available' },
+  { Seller: 'all_grade_garage_stl', 'Card Title': '2012-13 Topps Chrome Kyrie Irving RC', Player: 'Kyrie Irving', Year: 2012, 'Set ': 'Topps Chrome', Number: '1', 'Parallel/Variant': 'Base', Grade: 10, Grader: 'PSA', 'Market Value': 640, Price: 680, Status: 'Available' },
   { Seller: 'all_grade_garage_stl', 'Card Title': '2012-13 Topps Chrome Kyrie Irving RC', Player: 'Kyrie Irving', Year: 2012, 'Set ': 'Topps Chrome', Number: '1', 'Parallel/Variant': 'Base', Grade: 9.5, Grader: 'BGS', Price: 520, Status: 'Available' },
   { Seller: 'all_grade_garage_stl', 'Card Title': '2024-25 Hoops Bronny James RC Silver', Player: 'Bronny James', Year: 2024, 'Set ': 'Hoops', Number: '255', 'Parallel/Variant': 'Silver Prizm', Grade: 9, Grader: 'CGC', Price: 145, Status: 'Available' },
 
@@ -2266,9 +2420,9 @@ const SAMPLE = [
   { Seller: 'precision_slabs_min', 'Card Title': '2016-17 Prizm Jaylen Brown RC Silver Prizm', Player: 'Jaylen Brown', Year: 2016, 'Set ': 'Prizm', Number: '9', 'Parallel/Variant': 'Silver Prizm', Grade: 9.5, Grader: 'CGC', Price: 420, Status: 'Available' },
   { Seller: 'precision_slabs_min', 'Card Title': '2014-15 Prizm Nikola Jokic RC', Player: 'Nikola Jokic', Year: 2014, 'Set ': 'Prizm', Number: '290', 'Parallel/Variant': 'Base', Grade: 10, Grader: 'CGC', Price: 3800, Status: 'Available' },
   { Seller: 'precision_slabs_min', 'Card Title': '2016 Topps Chrome Corey Seager RC Auto', Player: 'Corey Seager', Year: 2016, 'Set ': 'Topps Chrome', Number: 'CSA-1', 'Parallel/Variant': 'Refractor Auto', Grade: 9, Grader: 'SGC', Price: 280, Status: 'Available' },
-  { Seller: 'precision_slabs_min', 'Card Title': '2011 Topps Chrome Mike Trout RC Auto', Player: 'Mike Trout', Year: 2011, 'Set ': 'Topps Chrome', Number: 'MTA-1', 'Parallel/Variant': 'Refractor Auto', Grade: 9, Grader: 'SGC', Price: 18500, Status: 'Available' },
+  { Seller: 'precision_slabs_min', 'Card Title': '2011 Topps Chrome Mike Trout RC Auto', Player: 'Mike Trout', Year: 2011, 'Set ': 'Topps Chrome', Number: 'MTA-1', 'Parallel/Variant': 'Refractor Auto', Grade: 9, Grader: 'SGC', 'Market Value': 20000, Price: 18500, Status: 'Available' },
   { Seller: 'precision_slabs_min', 'Card Title': '2011 Topps Update Mike Trout RC #US175', Player: 'Mike Trout', Year: 2011, 'Set ': 'Topps Update', Number: 'US175', 'Parallel/Variant': 'Base', Grade: 9.5, Grader: 'CGC', Price: 2200, Status: 'Available' },
-  { Seller: 'precision_slabs_min', 'Card Title': '2009 Bowman Chrome Mike Trout Prospect Auto', Player: 'Mike Trout', Year: 2009, 'Set ': 'Bowman Chrome', Number: 'BCAP-MT', 'Parallel/Variant': 'Prospect Auto', Grade: 9, Grader: 'SGC', Price: 32000, Status: 'Available' },
+  { Seller: 'precision_slabs_min', 'Card Title': '2009 Bowman Chrome Mike Trout Prospect Auto', Player: 'Mike Trout', Year: 2009, 'Set ': 'Bowman Chrome', Number: 'BCAP-MT', 'Parallel/Variant': 'Prospect Auto', Grade: 9, Grader: 'SGC', 'Market Value': 35000, Price: 32000, Status: 'Available' },
   { Seller: 'precision_slabs_min', 'Card Title': '1992 Bowman Derek Jeter RC #302', Player: 'Derek Jeter', Year: 1992, 'Set ': 'Bowman', Number: '302', 'Parallel/Variant': 'Base', Grade: 9, Grader: 'SGC', Price: 480, Status: 'Available' },
 
   // ── cross_grade_crew_la (PSA vs BGS comparison lots) ──
@@ -2303,22 +2457,22 @@ const SAMPLE = [
   { Seller: 'vault_kings_phoenix', 'Card Title': '2022 Topps Chrome Julio Rodriguez RC Sapphire', Player: 'Julio Rodriguez', Year: 2022, 'Set ': 'Topps Chrome', Number: 'JR-SAP', 'Parallel/Variant': 'Sapphire', Grade: 10, Grader: 'PSA', Price: 680, Status: 'Available' },
   { Seller: 'vault_kings_phoenix', 'Card Title': '2024 Topps Chrome Elly De La Cruz Gold /50', Player: 'Elly De La Cruz', Year: 2024, 'Set ': 'Topps Chrome', Number: 'EDA-G50', 'Parallel/Variant': 'Gold Refractor', Grade: null, Condition: 'Near Mint', Price: 420, Status: 'Available' },
   { Seller: 'vault_kings_phoenix', 'Card Title': '2023 Topps Chrome Francisco Alvarez RC Auto', Player: 'Francisco Alvarez', Year: 2023, 'Set ': 'Topps Chrome', Number: 'FAA-1', 'Parallel/Variant': 'Refractor Auto', Grade: 10, Grader: 'PSA', Price: 260, Status: 'Available' },
-  { Seller: 'vault_kings_phoenix', 'Card Title': '2024 Topps Chrome Bobby Witt Jr Sapphire', Player: 'Bobby Witt Jr', Year: 2024, 'Set ': 'Topps Chrome', Number: 'BW-SAP', 'Parallel/Variant': 'Sapphire', Grade: 10, Grader: 'BGS', Price: 880, Status: 'Available' },
+  { Seller: 'vault_kings_phoenix', 'Card Title': '2024 Topps Chrome Bobby Witt Jr Sapphire', Player: 'Bobby Witt Jr', Year: 2024, 'Set ': 'Topps Chrome', Number: 'BW-SAP', 'Parallel/Variant': 'Sapphire', Grade: 10, Grader: 'BGS', 'Market Value': 940, Price: 880, Status: 'Available' },
   { Seller: 'vault_kings_phoenix', 'Card Title': '2025 Topps Jonah Tong RC Auto /16 Retro', Player: 'Jonah Tong', Year: 2025, 'Set ': 'Topps', Number: 'JTA-16', 'Parallel/Variant': '1952 Retro Auto', Grade: null, Condition: 'Gem Mint', Price: 820, Status: 'Available' },
   { Seller: 'vault_kings_phoenix', 'Card Title': '2024 Topps Chrome Yoshinobu Yamamoto RC Sapphire', Player: 'Yoshinobu Yamamoto', Year: 2024, 'Set ': 'Topps Chrome', Number: 'YY-SAP', 'Parallel/Variant': 'Sapphire', Grade: 10, Grader: 'PSA', Price: 940, Status: 'Available' },
   { Seller: 'vault_kings_phoenix', 'Card Title': '2022 Bowman Chrome Jasson Dominguez Auto', Player: 'Jasson Dominguez', Year: 2022, 'Set ': 'Bowman Chrome', Number: 'JDA-1', 'Parallel/Variant': 'Refractor Auto', Grade: 9, Grader: 'PSA', Price: 120, Status: 'Available' },
   { Seller: 'vault_kings_phoenix', 'Card Title': '2024 Topps Update Fernando Tatis Jr Gold /50', Player: 'Fernando Tatis Jr', Year: 2024, 'Set ': 'Topps Update', Number: 'FTA-50', 'Parallel/Variant': 'Gold Parallel', Grade: null, Condition: 'Near Mint', Price: 95, Status: 'Available' },
   { Seller: 'vault_kings_phoenix', 'Card Title': '2021 Topps Chrome Ke Bryan Hayes RC Auto', Player: 'Ke Bryan Hayes', Year: 2021, 'Set ': 'Topps Chrome', Number: 'KHA-2', 'Parallel/Variant': 'Refractor Auto', Grade: 10, Grader: 'PSA', Price: 80, Status: 'Available' },
-  { Seller: 'vault_kings_phoenix', 'Card Title': '2024 Topps Chrome Roki Sasaki RC Auto', Player: 'Roki Sasaki', Year: 2024, 'Set ': 'Topps Chrome', Number: 'RSA-1', 'Parallel/Variant': 'Refractor Auto', Grade: null, Condition: 'Gem Mint', Price: 740, Status: 'Available' },
+  { Seller: 'vault_kings_phoenix', 'Card Title': '2024 Topps Chrome Roki Sasaki RC Auto', Player: 'Roki Sasaki', Year: 2024, 'Set ': 'Topps Chrome', Number: 'RSA-1', 'Parallel/Variant': 'Refractor Auto', Grade: null, Condition: 'Gem Mint', 'Market Value': 800, Price: 740, Status: 'Available' },
   { Seller: 'vault_kings_phoenix', 'Card Title': '2024 Topps Chrome Steven Kwan Gold Ref /50', Player: 'Steven Kwan', Year: 2024, 'Set ': 'Topps Chrome', Number: 'SKA-50', 'Parallel/Variant': 'Gold Refractor', Grade: 9, Grader: 'BGS', Price: 110, Status: 'Available' },
-  { Seller: 'vault_kings_phoenix', 'Card Title': '2023 Topps Chrome Gunnar Henderson RC Sapphire', Player: 'Gunnar Henderson', Year: 2023, 'Set ': 'Topps Chrome', Number: 'GH-SAP', 'Parallel/Variant': 'Sapphire', Grade: 10, Grader: 'PSA', Price: 780, Status: 'Available' },
+  { Seller: 'vault_kings_phoenix', 'Card Title': '2023 Topps Chrome Gunnar Henderson RC Sapphire', Player: 'Gunnar Henderson', Year: 2023, 'Set ': 'Topps Chrome', Number: 'GH-SAP', 'Parallel/Variant': 'Sapphire', Grade: 10, Grader: 'PSA', 'Market Value': 840, Price: 780, Status: 'Available' },
   { Seller: 'vault_kings_phoenix', 'Card Title': '2025 Topps Jacob Misiorowski RC Auto /16', Player: 'Jacob Misiorowski', Year: 2025, 'Set ': 'Topps', Number: 'JMA-16', 'Parallel/Variant': '1952 Retro Auto', Grade: null, Condition: 'Near Mint', Price: 145, Status: 'Available' },
 
   // ── hoop_dreams_detroit (basketball specialists) ──
   { Seller: 'hoop_dreams_detroit', 'Card Title': '2003-04 Topps Chrome LeBron James RC Refractor', Player: 'LeBron James', Year: 2003, 'Set ': 'Topps Chrome', Number: '111', 'Parallel/Variant': 'Refractor', Grade: 9, Grader: 'BGS', Price: 12000, Status: 'Available' },
-  { Seller: 'hoop_dreams_detroit', 'Card Title': '2019-20 Prizm Zion Williamson RC Hyper Prizm', Player: 'Zion Williamson', Year: 2019, 'Set ': 'Prizm', Number: '248', 'Parallel/Variant': 'Hyper Prizm', Grade: 10, Grader: 'PSA', Price: 2200, Status: 'Available' },
+  { Seller: 'hoop_dreams_detroit', 'Card Title': '2019-20 Prizm Zion Williamson RC Hyper Prizm', Player: 'Zion Williamson', Year: 2019, 'Set ': 'Prizm', Number: '248', 'Parallel/Variant': 'Hyper Prizm', Grade: 10, Grader: 'PSA', 'Market Value': 2400, Price: 2200, Status: 'Available' },
   { Seller: 'hoop_dreams_detroit', 'Card Title': '2021-22 Prizm Scottie Barnes RC Hyper Prizm', Player: 'Scottie Barnes', Year: 2021, 'Set ': 'Prizm', Number: '289', 'Parallel/Variant': 'Hyper Prizm', Grade: 10, Grader: 'PSA', Price: 140, Status: 'Available' },
-  { Seller: 'hoop_dreams_detroit', 'Card Title': '2022-23 Prizm Nikola Jokic Silver Prizm', Player: 'Nikola Jokic', Year: 2022, 'Set ': 'Prizm', Number: '1', 'Parallel/Variant': 'Silver Prizm', Grade: 10, Grader: 'PSA', Price: 1400, Status: 'Available' },
+  { Seller: 'hoop_dreams_detroit', 'Card Title': '2022-23 Prizm Nikola Jokic Silver Prizm', Player: 'Nikola Jokic', Year: 2022, 'Set ': 'Prizm', Number: '1', 'Parallel/Variant': 'Silver Prizm', Grade: 10, Grader: 'PSA', 'Market Value': 1500, Price: 1400, Status: 'Available' },
   { Seller: 'hoop_dreams_detroit', 'Card Title': '2009-10 Topps Chrome Steph Curry RC', Player: 'Stephen Curry', Year: 2009, 'Set ': 'Topps Chrome', Number: '101', 'Parallel/Variant': 'Base', Grade: 9, Grader: 'PSA', Price: 4200, Status: 'Available' },
   { Seller: 'hoop_dreams_detroit', 'Card Title': '2021-22 Topps Chrome Tyrese Haliburton RC Auto', Player: 'Tyrese Haliburton', Year: 2021, 'Set ': 'Topps Chrome', Number: 'THA-1', 'Parallel/Variant': 'Refractor Auto', Grade: 10, Grader: 'BGS', Price: 220, Status: 'Available' },
   { Seller: 'hoop_dreams_detroit', 'Card Title': '2020-21 Prizm Tyrese Haliburton RC Silver', Player: 'Tyrese Haliburton', Year: 2020, 'Set ': 'Prizm', Number: '278', 'Parallel/Variant': 'Silver Prizm', Grade: null, Condition: 'Near Mint', Price: 95, Status: 'Available' },
@@ -2331,7 +2485,7 @@ const SAMPLE = [
   { Seller: 'hoop_dreams_detroit', 'Card Title': '2021-22 Prizm Jalen Green RC Silver Prizm', Player: 'Jalen Green', Year: 2021, 'Set ': 'Prizm', Number: '283', 'Parallel/Variant': 'Silver Prizm', Grade: null, Condition: 'Near Mint', Price: 140, Status: 'Available' },
   { Seller: 'hoop_dreams_detroit', 'Card Title': '2022-23 Prizm Tari Eason RC Silver Prizm', Player: 'Tari Eason', Year: 2022, 'Set ': 'Prizm', Number: '281', 'Parallel/Variant': 'Silver Prizm', Grade: 10, Grader: 'PSA', Price: 55, Status: 'Available' },
   { Seller: 'hoop_dreams_detroit', 'Card Title': '2023-24 Prizm Ausar Thompson RC Silver Prizm', Player: 'Ausar Thompson', Year: 2023, 'Set ': 'Prizm', Number: '285', 'Parallel/Variant': 'Silver Prizm', Grade: null, Condition: 'Gem Mint', Price: 55, Status: 'Available' },
-  { Seller: 'hoop_dreams_detroit', 'Card Title': '2016-17 Prizm Jayson Tatum RC Silver Prizm', Player: 'Jayson Tatum', Year: 2016, 'Set ': 'Prizm', Number: '1', 'Parallel/Variant': 'Silver Prizm', Grade: 9, Grader: 'PSA', Price: 1100, Status: 'Available' },
+  { Seller: 'hoop_dreams_detroit', 'Card Title': '2016-17 Prizm Jayson Tatum RC Silver Prizm', Player: 'Jayson Tatum', Year: 2016, 'Set ': 'Prizm', Number: '1', 'Parallel/Variant': 'Silver Prizm', Grade: 9, Grader: 'PSA', 'Market Value': 1200, Price: 1100, Status: 'Available' },
   { Seller: 'hoop_dreams_detroit', 'Card Title': '2020-21 Prizm LaMelo Ball RC Neon Green /149', Player: 'LaMelo Ball', Year: 2020, 'Set ': 'Prizm', Number: '269', 'Parallel/Variant': 'Neon Green', Grade: null, Condition: 'Near Mint', Price: 420, Status: 'Available' },
   { Seller: 'hoop_dreams_detroit', 'Card Title': '2023-24 Topps Chrome Victor Wembanyama RC Refractor', Player: 'Victor Wembanyama', Year: 2023, 'Set ': 'Topps Chrome', Number: '1', 'Parallel/Variant': 'Base Refractor', Grade: 10, Grader: 'BGS', Price: 3200, Status: 'Available' },
   { Seller: 'hoop_dreams_detroit', 'Card Title': '2022-23 Prizm Shaedon Sharpe RC Silver Prizm', Player: 'Shaedon Sharpe', Year: 2022, 'Set ': 'Prizm', Number: '295', 'Parallel/Variant': 'Silver Prizm', Grade: 10, Grader: 'CGC', Price: 65, Status: 'Available' },
@@ -2349,7 +2503,7 @@ const SAMPLE = [
 
   // ── gridiron_gods_kc (football cards) ──
   { Seller: 'gridiron_gods_kc', 'Card Title': '2018 Prizm Patrick Mahomes RC Silver Prizm', Player: 'Patrick Mahomes', Year: 2018, 'Set ': 'Prizm', Number: '195', 'Parallel/Variant': 'Silver Prizm', Grade: 10, Grader: 'PSA', Price: 2800, Status: 'Available' },
-  { Seller: 'gridiron_gods_kc', 'Card Title': '2020 Prizm Justin Herbert RC Silver Prizm', Player: 'Justin Herbert', Year: 2020, 'Set ': 'Prizm', Number: '303', 'Parallel/Variant': 'Silver Prizm', Grade: 10, Grader: 'PSA', Price: 680, Status: 'Available' },
+  { Seller: 'gridiron_gods_kc', 'Card Title': '2020 Prizm Justin Herbert RC Silver Prizm', Player: 'Justin Herbert', Year: 2020, 'Set ': 'Prizm', Number: '303', 'Parallel/Variant': 'Silver Prizm', Grade: 10, Grader: 'PSA', 'Market Value': 720, Price: 680, Status: 'Available' },
   { Seller: 'gridiron_gods_kc', 'Card Title': '2020 Prizm Joe Burrow RC Silver Prizm', Player: 'Joe Burrow', Year: 2020, 'Set ': 'Prizm', Number: '307', 'Parallel/Variant': 'Silver Prizm', Grade: 10, Grader: 'BGS', Price: 540, Status: 'Available' },
   { Seller: 'gridiron_gods_kc', 'Card Title': '2018 Optic Lamar Jackson RC Holo', Player: 'Lamar Jackson', Year: 2018, 'Set ': 'Optic', Number: '154', 'Parallel/Variant': 'Holo', Grade: 10, Grader: 'PSA', Price: 1200, Status: 'Available' },
   { Seller: 'gridiron_gods_kc', 'Card Title': '2022 Prizm Breece Hall RC Silver Prizm', Player: 'Breece Hall', Year: 2022, 'Set ': 'Prizm', Number: '333', 'Parallel/Variant': 'Silver Prizm', Grade: null, Condition: 'Near Mint', Price: 65, Status: 'Available' },
@@ -2373,15 +2527,15 @@ const SAMPLE = [
   { Seller: 'gridiron_gods_kc', 'Card Title': '2022 Prizm Christian Watson RC Silver Prizm', Player: 'Christian Watson', Year: 2022, 'Set ': 'Prizm', Number: '369', 'Parallel/Variant': 'Silver Prizm', Grade: null, Condition: 'Near Mint', Price: 28, Status: 'Available' },
   { Seller: 'gridiron_gods_kc', 'Card Title': '2021 Prizm Travis Etienne RC Silver Prizm', Player: 'Travis Etienne', Year: 2021, 'Set ': 'Prizm', Number: '344', 'Parallel/Variant': 'Silver Prizm', Grade: 10, Grader: 'CGC', Price: 140, Status: 'Available' },
   { Seller: 'gridiron_gods_kc', 'Card Title': '2020 Prizm Tua Tagovailoa RC Silver Prizm', Player: 'Tua Tagovailoa', Year: 2020, 'Set ': 'Prizm', Number: '316', 'Parallel/Variant': 'Silver Prizm', Grade: null, Condition: 'Near Mint', Price: 85, Status: 'Available' },
-  { Seller: 'gridiron_gods_kc', 'Card Title': '2018 Prizm Josh Allen RC Silver Prizm', Player: 'Josh Allen', Year: 2018, 'Set ': 'Prizm', Number: '212', 'Parallel/Variant': 'Silver Prizm', Grade: 10, Grader: 'PSA', Price: 1600, Status: 'Available' },
-  { Seller: 'gridiron_gods_kc', 'Card Title': '2024 Prizm Jayden Daniels RC Hyper Prizm', Player: 'Jayden Daniels', Year: 2024, 'Set ': 'Prizm', Number: 'JD-HP', 'Parallel/Variant': 'Hyper Prizm', Grade: null, Condition: 'Gem Mint', Price: 680, Status: 'Available' },
+  { Seller: 'gridiron_gods_kc', 'Card Title': '2018 Prizm Josh Allen RC Silver Prizm', Player: 'Josh Allen', Year: 2018, 'Set ': 'Prizm', Number: '212', 'Parallel/Variant': 'Silver Prizm', Grade: 10, Grader: 'PSA', 'Market Value': 1750, Price: 1600, Status: 'Available' },
+  { Seller: 'gridiron_gods_kc', 'Card Title': '2024 Prizm Jayden Daniels RC Hyper Prizm', Player: 'Jayden Daniels', Year: 2024, 'Set ': 'Prizm', Number: 'JD-HP', 'Parallel/Variant': 'Hyper Prizm', Grade: null, Condition: 'Gem Mint', 'Market Value': 600, Price: 680, Status: 'Available' },
   { Seller: 'gridiron_gods_kc', 'Card Title': '2022 Prizm Garrett Wilson RC Silver Prizm', Player: 'Garrett Wilson', Year: 2022, 'Set ': 'Prizm', Number: '366', 'Parallel/Variant': 'Silver Prizm', Grade: 10, Grader: 'BGS', Price: 120, Status: 'Available' },
   { Seller: 'gridiron_gods_kc', 'Card Title': '2021 Prizm Najee Harris RC Silver Prizm', Player: 'Najee Harris', Year: 2021, 'Set ': 'Prizm', Number: '335', 'Parallel/Variant': 'Silver Prizm', Grade: null, Condition: 'Near Mint', Price: 65, Status: 'Available' },
   { Seller: 'gridiron_gods_kc', 'Card Title': '2023 Prizm Puka Nacua RC Silver Prizm', Player: 'Puka Nacua', Year: 2023, 'Set ': 'Prizm', Number: 'PN-1', 'Parallel/Variant': 'Silver Prizm', Grade: 10, Grader: 'PSA', Price: 95, Status: 'Available' },
   { Seller: 'gridiron_gods_kc', 'Card Title': '2024 Optic J.J. McCarthy RC Rated Rookie Holo', Player: 'J.J. McCarthy', Year: 2024, 'Set ': 'Optic', Number: 'JM-1', 'Parallel/Variant': 'Rated Rookie Holo', Grade: null, Condition: 'Gem Mint', Price: 95, Status: 'Available' },
 
   // ── bowman_baron_austin (prospects & bowman) ──
-  { Seller: 'bowman_baron_austin', 'Card Title': '2011 Bowman Chrome Mike Trout Auto', Player: 'Mike Trout', Year: 2011, 'Set ': 'Bowman Chrome', Number: 'BCA-MT', 'Parallel/Variant': 'Prospect Auto', Grade: 9, Grader: 'PSA', Price: 24000, Status: 'Available' },
+  { Seller: 'bowman_baron_austin', 'Card Title': '2011 Bowman Chrome Mike Trout Auto', Player: 'Mike Trout', Year: 2011, 'Set ': 'Bowman Chrome', Number: 'BCA-MT', 'Parallel/Variant': 'Prospect Auto', Grade: 9, Grader: 'PSA', 'Market Value': 26000, Price: 24000, Status: 'Available' },
   { Seller: 'bowman_baron_austin', 'Card Title': '2022 Bowman Chrome Druw Jones Auto Blue /150', Player: 'Druw Jones', Year: 2022, 'Set ': 'Bowman Chrome', Number: 'DJA-B', 'Parallel/Variant': 'Blue Auto', Grade: null, Condition: 'Near Mint', Price: 65, Status: 'Available' },
   { Seller: 'bowman_baron_austin', 'Card Title': '2022 Bowman Chrome Jackson Holliday Auto', Player: 'Jackson Holliday', Year: 2022, 'Set ': 'Bowman Chrome', Number: 'JHA-B', 'Parallel/Variant': 'Prospect Auto', Grade: 10, Grader: 'BGS', Price: 280, Status: 'Available' },
   { Seller: 'bowman_baron_austin', 'Card Title': '2021 Bowman Chrome Marcelo Mayer Auto', Player: 'Marcelo Mayer', Year: 2021, 'Set ': 'Bowman Chrome', Number: 'MMA-1', 'Parallel/Variant': 'Prospect Auto', Grade: null, Condition: 'Gem Mint', Price: 95, Status: 'Available' },
@@ -2404,7 +2558,7 @@ const SAMPLE = [
   { Seller: 'bowman_baron_austin', 'Card Title': '2023 Bowman Chrome Tanner Bibee Auto', Player: 'Tanner Bibee', Year: 2023, 'Set ': 'Bowman Chrome', Number: 'TBA-1', 'Parallel/Variant': 'Prospect Auto', Grade: 9, Grader: 'PSA', Price: 55, Status: 'Available' },
   { Seller: 'bowman_baron_austin', 'Card Title': '2024 Bowman Chrome Chase Dollander Auto', Player: 'Chase Dollander', Year: 2024, 'Set ': 'Bowman Chrome', Number: 'CDA-1', 'Parallel/Variant': 'Prospect Auto', Grade: null, Condition: 'Gem Mint', Price: 95, Status: 'Available' },
   { Seller: 'bowman_baron_austin', 'Card Title': '2023 Bowman Chrome Colson Montgomery Auto', Player: 'Colson Montgomery', Year: 2023, 'Set ': 'Bowman Chrome', Number: 'CMA-1', 'Parallel/Variant': 'Prospect Auto', Grade: null, Condition: 'Near Mint', Price: 45, Status: 'Available' },
-  { Seller: 'bowman_baron_austin', 'Card Title': '2022 Bowman Chrome Elly De La Cruz Auto', Player: 'Elly De La Cruz', Year: 2022, 'Set ': 'Bowman Chrome', Number: 'EDA-2', 'Parallel/Variant': 'Prospect Auto', Grade: 10, Grader: 'BGS', Price: 580, Status: 'Available' },
+  { Seller: 'bowman_baron_austin', 'Card Title': '2022 Bowman Chrome Elly De La Cruz Auto', Player: 'Elly De La Cruz', Year: 2022, 'Set ': 'Bowman Chrome', Number: 'EDA-2', 'Parallel/Variant': 'Prospect Auto', Grade: 10, Grader: 'BGS', 'Market Value': 640, Price: 580, Status: 'Available' },
   { Seller: 'bowman_baron_austin', 'Card Title': '2024 Bowman Chrome Roman Anthony Auto Sapphire', Player: 'Roman Anthony', Year: 2024, 'Set ': 'Bowman Chrome Sapphire', Number: 'RA-SAP', 'Parallel/Variant': 'Sapphire Auto', Grade: null, Condition: 'Gem Mint', Price: 480, Status: 'Available' },
   { Seller: 'bowman_baron_austin', 'Card Title': '2023 Bowman Chrome Andrew Painter Auto', Player: 'Andrew Painter', Year: 2023, 'Set ': 'Bowman Chrome', Number: 'APA-1', 'Parallel/Variant': 'Prospect Auto', Grade: 9, Grader: 'SGC', Price: 35, Status: 'Available' },
   { Seller: 'bowman_baron_austin', 'Card Title': '2024 Bowman Chrome Roki Sasaki Auto Sapphire', Player: 'Roki Sasaki', Year: 2024, 'Set ': 'Bowman Chrome Sapphire', Number: 'RS-SAP', 'Parallel/Variant': 'Sapphire Auto', Grade: 10, Grader: 'PSA', Price: 1400, Status: 'Available' },
@@ -2418,27 +2572,27 @@ const SAMPLE = [
   { Seller: 'hockey_hub_minneapolis', 'Card Title': '2018-19 Upper Deck Andrei Svechnikov Young Guns', Player: 'Andrei Svechnikov', Year: 2018, 'Set ': 'Upper Deck', Number: '201', 'Parallel/Variant': 'Young Guns', Grade: 10, Grader: 'PSA', Price: 380, Status: 'Available' },
   { Seller: 'hockey_hub_minneapolis', 'Card Title': '2021-22 Upper Deck Owen Power Young Guns RC', Player: 'Owen Power', Year: 2021, 'Set ': 'Upper Deck', Number: '201', 'Parallel/Variant': 'Young Guns', Grade: null, Condition: 'Near Mint', Price: 45, Status: 'Available' },
   { Seller: 'hockey_hub_minneapolis', 'Card Title': '2022-23 Upper Deck Juraj Slafkovsky Young Guns', Player: 'Juraj Slafkovsky', Year: 2022, 'Set ': 'Upper Deck', Number: '201', 'Parallel/Variant': 'Young Guns', Grade: 10, Grader: 'BGS', Price: 180, Status: 'Available' },
-  { Seller: 'hockey_hub_minneapolis', 'Card Title': '2023-24 Upper Deck Connor Bedard Young Guns RC', Player: 'Connor Bedard', Year: 2023, 'Set ': 'Upper Deck', Number: '201', 'Parallel/Variant': 'Young Guns', Grade: 10, Grader: 'PSA', Price: 1200, Status: 'Available' },
+  { Seller: 'hockey_hub_minneapolis', 'Card Title': '2023-24 Upper Deck Connor Bedard Young Guns RC', Player: 'Connor Bedard', Year: 2023, 'Set ': 'Upper Deck', Number: '201', 'Parallel/Variant': 'Young Guns', Grade: 10, Grader: 'PSA', 'Market Value': 1300, Price: 1200, Status: 'Available' },
   { Seller: 'hockey_hub_minneapolis', 'Card Title': '2024-25 Upper Deck Matvei Michkov Young Guns RC', Player: 'Matvei Michkov', Year: 2024, 'Set ': 'Upper Deck', Number: '201', 'Parallel/Variant': 'Young Guns', Grade: null, Condition: 'Gem Mint', Price: 480, Status: 'Available' },
   { Seller: 'hockey_hub_minneapolis', 'Card Title': '2021-22 Upper Deck Trevor Zegras Young Guns', Player: 'Trevor Zegras', Year: 2021, 'Set ': 'Upper Deck', Number: '234', 'Parallel/Variant': 'Young Guns', Grade: 9, Grader: 'PSA', Price: 95, Status: 'Available' },
   { Seller: 'hockey_hub_minneapolis', 'Card Title': '2020-21 Upper Deck Alexis Lafreniere Young Guns', Player: 'Alexis Lafreniere', Year: 2020, 'Set ': 'Upper Deck', Number: '201', 'Parallel/Variant': 'Young Guns', Grade: 10, Grader: 'PSA', Price: 280, Status: 'Available' },
   { Seller: 'hockey_hub_minneapolis', 'Card Title': '2022-23 Upper Deck Shane Wright Young Guns', Player: 'Shane Wright', Year: 2022, 'Set ': 'Upper Deck', Number: '249', 'Parallel/Variant': 'Young Guns', Grade: null, Condition: 'Near Mint', Price: 35, Status: 'Available' },
   { Seller: 'hockey_hub_minneapolis', 'Card Title': '2024-25 Upper Deck Will Smith Young Guns RC', Player: 'Will Smith', Year: 2024, 'Set ': 'Upper Deck', Number: '201', 'Parallel/Variant': 'Young Guns', Grade: null, Condition: 'Gem Mint', Price: 620, Status: 'Available' },
-  { Seller: 'hockey_hub_minneapolis', 'Card Title': '2019-20 Upper Deck Cale Makar Young Guns', Player: 'Cale Makar', Year: 2019, 'Set ': 'Upper Deck', Number: '201', 'Parallel/Variant': 'Young Guns', Grade: 10, Grader: 'PSA', Price: 1600, Status: 'Available' },
+  { Seller: 'hockey_hub_minneapolis', 'Card Title': '2019-20 Upper Deck Cale Makar Young Guns', Player: 'Cale Makar', Year: 2019, 'Set ': 'Upper Deck', Number: '201', 'Parallel/Variant': 'Young Guns', Grade: 10, Grader: 'PSA', 'Market Value': 1750, Price: 1600, Status: 'Available' },
   { Seller: 'hockey_hub_minneapolis', 'Card Title': '2022-23 Upper Deck Logan Cooley Young Guns', Player: 'Logan Cooley', Year: 2022, 'Set ': 'Upper Deck', Number: '231', 'Parallel/Variant': 'Young Guns', Grade: 10, Grader: 'BGS', Price: 95, Status: 'Available' },
   { Seller: 'hockey_hub_minneapolis', 'Card Title': '1979 O-Pee-Chee Wayne Gretzky RC #18 Raw', Player: 'Wayne Gretzky', Year: 1979, 'Set ': 'O-Pee-Chee', Number: '18', 'Parallel/Variant': 'Base', Grade: null, Condition: 'Good', Price: 12000, Status: 'Available' },
   { Seller: 'hockey_hub_minneapolis', 'Card Title': '2023-24 Upper Deck Leo Carlsson Young Guns', Player: 'Leo Carlsson', Year: 2023, 'Set ': 'Upper Deck', Number: '235', 'Parallel/Variant': 'Young Guns', Grade: null, Condition: 'Near Mint', Price: 45, Status: 'Available' },
   { Seller: 'hockey_hub_minneapolis', 'Card Title': '2024-25 Upper Deck Cayden Lindstrom Young Guns', Player: 'Cayden Lindstrom', Year: 2024, 'Set ': 'Upper Deck', Number: '219', 'Parallel/Variant': 'Young Guns', Grade: null, Condition: 'Gem Mint', Price: 180, Status: 'Available' },
   { Seller: 'hockey_hub_minneapolis', 'Card Title': '2016-17 Upper Deck Auston Matthews Young Guns', Player: 'Auston Matthews', Year: 2016, 'Set ': 'Upper Deck', Number: '201', 'Parallel/Variant': 'Young Guns', Grade: 10, Grader: 'PSA', Price: 2400, Status: 'Available' },
   { Seller: 'hockey_hub_minneapolis', 'Card Title': '2023-24 Upper Deck Ivan Demidov CHL RC', Player: 'Ivan Demidov', Year: 2023, 'Set ': 'Upper Deck', Number: 'ID-1', 'Parallel/Variant': 'Base', Grade: null, Condition: 'Near Mint', Price: 95, Status: 'Available' },
-  { Seller: 'hockey_hub_minneapolis', 'Card Title': '2015-16 Upper Deck Connor McDavid Young Guns', Player: 'Connor McDavid', Year: 2015, 'Set ': 'Upper Deck', Number: '201', 'Parallel/Variant': 'Young Guns', Grade: 9, Grader: 'PSA', Price: 3200, Status: 'Available' },
+  { Seller: 'hockey_hub_minneapolis', 'Card Title': '2015-16 Upper Deck Connor McDavid Young Guns', Player: 'Connor McDavid', Year: 2015, 'Set ': 'Upper Deck', Number: '201', 'Parallel/Variant': 'Young Guns', Grade: 9, Grader: 'PSA', 'Market Value': 3500, Price: 3200, Status: 'Available' },
   { Seller: 'hockey_hub_minneapolis', 'Card Title': '2021-22 Upper Deck Lucas Raymond Young Guns', Player: 'Lucas Raymond', Year: 2021, 'Set ': 'Upper Deck', Number: '220', 'Parallel/Variant': 'Young Guns', Grade: 10, Grader: 'CGC', Price: 140, Status: 'Available' },
   { Seller: 'hockey_hub_minneapolis', 'Card Title': '2022-23 Upper Deck David Jiricek Young Guns', Player: 'David Jiricek', Year: 2022, 'Set ': 'Upper Deck', Number: '225', 'Parallel/Variant': 'Young Guns', Grade: null, Condition: 'Near Mint', Price: 28, Status: 'Available' },
   { Seller: 'hockey_hub_minneapolis', 'Card Title': '2024-25 Upper Deck Brayden Yager Young Guns', Player: 'Brayden Yager', Year: 2024, 'Set ': 'Upper Deck', Number: '223', 'Parallel/Variant': 'Young Guns', Grade: null, Condition: 'Gem Mint', Price: 85, Status: 'Available' },
   { Seller: 'hockey_hub_minneapolis', 'Card Title': '2020-21 Upper Deck Tim Stutzle Young Guns', Player: 'Tim Stutzle', Year: 2020, 'Set ': 'Upper Deck', Number: '204', 'Parallel/Variant': 'Young Guns', Grade: 10, Grader: 'PSA', Price: 420, Status: 'Available' },
   { Seller: 'hockey_hub_minneapolis', 'Card Title': '2023-24 Upper Deck Connor Bedard Canvas RC', Player: 'Connor Bedard', Year: 2023, 'Set ': 'Upper Deck', Number: 'C201', 'Parallel/Variant': 'Canvas', Grade: null, Condition: 'Near Mint', Price: 380, Status: 'Available' },
   { Seller: 'hockey_hub_minneapolis', 'Card Title': '2019-20 Upper Deck Kirby Dach Young Guns', Player: 'Kirby Dach', Year: 2019, 'Set ': 'Upper Deck', Number: '228', 'Parallel/Variant': 'Young Guns', Grade: null, Condition: 'Near Mint', Price: 35, Status: 'Available' },
-  { Seller: 'hockey_hub_minneapolis', 'Card Title': '2024-25 Upper Deck Macklin Celebrini Young Guns', Player: 'Macklin Celebrini', Year: 2024, 'Set ': 'Upper Deck', Number: '201', 'Parallel/Variant': 'Young Guns', Grade: null, Condition: 'Gem Mint', Price: 880, Status: 'Available' },
+  { Seller: 'hockey_hub_minneapolis', 'Card Title': '2024-25 Upper Deck Macklin Celebrini Young Guns', Player: 'Macklin Celebrini', Year: 2024, 'Set ': 'Upper Deck', Number: '201', 'Parallel/Variant': 'Young Guns', Grade: null, Condition: 'Gem Mint', 'Market Value': 960, Price: 880, Status: 'Available' },
   { Seller: 'hockey_hub_minneapolis', 'Card Title': '2022-23 Upper Deck Simon Edvinsson Young Guns', Player: 'Simon Edvinsson', Year: 2022, 'Set ': 'Upper Deck', Number: '248', 'Parallel/Variant': 'Young Guns', Grade: null, Condition: 'Near Mint', Price: 30, Status: 'Available' },
   { Seller: 'hockey_hub_minneapolis', 'Card Title': '2024-25 Upper Deck Artyom Levshunov Young Guns', Player: 'Artyom Levshunov', Year: 2024, 'Set ': 'Upper Deck', Number: '208', 'Parallel/Variant': 'Young Guns', Grade: null, Condition: 'Gem Mint', Price: 340, Status: 'Available' },
   { Seller: 'hockey_hub_minneapolis', 'Card Title': '2021-22 Upper Deck Dylan Cozens Young Guns', Player: 'Dylan Cozens', Year: 2021, 'Set ': 'Upper Deck', Number: '219', 'Parallel/Variant': 'Young Guns', Grade: 10, Grader: 'BGS', Price: 95, Status: 'Available' },
@@ -2453,10 +2607,10 @@ const SAMPLE = [
   { Seller: 'optic_obsession_orlando', 'Card Title': '2022 Optic Sauce Gardner RC Holo', Player: 'Sauce Gardner', Year: 2022, 'Set ': 'Optic', Number: '234', 'Parallel/Variant': 'Holo', Grade: 10, Grader: 'PSA', Price: 110, Status: 'Available' },
   { Seller: 'optic_obsession_orlando', 'Card Title': '2024 Optic Drake Maye RC Holo', Player: 'Drake Maye', Year: 2024, 'Set ': 'Optic', Number: 'DM-2', 'Parallel/Variant': 'Holo', Grade: null, Condition: 'Gem Mint', Price: 320, Status: 'Available' },
   { Seller: 'optic_obsession_orlando', 'Card Title': '2024 Optic JJ McCarthy RC Holo', Player: 'J.J. McCarthy', Year: 2024, 'Set ': 'Optic', Number: 'JM-2', 'Parallel/Variant': 'Holo', Grade: 10, Grader: 'CGC', Price: 120, Status: 'Available' },
-  { Seller: 'optic_obsession_orlando', 'Card Title': '2018-19 Optic Luka Doncic RC Rated Rookie', Player: 'Luka Doncic', Year: 2018, 'Set ': 'Optic', Number: '177', 'Parallel/Variant': 'Rated Rookie', Grade: 10, Grader: 'PSA', Price: 2400, Status: 'Available' },
+  { Seller: 'optic_obsession_orlando', 'Card Title': '2018-19 Optic Luka Doncic RC Rated Rookie', Player: 'Luka Doncic', Year: 2018, 'Set ': 'Optic', Number: '177', 'Parallel/Variant': 'Rated Rookie', Grade: 10, Grader: 'PSA', 'Market Value': 2600, Price: 2400, Status: 'Available' },
   { Seller: 'optic_obsession_orlando', 'Card Title': '2020-21 Optic LaMelo Ball RC Holo', Player: 'LaMelo Ball', Year: 2020, 'Set ': 'Optic', Number: '151', 'Parallel/Variant': 'Holo', Grade: null, Condition: 'Near Mint', Price: 620, Status: 'Available' },
   { Seller: 'optic_obsession_orlando', 'Card Title': '2023-24 Optic Victor Wembanyama RC Holo', Player: 'Victor Wembanyama', Year: 2023, 'Set ': 'Optic', Number: 'VW-2', 'Parallel/Variant': 'Holo', Grade: 10, Grader: 'BGS', Price: 1800, Status: 'Available' },
-  { Seller: 'optic_obsession_orlando', 'Card Title': '2025-26 Optic Cooper Flagg RC Holo', Player: 'Cooper Flagg', Year: 2025, 'Set ': 'Optic', Number: 'CF-2', 'Parallel/Variant': 'Holo', Grade: null, Condition: 'Gem Mint', Price: 2400, Status: 'Available' },
+  { Seller: 'optic_obsession_orlando', 'Card Title': '2025-26 Optic Cooper Flagg RC Holo', Player: 'Cooper Flagg', Year: 2025, 'Set ': 'Optic', Number: 'CF-2', 'Parallel/Variant': 'Holo', Grade: null, Condition: 'Gem Mint', 'Market Value': 2600, Price: 2400, Status: 'Available' },
   { Seller: 'optic_obsession_orlando', 'Card Title': '2024 Optic Jayden Daniels RC Holo', Player: 'Jayden Daniels', Year: 2024, 'Set ': 'Optic', Number: 'JD-2', 'Parallel/Variant': 'Holo', Grade: 10, Grader: 'PSA', Price: 380, Status: 'Available' },
   { Seller: 'optic_obsession_orlando', 'Card Title': '2022-23 Optic Paolo Banchero RC Holo', Player: 'Paolo Banchero', Year: 2022, 'Set ': 'Optic', Number: 'PB-2', 'Parallel/Variant': 'Holo', Grade: null, Condition: 'Near Mint', Price: 280, Status: 'Available' },
   { Seller: 'optic_obsession_orlando', 'Card Title': '2024 Optic Marvin Harrison Jr RC Purple /99', Player: 'Marvin Harrison Jr', Year: 2024, 'Set ': 'Optic', Number: 'MHJ-3', 'Parallel/Variant': 'Purple Prizm /99', Grade: null, Condition: 'Near Mint', Price: 480, Status: 'Available' },
@@ -2469,7 +2623,7 @@ const SAMPLE = [
   { Seller: 'optic_obsession_orlando', 'Card Title': '2024-25 Optic Stephon Castle RC Holo', Player: 'Stephon Castle', Year: 2024, 'Set ': 'Optic', Number: 'SC-2', 'Parallel/Variant': 'Holo', Grade: 10, Grader: 'BGS', Price: 95, Status: 'Available' },
   { Seller: 'optic_obsession_orlando', 'Card Title': '2024-25 Optic Reed Sheppard RC Holo', Player: 'Reed Sheppard', Year: 2024, 'Set ': 'Optic', Number: 'RS-2', 'Parallel/Variant': 'Holo', Grade: null, Condition: 'Gem Mint', Price: 35, Status: 'Available' },
   { Seller: 'optic_obsession_orlando', 'Card Title': '2024 Optic Ladd McConkey RC Holo', Player: 'Ladd McConkey', Year: 2024, 'Set ': 'Optic', Number: 'LM-2', 'Parallel/Variant': 'Holo', Grade: null, Condition: 'Near Mint', Price: 65, Status: 'Available' },
-  { Seller: 'optic_obsession_orlando', 'Card Title': '2025-26 Optic Cooper Flagg RC Purple /99', Player: 'Cooper Flagg', Year: 2025, 'Set ': 'Optic', Number: 'CF-3', 'Parallel/Variant': 'Purple Prizm /99', Grade: null, Condition: 'Gem Mint', Price: 4200, Status: 'Available' },
+  { Seller: 'optic_obsession_orlando', 'Card Title': '2025-26 Optic Cooper Flagg RC Purple /99', Player: 'Cooper Flagg', Year: 2025, 'Set ': 'Optic', Number: 'CF-3', 'Parallel/Variant': 'Purple Prizm /99', Grade: null, Condition: 'Gem Mint', 'Market Value': 4600, Price: 4200, Status: 'Available' },
   { Seller: 'optic_obsession_orlando', 'Card Title': '2022-23 Optic Bennedict Mathurin RC Holo', Player: 'Bennedict Mathurin', Year: 2022, 'Set ': 'Optic', Number: 'BM-2', 'Parallel/Variant': 'Holo', Grade: null, Condition: 'Near Mint', Price: 35, Status: 'Available' },
   { Seller: 'optic_obsession_orlando', 'Card Title': '2021-22 Optic Alperen Sengun RC Holo', Player: 'Alperen Sengun', Year: 2021, 'Set ': 'Optic', Number: 'AS-2', 'Parallel/Variant': 'Holo', Grade: 10, Grader: 'PSA', Price: 320, Status: 'Available' },
   { Seller: 'optic_obsession_orlando', 'Card Title': '2022 Optic Garrett Wilson RC Holo', Player: 'Garrett Wilson', Year: 2022, 'Set ': 'Optic', Number: 'GW-2', 'Parallel/Variant': 'Holo', Grade: null, Condition: 'Near Mint', Price: 85, Status: 'Available' },
@@ -2485,9 +2639,9 @@ const SAMPLE = [
   { Seller: 'the_patch_shop_tampa', 'Card Title': '2024 Prizm Marvin Harrison Jr RPA /99', Player: 'Marvin Harrison Jr', Year: 2024, 'Set ': 'Prizm', Number: 'RPA-MHJ', 'Parallel/Variant': 'Rookie Patch Auto /99', Grade: null, Condition: 'Gem Mint', Price: 2800, Status: 'Available' },
   { Seller: 'the_patch_shop_tampa', 'Card Title': '2019-20 Prizm Ja Morant RPA /99', Player: 'Ja Morant', Year: 2019, 'Set ': 'Prizm', Number: 'RPA-JM', 'Parallel/Variant': 'Rookie Patch Auto /99', Grade: null, Condition: 'Near Mint', Price: 3200, Status: 'Available' },
   { Seller: 'the_patch_shop_tampa', 'Card Title': '2018-19 Prizm Luka Doncic RPA /99', Player: 'Luka Doncic', Year: 2018, 'Set ': 'Prizm', Number: 'RPA-LD', 'Parallel/Variant': 'Rookie Patch Auto /99', Grade: null, Condition: 'Near Mint', Price: 12000, Status: 'Available' },
-  { Seller: 'the_patch_shop_tampa', 'Card Title': '2023-24 Topps Chrome Wembanyama RPA /99', Player: 'Victor Wembanyama', Year: 2023, 'Set ': 'Topps Chrome', Number: 'RPA-VW', 'Parallel/Variant': 'Rookie Patch Auto /99', Grade: null, Condition: 'Gem Mint', Price: 9800, Status: 'Available' },
+  { Seller: 'the_patch_shop_tampa', 'Card Title': '2023-24 Topps Chrome Wembanyama RPA /99', Player: 'Victor Wembanyama', Year: 2023, 'Set ': 'Topps Chrome', Number: 'RPA-VW', 'Parallel/Variant': 'Rookie Patch Auto /99', Grade: null, Condition: 'Gem Mint', 'Market Value': 8500, Price: 9800, Status: 'Available' },
   { Seller: 'the_patch_shop_tampa', 'Card Title': '2024 Topps Chrome Paul Skenes RPA /50', Player: 'Paul Skenes', Year: 2024, 'Set ': 'Topps Chrome', Number: 'RPA-PS', 'Parallel/Variant': 'Rookie Patch Auto /50', Grade: null, Condition: 'Gem Mint', Price: 5400, Status: 'Available' },
-  { Seller: 'the_patch_shop_tampa', 'Card Title': '2025-26 Topps Chrome Cooper Flagg RPA /99', Player: 'Cooper Flagg', Year: 2025, 'Set ': 'Topps Chrome', Number: 'RPA-CF', 'Parallel/Variant': 'Rookie Patch Auto /99', Grade: null, Condition: 'Gem Mint', Price: 18000, Status: 'Available' },
+  { Seller: 'the_patch_shop_tampa', 'Card Title': '2025-26 Topps Chrome Cooper Flagg RPA /99', Player: 'Cooper Flagg', Year: 2025, 'Set ': 'Topps Chrome', Number: 'RPA-CF', 'Parallel/Variant': 'Rookie Patch Auto /99', Grade: null, Condition: 'Gem Mint', 'Market Value': 24000, Price: 18000, Status: 'Available' },
   { Seller: 'the_patch_shop_tampa', 'Card Title': '2024 Topps Chrome Yoshinobu Yamamoto RPA /50', Player: 'Yoshinobu Yamamoto', Year: 2024, 'Set ': 'Topps Chrome', Number: 'RPA-YY', 'Parallel/Variant': 'Rookie Patch Auto /50', Grade: null, Condition: 'Near Mint', Price: 2400, Status: 'Available' },
   { Seller: 'the_patch_shop_tampa', 'Card Title': '2022 Prizm Sauce Gardner RPA /99', Player: 'Sauce Gardner', Year: 2022, 'Set ': 'Prizm', Number: 'RPA-SG', 'Parallel/Variant': 'Rookie Patch Auto /99', Grade: null, Condition: 'Near Mint', Price: 680, Status: 'Available' },
   { Seller: 'the_patch_shop_tampa', 'Card Title': '2020 Topps Chrome Luis Robert RPA /50', Player: 'Luis Robert', Year: 2020, 'Set ': 'Topps Chrome', Number: 'RPA-LR', 'Parallel/Variant': 'Rookie Patch Auto /50', Grade: null, Condition: 'Near Mint', Price: 880, Status: 'Available' },
@@ -2502,7 +2656,7 @@ const SAMPLE = [
   { Seller: 'the_patch_shop_tampa', 'Card Title': '2022-23 Topps Chrome Paolo Banchero RPA /99', Player: 'Paolo Banchero', Year: 2022, 'Set ': 'Topps Chrome', Number: 'RPA-PB', 'Parallel/Variant': 'Rookie Patch Auto /99', Grade: null, Condition: 'Near Mint', Price: 1600, Status: 'Available' },
   { Seller: 'the_patch_shop_tampa', 'Card Title': '2024 Prizm Drake Maye RPA /99', Player: 'Drake Maye', Year: 2024, 'Set ': 'Prizm', Number: 'RPA-DM', 'Parallel/Variant': 'Rookie Patch Auto /99', Grade: null, Condition: 'Gem Mint', Price: 1400, Status: 'Available' },
   { Seller: 'the_patch_shop_tampa', 'Card Title': '2021 Prizm Jaylen Waddle RPA /99', Player: 'Jaylen Waddle', Year: 2021, 'Set ': 'Prizm', Number: 'RPA-JW', 'Parallel/Variant': 'Rookie Patch Auto /99', Grade: null, Condition: 'Near Mint', Price: 680, Status: 'Available' },
-  { Seller: 'the_patch_shop_tampa', 'Card Title': '2024-25 Topps Chrome Cooper Flagg RPA /50', Player: 'Cooper Flagg', Year: 2025, 'Set ': 'Topps Chrome', Number: 'RPA-CF2', 'Parallel/Variant': 'Rookie Patch Auto /50', Grade: null, Condition: 'Gem Mint', Price: 28000, Status: 'Available' },
+  { Seller: 'the_patch_shop_tampa', 'Card Title': '2024-25 Topps Chrome Cooper Flagg RPA /50', Player: 'Cooper Flagg', Year: 2025, 'Set ': 'Topps Chrome', Number: 'RPA-CF2', 'Parallel/Variant': 'Rookie Patch Auto /50', Grade: null, Condition: 'Gem Mint', 'Market Value': 32000, Price: 28000, Status: 'Available' },
   { Seller: 'the_patch_shop_tampa', 'Card Title': '2024 Topps Chrome Jackson Holliday RPA /99', Player: 'Jackson Holliday', Year: 2024, 'Set ': 'Topps Chrome', Number: 'RPA-JH', 'Parallel/Variant': 'Rookie Patch Auto /99', Grade: null, Condition: 'Near Mint', Price: 380, Status: 'Available' },
   { Seller: 'the_patch_shop_tampa', 'Card Title': '2023 Topps Chrome Gunnar Henderson RPA /50', Player: 'Gunnar Henderson', Year: 2023, 'Set ': 'Topps Chrome', Number: 'RPA-GH', 'Parallel/Variant': 'Rookie Patch Auto /50', Grade: null, Condition: 'Gem Mint', Price: 2400, Status: 'Available' },
   { Seller: 'the_patch_shop_tampa', 'Card Title': '2023-24 Topps Chrome Scoot Henderson RPA /99', Player: 'Scoot Henderson', Year: 2023, 'Set ': 'Topps Chrome', Number: 'RPA-SH', 'Parallel/Variant': 'Rookie Patch Auto /99', Grade: null, Condition: 'Near Mint', Price: 420, Status: 'Available' },
@@ -2542,7 +2696,7 @@ const SAMPLE = [
   { Seller: 'og_jersey_cards_cleveland', 'Card Title': '2016-17 Topps Chrome Pascal Siakam RC Auto', Player: 'Pascal Siakam', Year: 2016, 'Set ': 'Topps Chrome', Number: 'PSA-1', 'Parallel/Variant': 'RC Auto', Grade: 9, Grader: 'BGS', Price: 280, Status: 'Available' },
   { Seller: 'og_jersey_cards_cleveland', 'Card Title': '2010-11 Topps Chrome John Wall RC Auto', Player: 'John Wall', Year: 2010, 'Set ': 'Topps Chrome', Number: 'JWA-1', 'Parallel/Variant': 'RC Auto', Grade: 9, Grader: 'SGC', Price: 95, Status: 'Available' },
   { Seller: 'og_jersey_cards_cleveland', 'Card Title': '2016-17 Topps Chrome Jayson Tatum RC Auto', Player: 'Jayson Tatum', Year: 2016, 'Set ': 'Topps Chrome', Number: 'JTA-2', 'Parallel/Variant': 'RC Auto', Grade: 10, Grader: 'PSA', Price: 3800, Status: 'Available' },
-  { Seller: 'og_jersey_cards_cleveland', 'Card Title': '2015-16 Topps Chrome Karl-Anthony Towns RC Auto', Player: 'Karl-Anthony Towns', Year: 2015, 'Set ': 'Topps Chrome', Number: 'KTA-2', 'Parallel/Variant': 'RC Auto', Grade: 9.5, Grader: 'BGS', Price: 680, Status: 'Available' },
+  { Seller: 'og_jersey_cards_cleveland', 'Card Title': '2015-16 Topps Chrome Karl-Anthony Towns RC Auto', Player: 'Karl-Anthony Towns', Year: 2015, 'Set ': 'Topps Chrome', Number: 'KTA-2', 'Parallel/Variant': 'RC Auto', Grade: 9.5, Grader: 'BGS', 'Market Value': 720, Price: 680, Status: 'Available' },
   { Seller: 'og_jersey_cards_cleveland', 'Card Title': '2013-14 Topps Chrome Giannis Antetokounmpo RC', Player: 'Giannis Antetokounmpo', Year: 2013, 'Set ': 'Topps Chrome', Number: '290', 'Parallel/Variant': 'Base', Grade: 9, Grader: 'PSA', Price: 2800, Status: 'Available' },
 
   // ── auto_mania_portland (autos only) ──
@@ -2553,7 +2707,7 @@ const SAMPLE = [
   { Seller: 'auto_mania_portland', 'Card Title': '2024 Topps Chrome Bobby Witt Jr Auto Sapphire', Player: 'Bobby Witt Jr', Year: 2024, 'Set ': 'Topps Chrome', Number: 'BWA-SAP', 'Parallel/Variant': 'Sapphire Auto', Grade: null, Condition: 'Gem Mint', Price: 2200, Status: 'Available' },
   { Seller: 'auto_mania_portland', 'Card Title': '2023-24 Topps Chrome Wembanyama Auto Gold /50', Player: 'Victor Wembanyama', Year: 2023, 'Set ': 'Topps Chrome', Number: 'VWA-50', 'Parallel/Variant': 'Gold Auto /50', Grade: 10, Grader: 'PSA', Price: 14000, Status: 'Available' },
   { Seller: 'auto_mania_portland', 'Card Title': '2020 Topps Chrome Devin Williams RC Auto Sapphire', Player: 'Devin Williams', Year: 2020, 'Set ': 'Topps Chrome', Number: 'DWA-SAP', 'Parallel/Variant': 'Sapphire Auto', Grade: null, Condition: 'Near Mint', Price: 95, Status: 'Available' },
-  { Seller: 'auto_mania_portland', 'Card Title': '2025-26 Topps Chrome Cooper Flagg Auto Gold /50', Player: 'Cooper Flagg', Year: 2025, 'Set ': 'Topps Chrome', Number: 'CFA-G50', 'Parallel/Variant': 'Gold Auto /50', Grade: null, Condition: 'Gem Mint', Price: 9200, Status: 'Available' },
+  { Seller: 'auto_mania_portland', 'Card Title': '2025-26 Topps Chrome Cooper Flagg Auto Gold /50', Player: 'Cooper Flagg', Year: 2025, 'Set ': 'Topps Chrome', Number: 'CFA-G50', 'Parallel/Variant': 'Gold Auto /50', Grade: null, Condition: 'Gem Mint', 'Market Value': 10000, Price: 9200, Status: 'Available' },
   { Seller: 'auto_mania_portland', 'Card Title': '2024 Topps Chrome Paul Skenes Auto Sapphire', Player: 'Paul Skenes', Year: 2024, 'Set ': 'Topps Chrome', Number: 'PSA-SAP2', 'Parallel/Variant': 'Sapphire Auto', Grade: null, Condition: 'Gem Mint', Price: 3800, Status: 'Available' },
   { Seller: 'auto_mania_portland', 'Card Title': '2023 Topps Chrome Gunnar Henderson Auto Sapphire', Player: 'Gunnar Henderson', Year: 2023, 'Set ': 'Topps Chrome', Number: 'GHA-SAP', 'Parallel/Variant': 'Sapphire Auto', Grade: 10, Grader: 'BGS', Price: 1400, Status: 'Available' },
   { Seller: 'auto_mania_portland', 'Card Title': '2025 Topps Chrome Roman Anthony Auto Gold /50', Player: 'Roman Anthony', Year: 2025, 'Set ': 'Topps Chrome', Number: 'RAA-G50', 'Parallel/Variant': 'Gold Auto /50', Grade: null, Condition: 'Gem Mint', Price: 540, Status: 'Available' },
@@ -2562,8 +2716,8 @@ const SAMPLE = [
   { Seller: 'auto_mania_portland', 'Card Title': '2022 Topps Chrome Julio Rodriguez Auto Gold /50', Player: 'Julio Rodriguez', Year: 2022, 'Set ': 'Topps Chrome', Number: 'JRA-G50', 'Parallel/Variant': 'Gold Auto /50', Grade: 9, Grader: 'PSA', Price: 640, Status: 'Available' },
   { Seller: 'auto_mania_portland', 'Card Title': '2024 Topps Chrome Yoshinobu Yamamoto Auto Gold', Player: 'Yoshinobu Yamamoto', Year: 2024, 'Set ': 'Topps Chrome', Number: 'YYA-G50', 'Parallel/Variant': 'Gold Auto /50', Grade: null, Condition: 'Gem Mint', Price: 1600, Status: 'Available' },
   { Seller: 'auto_mania_portland', 'Card Title': '2020-21 Topps Chrome Anthony Edwards Auto Sapphire', Player: 'Anthony Edwards', Year: 2020, 'Set ': 'Topps Chrome', Number: 'AEA-SAP', 'Parallel/Variant': 'Sapphire Auto', Grade: null, Condition: 'Near Mint', Price: 2200, Status: 'Available' },
-  { Seller: 'auto_mania_portland', 'Card Title': '2024 Prizm Patrick Mahomes Auto Gold /10', Player: 'Patrick Mahomes', Year: 2024, 'Set ': 'Prizm', Number: 'PMA-G10', 'Parallel/Variant': 'Gold Auto /10', Grade: null, Condition: 'Gem Mint', Price: 6800, Status: 'Available' },
-  { Seller: 'auto_mania_portland', 'Card Title': '2019-20 Topps Chrome Luka Doncic Auto Gold /50', Player: 'Luka Doncic', Year: 2019, 'Set ': 'Topps Chrome', Number: 'LDA-G50', 'Parallel/Variant': 'Gold Auto /50', Grade: null, Condition: 'Near Mint', Price: 8800, Status: 'Available' },
+  { Seller: 'auto_mania_portland', 'Card Title': '2024 Prizm Patrick Mahomes Auto Gold /10', Player: 'Patrick Mahomes', Year: 2024, 'Set ': 'Prizm', Number: 'PMA-G10', 'Parallel/Variant': 'Gold Auto /10', Grade: null, Condition: 'Gem Mint', 'Market Value': 5800, Price: 6800, Status: 'Available' },
+  { Seller: 'auto_mania_portland', 'Card Title': '2019-20 Topps Chrome Luka Doncic Auto Gold /50', Player: 'Luka Doncic', Year: 2019, 'Set ': 'Topps Chrome', Number: 'LDA-G50', 'Parallel/Variant': 'Gold Auto /50', Grade: null, Condition: 'Near Mint', 'Market Value': 7500, Price: 8800, Status: 'Available' },
   { Seller: 'auto_mania_portland', 'Card Title': '2023-24 Topps Chrome Wemby Auto Purple /25', Player: 'Victor Wembanyama', Year: 2023, 'Set ': 'Topps Chrome', Number: 'VWA-P25', 'Parallel/Variant': 'Purple Auto /25', Grade: null, Condition: 'Gem Mint', Price: 42000, Status: 'Available' },
   { Seller: 'auto_mania_portland', 'Card Title': '2025 Topps Jonah Tong Auto Gold /25', Player: 'Jonah Tong', Year: 2025, 'Set ': 'Topps', Number: 'JTA-G25', 'Parallel/Variant': 'Gold Auto /25', Grade: null, Condition: 'Gem Mint', Price: 1800, Status: 'Available' },
   { Seller: 'auto_mania_portland', 'Card Title': '2024 Topps Chrome Jackson Holliday Auto Sapphire', Player: 'Jackson Holliday', Year: 2024, 'Set ': 'Topps Chrome', Number: 'JHA-SAP', 'Parallel/Variant': 'Sapphire Auto', Grade: null, Condition: 'Gem Mint', Price: 280, Status: 'Available' },
@@ -2583,12 +2737,12 @@ const SAMPLE = [
   { Seller: 'the_slab_lab_vegas', 'Card Title': '1986-87 Fleer Michael Jordan RC PSA 9', Player: 'Michael Jordan', Year: 1986, 'Set ': 'Fleer', Number: '57', 'Parallel/Variant': 'Base', Grade: 9, Grader: 'PSA', 'Cert #': '00112233', Price: 28000, Status: 'Available' },
   { Seller: 'the_slab_lab_vegas', 'Card Title': '2000 Playoff Contenders Tom Brady RC BGS 8.5', Player: 'Tom Brady', Year: 2000, 'Set ': 'Playoff Contenders', Number: '144', 'Parallel/Variant': 'Rookie Ticket Auto', Grade: 8.5, Grader: 'BGS', Price: 42000, Status: 'Available' },
   { Seller: 'the_slab_lab_vegas', 'Card Title': '1979 O-Pee-Chee Wayne Gretzky RC PSA 8', Player: 'Wayne Gretzky', Year: 1979, 'Set ': 'O-Pee-Chee', Number: '18', 'Parallel/Variant': 'Base', Grade: 8, Grader: 'PSA', Price: 38000, Status: 'Available' },
-  { Seller: 'the_slab_lab_vegas', 'Card Title': '2003-04 Topps Chrome LeBron James RC BGS 10', Player: 'LeBron James', Year: 2003, 'Set ': 'Topps Chrome', Number: '111', 'Parallel/Variant': 'Base', Grade: 10, Grader: 'BGS', Price: 22000, Status: 'Available' },
-  { Seller: 'the_slab_lab_vegas', 'Card Title': '2009-10 Topps Chrome Steph Curry RC PSA 10', Player: 'Stephen Curry', Year: 2009, 'Set ': 'Topps Chrome', Number: '101', 'Parallel/Variant': 'Refractor', Grade: 10, Grader: 'PSA', Price: 18000, Status: 'Available' },
+  { Seller: 'the_slab_lab_vegas', 'Card Title': '2003-04 Topps Chrome LeBron James RC BGS 10', Player: 'LeBron James', Year: 2003, 'Set ': 'Topps Chrome', Number: '111', 'Parallel/Variant': 'Base', Grade: 10, Grader: 'BGS', 'Market Value': 28000, Price: 22000, Status: 'Available' },
+  { Seller: 'the_slab_lab_vegas', 'Card Title': '2009-10 Topps Chrome Steph Curry RC PSA 10', Player: 'Stephen Curry', Year: 2009, 'Set ': 'Topps Chrome', Number: '101', 'Parallel/Variant': 'Refractor', Grade: 10, Grader: 'PSA', 'Market Value': 20000, Price: 18000, Status: 'Available' },
   { Seller: 'the_slab_lab_vegas', 'Card Title': '2018-19 Prizm Luka Doncic RC PSA 10', Player: 'Luka Doncic', Year: 2018, 'Set ': 'Prizm', Number: '280', 'Parallel/Variant': 'Silver Prizm', Grade: 10, Grader: 'PSA', Price: 8800, Status: 'Available' },
-  { Seller: 'the_slab_lab_vegas', 'Card Title': '2018 Prizm Patrick Mahomes RC PSA 10', Player: 'Patrick Mahomes', Year: 2018, 'Set ': 'Prizm', Number: '195', 'Parallel/Variant': 'Silver Prizm', Grade: 10, Grader: 'PSA', Price: 6800, Status: 'Available' },
+  { Seller: 'the_slab_lab_vegas', 'Card Title': '2018 Prizm Patrick Mahomes RC PSA 10', Player: 'Patrick Mahomes', Year: 2018, 'Set ': 'Prizm', Number: '195', 'Parallel/Variant': 'Silver Prizm', Grade: 10, Grader: 'PSA', 'Market Value': 6500, Price: 6800, Status: 'Available' },
   { Seller: 'the_slab_lab_vegas', 'Card Title': '2013-14 Prizm Giannis RC BGS 9.5', Player: 'Giannis Antetokounmpo', Year: 2013, 'Set ': 'Prizm', Number: '290', 'Parallel/Variant': 'Silver Prizm', Grade: 9.5, Grader: 'BGS', Price: 5800, Status: 'Available' },
-  { Seller: 'the_slab_lab_vegas', 'Card Title': '2023-24 Topps Chrome Wembanyama RC BGS 10', Player: 'Victor Wembanyama', Year: 2023, 'Set ': 'Topps Chrome', Number: '1', 'Parallel/Variant': 'Base', Grade: 10, Grader: 'BGS', Price: 12000, Status: 'Available' },
+  { Seller: 'the_slab_lab_vegas', 'Card Title': '2023-24 Topps Chrome Wembanyama RC BGS 10', Player: 'Victor Wembanyama', Year: 2023, 'Set ': 'Topps Chrome', Number: '1', 'Parallel/Variant': 'Base', Grade: 10, Grader: 'BGS', 'Market Value': 14500, Price: 12000, Status: 'Available' },
   { Seller: 'the_slab_lab_vegas', 'Card Title': '1996-97 Topps Chrome Kobe Bryant RC BGS 9.5', Player: 'Kobe Bryant', Year: 1996, 'Set ': 'Topps Chrome', Number: '138', 'Parallel/Variant': 'Base', Grade: 9.5, Grader: 'BGS', Price: 14000, Status: 'Available' },
   { Seller: 'the_slab_lab_vegas', 'Card Title': '2011 Bowman Chrome Mike Trout Auto PSA 9', Player: 'Mike Trout', Year: 2011, 'Set ': 'Bowman Chrome', Number: 'BCA-MT', 'Parallel/Variant': 'Prospect Auto', Grade: 9, Grader: 'PSA', Price: 32000, Status: 'Available' },
   { Seller: 'the_slab_lab_vegas', 'Card Title': '1989 Upper Deck Ken Griffey Jr RC PSA 10', Player: 'Ken Griffey Jr', Year: 1989, 'Set ': 'Upper Deck', Number: '1', 'Parallel/Variant': 'Base', Grade: 10, Grader: 'PSA', Price: 4800, Status: 'Available' },
@@ -2597,18 +2751,18 @@ const SAMPLE = [
   { Seller: 'the_slab_lab_vegas', 'Card Title': '2019-20 Prizm Zion Williamson RC PSA 10', Player: 'Zion Williamson', Year: 2019, 'Set ': 'Prizm', Number: '248', 'Parallel/Variant': 'Silver Prizm', Grade: 10, Grader: 'PSA', Price: 4200, Status: 'Available' },
   { Seller: 'the_slab_lab_vegas', 'Card Title': '2024 Topps Chrome Paul Skenes RC PSA 10', Player: 'Paul Skenes', Year: 2024, 'Set ': 'Topps Chrome', Number: 'PSR-1', 'Parallel/Variant': 'Base', Grade: 10, Grader: 'PSA', Price: 480, Status: 'Available' },
   { Seller: 'the_slab_lab_vegas', 'Card Title': '1993 SP Derek Jeter RC PSA 9', Player: 'Derek Jeter', Year: 1993, 'Set ': 'SP', Number: '279', 'Parallel/Variant': 'Foil', Grade: 9, Grader: 'PSA', Price: 5200, Status: 'Available' },
-  { Seller: 'the_slab_lab_vegas', 'Card Title': '2016-17 Prizm Jayson Tatum RC BGS 10', Player: 'Jayson Tatum', Year: 2016, 'Set ': 'Prizm', Number: '1', 'Parallel/Variant': 'Silver Prizm', Grade: 10, Grader: 'BGS', Price: 3800, Status: 'Available' },
+  { Seller: 'the_slab_lab_vegas', 'Card Title': '2016-17 Prizm Jayson Tatum RC BGS 10', Player: 'Jayson Tatum', Year: 2016, 'Set ': 'Prizm', Number: '1', 'Parallel/Variant': 'Silver Prizm', Grade: 10, Grader: 'BGS', 'Market Value': 4200, Price: 3800, Status: 'Available' },
   { Seller: 'the_slab_lab_vegas', 'Card Title': '2020 Prizm Justin Herbert RC CGC 10', Player: 'Justin Herbert', Year: 2020, 'Set ': 'Prizm', Number: '303', 'Parallel/Variant': 'Silver Prizm', Grade: 10, Grader: 'CGC', Price: 1200, Status: 'Available' },
   { Seller: 'the_slab_lab_vegas', 'Card Title': '2020-21 Prizm Anthony Edwards RC PSA 10', Player: 'Anthony Edwards', Year: 2020, 'Set ': 'Prizm', Number: '258', 'Parallel/Variant': 'Silver Prizm', Grade: 10, Grader: 'PSA', Price: 2800, Status: 'Available' },
-  { Seller: 'the_slab_lab_vegas', 'Card Title': '2015-16 Upper Deck Connor McDavid YG PSA 10', Player: 'Connor McDavid', Year: 2015, 'Set ': 'Upper Deck', Number: '201', 'Parallel/Variant': 'Young Guns', Grade: 10, Grader: 'PSA', Price: 9800, Status: 'Available' },
+  { Seller: 'the_slab_lab_vegas', 'Card Title': '2015-16 Upper Deck Connor McDavid YG PSA 10', Player: 'Connor McDavid', Year: 2015, 'Set ': 'Upper Deck', Number: '201', 'Parallel/Variant': 'Young Guns', Grade: 10, Grader: 'PSA', 'Market Value': 11000, Price: 9800, Status: 'Available' },
   { Seller: 'the_slab_lab_vegas', 'Card Title': '1984-85 Star Michael Jordan RC PSA 8', Player: 'Michael Jordan', Year: 1984, 'Set ': 'Star', Number: '101', 'Parallel/Variant': 'Base', Grade: 8, Grader: 'PSA', Price: 22000, Status: 'Available' },
   { Seller: 'the_slab_lab_vegas', 'Card Title': '1955 Topps Sandy Koufax RC PSA 6', Player: 'Sandy Koufax', Year: 1955, 'Set ': 'Topps', Number: '123', 'Parallel/Variant': 'Base', Grade: 6, Grader: 'PSA', Price: 8200, Status: 'Available' },
   { Seller: 'the_slab_lab_vegas', 'Card Title': '2024 Topps Chrome Shohei Ohtani Base PSA 10', Player: 'Shohei Ohtani', Year: 2024, 'Set ': 'Topps Chrome', Number: 'SO-B', 'Parallel/Variant': 'Base', Grade: 10, Grader: 'PSA', Price: 380, Status: 'Available' },
   { Seller: 'the_slab_lab_vegas', 'Card Title': '2009-10 Topps Chrome Steph Curry RC BGS 10', Player: 'Stephen Curry', Year: 2009, 'Set ': 'Topps Chrome', Number: '101', 'Parallel/Variant': 'Base', Grade: 10, Grader: 'BGS', Price: 8800, Status: 'Available' },
-  { Seller: 'the_slab_lab_vegas', 'Card Title': '2014-15 Prizm Nikola Jokic RC PSA 10', Player: 'Nikola Jokic', Year: 2014, 'Set ': 'Prizm', Number: '290', 'Parallel/Variant': 'Base', Grade: 10, Grader: 'PSA', Price: 6800, Status: 'Available' },
+  { Seller: 'the_slab_lab_vegas', 'Card Title': '2014-15 Prizm Nikola Jokic RC PSA 10', Player: 'Nikola Jokic', Year: 2014, 'Set ': 'Prizm', Number: '290', 'Parallel/Variant': 'Base', Grade: 10, Grader: 'PSA', 'Market Value': 5200, Price: 6800, Status: 'Available' },
   { Seller: 'the_slab_lab_vegas', 'Card Title': '2023-24 Topps Chrome Bedard RC PSA 10', Player: 'Connor Bedard', Year: 2023, 'Set ': 'Topps Chrome', Number: 'CB-1', 'Parallel/Variant': 'Refractor', Grade: 10, Grader: 'PSA', Price: 2800, Status: 'Available' },
   { Seller: 'the_slab_lab_vegas', 'Card Title': '2024 Topps Chrome Wyatt Langford RC BGS 10', Player: 'Wyatt Langford', Year: 2024, 'Set ': 'Topps Chrome', Number: 'WLR-1', 'Parallel/Variant': 'Base', Grade: 10, Grader: 'BGS', Price: 240, Status: 'Available' },
-  { Seller: 'the_slab_lab_vegas', 'Card Title': '2018 Optic Josh Allen RC PSA 10', Player: 'Josh Allen', Year: 2018, 'Set ': 'Optic', Number: '157', 'Parallel/Variant': 'Holo', Grade: 10, Grader: 'PSA', Price: 2800, Status: 'Available' },
+  { Seller: 'the_slab_lab_vegas', 'Card Title': '2018 Optic Josh Allen RC PSA 10', Player: 'Josh Allen', Year: 2018, 'Set ': 'Optic', Number: '157', 'Parallel/Variant': 'Holo', Grade: 10, Grader: 'PSA', 'Market Value': 3200, Price: 2800, Status: 'Available' },
 
 ];
 
@@ -2837,7 +2991,7 @@ function renderSellerTable(rows) {
   if (thSeller) thSeller.style.display = isAdmin ? '' : 'none';
 
   if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="${isAdmin ? 11 : 10}"><div class="empty-state"><div class="icon">📂</div><p><strong>No inventory</strong><br>Upload a file to get started</p></div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="${isAdmin ? 12 : 11}"><div class="empty-state"><div class="icon">📂</div><p><strong>No inventory</strong><br>Upload a file to get started</p></div></td></tr>`;
     return;
   }
   tbody.innerHTML = rows.map((r, displayIdx) => {
@@ -2890,6 +3044,15 @@ function renderSellerTable(rows) {
         ${isGraded ? (r['Cert #'] || '<span style="opacity:0.4">—</span>') : '<span style="opacity:0.3">—</span>'}
       </td>
       ${conditionCell}
+      <td>
+        ${(() => {
+          const mv = Number(r['Market Value'] || r['Market Price'] || r['Estimated Value'] || 0);
+          if (!mv) return `<span style="font-size:0.72rem;color:var(--muted);font-family:'DM Mono',monospace">—</span>`;
+          const d = getDealScore(r);
+          const color = d ? { great:'#4ade80',good:'#60a5fa',fair:'#94a3b8',high:'#fbbf24',steep:'#f87171' }[d.tier] : 'var(--muted)';
+          return `<span style="font-family:'DM Mono',monospace;font-size:0.78rem;color:${color}">$${mv.toLocaleString()}</span>`;
+        })()}
+      </td>
       <td class="price" style="${status === 'Sold' ? 'opacity:0.4;text-decoration:line-through' : ''}">$${Number(r.Price || 0).toLocaleString()}</td>
       <td>
         <div class="status-toggle ${statusClass}" onclick="cycleStatus(${realIdx}, this)">
@@ -2931,6 +3094,7 @@ function applyInventoryFilters() {
     const grader = document.getElementById('afGrader')?.value || '';
     const status = document.getElementById('afStatus')?.value || '';
     const price  = document.getElementById('afPrice')?.value || '';
+    const deal   = document.getElementById('afDeal')?.value || '';
 
     if (player) {
       filtered = filtered.filter(r =>
@@ -2968,6 +3132,16 @@ function applyInventoryFilters() {
         return true;
       });
     }
+    if (deal) {
+      filtered = filtered.filter(r => {
+        const d = getDealScore(r);
+        if (deal === 'has_mv') return !!d;
+        if (deal === 'great')  return d && d.tier === 'great';
+        if (deal === 'good')   return d && (d.tier === 'great' || d.tier === 'good');
+        if (deal === 'above')  return d && (d.tier === 'high' || d.tier === 'steep');
+        return true;
+      });
+    }
 
     const countEl = document.getElementById('afResultCount');
     if (countEl) countEl.textContent = filtered.length;
@@ -2985,7 +3159,7 @@ function filterSeller(q) {
 }
 
 function clearAdminFilters() {
-  ['afPlayer','afShow','afSeller','afGrader','afStatus','afPrice'].forEach(id => {
+  ['afPlayer','afShow','afSeller','afGrader','afStatus','afPrice','afDeal'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
@@ -3090,10 +3264,11 @@ function renderShowSelector() {
 
 function filterBuyer() {
   if (!document.getElementById('buyerSearch')) return; // buyer view not mounted
-  const q = document.getElementById('buyerSearch').value.toLowerCase();
-  const grade = document.getElementById('filterGrade').value;
+  const q      = document.getElementById('buyerSearch').value.toLowerCase();
+  const grade  = document.getElementById('filterGrade').value;
   const seller = document.getElementById('filterSeller').value;
-  const price = document.getElementById('filterPrice').value;
+  const price  = document.getElementById('filterPrice').value;
+  const deal   = document.getElementById('filterDeal')?.value || '';
 
   const baseInventory = buyerShowId
     ? getShowInventory(buyerShowId)
@@ -3124,7 +3299,22 @@ function filterBuyer() {
     else if (price === '150-500') matchPrice = p >= 150 && p < 500;
     else if (price === '500+') matchPrice = p >= 500;
 
-    return matchQ && matchGrade && matchSeller && matchPrice;
+    // Deal score filter
+    let matchDeal = true;
+    if (deal) {
+      const d = getDealScore(r);
+      if (deal === 'has_mv') {
+        matchDeal = !!d;
+      } else if (deal === 'great') {
+        matchDeal = d && d.tier === 'great';
+      } else if (deal === 'good') {
+        matchDeal = d && (d.tier === 'great' || d.tier === 'good');
+      } else if (deal === 'fair') {
+        matchDeal = d && (d.tier === 'great' || d.tier === 'good' || d.tier === 'fair');
+      }
+    }
+
+    return matchQ && matchGrade && matchSeller && matchPrice && matchDeal;
   });
 
   renderBuyerGrid(results);
@@ -3143,7 +3333,9 @@ function renderBuyerGrid(rows) {
 
   currentDisplayRows = rows;
 
-  grid.innerHTML = rows.map((r, i) => `
+  grid.innerHTML = rows.map((r, i) => {
+    const deal = dealBadge(r);
+    return `
     <div class="card-item" onclick="openCardModal(${i})" title="Click for details">
       <div class="card-item-header">
         <span class="card-item-year">${r.Year || '—'} · ${getSet(r) || '—'}</span>
@@ -3151,14 +3343,17 @@ function renderBuyerGrid(rows) {
       </div>
       <div class="card-item-player">${r.Player || 'Unknown'}</div>
       <div class="card-item-title">${r['Card Title'] || ''}</div>
-      ${r['Parallel/Variant'] ? `<div style="margin-bottom:0.4rem"><span class="badge badge-show">${(r['Parallel/Variant']).slice(0,30)}</span></div>` : ''}
+      <div style="display:flex;gap:0.35rem;flex-wrap:wrap;margin-bottom:0.4rem">
+        ${r['Parallel/Variant'] ? `<span class="badge badge-show">${(r['Parallel/Variant']).slice(0,30)}</span>` : ''}
+        <span class="badge-deal-wrap">${deal}</span>
+      </div>
       <div class="card-item-footer">
         <div class="card-item-seller">@${r.Seller || 'unknown'}</div>
         <div class="card-item-price">$${Number(r.Price || 0).toLocaleString()}</div>
       </div>
       <div style="text-align:center;margin-top:0.6rem;font-size:0.68rem;color:var(--muted);font-family:'DM Mono',monospace;letter-spacing:0.06em;opacity:0.6">TAP FOR DETAILS + CONTACT →</div>
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
 }
 
 function clearFilters() {
@@ -3240,18 +3435,199 @@ function buildConditionBar(r) {
           <div class="condition-bar">${pips}</div>`;
 }
 
-function openCardModal(idx) {
+
+// ── DEAL SCORE SYSTEM ──
+// Compares asking price to seller-supplied market value
+// Returns null if no market value is set
+
+function getDealScore(r) {
+  const asking = Number(r.Price || 0);
+  const market = Number(r['Market Value'] || r['Market Price'] || r['Estimated Value'] || r['Comp'] || 0);
+  if (!market || !asking) return null;
+
+  const diff   = market - asking;
+  const pct    = (diff / market) * 100; // positive = below market (deal), negative = above
+
+  let tier, label, cls, icon;
+  if      (pct >= 20)  { tier = 'great'; label = 'Great Deal';    cls = 'deal-great'; icon = '🔥'; }
+  else if (pct >= 5)   { tier = 'good';  label = 'Good Value';    cls = 'deal-good';  icon = '✓';  }
+  else if (pct >= -5)  { tier = 'fair';  label = 'Fair Price';    cls = 'deal-fair';  icon = '≈';  }
+  else if (pct >= -20) { tier = 'high';  label = 'Above Market';  cls = 'deal-high';  icon = '↑';  }
+  else                 { tier = 'steep'; label = 'High Ask';       cls = 'deal-steep'; icon = '⚠'; }
+
+  return { pct: Math.round(pct), diff: Math.round(diff), market, asking, tier, label, cls, icon };
+}
+
+function dealBadge(r) {
+  const d = getDealScore(r);
+  if (!d) return '';
+  const sign = d.pct > 0 ? '−' : '+';
+  const abs  = Math.abs(d.pct);
+  return `<span class="deal-badge ${d.cls}">${d.icon} ${d.label} · ${sign}${abs}%</span>`;
+}
+
+function buildDealMeter(r) {
+  const d = getDealScore(r);
+  if (!d) return '';
+
+  // Position on a 0-100 scale: 0=50%+ above market, 100=50%+ below
+  const clampedPct = Math.max(-50, Math.min(50, d.pct));
+  const barPos = ((clampedPct + 50) / 100) * 100; // 0-100%
+
+  const colors = {
+    great:  '#4ade80',
+    good:   '#60a5fa',
+    fair:   '#94a3b8',
+    high:   '#fbbf24',
+    steep:  '#f87171',
+  };
+  const color = colors[d.tier];
+  const diffStr = d.diff >= 0
+    ? `$${Math.abs(d.diff).toLocaleString()} below market`
+    : `$${Math.abs(d.diff).toLocaleString()} above market`;
+
+  return `
+  <div class="deal-meter-wrap">
+    <div class="deal-meter-label">Deal Score vs. Market</div>
+    <div class="deal-meter-row">
+      <div class="deal-meter-track">
+        <!-- Gradient fill from red → green -->
+        <div style="position:absolute;inset:0;border-radius:8px;background:linear-gradient(90deg,#f87171,#fbbf24 35%,#94a3b8 50%,#60a5fa 70%,#4ade80);opacity:0.35"></div>
+        <!-- Marker dot -->
+        <div class="deal-meter-marker" style="left:${barPos}%;color:${color}"></div>
+      </div>
+      <div class="deal-verdict" style="color:${color}">${d.icon} ${d.label}</div>
+    </div>
+    <div class="deal-prices">
+      <span>🔴 High Ask</span>
+      <span class="asking" style="color:${color}">
+        Asking $${d.asking.toLocaleString()} · ${diffStr}
+      </span>
+      <span>🟢 Great Deal</span>
+    </div>
+    <div style="text-align:center;margin-top:0.5rem;font-size:0.72rem;color:var(--muted);font-family:'DM Mono',monospace">
+      Market value: <span style="color:var(--text);font-weight:600">$${d.market.toLocaleString()}</span>
+      <span style="color:var(--muted);font-size:0.65rem"> (seller-supplied)</span>
+    </div>
+  </div>`;
+}
+
+// ── MARKET VALUE CACHE ──
+// Keyed by card fingerprint. Stores { value, source, fetchedAt } or null.
+const _mvCache = new Map();
+
+function _mvCacheKey(r) {
+  return [r.Player, r.Year, getSet(r), r['Parallel/Variant'], r.Grade, r.Grader]
+    .map(v => (v || '').toString().toLowerCase().trim())
+    .join('|');
+}
+
+// Fetch market value from the eBay Netlify function (Option A).
+// Falls back to seller-supplied value (Option C) if fetch fails or function not deployed.
+async function fetchMarketValue(r) {
+  const key = _mvCacheKey(r);
+
+  // 1. Return from cache if fresh (< 30 min)
+  if (_mvCache.has(key)) {
+    const cached = _mvCache.get(key);
+    if (cached === null || Date.now() - cached.fetchedAt < 30 * 60 * 1000) {
+      return cached;
+    }
+  }
+
+  // 2. Use seller-supplied value if present — no network call needed
+  const sellerMV = Number(
+    r['Market Value'] || r['Market Price'] || r['Estimated Value'] || r['Comp'] || 0
+  );
+  if (sellerMV) {
+    const result = { value: sellerMV, source: 'seller', fetchedAt: Date.now() };
+    _mvCache.set(key, result);
+    return result;
+  }
+
+  // 3. Try the Netlify serverless function (Option A — eBay live data)
+  try {
+    const params = new URLSearchParams({
+      player: r.Player   || '',
+      year:   r.Year     || '',
+      set:    getSet(r)  || '',
+      grade:  r.Grade    || '',
+      grader: r.Grader   || '',
+    });
+    const res = await Promise.race([
+      fetch(`/.netlify/functions/ebay-comps?${params}`),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000))
+    ]);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.marketValue) {
+        const result = { value: data.marketValue, source: 'ebay', comps: data.comps, fetchedAt: Date.now() };
+        _mvCache.set(key, result);
+        // Write back onto card object so deal badges in grid update
+        r['Market Value'] = data.marketValue;
+        return result;
+      }
+    }
+  } catch (_) {
+    // Function not deployed or network error — silently skip
+  }
+
+  // 4. No market value available
+  _mvCache.set(key, null);
+  return null;
+}
+
+// Build deal meter HTML — accepts a pre-fetched mvResult
+function buildDealMeterFromResult(r, mvResult) {
+  if (!mvResult) return '';
+  // Temporarily set market value so getDealScore can read it
+  const prev = r['Market Value'];
+  r['Market Value'] = mvResult.value;
+  const html = buildDealMeter(r);
+  r['Market Value'] = prev;
+
+  // Append source attribution
+  if (!html) return '';
+  const sourceLabel = mvResult.source === 'ebay'
+    ? `<span style="color:#3b82f6">📊 eBay recent sales</span>`
+    : `<span style="color:var(--muted)">Seller-supplied comp</span>`;
+  return html.replace(
+    '(seller-supplied)',
+    `· ${sourceLabel}`
+  ).replace(
+    '(seller-supplied comp)',
+    `· ${sourceLabel}`
+  );
+}
+
+// Renders the deal meter skeleton (shown while fetching)
+function dealMeterSkeleton() {
+  return `
+  <div class="deal-meter-wrap" id="dealMeterPlaceholder">
+    <div class="deal-meter-label">Deal Score vs. Market</div>
+    <div style="display:flex;align-items:center;gap:0.75rem">
+      <div style="flex:1;height:8px;border-radius:8px;background:var(--border);overflow:hidden">
+        <div style="height:100%;width:40%;background:linear-gradient(90deg,var(--border),rgba(245,200,66,0.15),var(--border));background-size:200% 100%;animation:shimmer 1.4s infinite;border-radius:8px"></div>
+      </div>
+      <div style="font-size:0.78rem;color:var(--muted);font-family:'DM Mono',monospace;letter-spacing:0.04em">
+        Checking market…
+      </div>
+    </div>
+  </div>`;
+}
+
+async function openCardModal(idx) {
   const r = currentDisplayRows[idx];
   if (!r) return;
 
-  const isGraded = r.Grade && !isNaN(Number(r.Grade));
-  const grader = r.Grader || (isGraded ? 'PSA' : null);
+  const isGraded    = r.Grade && !isNaN(Number(r.Grade));
+  const grader      = r.Grader || (isGraded ? 'PSA' : null);
   const sellerHandle = r.Seller || 'unknown';
-  const phone = SELLER_WHATSAPP[sellerHandle];
+  const phone       = SELLER_WHATSAPP[sellerHandle];
 
   // Header
   document.getElementById('modalPlayer').textContent = r.Player || 'Unknown';
-  document.getElementById('modalTitle').textContent = r['Card Title'] || '';
+  document.getElementById('modalTitle').textContent  = r['Card Title'] || '';
 
   // Price
   document.getElementById('modalPrice').textContent = '$' + Number(r.Price || 0).toLocaleString();
@@ -3262,47 +3638,48 @@ function openCardModal(idx) {
   // Seller
   const initials = sellerHandle.split('_').map(w => w[0]).join('').toUpperCase().slice(0,2);
   document.getElementById('modalSellerAvatar').textContent = initials;
-  document.getElementById('modalSellerName').textContent = '@' + sellerHandle;
+  document.getElementById('modalSellerName').textContent   = '@' + sellerHandle;
 
-  // Detail grid
-  const set = getSet(r);
+  // Detail grid fields
+  const set    = getSet(r);
   const fields = [
-    { label: 'Year',       value: r.Year || '—' },
-    { label: 'Set',        value: set || '—' },
-    { label: 'Card #',     value: r.Number || '—' },
-    { label: 'Parallel',   value: r['Parallel/Variant'] || '—' },
-    { label: 'Sport',      value: detectSport(r) },
-    { label: 'Status',     value: r.Status || 'Available' },
+    { label: 'Year',    value: r.Year || '—' },
+    { label: 'Set',     value: set    || '—' },
+    { label: 'Card #',  value: r.Number || '—' },
+    { label: 'Parallel',value: r['Parallel/Variant'] || '—' },
+    { label: 'Sport',   value: detectSport(r) },
+    { label: 'Status',  value: r.Status || 'Available' },
   ];
-
   if (isGraded) {
     fields.push({ label: 'Grading Co.', value: grader });
     fields.push({ label: 'Grade',       value: String(r.Grade) });
-    if (r['Cert #']) {
-      fields.push({ label: 'Cert #', value: r['Cert #'] });
-    }
+    if (r['Cert #']) fields.push({ label: 'Cert #', value: r['Cert #'] });
   }
 
-  // Only show condition bar for raw (ungraded) cards
   const condHtml = !isGraded ? `<div class="modal-field full">
     <div class="modal-field-label">Condition (Seller Assessed)</div>
     ${buildConditionBar(r)}
   </div>` : '';
 
+  // Render modal immediately with skeleton deal meter
   document.getElementById('modalGrid').innerHTML =
     fields.map(f => `
       <div class="modal-field">
         <div class="modal-field-label">${f.label}</div>
         <div class="modal-field-value">${f.value}</div>
-      </div>`).join('') + condHtml;
+      </div>`).join('') + condHtml + dealMeterSkeleton();
+
+  // Open modal right away — don't make buyer wait
+  document.getElementById('cardModal').classList.add('open');
+  document.body.style.overflow = 'hidden';
 
   // Seller notes
   const notes = r.Notes || r['Seller Notes'] || '';
   if (notes) {
-    document.getElementById('modalNotes').textContent = notes;
-    document.getElementById('modalNotesWrap').style.display = 'block';
+    document.getElementById('modalNotes').textContent        = notes;
+    document.getElementById('modalNotesWrap').style.display  = 'block';
   } else {
-    document.getElementById('modalNotesWrap').style.display = 'none';
+    document.getElementById('modalNotesWrap').style.display  = 'none';
   }
 
   // WhatsApp link
@@ -3322,8 +3699,40 @@ function openCardModal(idx) {
     wa.style.display = 'none';
   }
 
-  document.getElementById('cardModal').classList.add('open');
-  document.body.style.overflow = 'hidden';
+  // ── Lazy-load market value ──
+  const mvResult = await fetchMarketValue(r);
+  const placeholder = document.getElementById('dealMeterPlaceholder');
+  if (!placeholder) return; // modal was closed while fetching
+
+  if (mvResult) {
+    placeholder.outerHTML = buildDealMeterFromResult(r, mvResult);
+    // Also refresh the deal badge in the buyer grid for this card
+    _refreshGridDealBadge(r);
+  } else {
+    // No market value — remove skeleton cleanly
+    placeholder.outerHTML = `
+      <div class="modal-field full" style="text-align:center;padding:0.7rem">
+        <div style="font-family:'DM Mono',monospace;font-size:0.7rem;color:var(--muted);letter-spacing:0.06em">
+          No market comp available · <span style="color:var(--accent)">Seller can add one via Market Value field</span>
+        </div>
+      </div>`;
+  }
+}
+
+// Refresh the deal badge on a grid card after a live MV fetch
+function _refreshGridDealBadge(r) {
+  const idx = currentDisplayRows.indexOf(r);
+  if (idx === -1) return;
+  const grid = document.getElementById('buyerGrid');
+  if (!grid) return;
+  const cards = grid.querySelectorAll('.card-item');
+  const cardEl = cards[idx];
+  if (!cardEl) return;
+  const badgeRow = cardEl.querySelector('.badge-deal-wrap');
+  if (badgeRow) {
+    const newBadge = dealBadge(r);
+    badgeRow.innerHTML = newBadge;
+  }
 }
 
 function closeModal() {
@@ -4662,6 +5071,7 @@ const CS_FIELDS = [
   { key: 'Cert #',           label: 'Cert # (slab ID)',  required: false, hint: 'PSA/BGS/CGC cert number' },
   { key: 'Condition',        label: 'Condition',         required: false, hint: 'Gem Mint, Near Mint…' },
   { key: 'Price',            label: 'Price',             required: false, hint: 'Asking price (numeric)' },
+  { key: 'Market Value',     label: 'Market Value',      required: false, hint: 'Comparable market price' },
   { key: 'Status',           label: 'Status',            required: false, hint: 'Available, Sold, On Hold' },
   { key: 'Image URL',        label: 'Image URL',         required: false, hint: 'CDN URL for card image' },
   { key: '__SKIP__',         label: '— Skip this column —', required: false, hint: '' },
@@ -4745,8 +5155,16 @@ const ALIAS_MAP = [
   [/^team$/i,                   'low',    '__SKIP__'],
   [/^auto(graph)?$/i,           'low',    'Parallel/Variant'],
   [/^rc\s*\/?\s*rookie$/i,      'low',    'Parallel/Variant'],
-  [/^market\s*value$/i,         'medium', 'Price'],
-  [/^estimated\s*value$/i,      'medium', 'Price'],
+  [/^market\s*value$/i,         'high',   'Market Value'],
+  [/^market\s*price$/i,         'high',   'Market Value'],
+  [/^estimated\s*value$/i,      'high',   'Market Value'],
+  [/^comp(s)?$/i,               'high',   'Market Value'],
+  [/^comparable$/i,             'medium', 'Market Value'],
+  [/^fair\s*(market\s*)?value$/i,'high',  'Market Value'],
+  [/^book\s*value$/i,           'medium', 'Market Value'],
+  [/^ebay\s*(value|price|avg)?$/i,'high', 'Market Value'],
+  [/^recent\s*sale$/i,          'high',   'Market Value'],
+  [/^last\s*sold?$/i,           'high',   'Market Value'],
   [/^low\s*value$/i,            'low',    '__SKIP__'],
   [/^high\s*value$/i,           'low',    '__SKIP__'],
   [/^quantity$/i,               'low',    '__SKIP__'],
