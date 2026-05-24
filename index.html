@@ -112,7 +112,7 @@
 
   /* ── VIEWS ── */
   .view { display: none; }
-  .view.active { display: block; }
+  .view.active { display: block; position: relative; }
 
   /* ── SELLER VIEW ── */
   .seller-layout {
@@ -1775,6 +1775,38 @@
 
 
 
+
+
+
+  /* ── CARD EDIT ── */
+  .btn-card-edit {
+    background: transparent; border: 1px solid var(--border);
+    color: var(--muted); border-radius: 6px; padding: 0.18rem 0.5rem;
+    font-size: 0.7rem; font-weight: 600; font-family: 'DM Sans', sans-serif;
+    cursor: pointer; transition: all 0.15s; flex-shrink: 0;
+  }
+  .btn-card-edit:hover { border-color: var(--accent); color: var(--accent); }
+
+  .card-edit-overlay {
+    display: none; position: absolute; inset: 0;
+    background: rgba(0,0,0,0.72); backdrop-filter: blur(4px);
+    align-items: flex-start; justify-content: center;
+    z-index: 200; padding: 3rem 1rem 1rem;
+  }
+  .card-edit-overlay.open { display: flex; }
+
+  .card-edit-modal {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 16px; width: 100%; max-width: 520px;
+    max-height: calc(100vh - 120px); overflow-y: auto;
+    box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+    animation: cemIn 0.2s ease both;
+  }
+  @keyframes cemIn {
+    from { opacity:0; transform: translateY(-12px); }
+    to   { opacity:1; transform: translateY(0); }
+  }
+
 </style>
 </head>
 <body>
@@ -2029,6 +2061,116 @@
       </div>
     </div>
   </div>
+
+  <!-- ═══════ CARD EDIT MODAL (position:absolute inside view-seller) ═══════ -->
+  <div class="card-edit-overlay" id="cardEditOverlay" onclick="if(event.target===this)closeCEM()">
+    <div class="card-edit-modal">
+
+      <div class="modal-header">
+        <div>
+          <div class="modal-player" id="cemHeading" style="font-size:1.35rem">Edit Card</div>
+          <div id="cemSubheading" style="font-size:0.78rem;color:var(--muted);margin-top:0.2rem"></div>
+        </div>
+        <button class="modal-close" onclick="closeCEM()">✕</button>
+      </div>
+
+      <div class="modal-body" style="display:flex;flex-direction:column;gap:0.55rem">
+
+        <div>
+          <div class="section-label" style="margin-bottom:0.3rem">Card Title *</div>
+          <input class="show-input" id="cem_title" placeholder="e.g. 2025-26 Topps Chrome Cooper Flagg RC Auto" style="margin:0">
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.55rem">
+          <div>
+            <div class="section-label" style="margin-bottom:0.3rem">Player</div>
+            <input class="show-input" id="cem_player" placeholder="Player name" style="margin:0">
+          </div>
+          <div>
+            <div class="section-label" style="margin-bottom:0.3rem">Year</div>
+            <input class="show-input" id="cem_year" placeholder="e.g. 2025" style="margin:0">
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.55rem">
+          <div>
+            <div class="section-label" style="margin-bottom:0.3rem">Set</div>
+            <input class="show-input" id="cem_set" placeholder="e.g. Topps Chrome" style="margin:0">
+          </div>
+          <div>
+            <div class="section-label" style="margin-bottom:0.3rem">Card #</div>
+            <input class="show-input" id="cem_number" placeholder="e.g. 101" style="margin:0">
+          </div>
+        </div>
+
+        <div>
+          <div class="section-label" style="margin-bottom:0.3rem">Parallel / Variant</div>
+          <input class="show-input" id="cem_parallel" placeholder="e.g. Gold Refractor /50, Sapphire" style="margin:0">
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.55rem">
+          <div>
+            <div class="section-label" style="margin-bottom:0.3rem">Grader</div>
+            <select class="show-input" id="cem_grader" style="margin:0" onchange="cemToggle()">
+              <option value="">Raw</option>
+              <option value="PSA">PSA</option>
+              <option value="BGS">BGS</option>
+              <option value="CGC">CGC</option>
+              <option value="SGC">SGC</option>
+            </select>
+          </div>
+          <div>
+            <div class="section-label" style="margin-bottom:0.3rem">Grade</div>
+            <input class="show-input" id="cem_grade" placeholder="e.g. 10" style="margin:0">
+          </div>
+          <div>
+            <div class="section-label" style="margin-bottom:0.3rem">Cert #</div>
+            <input class="show-input" id="cem_cert" placeholder="Cert #" style="margin:0">
+          </div>
+        </div>
+
+        <div id="cem_cond_row">
+          <div class="section-label" style="margin-bottom:0.3rem">Condition</div>
+          <select class="show-input" id="cem_condition" style="margin:0">
+            <option value="">Select condition</option>
+            <option value="Gem Mint">Gem Mint</option>
+            <option value="Near Mint">Near Mint</option>
+            <option value="Good">Good</option>
+            <option value="Fair">Fair</option>
+            <option value="Poor">Poor</option>
+          </select>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.55rem">
+          <div>
+            <div class="section-label" style="margin-bottom:0.3rem">Asking Price ($)</div>
+            <input class="show-input" id="cem_price" placeholder="e.g. 250" style="margin:0">
+          </div>
+          <div>
+            <div class="section-label" style="margin-bottom:0.3rem">Market Value ($)</div>
+            <input class="show-input" id="cem_mv" placeholder="Comp sale" style="margin:0">
+          </div>
+        </div>
+
+        <div>
+          <div class="section-label" style="margin-bottom:0.3rem">Status</div>
+          <select class="show-input" id="cem_status" style="margin:0">
+            <option value="Available">Available</option>
+            <option value="On Hold">On Hold</option>
+            <option value="Sold">Sold</option>
+          </select>
+        </div>
+
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn btn-primary" style="flex:1" onclick="saveCEM()">Save Changes</button>
+        <button class="btn-modal-close" onclick="closeCEM()">Cancel</button>
+      </div>
+
+    </div>
+  </div>
+
 </div>
 
 <!-- ═══════════════ BUYER VIEW ═══════════════ -->
@@ -3290,8 +3432,11 @@ function renderSellerTable(rows) {
       </td>
       <td data-label="Price" class="price" style="${status === 'Sold' ? 'opacity:0.4;text-decoration:line-through' : ''}">$${Number(r.Price || 0).toLocaleString()}</td>
       <td data-label="Status">
-        <div class="status-toggle ${statusClass}" onclick="cycleStatus(${realIdx}, this)">
-          <span class="status-dot"></span>${statusIcon} ${status}
+        <div style="display:flex;align-items:center;gap:0.45rem">
+          <div class="status-toggle ${statusClass}" onclick="cycleStatus(${realIdx}, this)">
+            <span class="status-dot"></span>${statusIcon} ${status}
+          </div>
+          <button class="btn-card-edit" onclick="openCEM(${realIdx})">✏ Edit</button>
         </div>
       </td>
     </tr>`;
@@ -5601,6 +5746,78 @@ document.addEventListener('keydown', e => {
 
 
 
+
+
+// ── CARD EDIT MODAL ──
+let _cemIdx = null;
+
+function openCEM(idx) {
+  const card = inventory[idx];
+  if (!card) return;
+  _cemIdx = idx;
+
+  document.getElementById('cemHeading').textContent    = 'Edit Card';
+  document.getElementById('cemSubheading').textContent =
+    [card.Player, card.Year].filter(Boolean).join(' · ');
+
+  document.getElementById('cem_title').value     = card['Card Title']       || '';
+  document.getElementById('cem_player').value    = card.Player              || '';
+  document.getElementById('cem_year').value      = card.Year                || '';
+  document.getElementById('cem_set').value       = card['Set '] || card.Set || '';
+  document.getElementById('cem_number').value    = card.Number              || '';
+  document.getElementById('cem_parallel').value  = card['Parallel/Variant'] || '';
+  document.getElementById('cem_grader').value    = card.Grader              || '';
+  document.getElementById('cem_grade').value     = card.Grade != null ? card.Grade : '';
+  document.getElementById('cem_cert').value      = card['Cert #']           || '';
+  document.getElementById('cem_condition').value = card.Condition           || '';
+  document.getElementById('cem_price').value     = card.Price != null ? card.Price : '';
+  document.getElementById('cem_mv').value        = card['Market Value'] != null ? card['Market Value'] : '';
+  document.getElementById('cem_status').value    = card.Status              || 'Available';
+
+  cemToggle();
+  document.getElementById('cardEditOverlay').classList.add('open');
+}
+
+function closeCEM() {
+  document.getElementById('cardEditOverlay').classList.remove('open');
+  _cemIdx = null;
+}
+
+function cemToggle() {
+  const graded = !!document.getElementById('cem_grader').value;
+  document.getElementById('cem_cond_row').style.display = graded ? 'none' : 'block';
+}
+
+function saveCEM() {
+  if (_cemIdx === null) return;
+  const card = inventory[_cemIdx];
+  if (!card) return;
+  const title = document.getElementById('cem_title').value.trim();
+  if (!title) { showToast('Card Title is required', 'var(--danger)'); return; }
+
+  const grader = document.getElementById('cem_grader').value;
+  card['Card Title']       = title;
+  card.Player              = document.getElementById('cem_player').value.trim();
+  card.Year                = document.getElementById('cem_year').value.trim() || null;
+  card['Set ']             = document.getElementById('cem_set').value.trim();
+  card.Number              = document.getElementById('cem_number').value.trim();
+  card['Parallel/Variant'] = document.getElementById('cem_parallel').value.trim();
+  card.Grader              = grader || null;
+  card.Grade               = grader && document.getElementById('cem_grade').value !== ''
+                               ? parseFloat(document.getElementById('cem_grade').value) : null;
+  card['Cert #']           = grader ? document.getElementById('cem_cert').value.trim() : null;
+  card.Condition           = !grader ? (document.getElementById('cem_condition').value || null) : null;
+  card.Price               = parseFloat(document.getElementById('cem_price').value) || 0;
+  card['Market Value']     = document.getElementById('cem_mv').value !== ''
+                               ? parseFloat(document.getElementById('cem_mv').value) : null;
+  card.Status              = document.getElementById('cem_status').value || 'Available';
+
+  closeCEM();
+  renderSellerTable(getSellerInventory());
+  updateStats();
+  showToast('✓ Card updated');
+}
+
 // ── LOAD SAMPLE DATA ON INIT ──
 (function initSampleData() {
   const incoming = SAMPLE.map(r => validateAndNormalizeCard({ ...r }));
@@ -5612,6 +5829,7 @@ document.addEventListener('keydown', e => {
   seedSampleShows();
 })();
 </script>
+
 
 
 </body>
