@@ -5261,7 +5261,8 @@ function sellerRemoveFromShow(showId) {
 // ── Buyer: Show picker ──
 function openBuyerShowPicker() {
   const el = document.getElementById('buyerShowPicker');
-  el.style.display = 'flex';
+  el.style.display = '';
+  el.classList.add('open');
 
   // Show public/active shows if any
   const activeShows = Object.values(shows).filter(s => s.status === 'active');
