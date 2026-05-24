@@ -607,80 +607,250 @@
   .no-results p { color: var(--muted); }
 
   /* ── RESPONSIVE ── */
-  @media (max-width: 900px) {
-    .seller-layout { grid-template-columns: 1fr; }
-    .sidebar { border-right: none; border-bottom: 1px solid var(--border); }
-    .filter-bar { grid-template-columns: 1fr 1fr; }
-    .filter-search { grid-column: 1/-1; }
+  /* ══════════════════════════════════════════════════
+     RESPONSIVE — four breakpoints
+     xs  < 480px   phones portrait
+     sm  480–767px phones landscape / small tablet portrait
+     md  768–1023px tablets (both orientations)
+     lg  1024px+   desktop / tablet landscape wide
+  ══════════════════════════════════════════════════ */
+
+  /* ── Base: Desktop (lg) ──────────────────────── */
+  html, body { max-width: 100vw; overflow-x: hidden; }
+
+  .seller-layout {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    min-height: calc(100vh - 52px);
   }
 
-  /* ── MOBILE ── */
-  @media (max-width: 640px) {
-    /* Prevent horizontal scroll globally */
-    html, body { max-width: 100vw; overflow-x: hidden; }
-
-    /* Buyer view full-width */
-    .buyer-view { padding: 0.75rem; }
-
-    /* Two-column compact card grid on mobile */
-    .card-grid {
-      grid-template-columns: repeat(2, 1fr);
-      gap: 0.5rem;
-    }
-
-    /* Even more compact card on mobile */
-    .card-item { padding: 0.6rem; border-radius: 8px; }
-    .card-item-player { font-size: 0.95rem; }
-    .card-item-title { font-size: 0.65rem; -webkit-line-clamp: 1; }
-    .card-item-price { font-size: 1rem; }
-    .card-item-year { font-size: 0.58rem; }
-    .card-item-seller { display: none; } /* hide seller handle on tiny screens */
-    .card-item:hover { transform: none; } /* disable lift on touch */
-
-    /* Badges smaller on mobile */
-    .badge { font-size: 0.56rem; padding: 0.1rem 0.38rem; }
-    .deal-badge { font-size: 0.56rem; padding: 0.1rem 0.38rem; }
-
-    /* Tighten the "tap for details" hint */
-    .card-item > div[style*="TAP FOR"] { font-size: 0.55rem; margin-top: 0.35rem; }
-
-    /* Filter bar stacks fully on mobile */
-    .filter-bar {
-      grid-template-columns: 1fr;
-      gap: 0.5rem;
-      padding: 0.75rem;
-    }
-    .filter-select { min-width: unset; width: 100%; }
-    #filterSeller { display: none; } /* hide seller filter — too narrow */
-
-    /* Show selector pills wrap */
-    .show-selector { flex-wrap: wrap; gap: 0.4rem; padding: 0 0.75rem; }
-    .show-pill { font-size: 0.72rem; padding: 0.3rem 0.7rem; }
-
-    /* Results meta wraps */
-    .results-meta { flex-direction: column; align-items: flex-start; gap: 0.5rem; padding: 0 0.75rem 0.5rem; }
-    #dealLegend { display: none; } /* hide legend on mobile — too wide */
-
-    /* Modal fits mobile screen */
-    .modal { max-width: 100%; margin: 0.5rem; border-radius: 14px; }
-    .modal-grid { grid-template-columns: 1fr 1fr; gap: 0.45rem; }
-    .modal-price { font-size: 1.8rem; }
-    .modal-player { font-size: 1.5rem; }
-    .modal-actions { flex-direction: column; }
-    .modal-actions .btn-wa-full,
-    .modal-actions .btn-modal-close { width: 100%; justify-content: center; }
-
-    /* Buyer view header padding */
-    .buyer-header { margin-bottom: 1.2rem; }
-    .buyer-header h1 { font-size: 2.2rem; }
-    .buyer-header p { font-size: 0.8rem; }
+  .sidebar {
+    border-right: 1px solid var(--border);
+    padding: 1.25rem;
+    background: var(--surface);
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    overflow-y: auto;
   }
 
-  @media (max-width: 380px) {
-    /* Single column on very small phones */
-    .card-grid { grid-template-columns: 1fr; }
-    .card-item-title { -webkit-line-clamp: 2; }
-    .card-item-seller { display: none; }
+  .main-content { padding: 1.25rem 1.5rem; overflow-x: auto; }
+
+  .sidebar-toggle { display: none; }
+
+  .toolbar {
+    display: flex; align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem; gap: 0.75rem;
+  }
+  .toolbar h2 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.4rem; letter-spacing: 0.06em; color: var(--text);
+  }
+  .search-input {
+    flex: 1; max-width: 280px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 0.5rem 0.85rem;
+    color: var(--text); font-family: 'DM Sans', sans-serif;
+    font-size: 0.85rem; outline: none; transition: border-color 0.2s;
+  }
+  .search-input:focus { border-color: var(--accent); }
+  .search-input::placeholder { color: var(--muted); }
+
+  /* ── Tablet landscape (md wide) 900–1023px ────── */
+  @media (max-width: 1023px) and (min-width: 900px) {
+    .seller-layout { grid-template-columns: 240px 1fr; }
+    .sidebar { padding: 1rem; gap: 1rem; }
+    .main-content { padding: 1rem 1.2rem; }
+  }
+
+  /* ── Tablet (md) 600–899px ───────────────────── */
+  @media (max-width: 899px) and (min-width: 600px) {
+    .seller-layout {
+      grid-template-columns: 220px 1fr;
+      min-height: calc(100vh - 52px);
+    }
+
+    .sidebar {
+      padding: 0.9rem;
+      gap: 0.9rem;
+      font-size: 0.88rem;
+    }
+
+    /* Sidebar content compact */
+    .stats-row { gap: 0.5rem; }
+    .stat-box { padding: 0.65rem 0.7rem; }
+    .stat-box .val { font-size: 1.5rem; }
+    .stat-box .lbl { font-size: 0.6rem; }
+    .upload-zone { padding: 1rem 0.75rem; }
+    .upload-icon { font-size: 1.5rem; margin-bottom: 0.3rem; }
+    .upload-zone strong { font-size: 0.8rem; }
+    .upload-zone p { font-size: 0.7rem; }
+    .show-card { padding: 0.6rem 0.75rem; }
+    .show-card-name { font-size: 0.82rem; }
+    .show-card-meta { font-size: 0.65rem; }
+    .btn-xs { font-size: 0.65rem; padding: 0.2rem 0.5rem; }
+    .section-label { font-size: 0.62rem; }
+
+    /* Main content */
+    .main-content { padding: 0.9rem 1rem; }
+    .toolbar h2 { font-size: 1.2rem; }
+    .search-input { max-width: 220px; font-size: 0.8rem; }
+    .toolbar .btn { font-size: 0.75rem; padding: 0.4rem 0.7rem; }
+
+    /* Admin filter bar — two column wrap */
+    .admin-filter-bar { gap: 0.4rem; padding: 0.55rem 0.7rem; flex-wrap: wrap; }
+    .admin-filter-search { min-width: 100%; }
+    .admin-filter-select {
+      min-width: calc(50% - 0.2rem); flex: 1;
+      font-size: 0.76rem; padding: 0.4rem 0.55rem;
+    }
+    .admin-filter-results { font-size: 0.68rem; }
+    .btn-clear-filters { font-size: 0.7rem; padding: 0.35rem 0.55rem; }
+
+    /* Table: keep horizontal scroll, just tighten */
+    .table-wrap { overflow-x: auto; }
+    th { padding: 0.55rem 0.7rem; font-size: 0.62rem; }
+    td { padding: 0.65rem 0.7rem; font-size: 0.78rem; }
+
+    /* Hide lower-priority columns on tablet */
+    .table-wrap th:nth-child(5),  /* Set */
+    .table-wrap td:nth-child(5),
+    .table-wrap th:nth-child(8),  /* Cert # */
+    .table-wrap td[data-label="Cert #"],
+    .table-wrap th:nth-child(9),  /* Condition */
+    .table-wrap td[data-label="Condition"] {
+      display: none;
+    }
+  }
+
+  /* ── Small tablet portrait / large phone (sm) 480–599px ── */
+  @media (max-width: 599px) and (min-width: 480px) {
+    .seller-layout { grid-template-columns: 1fr; min-height: unset; }
+    .sidebar-toggle { display: block; }
+    .sidebar {
+      display: none;
+      border-right: none; border-bottom: 1px solid var(--border);
+      padding: 0.9rem; gap: 0.9rem;
+    }
+    .sidebar.sidebar-open { display: flex; }
+
+    .main-content { padding: 0.75rem; }
+    .toolbar { flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.65rem; }
+    .toolbar h2 { font-size: 1.1rem; flex: 1 0 100%; }
+    .search-input { max-width: 100%; flex: 1; font-size: 0.8rem; }
+    .toolbar .btn { font-size: 0.72rem; padding: 0.4rem 0.65rem; }
+
+    .admin-filter-bar { flex-wrap: wrap; gap: 0.4rem; padding: 0.55rem 0.7rem; }
+    .admin-filter-search { min-width: 100%; }
+    .admin-filter-select { min-width: calc(50% - 0.2rem); flex: 1; font-size: 0.76rem; }
+
+    /* Table card rows */
+    .table-wrap thead { display: none; }
+    .table-wrap table, .table-wrap tbody,
+    .table-wrap tr, .table-wrap td { display: block; width: 100%; }
+    .table-wrap tbody tr {
+      border-bottom: 1px solid var(--border);
+      padding: 0.7rem; position: relative; background: var(--card);
+    }
+    .table-wrap tbody td {
+      padding: 0.15rem 0; font-size: 0.78rem; border-bottom: none;
+      display: flex; align-items: baseline; gap: 0.4rem;
+    }
+    .table-wrap tbody td::before {
+      content: attr(data-label);
+      font-family: 'DM Mono', monospace; font-size: 0.58rem;
+      letter-spacing: 0.08em; text-transform: uppercase;
+      color: var(--muted); flex-shrink: 0; min-width: 64px;
+    }
+    .table-wrap tbody td:first-child {
+      position: absolute; top: 0.7rem; right: 0.7rem;
+      width: auto; padding: 0;
+    }
+    .table-wrap tbody td:first-child::before { display: none; }
+    .table-wrap tbody td:nth-child(2) {
+      font-weight: 600; font-size: 0.85rem; color: var(--text);
+      padding-bottom: 0.25rem; margin-bottom: 0.3rem;
+      border-bottom: 1px solid rgba(37,42,53,0.4);
+    }
+    .table-wrap tbody td:nth-child(2)::before { display: none; }
+    .table-wrap tbody td[data-label="Set"],
+    .table-wrap tbody td[data-label="Condition"],
+    .table-wrap tbody td[data-label="Market Value"],
+    .table-wrap tbody td[data-label="Cert #"] { display: none; }
+    .table-wrap tbody td[data-label="Price"] {
+      font-family: 'Bebas Neue', sans-serif; font-size: 1.05rem;
+      color: var(--accent); letter-spacing: 0.04em;
+    }
+    .stats-row { grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+    .stat-box { padding: 0.65rem; }
+    .stat-box .val { font-size: 1.4rem; }
+  }
+
+  /* ── Mobile (xs) < 480px ─────────────────────── */
+  @media (max-width: 479px) {
+    .seller-layout { grid-template-columns: 1fr; min-height: unset; }
+    .sidebar-toggle { display: block; }
+    .sidebar {
+      display: none;
+      border-right: none; border-bottom: 1px solid var(--border);
+      padding: 0.75rem; gap: 0.9rem;
+    }
+    .sidebar.sidebar-open { display: flex; }
+
+    .main-content { padding: 0.5rem; }
+    .toolbar { flex-wrap: wrap; gap: 0.45rem; margin-bottom: 0.6rem; }
+    .toolbar h2 { font-size: 1rem; flex: 1 0 100%; }
+    .search-input { max-width: 100%; flex: 1; font-size: 0.78rem; padding: 0.45rem 0.7rem; }
+    .toolbar .btn { font-size: 0.7rem; padding: 0.38rem 0.6rem; }
+
+    .admin-filter-bar { flex-wrap: wrap; gap: 0.4rem; padding: 0.5rem; }
+    .admin-filter-search { min-width: 100%; }
+    .admin-filter-select { min-width: 100%; font-size: 0.74rem; }
+
+    /* Table card rows */
+    .table-wrap thead { display: none; }
+    .table-wrap table, .table-wrap tbody,
+    .table-wrap tr, .table-wrap td { display: block; width: 100%; }
+    .table-wrap tbody tr {
+      border-bottom: 1px solid var(--border);
+      padding: 0.65rem; position: relative; background: var(--card);
+    }
+    .table-wrap tbody td {
+      padding: 0.14rem 0; font-size: 0.76rem; border-bottom: none;
+      display: flex; align-items: baseline; gap: 0.35rem;
+    }
+    .table-wrap tbody td::before {
+      content: attr(data-label);
+      font-family: 'DM Mono', monospace; font-size: 0.56rem;
+      letter-spacing: 0.08em; text-transform: uppercase;
+      color: var(--muted); flex-shrink: 0; min-width: 60px;
+    }
+    .table-wrap tbody td:first-child {
+      position: absolute; top: 0.65rem; right: 0.65rem;
+      width: auto; padding: 0;
+    }
+    .table-wrap tbody td:first-child::before { display: none; }
+    .table-wrap tbody td:nth-child(2) {
+      font-weight: 600; font-size: 0.82rem; color: var(--text);
+      padding-bottom: 0.22rem; margin-bottom: 0.28rem;
+      border-bottom: 1px solid rgba(37,42,53,0.4);
+    }
+    .table-wrap tbody td:nth-child(2)::before { display: none; }
+    .table-wrap tbody td[data-label="Set"],
+    .table-wrap tbody td[data-label="Condition"],
+    .table-wrap tbody td[data-label="Market Value"],
+    .table-wrap tbody td[data-label="Cert #"],
+    .table-wrap tbody td[data-label="Year"] { display: none; }
+    .table-wrap tbody td[data-label="Price"] {
+      font-family: 'Bebas Neue', sans-serif; font-size: 1rem;
+      color: var(--accent); letter-spacing: 0.04em;
+    }
+    .stats-row { grid-template-columns: 1fr 1fr; gap: 0.4rem; }
+    .stat-box { padding: 0.55rem; }
+    .stat-box .val { font-size: 1.3rem; }
+    .stat-box .lbl { font-size: 0.58rem; }
+    .empty-state { padding: 2rem 0.75rem; }
   }
 
   /* ── CARD DETAIL MODAL ── */
@@ -1600,176 +1770,40 @@
   }
   .sidebar-toggle.open::after { content: ' ▴'; }
 
-  @media (max-width: 768px) {
-
-    /* ── Layout ── */
-    html, body { max-width: 100vw; overflow-x: hidden; }
-
-    .seller-layout {
-      grid-template-columns: 1fr;
-      min-height: unset;
-    }
-
-    /* Show toggle button */
-    .sidebar-toggle { display: block; }
-
-    /* Sidebar collapses by default on mobile */
-    .sidebar {
-      border-right: none;
-      border-bottom: 1px solid var(--border);
-      padding: 1rem;
-      gap: 1rem;
-      display: none; /* hidden until toggled */
-    }
-    .sidebar.sidebar-open { display: flex; }
-
-    /* Stats row — 2 cols on mobile */
-    .stats-row { grid-template-columns: 1fr 1fr; gap: 0.5rem; }
-    .stat-box { padding: 0.65rem; }
-    .stat-box .val { font-size: 1.4rem; }
-    .stat-box .lbl { font-size: 0.62rem; }
-
-    /* Upload zone — more compact */
-    .upload-zone { padding: 1rem 0.75rem; }
-    .upload-icon { font-size: 1.5rem; margin-bottom: 0.3rem; }
-    .upload-zone strong { font-size: 0.82rem; }
-    .upload-zone p { font-size: 0.72rem; }
-
-    /* Main content full-width */
-    .main-content { padding: 0.75rem; }
-
-    /* Toolbar stacks */
-    .toolbar {
-      flex-wrap: wrap;
-      gap: 0.5rem;
-      margin-bottom: 0.75rem;
-    }
-    .toolbar h2 { font-size: 1.2rem; flex: 1 0 100%; }
-    .search-input {
-      max-width: 100%;
-      flex: 1;
-      font-size: 0.82rem;
-      padding: 0.5rem 0.75rem;
-    }
-    .toolbar .btn { font-size: 0.75rem; padding: 0.48rem 0.75rem; }
-
-    /* Admin filter bar — wraps into 2 columns */
-    .admin-filter-bar {
-      flex-wrap: wrap;
-      gap: 0.45rem;
-      padding: 0.6rem 0.75rem;
-    }
-    .admin-filter-search { min-width: 100%; }
-    .admin-filter-select {
-      min-width: calc(50% - 0.25rem);
-      flex: 1;
-      font-size: 0.78rem;
-      padding: 0.45rem 0.6rem;
-    }
-    .admin-filter-results { font-size: 0.7rem; }
-    .btn-clear-filters { font-size: 0.72rem; padding: 0.38rem 0.6rem; }
-
-    /* ── TABLE → CARD ROWS ── */
-    /* Hide the traditional table header */
-    .table-wrap thead { display: none; }
-
-    /* Make each row a card */
-    .table-wrap table,
-    .table-wrap tbody,
-    .table-wrap tr,
-    .table-wrap td {
-      display: block;
-      width: 100%;
-    }
-
-    .table-wrap {
-      border-radius: 10px;
-      overflow: hidden;
-      border: 1px solid var(--border);
-    }
-
-    .table-wrap tbody tr {
-      border-bottom: 1px solid var(--border);
-      padding: 0.75rem;
-      position: relative;
-      background: var(--card);
-    }
-    .table-wrap tbody tr:last-child { border-bottom: none; }
-    .table-wrap tbody tr:hover td { background: transparent; }
-    .table-wrap tbody tr:hover { background: rgba(245,200,66,0.02); }
-
-    /* Each cell becomes a labelled inline row */
-    .table-wrap tbody td {
-      padding: 0.18rem 0;
-      font-size: 0.8rem;
-      border-bottom: none;
-      display: flex;
-      align-items: baseline;
-      gap: 0.4rem;
-    }
-    .table-wrap tbody td::before {
-      content: attr(data-label);
-      font-family: 'DM Mono', monospace;
-      font-size: 0.6rem;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      color: var(--muted);
-      flex-shrink: 0;
-      min-width: 72px;
-    }
-
-    /* Checkbox cell — absolutely positioned */
-    .table-wrap tbody td:first-child {
-      position: absolute;
-      top: 0.75rem; right: 0.75rem;
-      width: auto; padding: 0;
-    }
-    .table-wrap tbody td:first-child::before { display: none; }
-
-    /* Card title cell — bigger and prominent */
-    .table-wrap tbody td:nth-child(2) {
-      font-weight: 600;
-      font-size: 0.88rem;
-      color: var(--text);
-      padding-bottom: 0.3rem;
-      margin-bottom: 0.15rem;
-      border-bottom: 1px solid rgba(37,42,53,0.4);
-      margin-bottom: 0.35rem;
-    }
-    .table-wrap tbody td:nth-child(2)::before { display: none; }
-
-    /* Hide less important columns on mobile */
-    .table-wrap tbody td[data-label="Set"],
-    .table-wrap tbody td[data-label="Condition"],
-    .table-wrap tbody td[data-label="Market Value"],
-    .table-wrap tbody td[data-label="Cert #"] {
-      display: none;
-    }
-
-    /* Price cell — large and gold */
-    .table-wrap tbody td[data-label="Price"] {
-      font-family: 'Bebas Neue', sans-serif;
-      font-size: 1.1rem;
-      color: var(--accent);
-      letter-spacing: 0.04em;
-    }
-    .table-wrap tbody td[data-label="Price"]::before {
-      color: var(--muted);
-      font-family: 'DM Mono', monospace;
-    }
-
-    /* Status cell */
-    .table-wrap tbody td[data-label="Status"] { margin-top: 0.2rem; }
-
-    /* Empty state */
-    .empty-state { padding: 2.5rem 1rem; }
+  /* Buyer mobile — kept separately for buyer view */
+  @media (max-width: 640px) {
+    .buyer-view { padding: 0.75rem; }
+    .card-grid { grid-template-columns: repeat(2, 1fr); gap: 0.5rem; }
+    .card-item { padding: 0.6rem; border-radius: 8px; }
+    .card-item-player { font-size: 0.95rem; }
+    .card-item-title { font-size: 0.65rem; -webkit-line-clamp: 1; }
+    .card-item-price { font-size: 1rem; }
+    .card-item-year { font-size: 0.58rem; }
+    .card-item-seller { display: none; }
+    .card-item:hover { transform: none; }
+    .badge { font-size: 0.56rem; padding: 0.1rem 0.38rem; }
+    .deal-badge { font-size: 0.56rem; padding: 0.1rem 0.38rem; }
+    .filter-bar { grid-template-columns: 1fr; gap: 0.5rem; padding: 0.75rem; }
+    .filter-select { min-width: unset; width: 100%; }
+    #filterSeller { display: none; }
+    .show-selector { flex-wrap: wrap; gap: 0.4rem; padding: 0 0.75rem; }
+    .show-pill { font-size: 0.72rem; padding: 0.3rem 0.7rem; }
+    .results-meta { flex-direction: column; align-items: flex-start; gap: 0.5rem; padding: 0 0.75rem 0.5rem; }
+    #dealLegend { display: none; }
+    .modal { max-width: 100%; margin: 0.5rem; border-radius: 14px; }
+    .modal-grid { grid-template-columns: 1fr 1fr; gap: 0.45rem; }
+    .modal-price { font-size: 1.8rem; }
+    .modal-player { font-size: 1.5rem; }
+    .modal-actions { flex-direction: column; }
+    .modal-actions .btn-wa-full,
+    .modal-actions .btn-modal-close { width: 100%; justify-content: center; }
+    .buyer-header { margin-bottom: 1.2rem; }
+    .buyer-header h1 { font-size: 2.2rem; }
+    .buyer-header p { font-size: 0.8rem; }
   }
-
-  @media (max-width: 480px) {
-    /* Even tighter on very small phones */
-    .admin-filter-select { min-width: 100%; }
-    .main-content { padding: 0.5rem; }
-    .table-wrap tbody tr { padding: 0.65rem; }
+  @media (max-width: 380px) {
+    .card-grid { grid-template-columns: 1fr; }
+    .card-item-title { -webkit-line-clamp: 2; }
   }
 
 
