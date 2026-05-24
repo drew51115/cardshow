@@ -1840,6 +1840,54 @@
     to   { opacity:1; transform: translateY(0); }
   }
 
+
+  /* ── ADD CARD ── */
+  .btn-add-card-result {
+    display: block; width: 100%; text-align: left;
+    background: transparent; border: none; border-bottom: 1px solid var(--border);
+    padding: 0.6rem 0.85rem; cursor: pointer;
+    transition: background 0.12s;
+  }
+  .btn-add-card-result:last-child { border-bottom: none; }
+  .btn-add-card-result:hover { background: rgba(245,200,66,0.06); }
+  .btn-add-card-result:hover .acr-title { color: var(--accent); }
+  .acr-title {
+    font-size: 0.82rem; font-weight: 600; color: var(--text);
+    transition: color 0.12s; line-height: 1.3;
+  }
+  .acr-meta {
+    font-size: 0.68rem; color: var(--muted);
+    font-family: 'DM Mono', monospace; margin-top: 0.15rem;
+    letter-spacing: 0.02em;
+  }
+  .acr-mv {
+    font-size: 0.7rem; font-family: 'DM Mono', monospace;
+    font-weight: 600; float: right; margin-top: -1.2rem;
+  }
+  .ac-results-wrap {
+    border: 1px solid var(--border); border-radius: 8px;
+    overflow: hidden; background: var(--surface);
+    max-height: 200px; overflow-y: auto;
+    margin-top: 0.3rem;
+  }
+  .ac-empty {
+    padding: 0.7rem 0.85rem;
+    font-size: 0.78rem; color: var(--muted);
+    font-family: 'DM Mono', monospace;
+  }
+  .ac-spinner {
+    padding: 0.7rem 0.85rem;
+    font-size: 0.72rem; color: var(--muted);
+    font-family: 'DM Mono', monospace; letter-spacing: 0.06em;
+    animation: pulse 1.2s ease infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:0.4} 50%{opacity:1} }
+  .mv-loading {
+    font-size: 0.68rem; color: var(--muted);
+    font-family: 'DM Mono', monospace; letter-spacing: 0.04em;
+    animation: pulse 1.2s ease infinite;
+  }
+
 </style>
 </head>
 <body>
@@ -1912,7 +1960,10 @@
     <aside class="sidebar sidebar-open" id="mainSidebar">
 
       <div>
-        <div class="section-label">Upload Inventory</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem">
+          <div class="section-label" style="margin-bottom:0">Upload Inventory</div>
+          <button class="btn btn-primary" style="font-size:0.72rem;padding:0.3rem 0.8rem;gap:0.3rem" onclick="openAddCard()">+ Add Card</button>
+        </div>
         <div class="upload-zone" id="uploadZone">
           <input type="file" accept=".csv,.xlsx" onchange="handleFileUpload(this)">
           <div class="upload-icon">📋</div>
@@ -2089,6 +2140,136 @@
       </div>
     </div>
   </div>
+
+  <!-- ═══════ ADD CARD MODAL (position:absolute inside view-seller) ═══════ -->
+  <div class="card-edit-overlay" id="addCardOverlay" onclick="if(event.target===this)closeAddCard()">
+    <div class="card-edit-modal">
+
+      <div class="modal-header">
+        <div>
+          <div class="modal-player" style="font-size:1.35rem">Add Card</div>
+          <div style="font-size:0.78rem;color:var(--muted);margin-top:0.2rem">Search by player, set, or card name</div>
+        </div>
+        <button class="modal-close" onclick="closeAddCard()">✕</button>
+      </div>
+
+      <div class="modal-body" style="display:flex;flex-direction:column;gap:0.6rem">
+
+        <!-- Search -->
+        <div>
+          <div class="section-label" style="margin-bottom:0.3rem">Search Card</div>
+          <input class="show-input" id="ac_search"
+            placeholder="e.g. Cooper Flagg 2025, Luka Doncic RC Silver…"
+            style="margin:0" autocomplete="off"
+            oninput="acSearch(this.value)">
+          <div id="ac_results"></div>
+        </div>
+
+        <!-- Divider -->
+        <div style="display:flex;align-items:center;gap:0.6rem;margin:0.1rem 0">
+          <div style="flex:1;height:1px;background:var(--border)"></div>
+          <div style="font-size:0.62rem;color:var(--muted);font-family:'DM Mono',monospace;letter-spacing:0.1em">CARD DETAILS</div>
+          <div style="flex:1;height:1px;background:var(--border)"></div>
+        </div>
+
+        <div>
+          <div class="section-label" style="margin-bottom:0.3rem">Card Title *</div>
+          <input class="show-input" id="ac_title" placeholder="e.g. 2025-26 Topps Chrome Cooper Flagg RC Auto" style="margin:0">
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.55rem">
+          <div>
+            <div class="section-label" style="margin-bottom:0.3rem">Player</div>
+            <input class="show-input" id="ac_player" placeholder="Player name" style="margin:0">
+          </div>
+          <div>
+            <div class="section-label" style="margin-bottom:0.3rem">Year</div>
+            <input class="show-input" id="ac_year" placeholder="e.g. 2025" style="margin:0">
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.55rem">
+          <div>
+            <div class="section-label" style="margin-bottom:0.3rem">Set</div>
+            <input class="show-input" id="ac_set" placeholder="e.g. Topps Chrome" style="margin:0">
+          </div>
+          <div>
+            <div class="section-label" style="margin-bottom:0.3rem">Card #</div>
+            <input class="show-input" id="ac_number" placeholder="e.g. 101" style="margin:0">
+          </div>
+        </div>
+
+        <div>
+          <div class="section-label" style="margin-bottom:0.3rem">Parallel / Variant</div>
+          <input class="show-input" id="ac_parallel" placeholder="e.g. Gold Refractor /50, Sapphire" style="margin:0">
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.55rem">
+          <div>
+            <div class="section-label" style="margin-bottom:0.3rem">Grader</div>
+            <select class="show-input" id="ac_grader" style="margin:0" onchange="acToggle()">
+              <option value="">Raw</option>
+              <option value="PSA">PSA</option>
+              <option value="BGS">BGS</option>
+              <option value="CGC">CGC</option>
+              <option value="SGC">SGC</option>
+            </select>
+          </div>
+          <div>
+            <div class="section-label" style="margin-bottom:0.3rem">Grade</div>
+            <input class="show-input" id="ac_grade" placeholder="e.g. 10" style="margin:0">
+          </div>
+          <div>
+            <div class="section-label" style="margin-bottom:0.3rem">Cert #</div>
+            <input class="show-input" id="ac_cert" placeholder="Cert #" style="margin:0">
+          </div>
+        </div>
+
+        <div id="ac_cond_row">
+          <div class="section-label" style="margin-bottom:0.3rem">Condition</div>
+          <select class="show-input" id="ac_condition" style="margin:0">
+            <option value="">Select condition</option>
+            <option value="Gem Mint">Gem Mint</option>
+            <option value="Near Mint">Near Mint</option>
+            <option value="Good">Good</option>
+            <option value="Fair">Fair</option>
+            <option value="Poor">Poor</option>
+          </select>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.55rem">
+          <div>
+            <div class="section-label" style="margin-bottom:0.3rem">Asking Price ($)</div>
+            <input class="show-input" id="ac_price" placeholder="e.g. 250" style="margin:0">
+          </div>
+          <div>
+            <div class="section-label" style="margin-bottom:0.3rem">Market Value ($)</div>
+            <div style="position:relative">
+              <input class="show-input" id="ac_mv" placeholder="Comp sale" style="margin:0">
+              <div id="ac_mv_status" style="font-size:0.62rem;color:var(--muted);margin-top:0.2rem;min-height:0.9rem"></div>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div class="section-label" style="margin-bottom:0.3rem">Status</div>
+          <select class="show-input" id="ac_status" style="margin:0">
+            <option value="Available">Available</option>
+            <option value="On Hold">On Hold</option>
+            <option value="Sold">Sold</option>
+          </select>
+        </div>
+
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn btn-primary" style="flex:1" onclick="saveAddCard()">Add to Inventory</button>
+        <button class="btn-modal-close" onclick="closeAddCard()">Cancel</button>
+      </div>
+
+    </div>
+  </div>
+
 
   <!-- ═══════ CARD EDIT MODAL (position:absolute inside view-seller) ═══════ -->
   <div class="card-edit-overlay" id="cardEditOverlay" onclick="if(event.target===this)closeCEM()">
@@ -5775,6 +5956,215 @@ document.addEventListener('keydown', e => {
 
 
 
+
+
+// ══════════════════════════════════════════════
+//  ADD CARD — Option 3: Search Autocomplete
+// ══════════════════════════════════════════════
+
+// Card database — ~120 high-demand modern cards for autocomplete
+// Format: { title, player, year, set, number, parallel, sport }
+const CARD_DB = [
+  // ── Basketball ──
+  {title:'2025-26 Topps Chrome Cooper Flagg RC Auto',player:'Cooper Flagg',year:'2025',set:'Topps Chrome',number:'1',parallel:'',sport:'Basketball'},
+  {title:'2025-26 Topps Chrome Cooper Flagg Sapphire RC',player:'Cooper Flagg',year:'2025',set:'Topps Chrome',number:'1',parallel:'Sapphire',sport:'Basketball'},
+  {title:'2023-24 Topps Chrome Victor Wembanyama RC Auto',player:'Victor Wembanyama',year:'2023',set:'Topps Chrome',number:'1',parallel:'',sport:'Basketball'},
+  {title:'2023-24 Prizm Victor Wembanyama RC Silver Prizm',player:'Victor Wembanyama',year:'2023',set:'Prizm',number:'1',parallel:'Silver Prizm',sport:'Basketball'},
+  {title:'2018-19 Prizm Luka Doncic RC Silver Prizm',player:'Luka Doncic',year:'2018',set:'Prizm',number:'280',parallel:'Silver Prizm',sport:'Basketball'},
+  {title:'2018-19 Optic Luka Doncic Rated Rookie',player:'Luka Doncic',year:'2018',set:'Optic',number:'177',parallel:'',sport:'Basketball'},
+  {title:'2019-20 Prizm Ja Morant RC Silver Prizm',player:'Ja Morant',year:'2019',set:'Prizm',number:'249',parallel:'Silver Prizm',sport:'Basketball'},
+  {title:'2019-20 Prizm Zion Williamson RC Silver Prizm',player:'Zion Williamson',year:'2019',set:'Prizm',number:'248',parallel:'Silver Prizm',sport:'Basketball'},
+  {title:'2020-21 Topps Chrome LaMelo Ball RC Auto',player:'LaMelo Ball',year:'2020',set:'Topps Chrome',number:'',parallel:'',sport:'Basketball'},
+  {title:'2020-21 Prizm Anthony Edwards RC Silver Prizm',player:'Anthony Edwards',year:'2020',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Basketball'},
+  {title:'2021-22 Prizm Scottie Barnes RC Silver Prizm',player:'Scottie Barnes',year:'2021',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Basketball'},
+  {title:'2022-23 Prizm Paolo Banchero RC Silver Prizm',player:'Paolo Banchero',year:'2022',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Basketball'},
+  {title:'2022-23 Prizm Nikola Jokic Silver Prizm',player:'Nikola Jokic',year:'2022',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Basketball'},
+  {title:'2016-17 Prizm Jayson Tatum RC Silver Prizm',player:'Jayson Tatum',year:'2016',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Basketball'},
+  {title:'2003-04 Topps Chrome LeBron James RC',player:'LeBron James',year:'2003',set:'Topps Chrome',number:'111',parallel:'',sport:'Basketball'},
+  {title:'1986-87 Fleer Michael Jordan RC',player:'Michael Jordan',year:'1986',set:'Fleer',number:'57',parallel:'',sport:'Basketball'},
+  {title:'2013-14 Topps Chrome Giannis Antetokounmpo RC',player:'Giannis Antetokounmpo',year:'2013',set:'Topps Chrome',number:'',parallel:'',sport:'Basketball'},
+  {title:'2009-10 Topps Chrome Steph Curry RC',player:'Steph Curry',year:'2009',set:'Topps Chrome',number:'101',parallel:'',sport:'Basketball'},
+  {title:'2007-08 Topps Chrome Kevin Durant RC',player:'Kevin Durant',year:'2007',set:'Topps Chrome',number:'131',parallel:'',sport:'Basketball'},
+  {title:'2024-25 Topps Chrome Cooper Flagg RPA /99',player:'Cooper Flagg',year:'2024',set:'Topps Chrome',number:'',parallel:'/99',sport:'Basketball'},
+  // ── Football ──
+  {title:'2024 Prizm Jayden Daniels RC Silver Prizm',player:'Jayden Daniels',year:'2024',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Football'},
+  {title:'2024 Prizm Marvin Harrison Jr RC Silver Prizm',player:'Marvin Harrison Jr',year:'2024',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Football'},
+  {title:'2024 Prizm Drake Maye RC Silver Prizm',player:'Drake Maye',year:'2024',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Football'},
+  {title:'2024 Prizm Patrick Mahomes Silver Prizm',player:'Patrick Mahomes',year:'2024',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Football'},
+  {title:'2018 Prizm Patrick Mahomes RC Silver Prizm',player:'Patrick Mahomes',year:'2018',set:'Prizm',number:'195',parallel:'Silver Prizm',sport:'Football'},
+  {title:'2020 Prizm Justin Herbert RC Silver Prizm',player:'Justin Herbert',year:'2020',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Football'},
+  {title:'2021 Prizm Trevor Lawrence RC Silver Prizm',player:'Trevor Lawrence',year:'2021',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Football'},
+  {title:'2018 Optic Lamar Jackson RC Holo',player:'Lamar Jackson',year:'2018',set:'Optic',number:'',parallel:'Holo',sport:'Football'},
+  {title:'2019 Prizm Justin Jefferson RC Silver Prizm',player:'Justin Jefferson',year:'2019',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Football'},
+  {title:'2000 Playoff Contenders Tom Brady RC Auto',player:'Tom Brady',year:'2000',set:'Playoff Contenders',number:'144',parallel:'',sport:'Football'},
+  {title:'2024 Optic Marvin Harrison Jr RC Rated Rookie',player:'Marvin Harrison Jr',year:'2024',set:'Optic',number:'',parallel:'',sport:'Football'},
+  {title:'2024 Prizm Malik Nabers RC Silver Prizm',player:'Malik Nabers',year:'2024',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Football'},
+  {title:'2018 Prizm Josh Allen RC Silver Prizm',player:'Josh Allen',year:'2018',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Football'},
+  // ── Baseball ──
+  {title:'2024 Topps Chrome Paul Skenes RC Auto',player:'Paul Skenes',year:'2024',set:'Topps Chrome',number:'',parallel:'',sport:'Baseball'},
+  {title:'2024 Topps Chrome Elly De La Cruz RC Auto',player:'Elly De La Cruz',year:'2024',set:'Topps Chrome',number:'',parallel:'',sport:'Baseball'},
+  {title:'2024 Topps Chrome Bobby Witt Jr RC Auto',player:'Bobby Witt Jr',year:'2024',set:'Topps Chrome',number:'',parallel:'',sport:'Baseball'},
+  {title:'2024 Topps Shohei Ohtani 50/50 Gold Auto /50',player:'Shohei Ohtani',year:'2024',set:'Topps',number:'',parallel:'Gold /50',sport:'Baseball'},
+  {title:'2023 Topps Chrome Gunnar Henderson RC Auto',player:'Gunnar Henderson',year:'2023',set:'Topps Chrome',number:'',parallel:'',sport:'Baseball'},
+  {title:'2022 Topps Chrome Julio Rodriguez RC Auto',player:'Julio Rodriguez',year:'2022',set:'Topps Chrome',number:'',parallel:'',sport:'Baseball'},
+  {title:'2024 Topps Chrome Yoshinobu Yamamoto RC Auto',player:'Yoshinobu Yamamoto',year:'2024',set:'Topps Chrome',number:'',parallel:'',sport:'Baseball'},
+  {title:'2024 Topps Chrome Roki Sasaki RC Auto',player:'Roki Sasaki',year:'2024',set:'Topps Chrome',number:'',parallel:'',sport:'Baseball'},
+  {title:'2011 Bowman Chrome Mike Trout Prospect Auto',player:'Mike Trout',year:'2011',set:'Bowman Chrome',number:'',parallel:'',sport:'Baseball'},
+  {title:'1989 Upper Deck Ken Griffey Jr RC',player:'Ken Griffey Jr',year:'1989',set:'Upper Deck',number:'1',parallel:'',sport:'Baseball'},
+  {title:'1993 SP Derek Jeter RC',player:'Derek Jeter',year:'1993',set:'SP',number:'279',parallel:'',sport:'Baseball'},
+  {title:'2011 Topps Chrome Mike Trout RC Auto',player:'Mike Trout',year:'2011',set:'Topps Chrome',number:'',parallel:'',sport:'Baseball'},
+  {title:'2022 Bowman Chrome Elly De La Cruz Auto',player:'Elly De La Cruz',year:'2022',set:'Bowman Chrome',number:'',parallel:'',sport:'Baseball'},
+  {title:'2024 Bowman Atomic Paul Skenes Prospect',player:'Paul Skenes',year:'2024',set:'Bowman',number:'',parallel:'Atomic',sport:'Baseball'},
+  // ── Hockey ──
+  {title:'2023-24 Upper Deck Connor Bedard Young Guns',player:'Connor Bedard',year:'2023',set:'Upper Deck',number:'',parallel:'Young Guns',sport:'Hockey'},
+  {title:'2015-16 Upper Deck Connor McDavid Young Guns',player:'Connor McDavid',year:'2015',set:'Upper Deck',number:'',parallel:'Young Guns',sport:'Hockey'},
+  {title:'2019-20 Upper Deck Cale Makar Young Guns',player:'Cale Makar',year:'2019',set:'Upper Deck',number:'',parallel:'Young Guns',sport:'Hockey'},
+  {title:'1979 O-Pee-Chee Wayne Gretzky RC',player:'Wayne Gretzky',year:'1979',set:'O-Pee-Chee',number:'18',parallel:'',sport:'Hockey'},
+  {title:'2024-25 Upper Deck Macklin Celebrini Young Guns',player:'Macklin Celebrini',year:'2024',set:'Upper Deck',number:'',parallel:'Young Guns',sport:'Hockey'},
+  // ── WNBA ──
+  {title:'2024 Optic Caitlin Clark WNBA RC Holo',player:'Caitlin Clark',year:'2024',set:'Optic',number:'',parallel:'Holo',sport:'WNBA'},
+  {title:'2024 Optic Angel Reese WNBA RC Holo',player:'Angel Reese',year:'2024',set:'Optic',number:'',parallel:'Holo',sport:'WNBA'},
+];
+
+// Sport icons for display
+const SPORT_ICON = {Basketball:'🏀',Football:'🏈',Baseball:'⚾',Hockey:'🏒',WNBA:'🏀'};
+
+// Debounce timer
+let _acTimer = null;
+let _acLastQuery = '';
+
+function openAddCard() {
+  // Clear all fields
+  ['ac_search','ac_title','ac_player','ac_year','ac_set',
+   'ac_number','ac_parallel','ac_grade','ac_cert','ac_price','ac_mv']
+    .forEach(id => { document.getElementById(id).value = ''; });
+  document.getElementById('ac_grader').value    = '';
+  document.getElementById('ac_condition').value = '';
+  document.getElementById('ac_status').value    = 'Available';
+  document.getElementById('ac_results').innerHTML = '';
+  document.getElementById('ac_mv_status').textContent = '';
+  acToggle();
+  document.getElementById('addCardOverlay').classList.add('open');
+}
+
+function closeAddCard() {
+  document.getElementById('addCardOverlay').classList.remove('open');
+}
+
+function acToggle() {
+  const graded = !!document.getElementById('ac_grader').value;
+  document.getElementById('ac_cond_row').style.display = graded ? 'none' : 'block';
+}
+
+// Search the local CARD_DB with debounce
+function acSearch(q) {
+  clearTimeout(_acTimer);
+  const resultsEl = document.getElementById('ac_results');
+  if (!q || q.length < 2) { resultsEl.innerHTML = ''; return; }
+
+  resultsEl.innerHTML = `<div class="ac-results-wrap"><div class="ac-spinner">Searching…</div></div>`;
+  _acTimer = setTimeout(() => _acDoSearch(q), 200);
+}
+
+function _acDoSearch(q) {
+  const resultsEl = document.getElementById('ac_results');
+  const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
+
+  // Score each card by how many terms match
+  const scored = CARD_DB.map(card => {
+    const haystack = [card.title, card.player, card.year, card.set, card.parallel]
+      .join(' ').toLowerCase();
+    const hits = terms.filter(t => haystack.includes(t)).length;
+    return { card, hits };
+  }).filter(r => r.hits > 0)
+    .sort((a, b) => b.hits - a.hits || 0)
+    .slice(0, 8);
+
+  if (!scored.length) {
+    resultsEl.innerHTML = `<div class="ac-results-wrap"><div class="ac-empty">No matches — fill in details below manually.</div></div>`;
+    return;
+  }
+
+  const rows = scored.map(({ card }) => {
+    const icon  = SPORT_ICON[card.sport] || '🃏';
+    const meta  = [card.year, card.set, card.parallel].filter(Boolean).join(' · ');
+    return `<button class="btn-add-card-result" onclick="acSelect(${JSON.stringify(JSON.stringify(card))})">
+      <div class="acr-title">${icon} ${card.title}</div>
+      <div class="acr-meta">${meta}</div>
+    </button>`;
+  }).join('');
+
+  resultsEl.innerHTML = `<div class="ac-results-wrap">${rows}</div>`;
+}
+
+async function acSelect(cardJson) {
+  const card = JSON.parse(cardJson);
+
+  // Fill fields
+  document.getElementById('ac_title').value    = card.title;
+  document.getElementById('ac_player').value   = card.player;
+  document.getElementById('ac_year').value     = card.year;
+  document.getElementById('ac_set').value      = card.set;
+  document.getElementById('ac_number').value   = card.number || '';
+  document.getElementById('ac_parallel').value = card.parallel || '';
+  document.getElementById('ac_search').value   = card.title;
+
+  // Clear results
+  document.getElementById('ac_results').innerHTML = '';
+
+  // Fetch market value
+  const mvEl     = document.getElementById('ac_mv');
+  const statusEl = document.getElementById('ac_mv_status');
+  mvEl.value     = '';
+  statusEl.innerHTML = '<span class="mv-loading">⏳ Fetching market value…</span>';
+
+  // Build a synthetic card object for fetchMarketValue
+  const synthetic = {
+    Player: card.player, Year: card.year,
+    'Set ': card.set, 'Parallel/Variant': card.parallel,
+    'Card Title': card.title
+  };
+  const mvResult = await fetchMarketValue(synthetic);
+  if (mvResult && mvResult.value) {
+    mvEl.value = mvResult.value;
+    const src = mvResult.source === 'ebay' ? '📊 eBay recent sales' : 'seller comp';
+    statusEl.innerHTML = `<span style="color:#4ade80;font-size:0.62rem;font-family:'DM Mono',monospace">✓ $${mvResult.value.toLocaleString()} · ${src}</span>`;
+  } else {
+    statusEl.innerHTML = `<span style="color:var(--muted);font-size:0.62rem;font-family:'DM Mono',monospace">No comp found — enter manually</span>`;
+  }
+}
+
+function saveAddCard() {
+  const title = document.getElementById('ac_title').value.trim();
+  if (!title) { showToast('Card Title is required', 'var(--danger)'); return; }
+
+  const grader = document.getElementById('ac_grader').value;
+  const card = validateAndNormalizeCard({
+    'Card Title':       title,
+    Player:             document.getElementById('ac_player').value.trim(),
+    Year:               document.getElementById('ac_year').value.trim() || null,
+    'Set ':             document.getElementById('ac_set').value.trim(),
+    Number:             document.getElementById('ac_number').value.trim(),
+    'Parallel/Variant': document.getElementById('ac_parallel').value.trim(),
+    Grader:             grader || null,
+    Grade:              grader && document.getElementById('ac_grade').value !== ''
+                          ? parseFloat(document.getElementById('ac_grade').value) : null,
+    'Cert #':           grader ? document.getElementById('ac_cert').value.trim() : null,
+    Condition:          !grader ? (document.getElementById('ac_condition').value || null) : null,
+    Price:              parseFloat(document.getElementById('ac_price').value) || 0,
+    'Market Value':     document.getElementById('ac_mv').value !== ''
+                          ? parseFloat(document.getElementById('ac_mv').value) : null,
+    Status:             document.getElementById('ac_status').value || 'Available',
+    Seller:             currentSeller,
+  });
+  card._shows = new Set();
+  inventory.push(card);
+
+  closeAddCard();
+  renderSellerTable(getSellerInventory());
+  updateStats();
+  showToast(`✓ "${title.slice(0,30)}…" added to inventory`);
+}
 
 // ── CARD EDIT MODAL ──
 let _cemIdx = null;
