@@ -307,28 +307,38 @@
     border-radius: 12px;
     overflow: hidden;
     background: var(--card);
+    overflow-x: auto;
   }
 
-  table { width: 100%; border-collapse: collapse; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+  }
   thead {
     background: var(--surface);
     border-bottom: 1px solid var(--border);
   }
   th {
-    padding: 0.7rem 1rem;
+    padding: 0.55rem 0.65rem;
     text-align: left;
     font-family: 'DM Mono', monospace;
-    font-size: 0.68rem;
+    font-size: 0.62rem;
     letter-spacing: 0.1em;
     text-transform: uppercase;
     color: var(--muted);
     font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   td {
-    padding: 0.85rem 1rem;
-    font-size: 0.85rem;
+    padding: 0.65rem 0.65rem;
+    font-size: 0.82rem;
     border-bottom: 1px solid rgba(37,42,53,0.6);
     vertical-align: middle;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   tr:last-child td { border-bottom: none; }
   tr:hover td { background: rgba(245,200,66,0.02); }
@@ -712,16 +722,6 @@
     .table-wrap { overflow-x: auto; }
     th { padding: 0.55rem 0.7rem; font-size: 0.62rem; }
     td { padding: 0.65rem 0.7rem; font-size: 0.78rem; }
-
-    /* Hide lower-priority columns on tablet */
-    .table-wrap th:nth-child(5),  /* Set */
-    .table-wrap td:nth-child(5),
-    .table-wrap th:nth-child(8),  /* Cert # */
-    .table-wrap td[data-label="Cert #"],
-    .table-wrap th:nth-child(9),  /* Condition */
-    .table-wrap td[data-label="Condition"] {
-      display: none;
-    }
   }
 
   /* ── Small tablet portrait / large phone (sm) 480–599px ── */
@@ -2067,18 +2067,15 @@
         <table>
           <thead>
             <tr>
-              <th style="width:36px"></th>
-              <th>Card</th>
-              <th>Player</th>
-              <th>Year</th>
-              <th>Set</th>
-              <th id="thSeller" style="display:none">Seller</th>
-              <th>Grade / Service</th>
-              <th>Cert #</th>
-              <th>Condition</th>
-              <th>Market Value</th>
-              <th>Price</th>
-              <th>Availability</th>
+              <th style="width:32px"></th>
+              <th style="min-width:140px">Card</th>
+              <th style="min-width:90px">Player</th>
+              <th style="width:48px">Year</th>
+              <th id="thSeller" style="display:none;min-width:90px">Seller</th>
+              <th style="min-width:90px">Grade</th>
+              <th style="min-width:60px">Market $</th>
+              <th style="min-width:55px">Price</th>
+              <th style="min-width:120px">Status</th>
             </tr>
           </thead>
           <tbody id="inventoryBody">
@@ -3444,29 +3441,28 @@ function renderSellerTable(rows) {
       <td class="checkbox-cell"><input type="checkbox" class="card-check" data-idx="${realIdx}" ${status !== 'Sold' ? 'checked' : ''}></td>
       <td>
         <div class="card-title" style="${status === 'Sold' ? 'opacity:0.4;text-decoration:line-through' : ''}">${r['Card Title'] || '—'}</div>
-        <div class="card-sub">${r['Parallel/Variant'] || ''}</div>
+        <div class="card-sub" style="font-family:'DM Mono',monospace;font-size:0.65rem;color:var(--muted);margin-top:0.15rem">
+          ${[r.Player, r.Year, getSet(r)].filter(Boolean).join(' · ')}
+        </div>
       </td>
-      <td data-label="Player" style="${dimStyle}">${r.Player || '—'}</td>
-      <td data-label="Year"><span style="font-family:'DM Mono',monospace;font-size:0.8rem;color:var(--muted);${dimStyle}">${r.Year || '—'}</span></td>
-      <td data-label="Set" style="${dimStyle}">${getSet(r) || '—'}</td>
       ${sellerCell}
-      <td data-label="Grade">${gradeBadge(r.Grade, r.Grader)}</td>
-      <td data-label="Cert #" style="font-family:'DM Mono',monospace;font-size:0.72rem;color:${isGraded && r['Cert #'] ? 'var(--text)' : 'var(--muted)'}">
-        ${isGraded ? (r['Cert #'] || '<span style="opacity:0.4">—</span>') : '<span style="opacity:0.3">—</span>'}
+      <td data-label="Grade">
+        ${gradeBadge(r.Grade, r.Grader)}
+        ${isGraded && r['Cert #'] ? `<div style="font-family:'DM Mono',monospace;font-size:0.6rem;color:var(--muted);margin-top:0.2rem">${r['Cert #']}</div>` : ''}
+        ${!isGraded && r.Condition ? `<div style="font-size:0.68rem;color:var(--muted);margin-top:0.2rem">${r.Condition}</div>` : ''}
       </td>
-      <td data-label="Condition">${conditionCell}</td>
-      <td data-label="Market Value">
+      <td data-label="Market $">
         ${(() => {
           const mv = Number(r['Market Value'] || r['Market Price'] || r['Estimated Value'] || 0);
-          if (!mv) return `<span style="font-size:0.72rem;color:var(--muted);font-family:'DM Mono',monospace">—</span>`;
+          if (!mv) return `<span style="font-size:0.7rem;color:var(--muted);font-family:'DM Mono',monospace">—</span>`;
           const d = getDealScore(r);
           const color = d ? { great:'#4ade80',good:'#60a5fa',fair:'#94a3b8',high:'#fbbf24',steep:'#f87171' }[d.tier] : 'var(--muted)';
-          return `<span style="font-family:'DM Mono',monospace;font-size:0.78rem;color:${color}">$${mv.toLocaleString()}</span>`;
+          return `<span style="font-family:'DM Mono',monospace;font-size:0.75rem;color:${color}">$${mv.toLocaleString()}</span>`;
         })()}
       </td>
       <td data-label="Price" class="price" style="${status === 'Sold' ? 'opacity:0.4;text-decoration:line-through' : ''}">$${Number(r.Price || 0).toLocaleString()}</td>
       <td data-label="Status">
-        <div style="display:flex;align-items:center;gap:0.45rem">
+        <div style="display:flex;align-items:center;gap:0.4rem;flex-wrap:wrap">
           <div class="status-toggle ${statusClass}" onclick="cycleStatus(${realIdx}, this)">
             <span class="status-dot"></span>${statusIcon} ${status}
           </div>
