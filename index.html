@@ -1771,6 +1771,164 @@
     .table-wrap tbody tr { padding: 0.65rem; }
   }
 
+
+  /* ════════════════════════════════════
+     SCANNER + CARD EDITOR
+  ════════════════════════════════════ */
+
+  /* Edit button in table rows */
+  .btn-edit-card {
+    background: none; border: 1px solid var(--border);
+    color: var(--muted); border-radius: 6px;
+    padding: 0.22rem 0.5rem; font-size: 0.78rem;
+    cursor: pointer; transition: all 0.15s; line-height: 1;
+  }
+  .btn-edit-card:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* Scanner overlay */
+  .scanner-overlay {
+    position: fixed; inset: 0; z-index: 800;
+    background: rgba(0,0,0,0.92);
+    display: flex; align-items: flex-end; justify-content: center;
+    opacity: 0; pointer-events: none; transition: opacity 0.25s;
+  }
+  .scanner-overlay.open {
+    opacity: 1; pointer-events: all;
+  }
+  .scanner-modal {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 20px 20px 0 0;
+    width: 100%; max-width: 480px;
+    max-height: 92vh;
+    display: flex; flex-direction: column;
+    transform: translateY(100%);
+    transition: transform 0.35s cubic-bezier(0.34, 1.2, 0.64, 1);
+  }
+  .scanner-overlay.open .scanner-modal {
+    transform: translateY(0);
+  }
+  .scanner-header {
+    display: flex; align-items: flex-start;
+    justify-content: space-between; gap: 0.75rem;
+    padding: 1.1rem 1.2rem 0.75rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .scanner-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.4rem; letter-spacing: 0.06em; color: var(--text);
+  }
+  .scanner-sub {
+    font-family: 'DM Mono', monospace; font-size: 0.7rem;
+    color: var(--muted); letter-spacing: 0.04em; margin-top: 0.15rem;
+  }
+
+  /* Camera viewfinder */
+  .scanner-viewfinder {
+    position: relative; overflow: hidden;
+    background: #000;
+    aspect-ratio: 4/3;
+    flex-shrink: 0;
+  }
+  #scannerVideo {
+    width: 100%; height: 100%; object-fit: cover; display: block;
+  }
+
+  /* Targeting frame overlay */
+  .scanner-frame {
+    position: absolute; inset: 15%;
+    pointer-events: none;
+  }
+  .corner {
+    position: absolute;
+    width: 22px; height: 22px;
+  }
+  .corner::before, .corner::after {
+    content: ''; position: absolute;
+    background: var(--accent);
+  }
+  .corner::before { width: 100%; height: 3px; }
+  .corner::after  { width: 3px; height: 100%; }
+  .tl { top: 0; left: 0; }
+  .tl::before { top: 0; left: 0; }
+  .tl::after  { top: 0; left: 0; }
+  .tr { top: 0; right: 0; }
+  .tr::before { top: 0; right: 0; }
+  .tr::after  { top: 0; right: 0; }
+  .bl { bottom: 0; left: 0; }
+  .bl::before { bottom: 0; left: 0; }
+  .bl::after  { bottom: 0; left: 0; }
+  .br { bottom: 0; right: 0; }
+  .br::before { bottom: 0; right: 0; }
+  .br::after  { bottom: 0; right: 0; }
+
+  /* Animated scan line */
+  .scan-line {
+    position: absolute; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    animation: scanline 2s ease-in-out infinite;
+    box-shadow: 0 0 8px rgba(245,200,66,0.6);
+  }
+  @keyframes scanline {
+    0%   { top: 0%; opacity: 1; }
+    49%  { opacity: 1; }
+    50%  { top: 100%; opacity: 0; }
+    51%  { top: 0%; opacity: 0; }
+    52%  { opacity: 1; }
+    100% { top: 100%; opacity: 1; }
+  }
+
+  .scanner-overlay-text {
+    position: absolute; bottom: 0.6rem; left: 0; right: 0;
+    text-align: center;
+    font-family: 'DM Mono', monospace; font-size: 0.7rem;
+    color: rgba(245,200,66,0.8); letter-spacing: 0.06em;
+    background: rgba(0,0,0,0.5); padding: 0.3rem;
+  }
+
+  .scanner-result {
+    padding: 0.75rem 1.2rem;
+    border-bottom: 1px solid var(--border);
+    background: rgba(34,197,94,0.06);
+  }
+  .scanner-result-label {
+    font-family: 'DM Mono', monospace; font-size: 0.62rem;
+    letter-spacing: 0.1em; text-transform: uppercase; color: #4ade80;
+    margin-bottom: 0.2rem;
+  }
+  .scanner-result-value {
+    font-family: 'DM Mono', monospace; font-size: 0.9rem;
+    color: var(--text); letter-spacing: 0.04em; word-break: break-all;
+  }
+
+  .scanner-footer {
+    display: flex; gap: 0.65rem;
+    padding: 0.8rem 1.2rem 0.5rem;
+  }
+
+  /* Scan success flash */
+  @keyframes scanFlash {
+    0%   { background: rgba(34,197,94,0.3); }
+    100% { background: transparent; }
+  }
+  .scan-flash { animation: scanFlash 0.4s ease-out; }
+
+  /* Desktop: center the scanner modal like a regular modal */
+  @media (min-width: 600px) {
+    .scanner-overlay {
+      align-items: center;
+    }
+    .scanner-modal {
+      border-radius: 18px;
+      max-height: 85vh;
+      transform: scale(0.95) translateY(20px);
+    }
+    .scanner-overlay.open .scanner-modal {
+      transform: scale(1) translateY(0);
+    }
+  }
+
 </style>
 </head>
 <body>
@@ -1843,7 +2001,15 @@
     <aside class="sidebar sidebar-open" id="mainSidebar">
 
       <div>
-        <div class="section-label">Upload Inventory</div>
+        <div class="section-label">Add Cards</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-bottom:0.65rem">
+          <button class="btn btn-primary" style="font-size:0.78rem;padding:0.6rem 0.5rem;gap:0.3rem" onclick="openScanner()">
+            📷 Scan Card
+          </button>
+          <button class="btn btn-ghost" style="font-size:0.78rem;padding:0.6rem 0.5rem;gap:0.3rem" onclick="openCardEditor(null)">
+            ✏️ Add Manual
+          </button>
+        </div>
         <div class="upload-zone" id="uploadZone">
           <input type="file" accept=".csv,.xlsx" onchange="handleFileUpload(this)">
           <div class="upload-icon">📋</div>
@@ -3286,8 +3452,11 @@ function renderSellerTable(rows) {
       </td>
       <td data-label="Price" class="price" style="${status === 'Sold' ? 'opacity:0.4;text-decoration:line-through' : ''}">$${Number(r.Price || 0).toLocaleString()}</td>
       <td data-label="Status">
-        <div class="status-toggle ${statusClass}" onclick="cycleStatus(${realIdx}, this)">
-          <span class="status-dot"></span>${statusIcon} ${status}
+        <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
+          <div class="status-toggle ${statusClass}" onclick="cycleStatus(${realIdx}, this)">
+            <span class="status-dot"></span>${statusIcon} ${status}
+          </div>
+          <button class="btn-edit-card" onclick="openCardEditor(${realIdx})" title="Edit card">✏️</button>
         </div>
       </td>
     </tr>`;
@@ -5595,6 +5764,329 @@ document.addEventListener('keydown', e => {
   }
 });
 
+
+// ════════════════════════════════════════════
+//  CARD SCANNER + EDITOR
+// ════════════════════════════════════════════
+
+// ── Scanner State ──
+let scannerStream     = null;
+let scannerActive     = false;
+let scannerFacingMode = 'environment'; // rear camera by default
+let scannerAnimFrame  = null;
+let lastScanData      = null;
+let editorCardIdx     = null; // null = new card, number = editing existing
+
+// ── Open / Close Scanner ──
+async function openScanner() {
+  const overlay = document.getElementById('scannerOverlay');
+  overlay.classList.add('open');
+  document.body.style.overflow = 'hidden';
+  lastScanData = null;
+  document.getElementById('scannerResult').style.display = 'none';
+  document.getElementById('scanOverlayText').textContent = 'Scanning…';
+  document.getElementById('scannerStatus').textContent = 'Point camera at a barcode, QR code, or cert label';
+  await startCamera();
+}
+
+function closeScanner() {
+  stopCamera();
+  document.getElementById('scannerOverlay').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+async function startCamera() {
+  try {
+    scannerStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: scannerFacingMode, width: { ideal: 1280 }, height: { ideal: 720 } }
+    });
+    const video = document.getElementById('scannerVideo');
+    video.srcObject = scannerStream;
+    await video.play();
+    scannerActive = true;
+    requestAnimationFrame(scanFrame);
+  } catch (err) {
+    document.getElementById('scannerStatus').textContent =
+      'Camera access denied. Use "Enter Details" to add manually.';
+    document.getElementById('scanOverlayText').textContent = '📵 No camera';
+  }
+}
+
+function stopCamera() {
+  scannerActive = false;
+  if (scannerAnimFrame) { cancelAnimationFrame(scannerAnimFrame); scannerAnimFrame = null; }
+  if (scannerStream) {
+    scannerStream.getTracks().forEach(t => t.stop());
+    scannerStream = null;
+  }
+}
+
+async function switchCamera() {
+  stopCamera();
+  scannerFacingMode = scannerFacingMode === 'environment' ? 'user' : 'environment';
+  await startCamera();
+}
+
+// ── Scan Frame — use BarcodeDetector if available, else jsQR fallback ──
+async function scanFrame() {
+  if (!scannerActive) return;
+
+  const video = document.getElementById('scannerVideo');
+  if (!video || video.readyState < 2) {
+    scannerAnimFrame = requestAnimationFrame(scanFrame);
+    return;
+  }
+
+  // Try native BarcodeDetector (Chrome/Safari mobile)
+  if (window.BarcodeDetector) {
+    try {
+      const detector = new BarcodeDetector({
+        formats: ['qr_code','code_128','code_39','ean_13','ean_8','upc_a','upc_e','data_matrix','pdf417']
+      });
+      const codes = await detector.detect(video);
+      if (codes.length > 0) {
+        onScanResult(codes[0].rawValue);
+        return;
+      }
+    } catch (_) {}
+  } else {
+    // Fallback: canvas pixel analysis via jsQR (lazy-loaded)
+    await scanWithJsQR(video);
+  }
+
+  scannerAnimFrame = requestAnimationFrame(scanFrame);
+}
+
+async function scanWithJsQR(video) {
+  if (!window.jsQR) {
+    if (!window._jsQRLoading) {
+      window._jsQRLoading = true;
+      await new Promise(resolve => {
+        const s = document.createElement('script');
+        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js';
+        s.onload = resolve; s.onerror = resolve;
+        document.head.appendChild(s);
+      });
+    }
+    scannerAnimFrame = requestAnimationFrame(scanFrame);
+    return;
+  }
+  const canvas = document.createElement('canvas');
+  canvas.width  = video.videoWidth;
+  canvas.height = video.videoHeight;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'dontInvert' });
+  if (code) onScanResult(code.data);
+}
+
+// ── Handle a scan result ──
+function onScanResult(raw) {
+  if (!raw) return;
+  scannerActive = false; // pause scanning
+
+  // Flash feedback
+  const vf = document.getElementById('scannerViewfinder');
+  vf.classList.add('scan-flash');
+  setTimeout(() => vf.classList.remove('scan-flash'), 400);
+
+  // Parse what was scanned
+  const parsed = parseScanData(raw);
+  lastScanData = parsed;
+
+  // Show result
+  document.getElementById('scannerResult').style.display = 'block';
+  document.getElementById('scannerResultValue').textContent = parsed.display;
+  document.getElementById('scanOverlayText').textContent = '✓ Code detected!';
+  document.getElementById('scannerStatus').textContent = parsed.hint;
+
+  // Vibrate on mobile
+  if (navigator.vibrate) navigator.vibrate(80);
+
+  // Auto-open editor after brief delay
+  setTimeout(() => {
+    closeScanner();
+    openCardEditor(null, parsed);
+  }, 900);
+}
+
+// ── Parse scanned data into card fields ──
+function parseScanData(raw) {
+  const s = raw.trim();
+
+  // PSA QR format: "PSA CERT XXXXXXXX" or URL containing cert
+  const psaMatch = s.match(/(?:psa\.com\/cert\/|PSA CERT\s*#?\s*)(\d{7,10})/i);
+  if (psaMatch) {
+    return { grader:'PSA', cert: psaMatch[1], display: `PSA Cert #${psaMatch[1]}`,
+             hint: 'PSA cert detected — enter card details below', raw: s };
+  }
+
+  // BGS/Beckett QR — cert in URL
+  const bgsMatch = s.match(/beckett\.com.*?(\d{7,10})/i) || s.match(/BGS\s*#?\s*(\d{7,10})/i);
+  if (bgsMatch) {
+    return { grader:'BGS', cert: bgsMatch[1], display: `BGS Cert #${bgsMatch[1]}`,
+             hint: 'BGS cert detected — enter card details below', raw: s };
+  }
+
+  // CGC cert
+  const cgcMatch = s.match(/cgccomics\.com.*?(\d{7,10})/i) || s.match(/CGC\s*#?\s*(\d{7,10})/i);
+  if (cgcMatch) {
+    return { grader:'CGC', cert: cgcMatch[1], display: `CGC Cert #${cgcMatch[1]}`,
+             hint: 'CGC cert detected — enter card details below', raw: s };
+  }
+
+  // SGC cert
+  const sgcMatch = s.match(/sgccard\.com.*?(\d{6,10})/i) || s.match(/SGC\s*#?\s*(\d{6,10})/i);
+  if (sgcMatch) {
+    return { grader:'SGC', cert: sgcMatch[1], display: `SGC Cert #${sgcMatch[1]}`,
+             hint: 'SGC cert detected — enter card details below', raw: s };
+  }
+
+  // Raw barcode (UPC/EAN/Code128 — Topps/Panini product barcodes)
+  const barcodeMatch = s.match(/^(\d{8,14})$/);
+  if (barcodeMatch) {
+    return { barcode: s, display: `Barcode: ${s}`,
+             hint: 'Product barcode detected — enter card details below', raw: s };
+  }
+
+  // Plain cert number (just digits from a label)
+  const certOnly = s.match(/^(\d{7,10})$/);
+  if (certOnly) {
+    return { cert: s, display: `Cert/Number: ${s}`,
+             hint: 'Possible cert number — confirm grader below', raw: s };
+  }
+
+  // Anything else — show it and let seller decide
+  return { display: s.slice(0, 60), hint: 'Unrecognized code — review and enter details', raw: s };
+}
+
+// ════════════════════════════════════════════
+//  CARD EDITOR
+// ════════════════════════════════════════════
+
+function openCardEditor(cardIdx, scanData) {
+  editorCardIdx = cardIdx ?? null;
+  const isNew   = editorCardIdx === null;
+  const card    = isNew ? null : inventory[editorCardIdx];
+
+  // Titles
+  document.getElementById('editorTitle').textContent    = isNew ? 'Add Card' : 'Edit Card';
+  document.getElementById('editorSubtitle').textContent = isNew
+    ? (scanData ? `Pre-filled from scan · confirm details` : 'Enter card details')
+    : `Editing · ${(card?.Player || card?.['Card Title'] || '').slice(0,30)}`;
+  document.getElementById('editorSaveLabel').textContent = isNew ? 'Save Card' : 'Save Changes';
+  document.getElementById('editorDeleteBtn').style.display = isNew ? 'none' : 'inline-flex';
+
+  // Scan banner
+  const banner = document.getElementById('editorScanBanner');
+  if (scanData) {
+    banner.style.display = 'block';
+    banner.textContent   = `📷 Scanned: ${scanData.display}`;
+  } else {
+    banner.style.display = 'none';
+  }
+
+  // Pre-fill from existing card or scan data
+  const src = card || {};
+  document.getElementById('ef_title').value    = src['Card Title']       || '';
+  document.getElementById('ef_player').value   = src.Player              || '';
+  document.getElementById('ef_year').value     = src.Year                || '';
+  document.getElementById('ef_set').value      = src['Set '] || src['Set'] || '';
+  document.getElementById('ef_number').value   = src.Number              || '';
+  document.getElementById('ef_parallel').value = src['Parallel/Variant'] || '';
+  document.getElementById('ef_grader').value   = src.Grader              || '';
+  document.getElementById('ef_grade').value    = src.Grade               || '';
+  document.getElementById('ef_cert').value     = src['Cert #']           || '';
+  document.getElementById('ef_condition').value= src.Condition           || '';
+  document.getElementById('ef_price').value    = src.Price               || '';
+  document.getElementById('ef_mv').value       = src['Market Value']     || '';
+  document.getElementById('ef_status').value   = src.Status              || 'Available';
+
+  // Overlay scan data on top
+  if (scanData) {
+    if (scanData.grader) document.getElementById('ef_grader').value = scanData.grader;
+    if (scanData.cert)   document.getElementById('ef_cert').value   = scanData.cert;
+  }
+
+  toggleConditionField();
+
+  document.getElementById('cardEditorOverlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+
+  // Auto-focus title for new cards
+  setTimeout(() => {
+    if (isNew) document.getElementById('ef_title').focus();
+  }, 300);
+}
+
+function closeCardEditor() {
+  document.getElementById('cardEditorOverlay').classList.remove('open');
+  document.body.style.overflow = '';
+  editorCardIdx = null;
+}
+
+function toggleConditionField() {
+  const isGraded = !!document.getElementById('ef_grader').value;
+  document.getElementById('ef_condition_wrap').style.display = isGraded ? 'none' : 'block';
+  document.getElementById('ef_grade').disabled = !isGraded;
+  document.getElementById('ef_cert').disabled  = !isGraded;
+}
+
+function saveCardFromEditor() {
+  const title = document.getElementById('ef_title').value.trim();
+  if (!title) { showToast('Card Title is required', 'var(--danger)'); return; }
+
+  const grader = document.getElementById('ef_grader').value;
+  const isGraded = !!grader;
+
+  const cardData = {
+    'Card Title':       title,
+    Player:             document.getElementById('ef_player').value.trim(),
+    Year:               Number(document.getElementById('ef_year').value) || null,
+    'Set ':             document.getElementById('ef_set').value.trim(),
+    Number:             document.getElementById('ef_number').value.trim(),
+    'Parallel/Variant': document.getElementById('ef_parallel').value.trim(),
+    Grader:             grader || null,
+    Grade:              isGraded ? (parseFloat(document.getElementById('ef_grade').value) || null) : null,
+    'Cert #':           isGraded ? document.getElementById('ef_cert').value.trim() : null,
+    Condition:          !isGraded ? document.getElementById('ef_condition').value || null : null,
+    Price:              parseFloat(document.getElementById('ef_price').value) || 0,
+    'Market Value':     parseFloat(document.getElementById('ef_mv').value) || null,
+    Status:             document.getElementById('ef_status').value || 'Available',
+    Seller:             currentSeller || (editorCardIdx !== null ? inventory[editorCardIdx]?.Seller : null),
+  };
+
+  if (editorCardIdx !== null) {
+    // Edit existing — preserve _shows and other meta
+    const existing = inventory[editorCardIdx];
+    Object.assign(existing, cardData);
+    showToast('✓ Card updated');
+  } else {
+    // New card
+    const normalized = validateAndNormalizeCard(cardData);
+    normalized._shows = new Set();
+    inventory.push(normalized);
+    showToast('✓ Card added to inventory');
+  }
+
+  closeCardEditor();
+  renderSellerTable(getSellerInventory());
+  updateStats();
+}
+
+function deleteCardFromEditor() {
+  if (editorCardIdx === null) return;
+  const card = inventory[editorCardIdx];
+  if (!card) return;
+  if (!confirm(`Delete "${card['Card Title']}"? This cannot be undone.`)) return;
+  inventory.splice(editorCardIdx, 1);
+  closeCardEditor();
+  renderSellerTable(getSellerInventory());
+  updateStats();
+  showToast('Card deleted');
+}
+
 // ── LOAD SAMPLE DATA ON INIT ──
 (function initSampleData() {
   const incoming = SAMPLE.map(r => validateAndNormalizeCard({ ...r }));
@@ -5606,5 +6098,171 @@ document.addEventListener('keydown', e => {
   seedSampleShows();
 })();
 </script>
+
+<!-- ═══════════════ BARCODE SCANNER MODAL ═══════════════ -->
+<div class="scanner-overlay" id="scannerOverlay" onclick="if(event.target===this)closeScanner()">
+  <div class="scanner-modal">
+    <div class="scanner-header">
+      <div>
+        <div class="scanner-title">Scan a Card</div>
+        <div class="scanner-sub" id="scannerStatus">Point camera at a barcode, QR code, or cert number</div>
+      </div>
+      <button class="modal-close" onclick="closeScanner()" style="flex-shrink:0">✕</button>
+    </div>
+
+    <!-- Video viewfinder -->
+    <div class="scanner-viewfinder" id="scannerViewfinder">
+      <video id="scannerVideo" autoplay playsinline muted></video>
+      <div class="scanner-frame">
+        <div class="corner tl"></div>
+        <div class="corner tr"></div>
+        <div class="corner bl"></div>
+        <div class="corner br"></div>
+        <div class="scan-line"></div>
+      </div>
+      <div class="scanner-overlay-text" id="scanOverlayText">Scanning…</div>
+    </div>
+
+    <!-- Detected result -->
+    <div class="scanner-result" id="scannerResult" style="display:none">
+      <div class="scanner-result-label">Detected</div>
+      <div class="scanner-result-value" id="scannerResultValue"></div>
+    </div>
+
+    <div class="scanner-footer">
+      <button class="btn btn-ghost" style="flex:1" onclick="switchCamera()">🔄 Flip Camera</button>
+      <button class="btn btn-primary" style="flex:1" onclick="openCardEditor(null, lastScanData)">📝 Enter Details</button>
+    </div>
+    <div style="text-align:center;padding:0 1rem 1rem">
+      <button style="background:none;border:none;color:var(--muted);font-size:0.75rem;cursor:pointer;font-family:'DM Mono',monospace;letter-spacing:0.04em" onclick="openCardEditor(null)">
+        Skip scan — enter manually →
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ CARD EDITOR MODAL ═══════════════ -->
+<div class="modal-overlay" id="cardEditorOverlay" onclick="if(event.target===this)closeCardEditor()">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-header">
+      <div>
+        <div class="modal-player" id="editorTitle" style="font-size:1.4rem">Add Card</div>
+        <div class="modal-title" id="editorSubtitle">Fill in the details below</div>
+      </div>
+      <button class="modal-close" onclick="closeCardEditor()">✕</button>
+    </div>
+
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:0.55rem;max-height:65vh;overflow-y:auto">
+
+      <!-- Scanned data banner -->
+      <div id="editorScanBanner" style="display:none;background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.2);border-radius:8px;padding:0.55rem 0.8rem;font-family:'DM Mono',monospace;font-size:0.72rem;color:#4ade80"></div>
+
+      <!-- Card Title — full width -->
+      <div>
+        <div class="section-label" style="margin-bottom:0.3rem">Card Title *</div>
+        <input class="show-input" id="ef_title" placeholder="e.g. 2025-26 Topps Chrome Cooper Flagg RC Auto" style="margin:0">
+      </div>
+
+      <!-- Player + Year row -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem">
+        <div>
+          <div class="section-label" style="margin-bottom:0.3rem">Player</div>
+          <input class="show-input" id="ef_player" placeholder="Player name" style="margin:0">
+        </div>
+        <div>
+          <div class="section-label" style="margin-bottom:0.3rem">Year</div>
+          <input class="show-input" id="ef_year" placeholder="e.g. 2025" type="number" style="margin:0">
+        </div>
+      </div>
+
+      <!-- Set + Card Number row -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem">
+        <div>
+          <div class="section-label" style="margin-bottom:0.3rem">Set</div>
+          <input class="show-input" id="ef_set" placeholder="e.g. Topps Chrome" style="margin:0">
+        </div>
+        <div>
+          <div class="section-label" style="margin-bottom:0.3rem">Card #</div>
+          <input class="show-input" id="ef_number" placeholder="e.g. 1" style="margin:0">
+        </div>
+      </div>
+
+      <!-- Parallel -->
+      <div>
+        <div class="section-label" style="margin-bottom:0.3rem">Parallel / Variant</div>
+        <input class="show-input" id="ef_parallel" placeholder="e.g. Sapphire, Gold Refractor /50" style="margin:0">
+      </div>
+
+      <!-- Grading section -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.5rem">
+        <div>
+          <div class="section-label" style="margin-bottom:0.3rem">Grader</div>
+          <select class="show-input" id="ef_grader" style="margin:0" onchange="toggleConditionField()">
+            <option value="">Raw (ungraded)</option>
+            <option value="PSA">PSA</option>
+            <option value="BGS">BGS</option>
+            <option value="CGC">CGC</option>
+            <option value="SGC">SGC</option>
+          </select>
+        </div>
+        <div>
+          <div class="section-label" style="margin-bottom:0.3rem">Grade</div>
+          <input class="show-input" id="ef_grade" placeholder="e.g. 10" style="margin:0" type="number" step="0.5" min="1" max="10">
+        </div>
+        <div>
+          <div class="section-label" style="margin-bottom:0.3rem">Cert #</div>
+          <input class="show-input" id="ef_cert" placeholder="Cert number" style="margin:0" id="ef_cert">
+        </div>
+      </div>
+
+      <!-- Condition (raw only) -->
+      <div id="ef_condition_wrap">
+        <div class="section-label" style="margin-bottom:0.3rem">Condition</div>
+        <select class="show-input" id="ef_condition" style="margin:0">
+          <option value="">Select condition</option>
+          <option value="Gem Mint">Gem Mint</option>
+          <option value="Near Mint">Near Mint</option>
+          <option value="Good">Good</option>
+          <option value="Fair">Fair</option>
+          <option value="Poor">Poor</option>
+        </select>
+      </div>
+
+      <!-- Price + Market Value row -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem">
+        <div>
+          <div class="section-label" style="margin-bottom:0.3rem">Asking Price ($)</div>
+          <input class="show-input" id="ef_price" placeholder="e.g. 250" type="number" min="0" style="margin:0">
+        </div>
+        <div>
+          <div class="section-label" style="margin-bottom:0.3rem">Market Value ($) <span style="color:var(--muted);font-size:0.6rem">optional</span></div>
+          <input class="show-input" id="ef_mv" placeholder="Comparable sale" type="number" min="0" style="margin:0">
+        </div>
+      </div>
+
+      <!-- Status -->
+      <div>
+        <div class="section-label" style="margin-bottom:0.3rem">Status</div>
+        <select class="show-input" id="ef_status" style="margin:0">
+          <option value="Available">Available</option>
+          <option value="On Hold">On Hold</option>
+          <option value="Sold">Sold</option>
+        </select>
+      </div>
+
+    </div>
+
+    <div class="modal-actions" style="gap:0.6rem">
+      <button class="btn btn-primary" style="flex:1" onclick="saveCardFromEditor()">
+        <span id="editorSaveLabel">Save Card</span>
+      </button>
+      <button id="editorDeleteBtn" class="btn btn-ghost" style="color:var(--danger);border-color:rgba(239,68,68,0.3);display:none" onclick="deleteCardFromEditor()">
+        🗑 Delete
+      </button>
+      <button class="btn-modal-close" onclick="closeCardEditor()">Cancel</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
