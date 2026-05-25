@@ -6085,10 +6085,13 @@ function _acDoSearch(q) {
     return;
   }
 
-  const rows = scored.map(({ card }) => {
-    const icon  = SPORT_ICON[card.sport] || '🃏';
-    const meta  = [card.year, card.set, card.parallel].filter(Boolean).join(' · ');
-    return `<button class="btn-add-card-result" onclick="acSelect(${JSON.stringify(JSON.stringify(card))})">
+  // Store results on a module-level var — onclick passes index only
+  window._acResults = scored.map(r => r.card);
+
+  const rows = window._acResults.map((card, i) => {
+    const icon = SPORT_ICON[card.sport] || '🃏';
+    const meta = [card.year, card.set, card.parallel].filter(Boolean).join(' · ');
+    return `<button class="btn-add-card-result" onclick="acSelect(${i})">
       <div class="acr-title">${icon} ${card.title}</div>
       <div class="acr-meta">${meta}</div>
     </button>`;
@@ -6097,15 +6100,16 @@ function _acDoSearch(q) {
   resultsEl.innerHTML = `<div class="ac-results-wrap">${rows}</div>`;
 }
 
-async function acSelect(cardJson) {
-  const card = JSON.parse(cardJson);
+async function acSelect(idx) {
+  const card = (window._acResults || [])[idx];
+  if (!card) return;
 
   // Fill fields
   document.getElementById('ac_title').value    = card.title;
   document.getElementById('ac_player').value   = card.player;
   document.getElementById('ac_year').value     = card.year;
   document.getElementById('ac_set').value      = card.set;
-  document.getElementById('ac_number').value   = card.number || '';
+  document.getElementById('ac_number').value   = card.number   || '';
   document.getElementById('ac_parallel').value = card.parallel || '';
   document.getElementById('ac_search').value   = card.title;
 
