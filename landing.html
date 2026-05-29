@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CardShow — The Future of Card Shows</title>
-<meta name="description" content="One platform connecting buyers, sellers and show organizers. Search every card at every table before you walk in the door.">
+<meta name="description" content="One platform connecting buyers, sellers and show organizers. Search every card at every show, find the table, and walk straight to what you want.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Instrument+Serif:ital@0;1&family=DM+Mono:wght@400;500&family=Barlow+Condensed:wght@600;700;800;900&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -346,17 +346,6 @@ nav {
 .badge-red   { background: rgba(239,68,68,0.13);  color: #f87171; border: 1px solid rgba(239,68,68,0.3); }
 .badge-grey  { background: rgba(148,163,184,0.12);color: #94a3b8; border: 1px solid rgba(148,163,184,0.25); }
 
-.deal-bar {
-  height: 6px; border-radius: 6px; margin-top: 0.6rem;
-  background: linear-gradient(90deg, #f87171 0%, #fbbf24 30%, #94a3b8 50%, #60a5fa 70%, #4ade80 100%);
-  position: relative;
-}
-.deal-marker {
-  position: absolute; top: -4px;
-  width: 14px; height: 14px; border-radius: 50%;
-  border: 2px solid var(--card);
-  box-shadow: 0 0 0 2px currentColor;
-}
 
 /* ════════════════════════════════════════
    AUDIENCE TRIPTYCH
@@ -491,24 +480,8 @@ nav {
 .integration-pill span { font-size: 1.1rem; }
 
 /* ════════════════════════════════════════
-   DEAL SCORE EXPLAINER
+   TABLE NUMBERS
 ════════════════════════════════════════ */
-.deal-tiers {
-  display: grid; grid-template-columns: repeat(5, 1fr);
-  gap: 1rem; margin-top: 2rem;
-}
-.deal-tier {
-  background: var(--card); border: 1px solid var(--border);
-  border-radius: 12px; padding: 1.2rem 0.9rem; text-align: center;
-  transition: transform 0.2s;
-}
-.deal-tier:hover { transform: translateY(-4px); }
-.deal-tier-icon { font-size: 1.6rem; margin-bottom: 0.5rem; display: block; }
-.deal-tier-label {
-  font-family: 'DM Mono', monospace; font-size: 0.72rem;
-  font-weight: 600; letter-spacing: 0.04em; margin-bottom: 0.3rem;
-}
-.deal-tier-sub { font-size: 0.75rem; color: var(--muted); line-height: 1.4; }
 
 /* ════════════════════════════════════════
    QR SECTION
@@ -624,12 +597,10 @@ footer {
   .triptych { grid-template-columns: 1fr; }
   .steps-grid { grid-template-columns: 1fr; }
   .stat-row { grid-template-columns: 1fr 1fr; }
-  .deal-tiers { grid-template-columns: repeat(3, 1fr); }
   .nav-links { display: none; }
   .qr-section { padding: 3rem 1.5rem; }
 }
 @media (max-width: 600px) {
-  .deal-tiers { grid-template-columns: 1fr 1fr; }
   .stat-row { grid-template-columns: 1fr 1fr; }
   .hero-headline { font-size: 56px; }
   .section { padding: 80px 0; }
@@ -693,14 +664,14 @@ footer {
   <div class="problem-strip-inner">
     <!-- duplicated for seamless loop -->
     <div class="strip-item"><div class="strip-dot"></div>Browse before you arrive</div>
-    <div class="strip-item"><div class="strip-dot"></div>Live deal scores vs. market</div>
+    <div class="strip-item"><div class="strip-dot"></div>Table numbers for every seller</div>
     <div class="strip-item"><div class="strip-dot"></div>One QR code. Full inventory.</div>
     <div class="strip-item"><div class="strip-dot"></div>Upload any spreadsheet format</div>
     <div class="strip-item"><div class="strip-dot"></div>WhatsApp sellers instantly</div>
     <div class="strip-item"><div class="strip-dot"></div>PSA · BGS · CGC · SGC · Raw</div>
     <div class="strip-item"><div class="strip-dot"></div>Card Dealer Pro · Flipwise · Ludex</div>
     <div class="strip-item"><div class="strip-dot"></div>Browse before you arrive</div>
-    <div class="strip-item"><div class="strip-dot"></div>Live deal scores vs. market</div>
+    <div class="strip-item"><div class="strip-dot"></div>Table numbers for every seller</div>
     <div class="strip-item"><div class="strip-dot"></div>One QR code. Full inventory.</div>
     <div class="strip-item"><div class="strip-dot"></div>Upload any spreadsheet format</div>
     <div class="strip-item"><div class="strip-dot"></div>WhatsApp sellers instantly</div>
@@ -742,7 +713,6 @@ footer {
               <div style="display:flex;gap:0.4rem;margin-bottom:0.5rem">
                 <span class="mock-badge badge-blue">PSA 10</span>
                 <span class="mock-badge badge-gold">Sapphire</span>
-                <span class="mock-badge badge-green">🔥 Great Deal · −23%</span>
               </div>
               <div class="mock-footer">
                 <div class="mock-price">$11,500</div>
@@ -785,10 +755,10 @@ footer {
         <span class="panel-icon">🔍</span>
         <div class="panel-role">For Buyers</div>
         <div class="panel-headline">Find Your Card.</div>
-        <p class="panel-body">Browse every card from every seller at the show — before you even leave home. Filter by player, sport, grade, price, or deal score.</p>
+        <p class="panel-body">Browse every card from every seller at the show — before you even leave home. Filter by player, sport, grade, or price.</p>
         <ul class="panel-features">
           <li>Search all sellers in one place</li>
-          <li>Live deal scores vs. market value</li>
+          <li>Table numbers so you know exactly where to go</li>
           <li>Filter by PSA, BGS, CGC, SGC or Raw</li>
           <li>Message sellers directly on WhatsApp</li>
           <li>Scan a QR at the entrance to go live</li>
@@ -819,7 +789,7 @@ footer {
           <li>Control which sellers have access</li>
           <li>Generate marketing + signage QR codes</li>
           <li>Admin dashboard across all inventory</li>
-          <li>Show-wide filters and deal tracking</li>
+          <li>Assign table numbers to every seller</li>
         </ul>
       </div>
 
@@ -853,7 +823,7 @@ footer {
         <div class="step-num">03</div>
         <span class="step-icon">📲</span>
         <div class="step-title">Buyers Browse</div>
-        <p class="step-body">Scan the QR, enter the access code, and browse every card at the show — filtered, sorted, with live deal scores. Message any seller directly on WhatsApp.</p>
+        <p class="step-body">Scan the QR, enter the access code, and browse every card at the show — filtered, sorted, with table numbers for every seller. Walk straight to the right table. Message any seller directly on WhatsApp.</p>
       </div>
     </div>
   </div>
@@ -876,94 +846,87 @@ footer {
         <div class="stat-label">Grading services</div>
       </div>
       <div class="stat-box">
-        <span class="stat-val">5</span>
-        <div class="stat-label">Deal score tiers</div>
+        <span class="stat-val">📍</span>
+        <div class="stat-label">Table number system</div>
       </div>
     </div>
   </div>
 </section>
 
-<!-- ════════ DEAL SCORE ════════ -->
+<!-- ════════ TABLE NUMBERS ════════ -->
 <section class="section" style="padding-top:0">
   <div class="container">
     <div class="split split-reverse">
       <div>
-        <div class="label section-label reveal">Pricing Intelligence</div>
-        <h2 class="section-headline reveal reveal-d1">Know If You're<br>Getting a <em>Deal.</em></h2>
+        <div class="label section-label reveal">Navigate the Floor</div>
+        <h2 class="section-headline reveal reveal-d1">Know Exactly<br>Where to <em>Go.</em></h2>
         <p class="section-body reveal reveal-d2">
-          Every card with a market comp gets a color-coded deal score — like SeatGeek for sports cards. Buyers see at a glance whether a price is a steal or a stretch.
+          Every card shows the seller's assigned table number. Buyers stop wandering and walk straight to the right table — no asking around, no circling the floor twice.
         </p>
-        <div class="deal-tiers reveal reveal-d3">
-          <div class="deal-tier">
-            <span class="deal-tier-icon">🔥</span>
-            <div class="deal-tier-label" style="color:#4ade80">Great Deal</div>
-            <div class="deal-tier-sub">20%+ below market</div>
-          </div>
-          <div class="deal-tier">
-            <span class="deal-tier-icon">✓</span>
-            <div class="deal-tier-label" style="color:#60a5fa">Good Value</div>
-            <div class="deal-tier-sub">5–20% below market</div>
-          </div>
-          <div class="deal-tier">
-            <span class="deal-tier-icon">≈</span>
-            <div class="deal-tier-label" style="color:#94a3b8">Fair Price</div>
-            <div class="deal-tier-sub">Within 5% of market</div>
-          </div>
-          <div class="deal-tier">
-            <span class="deal-tier-icon">↑</span>
-            <div class="deal-tier-label" style="color:#fbbf24">Above Market</div>
-            <div class="deal-tier-sub">5–20% above market</div>
-          </div>
-          <div class="deal-tier">
-            <span class="deal-tier-icon">⚠</span>
-            <div class="deal-tier-label" style="color:#f87171">High Ask</div>
-            <div class="deal-tier-sub">20%+ above market</div>
-          </div>
-        </div>
-        <p class="reveal reveal-d4" style="font-size:0.8rem;color:var(--muted);margin-top:1rem;font-family:'DM Mono',monospace;letter-spacing:0.04em">
-          Live eBay pricing integration coming via Netlify serverless functions.
+        <ul class="feature-list reveal reveal-d3">
+          <li>Organizers assign table numbers to every seller from the admin panel</li>
+          <li>Sellers can self-assign their table number once they're set up</li>
+          <li>Every card in the buyer view shows a 📍 Table badge</li>
+          <li>Card detail shows both the seller handle and table location</li>
+          <li>Works alongside WhatsApp — message first, then navigate</li>
+        </ul>
+        <p class="reveal reveal-d4" style="font-size:0.8rem;color:var(--muted);margin-top:1.2rem;font-family:'DM Mono',monospace;letter-spacing:0.04em">
+          Table numbers update live — set them at setup, update anytime during the show.
         </p>
       </div>
       <div class="reveal reveal-d2">
         <div class="mockup-frame">
           <div class="mockup-topbar">
             <div class="mockup-dot"></div><div class="mockup-dot"></div><div class="mockup-dot"></div>
-            <div class="mockup-url">Deal Score · card-show.netlify.app</div>
+            <div class="mockup-url">card-show.netlify.app · Buyer View</div>
           </div>
-          <div style="padding:1.5rem">
-            <div style="font-family:'DM Mono',monospace;font-size:0.62rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);margin-bottom:0.8rem">Deal Score vs. Market</div>
-            <div style="display:flex;align-items:center;gap:1rem;margin-bottom:0.6rem">
-              <div class="deal-bar" style="flex:1">
-                <div class="deal-marker" style="left:18%;color:#4ade80"></div>
+          <div style="padding:1.2rem;display:flex;flex-direction:column;gap:0.75rem">
+
+            <div class="mock-card">
+              <div style="font-size:0.65rem;font-family:'DM Mono',monospace;color:var(--gold);letter-spacing:0.08em;margin-bottom:0.3rem">Basketball 🏀</div>
+              <div class="mock-player">Cooper Flagg</div>
+              <div class="mock-title">2025-26 Topps Chrome RC Auto · Sapphire</div>
+              <div style="display:flex;gap:0.4rem;margin-bottom:0.5rem;align-items:center">
+                <span class="mock-badge badge-blue">PSA 10</span>
+                <span class="mock-badge badge-gold">Sapphire</span>
               </div>
-              <div style="font-size:0.88rem;font-weight:600;color:#4ade80;white-space:nowrap">🔥 Great Deal</div>
-            </div>
-            <div style="display:flex;justify-content:space-between;font-family:'DM Mono',monospace;font-size:0.65rem;color:var(--muted);margin-bottom:1.5rem">
-              <span>⚠ High Ask</span>
-              <span style="color:#4ade80">$11,500 · $3,500 below market</span>
-              <span>🔥 Great Deal</span>
-            </div>
-            <div style="background:var(--card);border-radius:10px;padding:0.9rem;text-align:center;font-family:'DM Mono',monospace;font-size:0.72rem;color:var(--muted)">
-              Market value: <span style="color:var(--text);font-weight:600">$15,000</span>
-              <span style="color:rgba(90,101,133,0.6)"> · seller-supplied comp</span>
-            </div>
-            <div style="margin-top:1.2rem;border-top:1px solid var(--border);padding-top:1.2rem">
-              <div style="font-family:'DM Mono',monospace;font-size:0.62rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);margin-bottom:0.6rem">Other cards from @bleeding_ink_sports</div>
-              <div style="display:flex;flex-direction:column;gap:0.5rem">
-                <div style="display:flex;justify-content:space-between;align-items:center;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:0.6rem 0.8rem">
-                  <span style="font-size:0.8rem">Shohei Ohtani Gold Auto /50</span>
-                  <span class="mock-badge badge-green">🔥 −21%</span>
-                </div>
-                <div style="display:flex;justify-content:space-between;align-items:center;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:0.6rem 0.8rem">
-                  <span style="font-size:0.8rem">Luka Doncic Silver Prizm PSA 10</span>
-                  <span class="mock-badge badge-blue">✓ −16%</span>
-                </div>
-                <div style="display:flex;justify-content:space-between;align-items:center;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:0.6rem 0.8rem">
-                  <span style="font-size:0.8rem">Patrick Mahomes Gold Prizm /10</span>
-                  <span class="mock-badge badge-grey">≈ Fair</span>
-                </div>
+              <div class="mock-footer">
+                <div class="mock-price">$11,500</div>
+                <span style="display:inline-flex;align-items:center;gap:0.25rem;background:rgba(245,200,66,0.1);border:1px solid rgba(245,200,66,0.25);border-radius:6px;padding:0.12rem 0.5rem;font-family:'DM Mono',monospace;font-size:0.65rem;font-weight:700;color:var(--gold)">📍 Table 12</span>
               </div>
             </div>
+
+            <div class="mock-card">
+              <div style="font-size:0.65rem;font-family:'DM Mono',monospace;color:var(--gold);letter-spacing:0.08em;margin-bottom:0.3rem">Baseball ⚾</div>
+              <div class="mock-player">Paul Skenes</div>
+              <div class="mock-title">2024 Topps Chrome RC Auto · Lava Refractor</div>
+              <div style="display:flex;gap:0.4rem;margin-bottom:0.5rem;align-items:center">
+                <span class="mock-badge badge-amber">BGS 9.5</span>
+              </div>
+              <div class="mock-footer">
+                <div class="mock-price">$2,800</div>
+                <span style="display:inline-flex;align-items:center;gap:0.25rem;background:rgba(245,200,66,0.1);border:1px solid rgba(245,200,66,0.25);border-radius:6px;padding:0.12rem 0.5rem;font-family:'DM Mono',monospace;font-size:0.65rem;font-weight:700;color:var(--gold)">📍 Table 7</span>
+              </div>
+            </div>
+
+            <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:0.85rem;margin-top:0.2rem">
+              <div style="font-family:'DM Mono',monospace;font-size:0.62rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin-bottom:0.5rem">Admin · Assign Table Numbers</div>
+              <div style="display:flex;flex-direction:column;gap:0.4rem">
+                <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem">
+                  <span style="color:var(--text)">@bleeding_ink_sports</span>
+                  <span style="font-family:'DM Mono',monospace;font-size:0.7rem;font-weight:700;color:var(--gold)">Table 12</span>
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem">
+                  <span style="color:var(--text)">@slab_city_sd</span>
+                  <span style="font-family:'DM Mono',monospace;font-size:0.7rem;font-weight:700;color:var(--gold)">Table 7</span>
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem">
+                  <span style="color:var(--text)">@golden_era_cards</span>
+                  <span style="font-family:'DM Mono',monospace;font-size:0.7rem;color:var(--muted);font-style:italic">Unassigned</span>
+                </div>
+              </div>
+            </div>
+
           </div>
         </div>
       </div>
