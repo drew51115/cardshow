@@ -509,8 +509,8 @@ footer {
       <div class="section-header reveal">
         <div class="label">Highlights</div>
         <h2 class="section-headline">Featured at <em id="featShowName">this show</em></h2>
-        <div style="font-size:0.88rem;color:var(--muted);margin-top:0.5rem">
-          Browse what's coming to the show. Table numbers and seller contact info available at the door.
+        <div style="font-size:0.88rem;color:var(--muted);margin-top:0.5rem" id="featuredSub">
+          A preview of what's available. Scan the QR at the entrance to search every card.
         </div>
       </div>
       <div class="featured-grid reveal reveal-d2" id="featuredGrid"></div>
@@ -639,13 +639,15 @@ let inventory = [];    // array of card objects
   if (!showId) { showError(); return; }
 
   if (rawData) {
-    // Option A: data embedded in URL
+    // Option A: data embedded in URL as base64-encoded URI-escaped JSON
     try {
-      const decoded = JSON.parse(atob(rawData));
+      const json = decodeURIComponent(escape(atob(rawData)));
+      const decoded = JSON.parse(json);
       showMeta  = decoded.show;
       inventory = decoded.cards || [];
       renderPage();
     } catch(e) {
+      console.error('Failed to decode show data:', e);
       showError();
     }
   } else {
@@ -748,7 +750,15 @@ function renderHero() {
 
   // Stats
   const sellerCount = Array.isArray(s.sellers) ? s.sellers.length : s.sellers.size || 0;
-  const cardCount   = inventory.filter(c => c.Status !== 'Sold').length;
+  const cardCount   = s.totalCards || inventory.filter(c => c.Status !== 'Sold').length;
+  const isPreview   = s.totalCards && s.totalCards > inventory.length;
+
+  // Update featured section subtext if this is a capped preview
+  const featSub = document.getElementById('featuredSub');
+  if (featSub && isPreview) {
+    featSub.textContent =
+      `Showing ${inventory.length} of ${s.totalCards.toLocaleString()} cards. Scan the QR at the entrance to search every card.`;
+  }
   const sportSet    = new Set(inventory.map(r => detectSport(r)));
   document.getElementById('heroStats').innerHTML = `
     <div class="hero-stat"><span class="hero-stat-val">${sellerCount}</span><div class="hero-stat-lbl">Sellers</div></div>
