@@ -4892,6 +4892,7 @@ function renderAdminShowsList() {
         </button>
         <button class="btn-xs" onclick="event.stopPropagation();openCreateShowModal('${s.id}')">Edit</button>
         <button class="btn-xs" onclick="event.stopPropagation();publishSelectedToShow('${s.id}')">⚡ Publish</button>
+        <button class="btn-xs" onclick="event.stopPropagation();copyShowPageLink('${s.id}')" title="Copy shareable public show page link">🔗 Share Page</button>
         <button class="btn-xs danger" onclick="event.stopPropagation();deleteShow('${s.id}')">Delete</button>
       </div>
 
@@ -4939,6 +4940,156 @@ function renderAdminShowsList() {
     document.getElementById('badgeShowName').textContent = s.name;
     document.getElementById('badgeCardCount').textContent = `${cnt} cards live`;
   }
+}
+
+// ── SESSION 2: PUBLIC SHOW PAGE LINK ──
+
+// Builds a URL for the public show page.
+// Embeds a curated preview of up to 50 cards (top by price, one per seller
+// first for variety) so the URL stays under ~4,000 chars for any show size.
+// The full inventory is always available to buyers at the show via QR.
+function buildShowPageUrl(showId) {
+  const s = shows[showId];
+  if (!s) return null;
+
+  // Use the known production URL — falls back to current origin when
+  // running on the deployed site so relative paths still resolve.
+  const prodOrigin = 'https://card-show.netlify.app';
+  const origin = (window.location.hostname === 'localhost' ||
+                  window.location.hostname === '127.0.0.1')
+    ? window.location.origin
+    : prodOrigin;
+  const base = origin + '/show.html';
+
+  // ── Build a compact card representation (only non-null fields) ──
+  function compact(r) {
+    const c = {};
+    if (r.Seller)              c.Seller              = r.Seller;
+    if (r['Card Title'])       c['Card Title']        = r['Card Title'];
+    if (r.Player)              c.Player               = r.Player;
+    if (r.Year)                c.Year                 = r.Year;
+    const set = r['Set '] || r.Set;
+    if (set)                   c['Set ']              = set;
+    if (r['Parallel/Variant']) c['Parallel/Variant']  = r['Parallel/Variant'];
+    if (r.Grade)               c.Grade                = r.Grade;
+    if (r.Grader)              c.Grader               = r.Grader;
+    if (r.Condition)           c.Condition            = r.Condition;
+    c.Price  = r.Price  || 0;
+    c.Status = r.Status || 'Available';
+    return c;
+  }
+
+  // ── Select up to 50 preview cards ──
+  // Pass 1: highest-priced card per seller (ensures variety across the floor)
+  // Pass 2: fill remaining slots from top by price
+  const available = getShowInventory(showId)
+    .filter(r => r.Status !== 'Sold')
+    .sort((a, b) => Number(b.Price || 0) - Number(a.Price || 0));
+
+  const preview = [];
+  const seenSellers = new Set();
+  for (const r of available) {
+    if (!seenSellers.has(r.Seller) && preview.length < 50) {
+      preview.push(r); seenSellers.add(r.Seller);
+    }
+  }
+  for (const r of available) {
+    if (!preview.includes(r) && preview.length < 50) preview.push(r);
+  }
+
+  // ── Serialise ──
+  const payload = {
+    show: {
+      id:         s.id,
+      name:       s.name,
+      date:       s.date       || '',
+      location:   s.location   || '',
+      status:     s.status     || 'upcoming',
+      tables:     s.tables     || {},
+      sellers:    [...s.sellers],
+      totalCards: available.length,   // pass real count so hero stat is accurate
+    },
+    cards: preview.map(compact)
+  };
+
+  const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+  const url = `${base}?id=${showId}&data=${encoded}`;
+  return url;
+}
+
+function copyShowPageLink(showId) {
+  const url = buildShowPageUrl(showId);
+  if (!url) { showToast('Show not found', 'var(--danger)'); return; }
+
+  const s = shows[showId];
+  const cardCount = getShowInventory(showId).filter(r => r.Status !== 'Sold').length;
+  const sellerCount = [...s.sellers].length;
+  const toastMsg = `🔗 ${cardCount} cards · ${sellerCount} sellers`;
+
+  const doCopy = () => {
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(url)
+        .then(() => showToast(toastMsg))
+        .catch(() => showUrlPrompt(url));
+    } else {
+      // Fallback — execCommand or manual prompt
+      try {
+        const el = document.createElement('textarea');
+        el.value = url;
+        el.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
+        document.body.appendChild(el);
+        el.focus(); el.select();
+        document.execCommand('copy');
+        document.body.removeChild(el);
+        showToast(toastMsg);
+      } catch (_) {
+        showUrlPrompt(url);
+      }
+    }
+  };
+
+  doCopy();
+}
+
+function showUrlPrompt(url) {
+  // Creates a dismissable modal showing the URL for manual copy
+  const overlay = document.createElement('div');
+  overlay.style.cssText = `position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.75);
+    display:flex;align-items:center;justify-content:center;padding:1.5rem`;
+  overlay.innerHTML = `
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:16px;
+      padding:1.5rem;width:100%;max-width:520px;box-shadow:0 24px 64px rgba(0,0,0,0.5)">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:1.3rem;letter-spacing:0.06em;
+        color:var(--text);margin-bottom:0.3rem">Share Page Link</div>
+      <div style="font-size:0.8rem;color:var(--muted);margin-bottom:0.9rem">
+        Copy this URL and paste it into Facebook, Instagram, or any message.
+      </div>
+      <input id="urlPromptInput" value="${url.replace(/"/g,'&quot;')}" readonly
+        style="width:100%;background:var(--surface);border:1px solid var(--border);
+          border-radius:8px;padding:0.6rem 0.8rem;color:var(--accent);
+          font-family:'DM Mono',monospace;font-size:0.68rem;letter-spacing:0.02em;
+          outline:none;word-break:break-all">
+      <div style="display:flex;gap:0.6rem;margin-top:0.9rem;justify-content:flex-end">
+        <button onclick="this.closest('[style]').remove()" style="background:transparent;
+          border:1px solid var(--border);color:var(--muted);border-radius:7px;
+          padding:0.45rem 1rem;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:0.82rem">
+          Close
+        </button>
+        <button onclick="
+          const inp = document.getElementById('urlPromptInput');
+          inp.select(); document.execCommand('copy');
+          this.textContent='✓ Copied!';this.style.background='#22c55e';
+          setTimeout(()=>{this.textContent='Copy';this.style.background='';},2000)"
+          style="background:var(--accent);color:var(--black);border:none;border-radius:7px;
+          padding:0.45rem 1.2rem;cursor:pointer;font-family:'DM Sans',sans-serif;
+          font-weight:700;font-size:0.82rem">
+          Copy
+        </button>
+      </div>
+    </div>`;
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+  setTimeout(() => document.getElementById('urlPromptInput')?.select(), 100);
 }
 
 function toggleSellersPanel(showId) {
