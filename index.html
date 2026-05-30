@@ -3654,6 +3654,62 @@ function applyInventoryFilters() {
   if (afResult) afResult.textContent = filtered.length;
 }
 
+function clearAdminFilters() {
+  ['afPlayer','afShow','afSeller','afGrader','afStatus','afPrice'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  const search = document.getElementById('sellerSearchInput');
+  if (search) search.value = '';
+  applyInventoryFilters();
+}
+
+function updateStats() {
+  const scoped = getSellerInventory();
+
+  const total   = scoped.length;
+  const value   = scoped.reduce((sum, r) => sum + (Number(r.Price) || 0), 0);
+  const graded  = scoped.filter(r => r.Grade && !isNaN(Number(r.Grade))).length;
+  const sellers = new Set(scoped.map(r => r.Seller).filter(Boolean)).size;
+
+  const el = id => document.getElementById(id);
+  if (el('statTotal'))   el('statTotal').textContent   = total.toLocaleString();
+  if (el('statValue'))   el('statValue').textContent   = '$' + value.toLocaleString();
+  if (el('statGraded'))  el('statGraded').textContent  = graded.toLocaleString();
+  if (el('statSellers')) el('statSellers').textContent = sellers.toLocaleString();
+}
+
+function populateAdminFilterOptions() {
+  // Populate show dropdown from shows registry
+  const afShow = document.getElementById('afShow');
+  if (afShow) {
+    const current = afShow.value;
+    afShow.innerHTML = '<option value="">All shows</option><option value="__unassigned__">Unassigned (no show)</option>';
+    Object.values(shows).forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s.id;
+      opt.textContent = s.name + (s.date ? ' · ' + s.date : '');
+      afShow.appendChild(opt);
+    });
+    afShow.value = current;
+  }
+
+  // Populate seller dropdown from unique sellers in inventory
+  const afSeller = document.getElementById('afSeller');
+  if (afSeller) {
+    const current = afSeller.value;
+    const sellers = [...new Set(inventory.map(r => r.Seller).filter(Boolean))].sort();
+    afSeller.innerHTML = '<option value="">All sellers</option>';
+    sellers.forEach(h => {
+      const opt = document.createElement('option');
+      opt.value = h;
+      opt.textContent = '@' + h;
+      afSeller.appendChild(opt);
+    });
+    afSeller.value = current;
+  }
+}
+
 function renderBuyerGrid(rows) {
   const grid = document.getElementById('buyerGrid');
   if (!grid) return; // buyer view not mounted
