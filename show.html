@@ -1,0 +1,1066 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<!-- Open Graph — populated dynamically by JS -->
+<title>CardShow</title>
+<meta name="description" content="Browse seller inventory before you arrive.">
+<meta property="og:type"        content="website">
+<meta property="og:site_name"   content="CardShow">
+<meta property="og:image"       content="https://card-show.netlify.app/og-show.png">
+<meta name="twitter:card"       content="summary_large_image">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Instrument+Serif:ital@0;1&family=DM+Mono:wght@400;500&family=Barlow+Condensed:wght@700;800;900&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+<style>
+/* ══════════════════════════════════════
+   TOKENS
+══════════════════════════════════════ */
+:root {
+  --gold:    #f5c842;
+  --gold2:   #c9a020;
+  --black:   #07080c;
+  --surface: #0d1018;
+  --card:    #131828;
+  --border:  #1e2640;
+  --text:    #e8eaf5;
+  --muted:   #5a6585;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  background: var(--black);
+  color: var(--text);
+  font-family: 'DM Sans', sans-serif;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+}
+
+/* Noise texture */
+body::after {
+  content: ''; position: fixed; inset: 0; z-index: 9999;
+  pointer-events: none; opacity: 0.022;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ══════════════════════════════════════
+   LAYOUT / UTILITY
+══════════════════════════════════════ */
+.container { max-width: 1080px; margin: 0 auto; padding: 0 1.5rem; }
+.mono { font-family: 'DM Mono', monospace; }
+.label {
+  font-family: 'DM Mono', monospace; font-size: 0.7rem;
+  letter-spacing: 0.16em; text-transform: uppercase; color: var(--gold);
+  display: flex; align-items: center; gap: 10px;
+}
+.label::before { content:''; width:24px; height:2px; background:var(--gold); border-radius:2px; }
+
+/* ══════════════════════════════════════
+   LOADING / ERROR STATES
+══════════════════════════════════════ */
+.state-screen {
+  min-height: 100vh; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; text-align: center;
+  padding: 2rem;
+}
+.state-logo {
+  font-family: 'Bebas Neue', sans-serif; font-size: 2rem;
+  letter-spacing: 0.1em; color: var(--gold); margin-bottom: 1.5rem;
+}
+.spinner {
+  width: 36px; height: 36px; border-radius: 50%;
+  border: 2px solid var(--border); border-top-color: var(--gold);
+  animation: spin 0.8s linear infinite; margin-bottom: 1rem;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ══════════════════════════════════════
+   NAV
+══════════════════════════════════════ */
+nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  height: 56px; display: flex; align-items: center;
+  background: rgba(7,8,12,0.9); backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(30,38,64,0.5);
+}
+.nav-inner {
+  display: flex; align-items: center;
+  justify-content: space-between; width: 100%;
+}
+.nav-logo {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 1.5rem; letter-spacing: 0.1em; color: var(--gold);
+}
+.nav-logo span { color: rgba(232,234,245,0.35); }
+.nav-back {
+  display: flex; align-items: center; gap: 0.4rem;
+  font-size: 0.8rem; font-weight: 500; color: var(--muted);
+  text-decoration: none; transition: color 0.15s;
+  font-family: 'DM Mono', monospace; letter-spacing: 0.04em;
+}
+.nav-back:hover { color: var(--text); }
+.nav-share {
+  display: flex; align-items: center; gap: 0.5rem;
+  background: rgba(245,200,66,0.1); border: 1px solid rgba(245,200,66,0.25);
+  border-radius: 20px; padding: 0.35rem 0.9rem;
+  font-size: 0.78rem; font-weight: 600; color: var(--gold);
+  cursor: pointer; transition: all 0.15s; font-family: 'DM Sans', sans-serif;
+}
+.nav-share:hover { background: rgba(245,200,66,0.18); }
+
+/* ══════════════════════════════════════
+   HERO
+══════════════════════════════════════ */
+.hero {
+  min-height: 100vh;
+  display: flex; flex-direction: column;
+  justify-content: flex-end;
+  padding: 0 0 0;
+  position: relative; overflow: hidden;
+}
+
+.hero-bg {
+  position: absolute; inset: 0; z-index: 0;
+  background:
+    radial-gradient(ellipse 80% 60% at 60% 20%, rgba(245,200,66,0.07) 0%, transparent 55%),
+    radial-gradient(ellipse 50% 80% at 10% 80%, rgba(245,200,66,0.03) 0%, transparent 50%),
+    linear-gradient(170deg, #0d1018 0%, var(--black) 50%);
+}
+
+.hero-grid {
+  position: absolute; inset: 0; z-index: 0;
+  background-image:
+    linear-gradient(rgba(245,200,66,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(245,200,66,0.03) 1px, transparent 1px);
+  background-size: 60px 60px;
+  mask-image: radial-gradient(ellipse 70% 80% at 60% 30%, black 30%, transparent 80%);
+}
+
+/* Diagonal accent lines */
+.hero-slash {
+  position: absolute; top: -100px; right: 180px;
+  width: 4px; height: 900px;
+  background: linear-gradient(180deg, transparent, rgba(245,200,66,0.15), transparent);
+  transform: rotate(-15deg); z-index: 0;
+}
+
+.hero-content {
+  position: relative; z-index: 2;
+  padding: 100px 0 0;
+}
+
+.hero-eyebrow { margin-bottom: 1.4rem; }
+
+.hero-show-name {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: clamp(52px, 8vw, 108px);
+  line-height: 0.88; letter-spacing: 0.015em;
+  color: var(--text);
+  margin-bottom: 0.4rem;
+}
+.hero-show-name em { color: var(--gold); font-style: normal; display: block; }
+
+.hero-meta {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem;
+  margin: 1.4rem 0 2.2rem;
+}
+.meta-chip {
+  display: flex; align-items: center; gap: 0.4rem;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 6px; padding: 0.4rem 0.85rem;
+  font-family: 'DM Mono', monospace; font-size: 0.72rem;
+  color: var(--text); letter-spacing: 0.02em;
+}
+.meta-chip .icon { font-size: 0.85rem; }
+.status-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  display: inline-block; flex-shrink: 0;
+}
+.status-active  { background: #22c55e; box-shadow: 0 0 6px rgba(34,197,94,0.5); }
+.status-upcoming{ background: var(--gold); box-shadow: 0 0 6px rgba(245,200,66,0.4); }
+.status-past    { background: var(--muted); }
+
+/* Stats row */
+.hero-stats {
+  display: flex; gap: 0; margin-bottom: 3rem;
+  border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
+  background: var(--surface); width: fit-content;
+}
+.hero-stat {
+  padding: 1rem 1.6rem; text-align: center;
+  border-right: 1px solid var(--border);
+}
+.hero-stat:last-child { border-right: none; }
+.hero-stat-val {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 2.4rem; color: var(--gold);
+  letter-spacing: 0.04em; line-height: 1; display: block;
+}
+.hero-stat-lbl {
+  font-family: 'DM Mono', monospace; font-size: 0.62rem;
+  letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--muted); margin-top: 0.25rem;
+}
+
+/* Access code gate */
+.access-gate {
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  padding: 2.5rem 0;
+  position: relative; z-index: 2;
+}
+.access-gate-inner {
+  display: flex; align-items: center;
+  gap: 1.2rem; flex-wrap: wrap;
+}
+.access-gate-text {}
+.access-gate-title {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 800; font-size: 1.2rem;
+  letter-spacing: 0.06em; text-transform: uppercase; color: var(--text);
+}
+.access-gate-sub {
+  font-size: 0.82rem; color: var(--muted); margin-top: 0.15rem;
+}
+.access-form {
+  display: flex; gap: 0.6rem; flex: 1; max-width: 360px;
+}
+.access-input {
+  flex: 1; background: var(--card); border: 1px solid var(--border);
+  border-radius: 8px; padding: 0.7rem 1rem;
+  color: var(--text); font-family: 'DM Mono', monospace;
+  font-size: 1rem; letter-spacing: 0.12em; text-transform: uppercase;
+  outline: none; transition: border-color 0.2s;
+}
+.access-input:focus { border-color: var(--gold); }
+.access-input::placeholder { color: var(--muted); letter-spacing: 0.08em; text-transform: none; }
+.btn-access {
+  background: var(--gold); color: var(--black);
+  border: none; border-radius: 8px; padding: 0.7rem 1.4rem;
+  font-family: 'DM Sans', sans-serif; font-weight: 700;
+  font-size: 0.88rem; cursor: pointer; transition: all 0.2s;
+  white-space: nowrap;
+}
+.btn-access:hover { background: #f0c030; transform: translateY(-1px); }
+.access-error {
+  font-family: 'DM Mono', monospace; font-size: 0.72rem;
+  color: #f87171; margin-top: 0.4rem; letter-spacing: 0.04em;
+  display: none;
+}
+
+/* ══════════════════════════════════════
+   FEATURED CARDS
+══════════════════════════════════════ */
+.section { padding: 80px 0; }
+.section-header { margin-bottom: 2.5rem; }
+.section-headline {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: clamp(36px, 5vw, 56px);
+  letter-spacing: 0.03em; color: var(--text);
+  line-height: 1; margin-top: 0.6rem;
+}
+.section-headline em { color: var(--gold); font-style: normal; }
+
+.featured-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.85rem;
+}
+.feat-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 12px; padding: 1rem; position: relative;
+  overflow: hidden; transition: all 0.2s;
+}
+.feat-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0;
+  height: 2px; background: var(--gold);
+  transform: scaleX(0); transition: transform 0.2s; transform-origin: left;
+}
+.feat-card:hover { border-color: rgba(245,200,66,0.3); transform: translateY(-2px); }
+.feat-card:hover::before { transform: scaleX(1); }
+
+.feat-sport {
+  font-family: 'DM Mono', monospace; font-size: 0.62rem;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--gold); margin-bottom: 0.35rem; opacity: 0.7;
+}
+.feat-player {
+  font-family: 'Bebas Neue', sans-serif; font-size: 1.2rem;
+  letter-spacing: 0.04em; line-height: 1; color: var(--text);
+  margin-bottom: 0.2rem;
+}
+.feat-title {
+  font-size: 0.72rem; color: var(--muted); line-height: 1.35;
+  margin-bottom: 0.55rem;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.feat-badges { display: flex; gap: 0.3rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
+.badge {
+  display: inline-block; padding: 0.14rem 0.45rem;
+  border-radius: 20px; font-size: 0.62rem; font-weight: 600;
+  font-family: 'DM Mono', monospace; letter-spacing: 0.03em;
+}
+.badge-psa  { background: rgba(59,130,246,0.15);  color: #60a5fa; border: 1px solid rgba(59,130,246,0.3); }
+.badge-bgs  { background: rgba(234,179,8,0.15);   color: #fbbf24; border: 1px solid rgba(234,179,8,0.35); }
+.badge-cgc  { background: rgba(220,38,38,0.15);   color: #f87171; border: 1px solid rgba(220,38,38,0.3); }
+.badge-sgc  { background: rgba(16,185,129,0.15);  color: #34d399; border: 1px solid rgba(16,185,129,0.3); }
+.badge-raw  { background: rgba(107,114,128,0.15); color: #9ca3af; border: 1px solid rgba(107,114,128,0.3); }
+.badge-var  { background: rgba(139,92,246,0.12);  color: #a78bfa; border: 1px solid rgba(139,92,246,0.25); }
+.feat-footer {
+  display: flex; align-items: center; justify-content: space-between;
+  border-top: 1px solid var(--border); padding-top: 0.55rem; margin-top: 0.3rem;
+}
+.feat-price {
+  font-family: 'Bebas Neue', sans-serif; font-size: 1.3rem;
+  color: var(--gold); letter-spacing: 0.04em;
+}
+.feat-table {
+  display: inline-flex; align-items: center; gap: 0.22rem;
+  background: rgba(245,200,66,0.08); border: 1px solid rgba(245,200,66,0.2);
+  border-radius: 5px; padding: 0.1rem 0.4rem;
+  font-family: 'DM Mono', monospace; font-size: 0.62rem;
+  font-weight: 700; color: var(--gold); letter-spacing: 0.03em;
+}
+
+/* ══════════════════════════════════════
+   SPORT BREAKDOWN
+══════════════════════════════════════ */
+.sport-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 0.75rem;
+}
+.sport-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 12px; padding: 1.2rem 1rem; text-align: center;
+  transition: all 0.2s;
+}
+.sport-card:hover { border-color: rgba(245,200,66,0.3); background: #171e30; }
+.sport-icon { font-size: 2.2rem; display: block; margin-bottom: 0.5rem; }
+.sport-name {
+  font-family: 'Barlow Condensed', sans-serif; font-weight: 800;
+  font-size: 0.95rem; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text); margin-bottom: 0.2rem;
+}
+.sport-count {
+  font-family: 'DM Mono', monospace; font-size: 0.7rem;
+  color: var(--gold); letter-spacing: 0.04em;
+}
+
+/* ══════════════════════════════════════
+   SELLER ROSTER
+══════════════════════════════════════ */
+.seller-roster {
+  display: flex; flex-wrap: wrap; gap: 0.6rem;
+}
+.seller-chip {
+  display: flex; align-items: center; gap: 0.5rem;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 50px; padding: 0.5rem 1rem;
+  transition: all 0.15s;
+}
+.seller-chip:hover { border-color: rgba(245,200,66,0.3); }
+.seller-avatar {
+  width: 26px; height: 26px; border-radius: 50%;
+  background: var(--gold); color: var(--black);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.62rem; font-weight: 800; flex-shrink: 0;
+  font-family: 'DM Sans', sans-serif;
+}
+.seller-handle {
+  font-family: 'DM Mono', monospace; font-size: 0.72rem;
+  color: var(--text); letter-spacing: 0.02em;
+}
+.seller-table {
+  font-family: 'DM Mono', monospace; font-size: 0.62rem;
+  color: var(--gold); font-weight: 700;
+}
+
+/* ══════════════════════════════════════
+   COUNTDOWN
+══════════════════════════════════════ */
+.countdown {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 16px; padding: 2.5rem; text-align: center;
+  position: relative; overflow: hidden;
+}
+.countdown::before {
+  content: ''; position: absolute; top: -80px; left: 50%;
+  transform: translateX(-50%); width: 400px; height: 400px;
+  background: radial-gradient(ellipse, rgba(245,200,66,0.06), transparent 60%);
+  pointer-events: none;
+}
+.countdown-label {
+  font-family: 'DM Mono', monospace; font-size: 0.72rem;
+  letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--muted); margin-bottom: 1.2rem;
+}
+.countdown-units {
+  display: flex; justify-content: center; gap: 2px;
+}
+.countdown-unit {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 10px; padding: 1rem 1.4rem;
+  min-width: 80px; text-align: center;
+}
+.countdown-val {
+  font-family: 'Bebas Neue', sans-serif; font-size: 3rem;
+  color: var(--gold); letter-spacing: 0.04em; line-height: 1; display: block;
+}
+.countdown-unit-lbl {
+  font-family: 'DM Mono', monospace; font-size: 0.6rem;
+  letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted);
+  margin-top: 0.3rem;
+}
+.countdown-sep {
+  display: flex; align-items: center; padding-bottom: 0.5rem;
+  font-family: 'Bebas Neue', sans-serif; font-size: 2.5rem;
+  color: var(--border);
+}
+
+/* ══════════════════════════════════════
+   CTA FOOTER
+══════════════════════════════════════ */
+.cta-footer {
+  background: var(--gold); padding: 3.5rem 0; text-align: center;
+  position: relative; overflow: hidden;
+}
+.cta-footer::before {
+  content: ''; position: absolute; inset: 0;
+  background: repeating-linear-gradient(-45deg, transparent, transparent 10px,
+    rgba(0,0,0,0.04) 10px, rgba(0,0,0,0.04) 20px);
+}
+.cta-headline {
+  font-family: 'Bebas Neue', sans-serif; font-size: clamp(36px,5vw,60px);
+  letter-spacing: 0.04em; color: var(--black); line-height: 1;
+  margin-bottom: 0.4rem; position: relative;
+}
+.cta-sub {
+  font-size: 1rem; color: rgba(0,0,0,0.6); margin-bottom: 1.8rem;
+  position: relative;
+}
+.btn-cta {
+  background: var(--black); color: var(--gold);
+  border: none; border-radius: 8px; padding: 0.9rem 2rem;
+  font-family: 'DM Sans', sans-serif; font-weight: 700;
+  font-size: 0.95rem; cursor: pointer; transition: all 0.2s;
+  position: relative; letter-spacing: 0.01em; text-decoration: none;
+  display: inline-flex; align-items: center; gap: 0.5rem;
+}
+.btn-cta:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
+
+/* ══════════════════════════════════════
+   FOOTER
+══════════════════════════════════════ */
+footer {
+  border-top: 1px solid var(--border);
+  padding: 1.8rem 0;
+}
+.footer-inner {
+  display: flex; align-items: center;
+  justify-content: space-between; gap: 1rem; flex-wrap: wrap;
+}
+.footer-logo {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 1.3rem; letter-spacing: 0.1em; color: var(--gold);
+}
+.footer-logo span { color: rgba(232,234,245,0.25); }
+.footer-tag {
+  font-family: 'DM Mono', monospace; font-size: 0.65rem;
+  color: rgba(245,200,66,0.2); letter-spacing: 0.1em;
+}
+
+/* ══════════════════════════════════════
+   REVEAL ANIMATIONS
+══════════════════════════════════════ */
+.reveal { opacity: 0; transform: translateY(24px); transition: opacity 0.6s ease, transform 0.6s ease; }
+.reveal.visible { opacity: 1; transform: translateY(0); }
+.reveal-d1 { transition-delay: 0.1s; }
+.reveal-d2 { transition-delay: 0.2s; }
+.reveal-d3 { transition-delay: 0.3s; }
+
+/* ══════════════════════════════════════
+   RESPONSIVE
+══════════════════════════════════════ */
+@media (max-width: 640px) {
+  .hero-stats { width: 100%; }
+  .hero-stat { flex: 1; padding: 0.75rem 0.8rem; }
+  .hero-stat-val { font-size: 1.8rem; }
+  .access-gate-inner { flex-direction: column; align-items: flex-start; }
+  .access-form { max-width: 100%; width: 100%; }
+  .countdown-unit { min-width: 60px; padding: 0.75rem 0.75rem; }
+  .countdown-val { font-size: 2.2rem; }
+  .feat-grid { grid-template-columns: 1fr 1fr; }
+  nav { padding: 0 1rem; }
+  .nav-back span { display: none; }
+}
+</style>
+</head>
+<body>
+
+<!-- Loading state -->
+<div class="state-screen" id="stateLoading">
+  <div class="state-logo">Card<span style="color:rgba(232,234,245,.4)">Show</span></div>
+  <div class="spinner"></div>
+  <div style="font-family:'DM Mono',monospace;font-size:0.72rem;color:var(--muted);letter-spacing:0.1em">Loading show…</div>
+</div>
+
+<!-- Error state -->
+<div class="state-screen" id="stateError" style="display:none">
+  <div class="state-logo">Card<span style="color:rgba(232,234,245,.4)">Show</span></div>
+  <div style="font-size:2rem;margin-bottom:1rem">🔍</div>
+  <div style="font-family:'Bebas Neue',sans-serif;font-size:2rem;letter-spacing:0.04em;margin-bottom:0.5rem">Show Not Found</div>
+  <div style="font-size:0.9rem;color:var(--muted);max-width:360px;margin-bottom:2rem;line-height:1.6">
+    This show link may have expired or the show ID is incorrect. Ask the organizer for a new link.
+  </div>
+  <a href="https://card-show.netlify.app/" style="background:var(--gold);color:var(--black);text-decoration:none;border-radius:8px;padding:0.75rem 1.6rem;font-weight:700;font-size:0.9rem">
+    ← Back to CardShow
+  </a>
+</div>
+
+<!-- Main content — hidden until data loads -->
+<div id="mainContent" style="display:none">
+
+  <!-- ══════ NAV ══════ -->
+  <nav>
+    <div class="container nav-inner">
+      <div class="nav-logo">Card<span>Show</span></div>
+      <div style="display:flex;align-items:center;gap:1rem">
+        <a href="https://card-show.netlify.app/" class="nav-back">
+          ← <span>Browse all shows</span>
+        </a>
+        <button class="nav-share" onclick="copyShowLink()">
+          🔗 Share
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ══════ HERO ══════ -->
+  <section class="hero">
+    <div class="hero-bg"></div>
+    <div class="hero-grid"></div>
+    <div class="hero-slash"></div>
+    <div class="hero-content container">
+      <div class="label hero-eyebrow reveal" id="heroEyebrow">Card Show</div>
+      <h1 class="hero-show-name reveal reveal-d1" id="heroName">
+        <em id="heroNameLine1"></em>
+        <span id="heroNameLine2"></span>
+      </h1>
+      <div class="hero-meta reveal reveal-d2" id="heroMeta"></div>
+      <div class="hero-stats reveal reveal-d3" id="heroStats"></div>
+    </div>
+
+    <!-- Access gate -->
+    <div class="access-gate">
+      <div class="container access-gate-inner">
+        <div class="access-gate-text">
+          <div class="access-gate-title">Browse Full Inventory</div>
+          <div class="access-gate-sub">Enter the show access code to search every card at every table</div>
+        </div>
+        <div>
+          <div class="access-form">
+            <input class="access-input" id="accessCodeInput" placeholder="Access code…"
+              maxlength="8" autocomplete="off" autocapitalize="characters"
+              onkeydown="if(event.key==='Enter')submitAccessCode()">
+            <button class="btn-access" onclick="submitAccessCode()">Browse →</button>
+          </div>
+          <div class="access-error" id="accessError">Incorrect access code — check with the organizer</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ FEATURED CARDS ══════ -->
+  <section class="section" style="padding-top:60px">
+    <div class="container">
+      <div class="section-header reveal">
+        <div class="label">Highlights</div>
+        <h2 class="section-headline">Featured at <em id="featShowName">this show</em></h2>
+        <div style="font-size:0.88rem;color:var(--muted);margin-top:0.5rem">
+          A preview of what's available — enter the access code above to see everything.
+        </div>
+      </div>
+      <div class="featured-grid reveal reveal-d2" id="featuredGrid"></div>
+    </div>
+  </section>
+
+  <!-- ══════ SPORT BREAKDOWN ══════ -->
+  <section class="section" style="padding-top:0">
+    <div class="container">
+      <div class="section-header reveal">
+        <div class="label">By Sport</div>
+        <h2 class="section-headline">Something for <em>everyone.</em></h2>
+      </div>
+      <div class="sport-grid reveal reveal-d2" id="sportGrid"></div>
+    </div>
+  </section>
+
+  <!-- ══════ COUNTDOWN ══════ -->
+  <section class="section" style="padding-top:0" id="countdownSection">
+    <div class="container">
+      <div class="section-header reveal" style="margin-bottom:1.5rem">
+        <div class="label">Coming Up</div>
+        <h2 class="section-headline">Show <em>Starts In</em></h2>
+      </div>
+      <div class="countdown reveal reveal-d2">
+        <div class="countdown-label" id="countdownLabel">Loading…</div>
+        <div class="countdown-units" id="countdownUnits"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ SELLER ROSTER ══════ -->
+  <section class="section" style="padding-top:0">
+    <div class="container">
+      <div class="section-header reveal">
+        <div class="label">Confirmed Sellers</div>
+        <h2 class="section-headline"><em id="sellerCount">0</em> Sellers at this show</h2>
+      </div>
+      <div class="seller-roster reveal reveal-d2" id="sellerRoster"></div>
+    </div>
+  </section>
+
+  <!-- ══════ CTA FOOTER ══════ -->
+  <div class="cta-footer">
+    <div class="container" style="position:relative">
+      <div class="cta-headline" id="ctaHeadline">Ready to find your card?</div>
+      <div class="cta-sub">Enter the access code to browse every seller's inventory.</div>
+      <a class="btn-cta" onclick="document.getElementById('accessCodeInput').focus();window.scrollTo({top:0,behavior:'smooth'})">
+        Browse Inventory →
+      </a>
+    </div>
+  </div>
+
+  <!-- ══════ FOOTER ══════ -->
+  <footer>
+    <div class="container footer-inner">
+      <div class="footer-logo">Card<span>Show</span></div>
+      <div class="footer-tag">⚡ Stop hunting. Start finding.</div>
+    </div>
+  </footer>
+
+</div><!-- /mainContent -->
+
+<script>
+// ══════════════════════════════════════
+//  SHOW PAGE — reads ?id= from URL
+//  All show data is embedded as a query
+//  param (Option A) or fetched (Option B)
+// ══════════════════════════════════════
+
+// ── SPORT DETECTION ──
+const SPORT_ICONS = {
+  'Basketball': '🏀', 'Football': '🏈', 'Baseball': '⚾',
+  'Hockey': '🏒', 'WNBA': '🏀', 'Soccer': '⚽', 'Tennis': '🎾',
+  'Golf': '⛳', 'TCG': '🃏', 'Other': '🃏'
+};
+
+function detectSport(r) {
+  if (r.Sport) return r.Sport;
+  const p = (r.Player || '').toLowerCase();
+  const s = (r['Set '] || r.Set || '').toLowerCase();
+  const t = (r['Card Title'] || '').toLowerCase();
+  const all = p + ' ' + s + ' ' + t;
+
+  const bball = ['lebron','curry','durant','giannis','luka','wembanyama','flagg','jokic','tatum',
+    'morant','edwards','banchero','zion','jayson','anthony','kawhi','harden','westbrook',
+    'kobe','jordan','magic','bird','shaq','iverson','garnett','nba','prizm basketball',
+    'topps chrome basketball','optic basketball','court kings','chronicles basketball'];
+  const fball = ['mahomes','brady','rodgers','manning','allen','lamar','burrow','herbert',
+    'daniel','trevor','arch','caleb','jayden','stroud','ceedee','jefferson','hill',
+    'kelce','tyreek','davante','diggs','henry','ekeler','cmcaffrey','nfl','prizm football',
+    'topps chrome football','prestige','legacy football','certified'];
+  const bsball= ['trout','ohtani','griffey','jeter','babe','ruth','mantle','sosa','bonds',
+    'mookie','acuna','vlad','tatis','soto','guerrero','skenes','witt','henderson','yamamoto',
+    'mlb','topps','bowman','prizm baseball','chrome baseball','heritage'];
+  const hcky  = ['gretzky','crosby','mcdavid','ovechkin','bedard','celebrini','matthews',
+    'draisaitl','makar','nhl','upper deck','parkhurst','o-pee-chee','young guns'];
+  const wnba  = ['clark','reese','wilson','bird','taurasi','wnba'];
+
+  if (bball.some(k => all.includes(k))) return 'Basketball';
+  if (fball.some(k => all.includes(k))) return 'Football';
+  if (bsball.some(k => all.includes(k))) return 'Baseball';
+  if (hcky.some(k => all.includes(k)))  return 'Hockey';
+  if (wnba.some(k => all.includes(k)))  return 'WNBA';
+  return 'Other';
+}
+
+function gradeBadgeHtml(grade, grader) {
+  if (!grade) return '<span class="badge badge-raw">Raw</span>';
+  const g = (grader || 'PSA').toUpperCase();
+  const cls = { PSA:'badge-psa', BGS:'badge-bgs', CGC:'badge-cgc', SGC:'badge-sgc' }[g] || 'badge-psa';
+  return `<span class="badge ${cls}">${g} ${grade}</span>`;
+}
+
+// ── PARSE URL PARAMS ──
+const params   = new URLSearchParams(window.location.search);
+const showId   = params.get('id');
+const rawData  = params.get('data'); // base64-encoded JSON (Option A)
+
+// ── SHOW STATE ──
+let showMeta  = null;  // { id, name, date, location, status, accessCode, tables, sellers }
+let inventory = [];    // array of card objects
+
+// ── ENTRY POINT ──
+(function init() {
+  if (!showId) { showError(); return; }
+
+  if (rawData) {
+    // Option A: data embedded in URL
+    try {
+      const decoded = JSON.parse(atob(rawData));
+      showMeta  = decoded.show;
+      inventory = decoded.cards || [];
+      renderPage();
+    } catch(e) {
+      showError();
+    }
+  } else {
+    // No data yet — show a helpful holding state
+    // (In production this would fetch from Supabase or GitHub)
+    showDemoFallback(showId);
+  }
+})();
+
+function showError() {
+  document.getElementById('stateLoading').style.display = 'none';
+  document.getElementById('stateError').style.display   = 'flex';
+}
+
+// Demo fallback — hardcoded sample data so the page
+// renders correctly when opened without a data= param
+function showDemoFallback(id) {
+  const DEMO_SHOWS = {
+    newport: {
+      id: 'newport', name: 'Newport Showcase Card Show',
+      date: 'May 23, 2026', location: 'Newport Beach, CA',
+      status: 'active', accessCode: 'NEWPORT',
+      tables: { bleeding_ink_sports:'12', refbrand:'4', slab_city_sd:'19', golden_era_cards:'7' },
+      sellers: ['bleeding_ink_sports','refbrand','slab_city_sd','golden_era_cards',
+                'prizm_palace_nyc','rookie_run_houston','patch_work_pdx','diamond_cut_dallas',
+                'the_foil_lab','chrome_kings_atl']
+    },
+    chi503: {
+      id: 'chi503', name: 'Chicago Sports Card Expo',
+      date: 'Jun 14, 2026', location: 'Chicago, IL',
+      status: 'upcoming', accessCode: 'CHI503',
+      tables: {}, sellers: ['wax_vault_chicago','spectrum_breaks_sea','gem_mint_philly']
+    },
+    nyc621: {
+      id: 'nyc621', name: 'NYC Collectors Fair',
+      date: 'Jun 21, 2026', location: 'Javits Center, New York',
+      status: 'upcoming', accessCode: 'NYC621',
+      tables: {}, sellers: ['foil_factory_miami','vintage_vault_bos','cgc_central_nyc']
+    }
+  };
+
+  const DEMO_CARDS = [
+    { Seller:'bleeding_ink_sports', 'Card Title':'2025-26 Topps Chrome Cooper Flagg Sapphire RC', Player:'Cooper Flagg', Year:2025, 'Set ':'Topps Chrome', 'Parallel/Variant':'Sapphire', Grade:10, Grader:'PSA', Price:11500, Status:'Available' },
+    { Seller:'bleeding_ink_sports', 'Card Title':'2024 Topps Shohei Ohtani 50/50 Gold Auto /50', Player:'Shohei Ohtani', Year:2024, 'Set ':'Topps', 'Parallel/Variant':'Gold Auto /50', Grade:10, Grader:'PSA', Price:75000, Status:'Available' },
+    { Seller:'refbrand', 'Card Title':'2024 Topps Chrome Paul Skenes RC Auto', Player:'Paul Skenes', Year:2024, 'Set ':'Topps Chrome', Grade:null, Condition:'Near Mint', Price:2800, Status:'Available' },
+    { Seller:'slab_city_sd', 'Card Title':'2018-19 Prizm Luka Doncic RC Silver Prizm', Player:'Luka Doncic', Year:2018, 'Set ':'Prizm', 'Parallel/Variant':'Silver Prizm', Grade:10, Grader:'PSA', Price:3800, Status:'Available' },
+    { Seller:'golden_era_cards', 'Card Title':'1986-87 Fleer Michael Jordan RC', Player:'Michael Jordan', Year:1986, 'Set ':'Fleer', Grade:8, Grader:'PSA', Price:18000, Status:'Available' },
+    { Seller:'prizm_palace_nyc', 'Card Title':'2023-24 Topps Chrome Victor Wembanyama RC Auto', Player:'Victor Wembanyama', Year:2023, 'Set ':'Topps Chrome', 'Parallel/Variant':'Refractor Auto', Grade:10, Grader:'PSA', Price:9500, Status:'Available' },
+    { Seller:'rookie_run_houston', 'Card Title':'2024 Prizm Jayden Daniels RC Silver Prizm', Player:'Jayden Daniels', Year:2024, 'Set ':'Prizm', 'Parallel/Variant':'Silver Prizm', Grade:null, Condition:'Near Mint', Price:520, Status:'Available' },
+    { Seller:'patch_work_pdx', 'Card Title':'2015-16 Upper Deck Connor McDavid Young Guns', Player:'Connor McDavid', Year:2015, 'Set ':'Upper Deck', 'Parallel/Variant':'Young Guns', Grade:9, Grader:'PSA', Price:3200, Status:'Available' },
+    { Seller:'diamond_cut_dallas', 'Card Title':'2018 Prizm Patrick Mahomes RC Silver Prizm', Player:'Patrick Mahomes', Year:2018, 'Set ':'Prizm', 'Parallel/Variant':'Silver Prizm', Grade:10, Grader:'BGS', Price:3600, Status:'Available' },
+    { Seller:'the_foil_lab', 'Card Title':'2024 Optic Caitlin Clark WNBA RC Holo', Player:'Caitlin Clark', Year:2024, 'Set ':'Optic', 'Parallel/Variant':'Holo', Grade:null, Condition:'Near Mint', Price:1200, Status:'Available' },
+    { Seller:'chrome_kings_atl', 'Card Title':'2011 Bowman Chrome Mike Trout Prospect Auto', Player:'Mike Trout', Year:2011, 'Set ':'Bowman Chrome', Grade:9, Grader:'BGS', Price:22000, Status:'Available' },
+    { Seller:'refbrand', 'Card Title':'2024 Prizm Marvin Harrison Jr RC Silver Prizm', Player:'Marvin Harrison Jr', Year:2024, 'Set ':'Prizm', 'Parallel/Variant':'Silver Prizm', Grade:null, Price:380, Status:'Available' },
+  ];
+
+  const show = DEMO_SHOWS[id];
+  if (!show) { showError(); return; }
+
+  showMeta  = show;
+  inventory = DEMO_CARDS.filter(c => show.sellers.includes(c.Seller));
+  renderPage();
+}
+
+// ── RENDER ──
+function renderPage() {
+  document.getElementById('stateLoading').style.display = 'none';
+  document.getElementById('mainContent').style.display  = 'block';
+
+  renderHero();
+  renderFeaturedCards();
+  renderSportBreakdown();
+  renderCountdown();
+  renderSellerRoster();
+  updateMetaTags();
+  initScrollReveal();
+}
+
+function renderHero() {
+  const s = showMeta;
+
+  // Eyebrow
+  document.getElementById('heroEyebrow').textContent = s.location || 'Card Show';
+
+  // Show name — split at last word for gold highlight
+  const words = s.name.split(' ');
+  const lastWord = words.pop();
+  document.getElementById('heroNameLine1').textContent = words.join(' ');
+  document.getElementById('heroNameLine2').textContent = lastWord;
+  document.title = `${s.name} — CardShow`;
+
+  // Meta chips
+  const statusLabel = { active:'🟢 Happening Now', upcoming:'Upcoming Show', past:'Show Ended' }[s.status] || s.status;
+  const statusDot   = { active:'status-active', upcoming:'status-upcoming', past:'status-past' }[s.status] || 'status-upcoming';
+  document.getElementById('heroMeta').innerHTML = `
+    <div class="meta-chip"><span class="status-dot ${statusDot}"></span>${statusLabel}</div>
+    ${s.date ? `<div class="meta-chip"><span class="icon">📅</span>${s.date}</div>` : ''}
+    ${s.location ? `<div class="meta-chip"><span class="icon">📍</span>${s.location}</div>` : ''}
+  `;
+
+  // Stats
+  const sellerCount = Array.isArray(s.sellers) ? s.sellers.length : s.sellers.size || 0;
+  const cardCount   = inventory.filter(c => c.Status !== 'Sold').length;
+  const sportSet    = new Set(inventory.map(r => detectSport(r)));
+  document.getElementById('heroStats').innerHTML = `
+    <div class="hero-stat"><span class="hero-stat-val">${sellerCount}</span><div class="hero-stat-lbl">Sellers</div></div>
+    <div class="hero-stat"><span class="hero-stat-val">${cardCount}+</span><div class="hero-stat-lbl">Cards Available</div></div>
+    <div class="hero-stat"><span class="hero-stat-val">${sportSet.size}</span><div class="hero-stat-lbl">Sports</div></div>
+  `;
+
+  document.getElementById('featShowName').textContent = s.name.split(' ').slice(-2).join(' ');
+  document.getElementById('sellerCount').textContent  = sellerCount;
+  document.getElementById('ctaHeadline').textContent  = `${cardCount}+ cards waiting at ${s.name.split(' ')[0]}.`;
+}
+
+function renderFeaturedCards() {
+  // Pick top 8 by price descending, then fill with variety across sports
+  const sorted  = [...inventory]
+    .filter(c => c.Status !== 'Sold')
+    .sort((a,b) => Number(b.Price||0) - Number(a.Price||0));
+
+  const featured = [];
+  const seen = new Set();
+  // First pass: top card per seller (ensures variety)
+  for (const r of sorted) {
+    if (!seen.has(r.Seller) && featured.length < 8) {
+      featured.push(r); seen.add(r.Seller);
+    }
+  }
+  // Fill remaining slots from top by price
+  for (const r of sorted) {
+    if (!featured.includes(r) && featured.length < 8) featured.push(r);
+  }
+
+  const grid = document.getElementById('featuredGrid');
+  if (!featured.length) {
+    grid.innerHTML = '<div style="color:var(--muted);font-size:0.88rem;grid-column:1/-1">No cards published yet — check back closer to show day.</div>';
+    return;
+  }
+
+  grid.innerHTML = featured.map(r => {
+    const sport  = detectSport(r);
+    const icon   = SPORT_ICONS[sport] || '🃏';
+    const grade  = gradeBadgeHtml(r.Grade, r.Grader);
+    const par    = r['Parallel/Variant'];
+    const table  = showMeta.tables && showMeta.tables[r.Seller];
+    const tableHtml = table
+      ? `<span class="feat-table">📍 Table ${table}</span>`
+      : `<span style="font-family:'DM Mono',monospace;font-size:0.62rem;color:var(--muted)">@${r.Seller||'seller'}</span>`;
+
+    return `
+    <div class="feat-card">
+      <div class="feat-sport">${icon} ${sport}</div>
+      <div class="feat-player">${r.Player || 'Unknown'}</div>
+      <div class="feat-title">${r['Card Title'] || '—'}</div>
+      <div class="feat-badges">
+        ${grade}
+        ${par ? `<span class="badge badge-var">${par.slice(0,22)}</span>` : ''}
+      </div>
+      <div class="feat-footer">
+        <div class="feat-price">$${Number(r.Price||0).toLocaleString()}</div>
+        ${tableHtml}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderSportBreakdown() {
+  const counts = {};
+  inventory.filter(c => c.Status !== 'Sold').forEach(r => {
+    const sport = detectSport(r);
+    counts[sport] = (counts[sport] || 0) + 1;
+  });
+
+  const sorted = Object.entries(counts).sort((a,b) => b[1] - a[1]);
+  if (!sorted.length) { document.getElementById('sportGrid').innerHTML = ''; return; }
+
+  document.getElementById('sportGrid').innerHTML = sorted.map(([sport, count]) => `
+    <div class="sport-card">
+      <span class="sport-icon">${SPORT_ICONS[sport] || '🃏'}</span>
+      <div class="sport-name">${sport}</div>
+      <div class="sport-count">${count} card${count !== 1 ? 's' : ''}</div>
+    </div>
+  `).join('');
+}
+
+function renderCountdown() {
+  if (!showMeta.date) {
+    document.getElementById('countdownSection').style.display = 'none';
+    return;
+  }
+
+  // Parse date — try to extract from string like "May 23, 2026"
+  const parsed = new Date(showMeta.date + (showMeta.date.includes(':') ? '' : ' 09:00:00'));
+  if (isNaN(parsed)) {
+    document.getElementById('countdownSection').style.display = 'none';
+    return;
+  }
+
+  const now = new Date();
+  const diff = parsed - now;
+
+  if (diff <= 0) {
+    // Show is today or past
+    document.getElementById('countdownSection').style.display = 'none';
+    return;
+  }
+
+  document.getElementById('countdownLabel').textContent = `${showMeta.name} · ${showMeta.date}`;
+
+  function update() {
+    const ms    = parsed - new Date();
+    if (ms <= 0) { document.getElementById('countdownSection').style.display = 'none'; return; }
+    const days  = Math.floor(ms / 86400000);
+    const hrs   = Math.floor((ms % 86400000) / 3600000);
+    const mins  = Math.floor((ms % 3600000)  / 60000);
+    const secs  = Math.floor((ms % 60000)    / 1000);
+    document.getElementById('countdownUnits').innerHTML = [
+      { val: days,  lbl: 'Days' },
+      { val: hrs,   lbl: 'Hours' },
+      { val: mins,  lbl: 'Mins' },
+      { val: secs,  lbl: 'Secs' }
+    ].map((u,i) => `
+      ${i > 0 ? '<div class="countdown-sep">:</div>' : ''}
+      <div class="countdown-unit">
+        <span class="countdown-val">${String(u.val).padStart(2,'0')}</span>
+        <div class="countdown-unit-lbl">${u.lbl}</div>
+      </div>`).join('');
+    setTimeout(update, 1000);
+  }
+  update();
+}
+
+function renderSellerRoster() {
+  const sellers = Array.isArray(showMeta.sellers)
+    ? showMeta.sellers
+    : [...(showMeta.sellers || [])];
+
+  if (!sellers.length) {
+    document.getElementById('sellerRoster').innerHTML =
+      '<div style="color:var(--muted);font-size:0.88rem">No sellers confirmed yet.</div>';
+    return;
+  }
+
+  document.getElementById('sellerRoster').innerHTML = sellers.map(handle => {
+    const initials = handle.split('_').map(w => w[0]).join('').toUpperCase().slice(0,2);
+    const table    = showMeta.tables && showMeta.tables[handle];
+    return `
+    <div class="seller-chip">
+      <div class="seller-avatar">${initials}</div>
+      <div>
+        <div class="seller-handle">@${handle}</div>
+        ${table ? `<div class="seller-table">📍 Table ${table}</div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── ACCESS CODE GATE ──
+function submitAccessCode() {
+  const code   = document.getElementById('accessCodeInput').value.trim().toUpperCase();
+  const errEl  = document.getElementById('accessError');
+  errEl.style.display = 'none';
+
+  if (!code) return;
+  if (!showMeta || !showMeta.accessCode) return;
+
+  if (code === showMeta.accessCode.toUpperCase()) {
+    // Deep-link into the main app with show pre-selected
+    const target = `https://card-show.netlify.app/?show=${showMeta.id}&code=${code}`;
+    window.location.href = target;
+  } else {
+    errEl.style.display = 'block';
+    document.getElementById('accessCodeInput').style.borderColor = '#f87171';
+    setTimeout(() => {
+      document.getElementById('accessCodeInput').style.borderColor = '';
+    }, 2000);
+  }
+}
+
+// ── SHARE ──
+function copyShowLink() {
+  const url = window.location.href;
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(url).then(() => showToast('Show link copied!'));
+  } else {
+    const el = document.createElement('input');
+    el.value = url; document.body.appendChild(el);
+    el.select(); document.execCommand('copy');
+    document.body.removeChild(el);
+    showToast('Show link copied!');
+  }
+}
+
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.textContent = msg;
+  Object.assign(t.style, {
+    position:'fixed', bottom:'1.5rem', left:'50%', transform:'translateX(-50%)',
+    background:'var(--gold)', color:'var(--black)', padding:'0.6rem 1.4rem',
+    borderRadius:'50px', fontFamily:"'DM Sans',sans-serif", fontWeight:'700',
+    fontSize:'0.85rem', zIndex:'9999', whiteSpace:'nowrap',
+    boxShadow:'0 4px 20px rgba(245,200,66,0.4)',
+    animation:'fadeUp 0.25s ease both'
+  });
+  const style = document.createElement('style');
+  style.textContent = '@keyframes fadeUp{from{opacity:0;transform:translateX(-50%) translateY(8px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}';
+  document.head.appendChild(style);
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2400);
+}
+
+// ── OPEN GRAPH META ──
+function updateMetaTags() {
+  const s = showMeta;
+  const count = inventory.filter(c => c.Status !== 'Sold').length;
+  const desc  = `${Array.isArray(s.sellers)?s.sellers.length:0} sellers · ${count}+ cards · ${s.location}. Browse inventory before you arrive.`;
+
+  document.title = `${s.name} — CardShow`;
+  document.querySelector('meta[name="description"]').content = desc;
+  document.querySelector('meta[property="og:title"]') ||
+    document.head.insertAdjacentHTML('beforeend', `<meta property="og:title" content="${s.name} — CardShow">`);
+  document.querySelector('meta[property="og:description"]') ||
+    document.head.insertAdjacentHTML('beforeend', `<meta property="og:description" content="${desc}">`);
+  document.querySelector('meta[property="og:url"]') ||
+    document.head.insertAdjacentHTML('beforeend', `<meta property="og:url" content="${window.location.href}">`);
+}
+
+// ── SCROLL REVEAL ──
+function initScrollReveal() {
+  const obs = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (e.isIntersecting) { e.target.classList.add('visible'); obs.unobserve(e.target); }
+    });
+  }, { threshold: 0.1, rootMargin: '0px 0px -30px 0px' });
+  document.querySelectorAll('.reveal').forEach(el => obs.observe(el));
+
+  // Trigger hero immediately
+  document.querySelectorAll('.hero .reveal').forEach(el =>
+    setTimeout(() => el.classList.add('visible'), 80)
+  );
+}
+</script>
+</body>
+</html>
