@@ -207,51 +207,7 @@ nav {
   color: var(--muted); margin-top: 0.25rem;
 }
 
-/* Access code gate */
-.access-gate {
-  background: var(--surface);
-  border-top: 1px solid var(--border);
-  padding: 2.5rem 0;
-  position: relative; z-index: 2;
-}
-.access-gate-inner {
-  display: flex; align-items: center;
-  gap: 1.2rem; flex-wrap: wrap;
-}
-.access-gate-text {}
-.access-gate-title {
-  font-family: 'Barlow Condensed', sans-serif;
-  font-weight: 800; font-size: 1.2rem;
-  letter-spacing: 0.06em; text-transform: uppercase; color: var(--text);
-}
-.access-gate-sub {
-  font-size: 0.82rem; color: var(--muted); margin-top: 0.15rem;
-}
-.access-form {
-  display: flex; gap: 0.6rem; flex: 1; max-width: 360px;
-}
-.access-input {
-  flex: 1; background: var(--card); border: 1px solid var(--border);
-  border-radius: 8px; padding: 0.7rem 1rem;
-  color: var(--text); font-family: 'DM Mono', monospace;
-  font-size: 1rem; letter-spacing: 0.12em; text-transform: uppercase;
-  outline: none; transition: border-color 0.2s;
-}
-.access-input:focus { border-color: var(--gold); }
-.access-input::placeholder { color: var(--muted); letter-spacing: 0.08em; text-transform: none; }
-.btn-access {
-  background: var(--gold); color: var(--black);
-  border: none; border-radius: 8px; padding: 0.7rem 1.4rem;
-  font-family: 'DM Sans', sans-serif; font-weight: 700;
-  font-size: 0.88rem; cursor: pointer; transition: all 0.2s;
-  white-space: nowrap;
-}
-.btn-access:hover { background: #f0c030; transform: translateY(-1px); }
-.access-error {
-  font-family: 'DM Mono', monospace; font-size: 0.72rem;
-  color: #f87171; margin-top: 0.4rem; letter-spacing: 0.04em;
-  display: none;
-}
+
 
 /* ══════════════════════════════════════
    FEATURED CARDS
@@ -320,12 +276,12 @@ nav {
   font-family: 'Bebas Neue', sans-serif; font-size: 1.3rem;
   color: var(--gold); letter-spacing: 0.04em;
 }
-.feat-table {
+.at-show-badge {
   display: inline-flex; align-items: center; gap: 0.22rem;
-  background: rgba(245,200,66,0.08); border: 1px solid rgba(245,200,66,0.2);
-  border-radius: 5px; padding: 0.1rem 0.4rem;
+  background: rgba(245,200,66,0.06); border: 1px solid rgba(245,200,66,0.15);
+  border-radius: 5px; padding: 0.12rem 0.5rem;
   font-family: 'DM Mono', monospace; font-size: 0.62rem;
-  font-weight: 700; color: var(--gold); letter-spacing: 0.03em;
+  font-weight: 600; color: rgba(245,200,66,0.6); letter-spacing: 0.03em;
 }
 
 /* ══════════════════════════════════════
@@ -359,26 +315,18 @@ nav {
   display: flex; flex-wrap: wrap; gap: 0.6rem;
 }
 .seller-chip {
-  display: flex; align-items: center; gap: 0.5rem;
+  display: flex; align-items: center;
   background: var(--card); border: 1px solid var(--border);
-  border-radius: 50px; padding: 0.5rem 1rem;
+  border-radius: 50px; padding: 0.35rem 0.35rem;
   transition: all 0.15s;
 }
 .seller-chip:hover { border-color: rgba(245,200,66,0.3); }
 .seller-avatar {
-  width: 26px; height: 26px; border-radius: 50%;
+  width: 32px; height: 32px; border-radius: 50%;
   background: var(--gold); color: var(--black);
   display: flex; align-items: center; justify-content: center;
-  font-size: 0.62rem; font-weight: 800; flex-shrink: 0;
+  font-size: 0.65rem; font-weight: 800; flex-shrink: 0;
   font-family: 'DM Sans', sans-serif;
-}
-.seller-handle {
-  font-family: 'DM Mono', monospace; font-size: 0.72rem;
-  color: var(--text); letter-spacing: 0.02em;
-}
-.seller-table {
-  font-family: 'DM Mono', monospace; font-size: 0.62rem;
-  color: var(--gold); font-weight: 700;
 }
 
 /* ══════════════════════════════════════
@@ -491,8 +439,6 @@ footer {
   .hero-stats { width: 100%; }
   .hero-stat { flex: 1; padding: 0.75rem 0.8rem; }
   .hero-stat-val { font-size: 1.8rem; }
-  .access-gate-inner { flex-direction: column; align-items: flex-start; }
-  .access-form { max-width: 100%; width: 100%; }
   .countdown-unit { min-width: 60px; padding: 0.75rem 0.75rem; }
   .countdown-val { font-size: 2.2rem; }
   .feat-grid { grid-template-columns: 1fr 1fr; }
@@ -555,25 +501,6 @@ footer {
       <div class="hero-meta reveal reveal-d2" id="heroMeta"></div>
       <div class="hero-stats reveal reveal-d3" id="heroStats"></div>
     </div>
-
-    <!-- Access gate -->
-    <div class="access-gate">
-      <div class="container access-gate-inner">
-        <div class="access-gate-text">
-          <div class="access-gate-title">Browse Full Inventory</div>
-          <div class="access-gate-sub">Enter the show access code to search every card at every table</div>
-        </div>
-        <div>
-          <div class="access-form">
-            <input class="access-input" id="accessCodeInput" placeholder="Access code…"
-              maxlength="8" autocomplete="off" autocapitalize="characters"
-              onkeydown="if(event.key==='Enter')submitAccessCode()">
-            <button class="btn-access" onclick="submitAccessCode()">Browse →</button>
-          </div>
-          <div class="access-error" id="accessError">Incorrect access code — check with the organizer</div>
-        </div>
-      </div>
-    </div>
   </section>
 
   <!-- ══════ FEATURED CARDS ══════ -->
@@ -583,7 +510,7 @@ footer {
         <div class="label">Highlights</div>
         <h2 class="section-headline">Featured at <em id="featShowName">this show</em></h2>
         <div style="font-size:0.88rem;color:var(--muted);margin-top:0.5rem">
-          A preview of what's available — enter the access code above to see everything.
+          Browse what's coming to the show. Table numbers and seller contact info available at the door.
         </div>
       </div>
       <div class="featured-grid reveal reveal-d2" id="featuredGrid"></div>
@@ -630,9 +557,9 @@ footer {
   <div class="cta-footer">
     <div class="container" style="position:relative">
       <div class="cta-headline" id="ctaHeadline">Ready to find your card?</div>
-      <div class="cta-sub">Enter the access code to browse every seller's inventory.</div>
-      <a class="btn-cta" onclick="document.getElementById('accessCodeInput').focus();window.scrollTo({top:0,behavior:'smooth'})">
-        Browse Inventory →
+      <div class="cta-sub">Find the cards you want. Get table numbers and contact sellers on show day.</div>
+      <a class="btn-cta" href="https://card-show.netlify.app/">
+        Explore CardShow →
       </a>
     </div>
   </div>
@@ -831,7 +758,7 @@ function renderHero() {
 
   document.getElementById('featShowName').textContent = s.name.split(' ').slice(-2).join(' ');
   document.getElementById('sellerCount').textContent  = sellerCount;
-  document.getElementById('ctaHeadline').textContent  = `${cardCount}+ cards waiting at ${s.name.split(' ')[0]}.`;
+  document.getElementById('ctaHeadline').textContent  = `${cardCount}+ cards at ${s.name.split(' ')[0]}.`;
 }
 
 function renderFeaturedCards() {
@@ -864,11 +791,6 @@ function renderFeaturedCards() {
     const icon   = SPORT_ICONS[sport] || '🃏';
     const grade  = gradeBadgeHtml(r.Grade, r.Grader);
     const par    = r['Parallel/Variant'];
-    const table  = showMeta.tables && showMeta.tables[r.Seller];
-    const tableHtml = table
-      ? `<span class="feat-table">📍 Table ${table}</span>`
-      : `<span style="font-family:'DM Mono',monospace;font-size:0.62rem;color:var(--muted)">@${r.Seller||'seller'}</span>`;
-
     return `
     <div class="feat-card">
       <div class="feat-sport">${icon} ${sport}</div>
@@ -880,7 +802,7 @@ function renderFeaturedCards() {
       </div>
       <div class="feat-footer">
         <div class="feat-price">$${Number(r.Price||0).toLocaleString()}</div>
-        ${tableHtml}
+        <span class="at-show-badge">📍 At the show</span>
       </div>
     </div>`;
   }).join('');
@@ -963,41 +885,25 @@ function renderSellerRoster() {
     return;
   }
 
-  document.getElementById('sellerRoster').innerHTML = sellers.map(handle => {
+  document.getElementById('sellerRoster').innerHTML = sellers.map((handle, i) => {
     const initials = handle.split('_').map(w => w[0]).join('').toUpperCase().slice(0,2);
-    const table    = showMeta.tables && showMeta.tables[handle];
     return `
-    <div class="seller-chip">
+    <div class="seller-chip" title="Confirmed seller">
       <div class="seller-avatar">${initials}</div>
-      <div>
-        <div class="seller-handle">@${handle}</div>
-        ${table ? `<div class="seller-table">📍 Table ${table}</div>` : ''}
-      </div>
     </div>`;
   }).join('');
+  // At-show info notice
+  document.getElementById('sellerRoster').insertAdjacentHTML('afterend',
+    `<div id="sellerAtShowNotice" style="margin-top:1.2rem;display:flex;align-items:flex-start;gap:0.75rem;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1rem 1.1rem">
+      <span style="font-size:1.3rem;flex-shrink:0">📍</span>
+      <div>
+        <div style="font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:0.95rem;letter-spacing:0.06em;text-transform:uppercase;color:var(--text);margin-bottom:0.2rem">Table numbers &amp; seller contact available at the show</div>
+        <div style="font-size:0.82rem;color:var(--muted);line-height:1.5">Every seller's table location and direct WhatsApp contact are shown in the buyer view once you're at the event. Just scan the QR code at the entrance.</div>
+      </div>
+    </div>`
+  );
 }
 
-// ── ACCESS CODE GATE ──
-function submitAccessCode() {
-  const code   = document.getElementById('accessCodeInput').value.trim().toUpperCase();
-  const errEl  = document.getElementById('accessError');
-  errEl.style.display = 'none';
-
-  if (!code) return;
-  if (!showMeta || !showMeta.accessCode) return;
-
-  if (code === showMeta.accessCode.toUpperCase()) {
-    // Deep-link into the main app with show pre-selected
-    const target = `https://card-show.netlify.app/?show=${showMeta.id}&code=${code}`;
-    window.location.href = target;
-  } else {
-    errEl.style.display = 'block';
-    document.getElementById('accessCodeInput').style.borderColor = '#f87171';
-    setTimeout(() => {
-      document.getElementById('accessCodeInput').style.borderColor = '';
-    }, 2000);
-  }
-}
 
 // ── SHARE ──
 function copyShowLink() {
