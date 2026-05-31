@@ -5012,7 +5012,9 @@ function buildShowPageUrl(showId) {
     cards: preview.map(compact)
   };
 
-  const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+  // URL-safe base64 — strip = padding which breaks in URL query strings
+  const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(payload))))
+    .replace(/=+$/, '');
   const url = `${base}?id=${showId}&data=${encoded}`;
   return url;
 }

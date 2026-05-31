@@ -639,20 +639,20 @@ let inventory = [];    // array of card objects
   if (!showId) { showError(); return; }
 
   if (rawData) {
-    // Option A: data embedded in URL as base64-encoded URI-escaped JSON
     try {
-      const json = decodeURIComponent(escape(atob(rawData)));
+      // Restore stripped = padding before decoding
+      const padded = rawData + '==='.slice((rawData.length + 3) % 4);
+      const json   = decodeURIComponent(escape(atob(padded)));
       const decoded = JSON.parse(json);
       showMeta  = decoded.show;
       inventory = decoded.cards || [];
       renderPage();
     } catch(e) {
       console.error('Failed to decode show data:', e);
-      showError();
+      // Try demo fallback by ID before showing error
+      showDemoFallback(showId);
     }
   } else {
-    // No data yet — show a helpful holding state
-    // (In production this would fetch from Supabase or GitHub)
     showDemoFallback(showId);
   }
 })();
