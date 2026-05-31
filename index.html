@@ -1927,7 +1927,7 @@
     <button class="nav-tab" id="navTabBuyer" onclick="switchView('buyer')">◎ Buyer</button>
   </div>
   <div class="nav-right">
-    <a href="mailto:stephen.a.wilhelm@gmail.com?subject=Partnership%20Inquiry%20%E2%80%93%20CardShow&body=Hi%20CardShow%20team%2C%0A%0AI%27m%20interested%20in%20exploring%20a%20partnership%20integration%20with%20CardShow.%0A%0ACompany%3A%0AContact%20name%3A%0AIntegration%20type%20(Card%20Dealer%20Pro%20%2F%20Flipwise%20%2F%20Ludex%20%2F%20Other)%3A%0ADetails%3A"
+    <a href="#" id="partnershipLink" onclick="this.href='mailto:stephen.a.wilhelm@gmail.com?subject=Partnership%20Inquiry'"
       class="nav-partnership-link">
       🤝 Partnership
     </a>
@@ -2409,7 +2409,7 @@
 
 <div class="toast" id="toast"></div>
 
-<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script>
+
 
 <!-- ═══════════════ CARD DETAIL MODAL ═══════════════ -->
 <div class="modal-overlay" id="cardModal" onclick="handleModalOverlayClick(event)">
@@ -2689,6 +2689,58 @@
 // ── STATE ──
 let inventory = [];
 let sellerSearch = '';
+
+// ── AUTH FUNCTIONS — hoisted to top so HTML onclick handlers always find them ──
+var authRoleSelected = 'seller';
+
+function setAuthRole(role) {
+  authRoleSelected = role;
+  document.querySelectorAll('.auth-role-tab').forEach(t => t.classList.remove('active'));
+  if (event && event.target) event.target.classList.add('active');
+  const sf = document.getElementById('authSellerFields');
+  const af = document.getElementById('authAdminFields');
+  const er = document.getElementById('authError');
+  if (sf) sf.style.display = role === 'seller' ? 'block' : 'none';
+  if (af) af.style.display = role === 'admin'  ? 'block' : 'none';
+  if (er) er.textContent = '';
+}
+
+function submitAuth() {
+  const err = document.getElementById('authError');
+  if (err) err.textContent = '';
+  if (authRoleSelected === 'seller') {
+    const input = document.getElementById('authSellerHandle');
+    const handle = input ? input.value.trim().toLowerCase().replace(/\s+/g,'_') : '';
+    if (!handle) { if (err) err.textContent = 'Enter your seller handle.'; return; }
+    loginAsSeller(handle);
+  } else {
+    const input = document.getElementById('authAdminPass');
+    const pass = input ? input.value : '';
+    if (pass !== 'admin123') { if (err) err.textContent = 'Incorrect password.'; return; }
+    loginAsAdmin();
+  }
+}
+
+function enterAsBuyer() {
+  currentRole   = 'buyer';
+  currentSeller = null;
+  const overlay = document.getElementById('authOverlay');
+  if (overlay) overlay.classList.add('hidden');
+  const navTabSeller = document.getElementById('navTabSeller');
+  const navTabBuyer  = document.getElementById('navTabBuyer');
+  const navTabs      = document.getElementById('navTabs');
+  if (navTabSeller) navTabSeller.style.display = 'none';
+  if (navTabBuyer)  navTabBuyer.style.display  = 'none';
+  if (navTabs)      navTabs.style.display      = 'none';
+  const adminFilterBar = document.getElementById('adminFilterBar');
+  const sellerQrPanel  = document.getElementById('sellerQrPanel');
+  if (adminFilterBar) adminFilterBar.classList.remove('visible');
+  if (sellerQrPanel)  sellerQrPanel.classList.remove('visible');
+  showNavUser('Guest', 'Buyer', 'seller');
+  switchView('buyer');
+  openBuyerShowPicker();
+}
+// ── END AUTH HOISTING ──
 
 // Multi-show system
 let shows = {};          // { showId: { id, name, date, location, status, accessCode, sellers: Set } }
@@ -4405,34 +4457,9 @@ function downloadQR() {
 const ADMIN_PASSWORD = 'admin123';
 let currentRole = null;   // 'seller' | 'admin' | 'buyer'
 let currentSeller = null; // seller handle when role === 'seller'
-var authRoleSelected = 'seller'; // var avoids temporal dead zone for inline HTML handlers
+// authRoleSelected, setAuthRole, submitAuth, enterAsBuyer are hoisted to top of script
 
-function setAuthRole(role) {
-  authRoleSelected = role;
-  document.querySelectorAll('.auth-role-tab').forEach(t => t.classList.remove('active'));
-  event.target.classList.add('active');
-  document.getElementById('authSellerFields').style.display = role === 'seller' ? 'block' : 'none';
-  document.getElementById('authAdminFields').style.display  = role === 'admin'  ? 'block' : 'none';
-  document.getElementById('authError').textContent = '';
-}
-
-function submitAuth() {
-  const err = document.getElementById('authError');
-  err.textContent = '';
-
-  if (authRoleSelected === 'seller') {
-    const handle = document.getElementById('authSellerHandle').value.trim().toLowerCase().replace(/\s+/g,'_');
-    if (!handle) { err.textContent = 'Enter your seller handle.'; return; }
-    loginAsSeller(handle);
-
-  } else {
-    const pass = document.getElementById('authAdminPass').value;
-    if (pass !== ADMIN_PASSWORD) { err.textContent = 'Incorrect password.'; return; }
-    loginAsAdmin();
-  }
-}
-
-function loginAsSeller(handle) {
+function showNavUser(name, role, avatarClass) {
   currentRole   = 'seller';
   currentSeller = handle;
   document.getElementById('authOverlay').classList.add('hidden');
@@ -4485,21 +4512,6 @@ function loginAsAdmin() {
   if (countEl) countEl.textContent = inventory.length;
 
   showToast('Admin access granted');
-}
-
-function enterAsBuyer() {
-  currentRole   = 'buyer';
-  currentSeller = null;
-  document.getElementById('authOverlay').classList.add('hidden');
-  document.getElementById('navTabSeller').style.display = 'none';
-  document.getElementById('navTabBuyer').style.display  = 'none';
-  document.getElementById('navTabs').style.display      = 'none';
-  document.getElementById('adminFilterBar').classList.remove('visible');
-  document.getElementById('sellerQrPanel').classList.remove('visible');
-  showNavUser('Guest', 'Buyer', 'seller');
-  switchView('buyer');
-  // Show the show picker so buyer can choose/enter a show
-  openBuyerShowPicker();
 }
 
 function showNavUser(name, role, avatarClass) {
@@ -4943,49 +4955,45 @@ function renderAdminShowsList() {
 }
 
 // ── SESSION 2: PUBLIC SHOW PAGE LINK ──
+// Stores show payload in localStorage (same origin as show.html)
+// then generates a clean short URL — no data in the query string.
 
-// Builds a URL for the public show page.
-// Embeds a curated preview of up to 50 cards (top by price, one per seller
-// first for variety) so the URL stays under ~4,000 chars for any show size.
-// The full inventory is always available to buyers at the show via QR.
 function buildShowPageUrl(showId) {
   const s = shows[showId];
   if (!s) return null;
-
-  // Use the known production URL — falls back to current origin when
-  // running on the deployed site so relative paths still resolve.
   const prodOrigin = 'https://card-show.netlify.app';
   const origin = (window.location.hostname === 'localhost' ||
                   window.location.hostname === '127.0.0.1')
-    ? window.location.origin
-    : prodOrigin;
-  const base = origin + '/show.html';
+    ? window.location.origin : prodOrigin;
+  return `${origin}/show.html?id=${showId}`;
+}
 
-  // ── Build a compact card representation (only non-null fields) ──
+function storeShowPayload(showId) {
+  const s = shows[showId];
+  if (!s) return false;
+
   function compact(r) {
     const c = {};
-    if (r.Seller)              c.Seller              = r.Seller;
-    if (r['Card Title'])       c['Card Title']        = r['Card Title'];
-    if (r.Player)              c.Player               = r.Player;
-    if (r.Year)                c.Year                 = r.Year;
+    if (r.Seller)              c.Seller             = r.Seller;
+    if (r['Card Title'])       c['Card Title']       = r['Card Title'];
+    if (r.Player)              c.Player              = r.Player;
+    if (r.Year)                c.Year                = r.Year;
     const set = r['Set '] || r.Set;
-    if (set)                   c['Set ']              = set;
-    if (r['Parallel/Variant']) c['Parallel/Variant']  = r['Parallel/Variant'];
-    if (r.Grade)               c.Grade                = r.Grade;
-    if (r.Grader)              c.Grader               = r.Grader;
-    if (r.Condition)           c.Condition            = r.Condition;
+    if (set)                   c['Set ']             = set;
+    if (r['Parallel/Variant']) c['Parallel/Variant'] = r['Parallel/Variant'];
+    if (r.Grade)               c.Grade               = r.Grade;
+    if (r.Grader)              c.Grader              = r.Grader;
+    if (r.Condition)           c.Condition           = r.Condition;
     c.Price  = r.Price  || 0;
     c.Status = r.Status || 'Available';
     return c;
   }
 
-  // ── Select up to 50 preview cards ──
-  // Pass 1: highest-priced card per seller (ensures variety across the floor)
-  // Pass 2: fill remaining slots from top by price
   const available = getShowInventory(showId)
     .filter(r => r.Status !== 'Sold')
     .sort((a, b) => Number(b.Price || 0) - Number(a.Price || 0));
 
+  // Up to 50 cards — one per seller first, then fill by price
   const preview = [];
   const seenSellers = new Set();
   for (const r of available) {
@@ -4997,7 +5005,6 @@ function buildShowPageUrl(showId) {
     if (!preview.includes(r) && preview.length < 50) preview.push(r);
   }
 
-  // ── Serialise ──
   const payload = {
     show: {
       id:         s.id,
@@ -5007,54 +5014,52 @@ function buildShowPageUrl(showId) {
       status:     s.status     || 'upcoming',
       tables:     s.tables     || {},
       sellers:    [...s.sellers],
-      totalCards: available.length,   // pass real count so hero stat is accurate
+      totalCards: available.length,
     },
-    cards: preview.map(compact)
+    cards:     preview.map(compact),
+    storedAt:  Date.now(),
   };
 
-  // URL-safe base64 — strip = padding which breaks in URL query strings
-  const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(payload))))
-    .replace(/=+$/, '');
-  const url = `${base}?id=${showId}&data=${encoded}`;
-  return url;
+  try {
+    localStorage.setItem(`cardshow_show_${showId}`, JSON.stringify(payload));
+    return true;
+  } catch(e) {
+    console.error('localStorage write failed:', e);
+    return false;
+  }
 }
 
 function copyShowPageLink(showId) {
+  const stored = storeShowPayload(showId);
+  if (!stored) { showToast('Could not store show data', 'var(--danger)'); return; }
+
   const url = buildShowPageUrl(showId);
-  if (!url) { showToast('Show not found', 'var(--danger)'); return; }
-
   const s = shows[showId];
-  const cardCount = getShowInventory(showId).filter(r => r.Status !== 'Sold').length;
+  const cardCount   = getShowInventory(showId).filter(r => r.Status !== 'Sold').length;
   const sellerCount = [...s.sellers].length;
-  const toastMsg = `🔗 ${cardCount} cards · ${sellerCount} sellers`;
+  const toastMsg    = `🔗 ${cardCount} cards · ${sellerCount} sellers`;
 
-  const doCopy = () => {
-    if (navigator.clipboard && window.isSecureContext) {
-      navigator.clipboard.writeText(url)
-        .then(() => showToast(toastMsg))
-        .catch(() => showUrlPrompt(url));
-    } else {
-      // Fallback — execCommand or manual prompt
-      try {
-        const el = document.createElement('textarea');
-        el.value = url;
-        el.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
-        document.body.appendChild(el);
-        el.focus(); el.select();
-        document.execCommand('copy');
-        document.body.removeChild(el);
-        showToast(toastMsg);
-      } catch (_) {
-        showUrlPrompt(url);
-      }
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(url)
+      .then(() => showToast(toastMsg))
+      .catch(() => showUrlPrompt(url));
+  } else {
+    try {
+      const el = document.createElement('textarea');
+      el.value = url;
+      el.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
+      document.body.appendChild(el);
+      el.focus(); el.select();
+      document.execCommand('copy');
+      document.body.removeChild(el);
+      showToast(toastMsg);
+    } catch(_) {
+      showUrlPrompt(url);
     }
-  };
-
-  doCopy();
+  }
 }
 
 function showUrlPrompt(url) {
-  // Creates a dismissable modal showing the URL for manual copy
   const overlay = document.createElement('div');
   overlay.style.cssText = `position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.75);
     display:flex;align-items:center;justify-content:center;padding:1.5rem`;
@@ -5069,24 +5074,21 @@ function showUrlPrompt(url) {
       <input id="urlPromptInput" value="${url.replace(/"/g,'&quot;')}" readonly
         style="width:100%;background:var(--surface);border:1px solid var(--border);
           border-radius:8px;padding:0.6rem 0.8rem;color:var(--accent);
-          font-family:'DM Mono',monospace;font-size:0.68rem;letter-spacing:0.02em;
-          outline:none;word-break:break-all">
+          font-family:'DM Mono',monospace;font-size:0.72rem;letter-spacing:0.02em;
+          outline:none">
       <div style="display:flex;gap:0.6rem;margin-top:0.9rem;justify-content:flex-end">
-        <button onclick="this.closest('[style]').remove()" style="background:transparent;
-          border:1px solid var(--border);color:var(--muted);border-radius:7px;
-          padding:0.45rem 1rem;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:0.82rem">
-          Close
-        </button>
+        <button onclick="this.closest('div[style]').remove()"
+          style="background:transparent;border:1px solid var(--border);color:var(--muted);
+          border-radius:7px;padding:0.45rem 1rem;cursor:pointer;
+          font-family:'DM Sans',sans-serif;font-size:0.82rem">Close</button>
         <button onclick="
-          const inp = document.getElementById('urlPromptInput');
-          inp.select(); document.execCommand('copy');
+          const inp=document.getElementById('urlPromptInput');
+          inp.select();document.execCommand('copy');
           this.textContent='✓ Copied!';this.style.background='#22c55e';
-          setTimeout(()=>{this.textContent='Copy';this.style.background='';},2000)"
+          setTimeout(()=>{this.textContent='Copy';this.style.background=''},2000)"
           style="background:var(--accent);color:var(--black);border:none;border-radius:7px;
           padding:0.45rem 1.2rem;cursor:pointer;font-family:'DM Sans',sans-serif;
-          font-weight:700;font-size:0.82rem">
-          Copy
-        </button>
+          font-weight:700;font-size:0.82rem">Copy</button>
       </div>
     </div>`;
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
