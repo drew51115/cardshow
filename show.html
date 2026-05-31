@@ -628,36 +628,33 @@ function gradeBadgeHtml(grade, grader) {
 // ── PARSE URL PARAMS ──
 const params   = new URLSearchParams(window.location.search);
 const showId   = params.get('id');
+const rawData  = params.get('data'); // base64-encoded JSON (Option A)
 
 // ── SHOW STATE ──
-let showMeta  = null;
-let inventory = [];
+let showMeta  = null;  // { id, name, date, location, status, accessCode, tables, sellers }
+let inventory = [];    // array of card objects
 
 // ── ENTRY POINT ──
 (function init() {
   if (!showId) { showError(); return; }
 
-  // Primary: read from localStorage (written by cardshow.html Share Page button)
-  try {
-    const stored = localStorage.getItem(`cardshow_show_${showId}`);
-    if (stored) {
-      const payload = JSON.parse(stored);
-      // Expire after 7 days
-      if (Date.now() - (payload.storedAt || 0) < 7 * 24 * 60 * 60 * 1000) {
-        showMeta  = payload.show;
-        inventory = payload.cards || [];
-        renderPage();
-        return;
-      }
-      // Stale — remove and fall through
-      localStorage.removeItem(`cardshow_show_${showId}`);
+  if (rawData) {
+    try {
+      // Restore stripped = padding before decoding
+      const padded = rawData + '==='.slice((rawData.length + 3) % 4);
+      const json   = decodeURIComponent(escape(atob(padded)));
+      const decoded = JSON.parse(json);
+      showMeta  = decoded.show;
+      inventory = decoded.cards || [];
+      renderPage();
+    } catch(e) {
+      console.error('Failed to decode show data:', e);
+      // Try demo fallback by ID before showing error
+      showDemoFallback(showId);
     }
-  } catch(e) {
-    console.warn('localStorage read failed:', e);
+  } else {
+    showDemoFallback(showId);
   }
-
-  // Fallback: hardcoded demo data for the three sample shows
-  showDemoFallback(showId);
 })();
 
 function showError() {
