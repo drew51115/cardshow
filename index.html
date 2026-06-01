@@ -5037,9 +5037,17 @@ function saveShow() {
   );
   if (codeConflict) { showToast('Access code already in use', 'var(--danger)'); return; }
 
-  // Collect authorized sellers
-  const selectedChips = document.querySelectorAll('#smSellerList .seller-chip.selected');
-  const sellers = new Set([...selectedChips].map(c => c.textContent.replace(/^[✓+]/, '').trim()));
+  // Preserve existing sellers — seller management is done via the
+  // Sellers & Tables panel in the admin dashboard, not the modal chips.
+  // Only seed from chips if this is a brand-new show with no sellers yet.
+  const existingShow = editingShowId ? shows[editingShowId] : null;
+  let sellers;
+  if (existingShow && existingShow.sellers && existingShow.sellers.size > 0) {
+    sellers = existingShow.sellers; // preserve existing Set
+  } else {
+    const selectedChips = document.querySelectorAll('#smSellerList .seller-chip.selected');
+    sellers = new Set([...selectedChips].map(c => c.textContent.replace(/^[✓\s+]+/, '').trim()).filter(Boolean));
+  }
 
   const id = editingShowId || genShowId();
   shows[id] = { id, name, date, location, status, accessCode: code, sellers,
@@ -5072,7 +5080,7 @@ function renderAdminShowsList() {
   el.innerHTML = list.map(s => {
     const isActive   = s.id === activeShowId;
     const dotClass   = s.status === 'active' ? 'active' : s.status === 'past' ? 'past' : 'upcoming';
-    const cardCount  = getShowInventory(s.id).filter(r => r.Status !== 'Sold').length;
+    const cardCount  = inventory.filter(r => s.sellers.has(r.Seller) && r.Status !== 'Sold').length;
     const sellerArr  = [...s.sellers].sort();
     const wasOpen    = openPanels.has(s.id);
     const tables     = s.tables || {};
@@ -5197,11 +5205,11 @@ function renderAdminShowsList() {
 
   // Update active show badge
   if (activeShowId && shows[activeShowId]) {
-    const s = shows[activeShowId];
-    const cnt = getShowInventory(s.id).filter(r => r.Status !== 'Sold').length;
+    const s   = shows[activeShowId];
+    const cnt = inventory.filter(r => s.sellers.has(r.Seller) && r.Status !== 'Sold').length;
     document.getElementById('activeShowBadge').style.display = 'flex';
-    document.getElementById('badgeShowName').textContent = s.name;
-    document.getElementById('badgeCardCount').textContent = `${cnt} cards live`;
+    document.getElementById('badgeShowName').textContent     = s.name;
+    document.getElementById('badgeCardCount').textContent    = `${cnt} cards`;
   }
 }
 
@@ -5428,6 +5436,7 @@ function publishSelectedToShow(showId) {
   show.publishedAt = new Date().toISOString();
   activeShowId = showId;
   renderAdminShowsList(); if(typeof renderAdminShowsDashboard==="function" && _adminTab==="shows") renderAdminShowsDashboard();
+  updateAscHeader(showId);
   buildQRPanel();
   if (currentRole === 'admin') populateAdminFilterOptions();
 
@@ -6301,7 +6310,9 @@ function renderAdminShowsDashboard() {
   el.innerHTML = list.map(s => {
     const isActive     = s.id === activeShowId;
     const isExpanded   = expanded.has(s.id);
-    const cardCount    = getShowInventory(s.id).filter(r => r.Status !== 'Sold').length;
+    const cardCount    = inventory.filter(r =>
+      s.sellers.has(r.Seller) && r.Status !== 'Sold'
+    ).length;
     const sellerArr    = [...s.sellers].sort();
     const tables       = s.tables || {};
     const assignedCnt  = sellerArr.filter(h => tables[h]).length;
@@ -6479,13 +6490,31 @@ function updateAscHeader(showId) {
   const sellerArr   = [...s.sellers];
   const assignedCnt = sellerArr.filter(h => tables[h]).length;
   const needsTable  = sellerArr.length - assignedCnt;
-  const cardCount   = getShowInventory(s.id).filter(r => r.Status !== 'Sold').length;
+
+  // Card count = all available cards from authorized sellers
+  // (whether published yet or not — reflects what Publish will activate)
+  const cardCount = inventory.filter(r =>
+    s.sellers.has(r.Seller) && r.Status !== 'Sold'
+  ).length;
 
   const card = document.getElementById('asc-' + showId);
   if (!card) return;
   const statsEls = card.querySelectorAll('.asc-stat-val');
   if (statsEls[0]) statsEls[0].textContent = cardCount;
   if (statsEls[2]) statsEls[2].textContent = assignedCnt;
+
+  // Update setup signal text in meta line
+  const metaEl = card.querySelector('.asc-meta');
+  if (metaEl) {
+    const setupSignal = sellerArr.length === 0
+      ? `<span style="color:var(--muted)">No sellers</span>`
+      : needsTable === 0
+        ? `<span style="color:#4ade80">✓ All tables set</span>`
+        : `<span style="color:var(--gold)">${needsTable} need table #</span>`;
+    // Replace the last span (setup signal) in the meta line
+    const existing = metaEl.querySelector('span:last-child');
+    if (existing) existing.outerHTML = setupSignal;
+  }
 }
 
 function addSellerByHandleAsc(showId) {
