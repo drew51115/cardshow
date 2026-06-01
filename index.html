@@ -5237,14 +5237,17 @@ function buildShowPageUrl(showId) {
     if (r.Grade)               c.g  = r.Grade;
     if (r.Grader)              c.gr = r.Grader;
     if (r.Condition)           c.c  = r.Condition;
-    c.pr = r.Price  || 0;
+    c.pr = r.Price || 0;
     return c;
   }
 
-  const available = getShowInventory(showId)
-    .filter(r => r.Status !== 'Sold')
+  // Use ALL cards from authorized sellers — same source as the dashboard
+  // card count. Works whether or not Publish has been clicked.
+  const available = inventory
+    .filter(r => s.sellers.has(r.Seller) && r.Status !== 'Sold')
     .sort((a, b) => Number(b.Price || 0) - Number(a.Price || 0));
 
+  // Up to 50 preview cards — one per seller first for variety, then by price
   const preview = [];
   const seen = new Set();
   for (const r of available) {
@@ -5255,7 +5258,7 @@ function buildShowPageUrl(showId) {
   }
 
   const payload = {
-    m: { // show meta — short keys to save space
+    m: {
       id: s.id,
       n:  s.name,
       d:  s.date       || '',
@@ -5263,7 +5266,7 @@ function buildShowPageUrl(showId) {
       st: s.status     || 'upcoming',
       tb: s.tables     || {},
       sl: [...s.sellers],
-      tc: available.length,
+      tc: available.length, // total authorized cards (not just published)
     },
     c: preview.map(compact),
   };
@@ -5281,34 +5284,30 @@ function copyShowPageLink(showId) {
   if (!url) { showToast('Could not build show URL', 'var(--danger)'); return; }
 
   const s = shows[showId];
-  const cardCount   = getShowInventory(showId).filter(r => r.Status !== 'Sold').length;
+  const cardCount   = inventory.filter(r => s.sellers.has(r.Seller) && r.Status !== 'Sold').length;
   const sellerCount = [...s.sellers].length;
-  const toastMsg    = `🔗 ${cardCount} cards · ${sellerCount} sellers`;
 
-  if (navigator.clipboard && window.isSecureContext) {
-    navigator.clipboard.writeText(url)
-      .then(() => showToast(toastMsg))
-      .catch(() => showUrlPrompt(url));
-  } else {
-    try {
-      const el = document.createElement('textarea');
-      el.value = url;
-      el.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
-      document.body.appendChild(el);
-      el.focus(); el.select();
-      document.execCommand('copy');
-      document.body.removeChild(el);
-      showToast(toastMsg);
-    } catch(_) {
-      showUrlPrompt(url);
-    }
-  }
+  // Always show the modal so the admin can see and copy the URL.
+  // Attempt clipboard write automatically on open.
+  showUrlPrompt(url, cardCount, sellerCount);
 }
 
-function showUrlPrompt(url) {
+function showUrlPrompt(url, cardCount, sellerCount) {
   const overlay = document.createElement('div');
   overlay.style.cssText = `position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.75);
     display:flex;align-items:center;justify-content:center;padding:1.5rem`;
+
+  const statsLine = (cardCount !== undefined && sellerCount !== undefined)
+    ? `<div style="display:flex;gap:0.5rem;margin-bottom:0.9rem;flex-wrap:wrap">
+        <span style="background:rgba(245,200,66,0.1);border:1px solid rgba(245,200,66,0.2);
+          border-radius:6px;padding:0.22rem 0.65rem;font-family:'DM Mono',monospace;
+          font-size:0.7rem;color:var(--gold)">${cardCount} cards</span>
+        <span style="background:rgba(245,200,66,0.1);border:1px solid rgba(245,200,66,0.2);
+          border-radius:6px;padding:0.22rem 0.65rem;font-family:'DM Mono',monospace;
+          font-size:0.7rem;color:var(--gold)">${sellerCount} seller${sellerCount !== 1 ? 's' : ''}</span>
+      </div>`
+    : '';
+
   overlay.innerHTML = `
     <div style="background:var(--card);border:1px solid var(--border);border-radius:16px;
       padding:1.5rem;width:100%;max-width:520px;box-shadow:0 24px 64px rgba(0,0,0,0.5);
@@ -5317,38 +5316,79 @@ function showUrlPrompt(url) {
         style="position:absolute;top:0.85rem;right:0.85rem;background:transparent;
           border:1px solid var(--border);color:var(--muted);border-radius:6px;
           width:28px;height:28px;cursor:pointer;font-size:0.85rem;line-height:1;
-          display:flex;align-items:center;justify-content:center;
-          transition:all 0.15s;font-family:'DM Sans',sans-serif"
+          display:flex;align-items:center;justify-content:center;transition:all 0.15s"
         onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'"
         onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">✕</button>
       <div style="font-family:'Bebas Neue',sans-serif;font-size:1.3rem;letter-spacing:0.06em;
         color:var(--text);margin-bottom:0.3rem;padding-right:2rem">Share Page Link</div>
-      <div style="font-size:0.8rem;color:var(--muted);margin-bottom:0.9rem">
-        Copy this URL and paste it into Facebook, Instagram, or any message.
+      <div style="font-size:0.8rem;color:var(--muted);margin-bottom:0.75rem">
+        Paste this URL into Facebook, Instagram, or any message to share your show.
       </div>
+      ${statsLine}
       <input id="urlPromptInput" value="${url.replace(/"/g,'&quot;')}" readonly
         style="width:100%;background:var(--surface);border:1px solid var(--border);
           border-radius:8px;padding:0.6rem 0.8rem;color:var(--accent);
-          font-family:'DM Mono',monospace;font-size:0.72rem;letter-spacing:0.02em;
-          outline:none">
-      <div style="display:flex;gap:0.6rem;margin-top:0.9rem;justify-content:flex-end">
+          font-family:'DM Mono',monospace;font-size:0.68rem;letter-spacing:0.02em;
+          outline:none;cursor:pointer"
+        onclick="this.select()">
+      <div id="urlCopyStatus" style="font-family:'DM Mono',monospace;font-size:0.68rem;
+        color:var(--muted);margin-top:0.45rem;min-height:1rem;letter-spacing:0.04em"></div>
+      <div style="display:flex;gap:0.6rem;margin-top:0.75rem;justify-content:flex-end">
         <button onclick="this.closest('[style*=fixed]').remove()"
           style="background:transparent;border:1px solid var(--border);color:var(--muted);
           border-radius:7px;padding:0.45rem 1rem;cursor:pointer;
           font-family:'DM Sans',sans-serif;font-size:0.82rem">Close</button>
-        <button onclick="
-          const inp=document.getElementById('urlPromptInput');
-          inp.select();document.execCommand('copy');
-          this.textContent='✓ Copied!';this.style.background='#22c55e';
-          setTimeout(()=>{this.textContent='Copy';this.style.background=''},2000)"
+        <button id="urlCopyBtn"
+          onclick="
+            const inp = document.getElementById('urlPromptInput');
+            inp.select();
+            document.execCommand('copy');
+            this.textContent = '✓ Copied!';
+            this.style.background = '#22c55e';
+            document.getElementById('urlCopyStatus').textContent = 'Link copied to clipboard';
+            document.getElementById('urlCopyStatus').style.color = '#4ade80';
+            setTimeout(() => {
+              this.textContent = 'Copy';
+              this.style.background = 'var(--accent)';
+            }, 2500)"
           style="background:var(--accent);color:var(--black);border:none;border-radius:7px;
           padding:0.45rem 1.2rem;cursor:pointer;font-family:'DM Sans',sans-serif;
           font-weight:700;font-size:0.82rem">Copy</button>
       </div>
     </div>`;
+
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
   document.body.appendChild(overlay);
-  setTimeout(() => document.getElementById('urlPromptInput')?.select(), 100);
+
+  // Auto-select the input and attempt clipboard copy on open
+  setTimeout(() => {
+    const inp = document.getElementById('urlPromptInput');
+    const btn = document.getElementById('urlCopyBtn');
+    const status = document.getElementById('urlCopyStatus');
+    if (!inp) return;
+    inp.select();
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(url).then(() => {
+        if (btn)    { btn.textContent = '✓ Copied!'; btn.style.background = '#22c55e'; }
+        if (status) { status.textContent = 'Link copied to clipboard'; status.style.color = '#4ade80'; }
+        setTimeout(() => {
+          if (btn) { btn.textContent = 'Copy'; btn.style.background = 'var(--accent)'; }
+        }, 2500);
+      }).catch(() => {
+        if (status) status.textContent = 'Click Copy or select the URL above';
+      });
+    } else {
+      try { document.execCommand('copy');
+        if (btn)    { btn.textContent = '✓ Copied!'; btn.style.background = '#22c55e'; }
+        if (status) { status.textContent = 'Link copied to clipboard'; status.style.color = '#4ade80'; }
+        setTimeout(() => {
+          if (btn) { btn.textContent = 'Copy'; btn.style.background = 'var(--accent)'; }
+        }, 2500);
+      } catch(_) {
+        if (status) status.textContent = 'Select the URL above and copy manually';
+      }
+    }
+  }, 120);
 }
 
 function toggleSellersPanel(showId) {
