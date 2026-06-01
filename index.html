@@ -2235,7 +2235,8 @@
         <div class="toolbar">
           <h2 id="inventoryTitle">Inventory</h2>
           <input type="text" class="search-input" id="sellerSearchInput" placeholder="Search cards…" oninput="applyInventoryFilters()">
-          <button class="btn btn-ghost" onclick="selectAll()">Select All</button>
+          <button class="btn btn-ghost" id="selectAllBtn" onclick="selectAll()" style="display:none">Select All</button>
+          <button class="btn btn-ghost" id="backToShowsBtn" style="display:none;font-size:0.8rem" onclick="switchAdminTab('shows')">← Shows</button>
         </div>
 
         <!-- Admin-only filter bar -->
@@ -4655,6 +4656,12 @@ function showNavUser(name, role, avatarClass) {
   document.getElementById('sellerQrPanel').classList.add('visible');
   document.getElementById('sellerShowsPanel').style.display = 'block';
 
+  // Seller: show Select All, hide admin tabs
+  const selectAllBtn = document.getElementById('selectAllBtn');
+  const backToShows  = document.getElementById('backToShowsBtn');
+  if (selectAllBtn) selectAllBtn.style.display = '';
+  if (backToShows)  backToShows.style.display  = 'none';
+
   switchView('seller');
   renderSellerTable(getSellerInventory());
   updateStats();
@@ -4681,7 +4688,7 @@ function loginAsAdmin() {
   switchView('seller');
   updateStats();
   populateAdminFilterOptions();
-  renderAdminShowsList(); // keep sidebar list in sync
+  renderAdminShowsList(); if(typeof renderAdminShowsDashboard==="function" && _adminTab==="shows") renderAdminShowsDashboard();
 
   // Default to Shows tab
   switchAdminTab('shows');
@@ -5301,9 +5308,18 @@ function showUrlPrompt(url) {
     display:flex;align-items:center;justify-content:center;padding:1.5rem`;
   overlay.innerHTML = `
     <div style="background:var(--card);border:1px solid var(--border);border-radius:16px;
-      padding:1.5rem;width:100%;max-width:520px;box-shadow:0 24px 64px rgba(0,0,0,0.5)">
+      padding:1.5rem;width:100%;max-width:520px;box-shadow:0 24px 64px rgba(0,0,0,0.5);
+      position:relative">
+      <button onclick="this.closest('[style*=fixed]').remove()"
+        style="position:absolute;top:0.85rem;right:0.85rem;background:transparent;
+          border:1px solid var(--border);color:var(--muted);border-radius:6px;
+          width:28px;height:28px;cursor:pointer;font-size:0.85rem;line-height:1;
+          display:flex;align-items:center;justify-content:center;
+          transition:all 0.15s;font-family:'DM Sans',sans-serif"
+        onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'"
+        onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">✕</button>
       <div style="font-family:'Bebas Neue',sans-serif;font-size:1.3rem;letter-spacing:0.06em;
-        color:var(--text);margin-bottom:0.3rem">Share Page Link</div>
+        color:var(--text);margin-bottom:0.3rem;padding-right:2rem">Share Page Link</div>
       <div style="font-size:0.8rem;color:var(--muted);margin-bottom:0.9rem">
         Copy this URL and paste it into Facebook, Instagram, or any message.
       </div>
@@ -5313,7 +5329,7 @@ function showUrlPrompt(url) {
           font-family:'DM Mono',monospace;font-size:0.72rem;letter-spacing:0.02em;
           outline:none">
       <div style="display:flex;gap:0.6rem;margin-top:0.9rem;justify-content:flex-end">
-        <button onclick="this.closest('div[style]').remove()"
+        <button onclick="this.closest('[style*=fixed]').remove()"
           style="background:transparent;border:1px solid var(--border);color:var(--muted);
           border-radius:7px;padding:0.45rem 1rem;cursor:pointer;
           font-family:'DM Sans',sans-serif;font-size:0.82rem">Close</button>
@@ -5399,22 +5415,29 @@ function deleteShow(showId) {
 function publishSelectedToShow(showId) {
   const show = shows[showId];
   if (!show) return;
-  const checked = document.querySelectorAll('.card-check:checked');
-  if (!checked.length) { showToast('Select cards to publish', 'var(--danger)'); return; }
-  let count = 0;
-  checked.forEach(cb => {
-    const card = inventory[parseInt(cb.dataset.idx)];
-    if (card) {
-      if (!card._shows) card._shows = new Set();
-      if (!card._shows.has(showId)) { card._shows.add(showId); count++; }
-    }
+
+  if (!show.sellers.size) {
+    showToast('No sellers authorized for this show yet', 'var(--danger)');
+    return;
+  }
+
+  // Publish ALL cards belonging to authorized sellers — no checkbox selection needed
+  let added = 0;
+  let skipped = 0;
+  inventory.forEach(card => {
+    if (!show.sellers.has(card.Seller)) { skipped++; return; }
+    if (!card._shows) card._shows = new Set();
+    if (!card._shows.has(showId)) { card._shows.add(showId); added++; }
   });
+
   show.publishedAt = new Date().toISOString();
   activeShowId = showId;
   renderAdminShowsList(); if(typeof renderAdminShowsDashboard==="function" && _adminTab==="shows") renderAdminShowsDashboard();
   buildQRPanel();
   if (currentRole === 'admin') populateAdminFilterOptions();
-  showToast(`${count} cards added to "${show.name}"`);
+
+  const sellerCount = show.sellers.size;
+  showToast(`✓ ${added} cards published · ${sellerCount} seller${sellerCount !== 1 ? 's' : ''} · "${show.name}"`);
 }
 
 // ── Seller: Render available shows ──
@@ -6219,6 +6242,12 @@ function getTableNumber(sellerHandle) {
 }
 
 
+function selectAll() {
+  const boxes = document.querySelectorAll('.card-check');
+  const anyUnchecked = [...boxes].some(b => !b.checked);
+  boxes.forEach(b => { b.checked = anyUnchecked; });
+}
+
 // ── ADMIN TAB SYSTEM ──
 let _adminTab = 'shows'; // 'shows' | 'inventory'
 
@@ -6241,6 +6270,12 @@ function switchAdminTab(tab) {
     showsTab.classList.remove('active');
     if (dashboard) dashboard.style.display = 'none';
     if (inventory) inventory.style.display = 'block';
+    // Show "← Shows" back button for admins, hide Select All
+    const backBtn      = document.getElementById('backToShowsBtn');
+    const selectAllBtn = document.getElementById('selectAllBtn');
+    if (backBtn)      backBtn.style.display      = currentRole === 'admin' ? '' : 'none';
+    if (selectAllBtn) selectAllBtn.style.display = currentRole === 'admin' ? 'none' : '';
+    if (filterBar) filterBar.classList.add('visible');
     renderSellerTable(getSellerInventory());
     applyInventoryFilters();
   }
