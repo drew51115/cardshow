@@ -1882,6 +1882,155 @@
     white-space: nowrap;
   }
 
+
+  /* ── ADMIN TAB BAR ── */
+  .admin-tab {
+    padding: 0.45rem 1.1rem; font-size: 0.8rem; font-weight: 600;
+    cursor: pointer; border: none; background: transparent;
+    color: var(--muted); transition: all 0.15s;
+    font-family: 'DM Sans', sans-serif; letter-spacing: 0.01em;
+  }
+  .admin-tab.active { background: var(--accent); color: var(--black); }
+  .admin-tab:hover:not(.active) { color: var(--text); }
+
+  /* ── ADMIN SHOWS DASHBOARD — wide show cards ── */
+  .admin-show-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; overflow: hidden;
+    transition: border-color 0.15s;
+  }
+  .admin-show-card:hover { border-color: rgba(245,200,66,0.25); }
+  .admin-show-card.is-active { border-color: rgba(245,200,66,0.4); }
+
+  .asc-header {
+    display: flex; align-items: flex-start;
+    justify-content: space-between; gap: 1rem;
+    padding: 0.9rem 1.1rem 0.8rem; cursor: pointer;
+    border-bottom: 1px solid transparent; transition: border-color 0.15s;
+  }
+  .admin-show-card.is-active .asc-header,
+  .admin-show-card.asc-expanded .asc-header {
+    border-bottom-color: var(--border);
+  }
+  .asc-name {
+    font-family: 'Bebas Neue', sans-serif; font-size: 1.2rem;
+    letter-spacing: 0.05em; color: var(--text); line-height: 1;
+    display: flex; align-items: center; gap: 0.5rem;
+  }
+  .asc-meta {
+    font-family: 'DM Mono', monospace; font-size: 0.68rem;
+    color: var(--muted); margin-top: 0.3rem; line-height: 1.5;
+  }
+  .asc-stats {
+    display: flex; gap: 0.5rem; flex-shrink: 0;
+    align-items: flex-start; flex-wrap: wrap; justify-content: flex-end;
+  }
+  .asc-stat {
+    text-align: center;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 0.35rem 0.7rem; min-width: 52px;
+  }
+  .asc-stat-val {
+    font-family: 'Bebas Neue', sans-serif; font-size: 1.15rem;
+    color: var(--accent); letter-spacing: 0.04em; line-height: 1;
+    display: block;
+  }
+  .asc-stat-lbl {
+    font-family: 'DM Mono', monospace; font-size: 0.56rem;
+    letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted);
+  }
+  .asc-actions {
+    display: flex; gap: 0.4rem; flex-wrap: wrap;
+    padding: 0.6rem 1.1rem; align-items: center;
+    border-bottom: 1px solid var(--border); background: rgba(13,16,24,0.5);
+  }
+  .asc-action-primary {
+    background: var(--accent); color: var(--black); border: none;
+    border-radius: 6px; padding: 0.4rem 0.9rem; font-size: 0.78rem;
+    font-weight: 700; cursor: pointer; font-family: 'DM Sans', sans-serif;
+    transition: all 0.15s;
+  }
+  .asc-action-primary:hover { background: #f0c030; }
+  .asc-action-secondary {
+    background: transparent; border: 1px solid var(--border);
+    color: var(--muted); border-radius: 6px; padding: 0.38rem 0.8rem;
+    font-size: 0.75rem; font-weight: 500; cursor: pointer;
+    font-family: 'DM Sans', sans-serif; transition: all 0.15s;
+  }
+  .asc-action-secondary:hover { border-color: var(--accent); color: var(--accent); }
+  .asc-action-danger {
+    background: transparent; border: 1px solid rgba(239,68,68,0.3);
+    color: rgba(239,68,68,0.7); border-radius: 6px; padding: 0.38rem 0.8rem;
+    font-size: 0.75rem; cursor: pointer; font-family: 'DM Sans', sans-serif;
+    transition: all 0.15s; margin-left: auto;
+  }
+  .asc-action-danger:hover { border-color: #ef4444; color: #ef4444; }
+
+  /* Sellers + table assignment grid */
+  .asc-body {
+    display: none; padding: 1rem 1.1rem;
+  }
+  .asc-expanded .asc-body { display: block; }
+
+  .asc-section-label {
+    font-family: 'DM Mono', monospace; font-size: 0.62rem;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted);
+    margin-bottom: 0.55rem;
+  }
+  .asc-sellers-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 0.5rem; margin-bottom: 0.75rem;
+  }
+  .asc-seller-row {
+    display: flex; align-items: center; gap: 0.45rem;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 0.45rem 0.6rem;
+    transition: border-color 0.15s;
+  }
+  .asc-seller-row.has-table { border-color: rgba(34,197,94,0.35); }
+  .asc-seller-avatar {
+    width: 24px; height: 24px; border-radius: 50%;
+    background: var(--gold); color: var(--black);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.6rem; font-weight: 800; flex-shrink: 0;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .asc-seller-handle {
+    font-family: 'DM Mono', monospace; font-size: 0.7rem;
+    color: var(--text); flex: 1; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap;
+  }
+  .asc-table-input {
+    width: 58px; background: var(--card); border: 1px solid var(--border);
+    border-radius: 5px; padding: 0.22rem 0.4rem;
+    color: var(--text); font-family: 'DM Mono', monospace;
+    font-size: 0.72rem; outline: none; text-align: center;
+    transition: border-color 0.15s; flex-shrink: 0;
+  }
+  .asc-table-input:focus { border-color: var(--accent); }
+  .asc-table-input.filled { border-color: rgba(34,197,94,0.5); color: #4ade80; }
+  .asc-remove-btn {
+    background: none; border: none; color: var(--muted);
+    cursor: pointer; font-size: 0.7rem; padding: 0 0.1rem;
+    transition: color 0.15s; flex-shrink: 0;
+  }
+  .asc-remove-btn:hover { color: #ef4444; }
+
+  .asc-add-row {
+    display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;
+    margin-top: 0.5rem;
+  }
+  .asc-add-select, .asc-add-input {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 7px; padding: 0.45rem 0.65rem;
+    color: var(--text); font-family: 'DM Sans', sans-serif;
+    font-size: 0.8rem; outline: none; transition: border-color 0.15s;
+  }
+  .asc-add-select { flex: 1; min-width: 160px; }
+  .asc-add-input  { flex: 1; min-width: 140px; }
+  .asc-add-select:focus, .asc-add-input:focus { border-color: var(--accent); }
+
 </style>
 </head>
 <body>
@@ -1985,11 +2134,11 @@
         </div>
       </div>
 
-      <!-- Admin: Shows Manager -->
+      <!-- Admin: quick stats only — shows moved to main content Shows tab -->
       <div id="adminShowsPanel" style="display:none">
-        <div class="section-label" style="margin-bottom:0.6rem">Shows</div>
-        <div id="adminShowsList" style="display:flex;flex-direction:column;gap:0.5rem;margin-bottom:0.75rem"></div>
-        <button class="btn btn-ghost" style="width:100%;justify-content:center;font-size:0.8rem" onclick="openCreateShowModal()">+ Create New Show</button>
+        <div class="section-label" style="margin-bottom:0.5rem">Quick Actions</div>
+        <button class="btn btn-primary" style="width:100%;justify-content:center;font-size:0.8rem;margin-bottom:0.5rem" onclick="switchAdminTab('shows');openCreateShowModal()">+ Create New Show</button>
+        <button class="btn btn-ghost" style="width:100%;justify-content:center;font-size:0.8rem" onclick="switchAdminTab('shows')">← Back to Shows</button>
       </div>
 
       <!-- Seller: Show selector -->
@@ -2054,14 +2203,43 @@
     </aside>
 
     <div class="main-content">
-      <div class="toolbar">
-        <h2 id="inventoryTitle">Inventory</h2>
-        <input type="text" class="search-input" id="sellerSearchInput" placeholder="Search cards…" oninput="applyInventoryFilters()">
-        <button class="btn btn-ghost" onclick="selectAll()">Select All</button>
+
+      <!-- Admin tab bar — hidden for sellers -->
+      <div id="adminTabBar" style="display:none;margin-bottom:0.85rem">
+        <div style="display:flex;gap:0;background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden;width:fit-content">
+          <button class="admin-tab active" id="adminTabShows" onclick="switchAdminTab('shows')">
+            🎪 Shows
+          </button>
+          <button class="admin-tab" id="adminTabInventory" onclick="switchAdminTab('inventory')">
+            📋 All Inventory
+          </button>
+        </div>
       </div>
 
-      <!-- Admin-only filter bar -->
-      <div class="admin-filter-bar" id="adminFilterBar">
+      <!-- Admin: Shows Dashboard (default tab) -->
+      <div id="adminShowsDashboard" style="display:none">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem">
+          <div>
+            <h2 style="font-family:'Bebas Neue',sans-serif;font-size:1.6rem;letter-spacing:0.06em;color:var(--text);line-height:1">Show Management</h2>
+            <div style="font-size:0.78rem;color:var(--muted);margin-top:0.2rem">Create shows, manage sellers, assign tables, share your show page</div>
+          </div>
+          <button class="btn btn-primary" onclick="openCreateShowModal()" style="font-size:0.82rem">
+            + Create New Show
+          </button>
+        </div>
+        <div id="adminShowsGrid" style="display:flex;flex-direction:column;gap:0.75rem"></div>
+      </div>
+
+      <!-- Seller / Admin Inventory view -->
+      <div id="adminInventoryPanel">
+        <div class="toolbar">
+          <h2 id="inventoryTitle">Inventory</h2>
+          <input type="text" class="search-input" id="sellerSearchInput" placeholder="Search cards…" oninput="applyInventoryFilters()">
+          <button class="btn btn-ghost" onclick="selectAll()">Select All</button>
+        </div>
+
+        <!-- Admin-only filter bar -->
+        <div class="admin-filter-bar" id="adminFilterBar">
         <div class="admin-filter-search">
           <span class="af-icon">🔍</span>
           <input type="text" id="afPlayer" placeholder="Player name…" oninput="applyInventoryFilters()">
@@ -2124,8 +2302,8 @@
           </tbody>
         </table>
       </div>
-    </div>
-  </div>
+    </div><!-- /adminInventoryPanel -->
+  </div><!-- /main-content -->
 
   <!-- ═══════ ADD CARD MODAL (position:absolute inside view-seller) ═══════ -->
   <div class="card-edit-overlay" id="addCardOverlay" onclick="if(event.target===this)closeAddCard()">
@@ -4490,26 +4668,23 @@ function loginAsAdmin() {
   currentSeller = null;
   document.getElementById('authOverlay').classList.add('hidden');
 
-  document.getElementById('navTabSeller').textContent = '⬡ All Inventory';
+  document.getElementById('navTabSeller').textContent = '⬡ Admin';
   document.getElementById('navTabBuyer').style.display = '';
-  document.getElementById('inventoryTitle').textContent = 'All Inventory';
   showNavUser('Show Admin', 'Administrator', 'admin');
 
-  // Show admin-only panels + filter bar, hide seller panel
+  // Show admin-only UI elements
+  document.getElementById('adminTabBar').style.display   = 'block';
   document.getElementById('adminShowsPanel').style.display = 'block';
-  document.getElementById('adminFilterBar').classList.add('visible');
   document.getElementById('sellerQrPanel').classList.remove('visible');
   document.getElementById('sellerShowsPanel').style.display = 'none';
-  populateAdminFilterOptions();
 
   switchView('seller');
-  renderSellerTable(getSellerInventory());
   updateStats();
-  renderAdminShowsList();
-  buildQRPanel();
+  populateAdminFilterOptions();
+  renderAdminShowsList(); // keep sidebar list in sync
 
-  const countEl = document.getElementById('afResultCount');
-  if (countEl) countEl.textContent = inventory.length;
+  // Default to Shows tab
+  switchAdminTab('shows');
 
   showToast('Admin access granted');
 }
@@ -4546,21 +4721,32 @@ function signOut() {
   currentSeller = null;
   sellerQrMode  = 'table';
   buyerShowId   = null;
+  _adminTab     = 'shows';
+
   document.getElementById('navTabSeller').style.display = '';
-  document.getElementById('navTabSeller').textContent = '⬡ Seller';
-  document.getElementById('navTabBuyer').style.display = '';
-  document.getElementById('navTabs').style.display = '';
-  document.getElementById('navUser').style.display = 'none';
+  document.getElementById('navTabSeller').textContent   = '⬡ Seller';
+  document.getElementById('navTabBuyer').style.display  = '';
+  document.getElementById('navTabs').style.display      = '';
+  document.getElementById('navUser').style.display      = 'none';
+
+  document.getElementById('adminTabBar').style.display  = 'none';
   document.getElementById('adminFilterBar').classList.remove('visible');
   document.getElementById('sellerQrPanel').classList.remove('visible');
   document.getElementById('adminShowsPanel').style.display  = 'none';
   document.getElementById('sellerShowsPanel').style.display = 'none';
+
+  // Reset inventory panel visibility for next login
+  const inv = document.getElementById('adminInventoryPanel');
+  const dash = document.getElementById('adminShowsDashboard');
+  if (inv)  inv.style.display  = 'block';
+  if (dash) dash.style.display = 'none';
+
   document.getElementById('inventoryTitle').textContent = 'Inventory';
   clearAdminFilters();
   document.getElementById('authOverlay').classList.remove('hidden');
   document.getElementById('authSellerHandle').value = '';
-  document.getElementById('authAdminPass').value = '';
-  document.getElementById('authError').textContent = '';
+  document.getElementById('authAdminPass').value    = '';
+  document.getElementById('authError').textContent  = '';
 }
 
 // Returns inventory scoped to current seller, or all if admin
@@ -4846,7 +5032,7 @@ function saveShow() {
                 publishedAt: (shows[id] && shows[id].publishedAt) || null };
 
   closeShowModal();
-  renderAdminShowsList();
+  renderAdminShowsList(); if(typeof renderAdminShowsDashboard==="function" && _adminTab==="shows") renderAdminShowsDashboard();
   renderSellerShowsList();
   if (currentRole === 'admin') populateAdminFilterOptions();
 
@@ -4874,8 +5060,18 @@ function renderAdminShowsList() {
     const cardCount  = getShowInventory(s.id).filter(r => r.Status !== 'Sold').length;
     const sellerArr  = [...s.sellers].sort();
     const wasOpen    = openPanels.has(s.id);
+    const tables     = s.tables || {};
 
-    // Sellers dropdown — all known sellers not yet in this show
+    // Setup completeness signal
+    const assignedCount   = sellerArr.filter(h => tables[h]).length;
+    const unassignedCount = sellerArr.length - assignedCount;
+    const setupSignal = sellerArr.length === 0
+      ? `<span style="font-size:0.62rem;color:var(--muted);font-family:'DM Mono',monospace">No sellers yet</span>`
+      : unassignedCount === 0
+        ? `<span style="font-size:0.62rem;color:#4ade80;font-family:'DM Mono',monospace">✓ All tables set</span>`
+        : `<span style="font-size:0.62rem;color:var(--gold);font-family:'DM Mono',monospace">${unassignedCount} need table #</span>`;
+
+    // Sellers dropdown
     const knownSellers = [...new Set(inventory.map(r => r.Seller).filter(Boolean))].sort();
     const unassigned   = knownSellers.filter(h => !s.sellers.has(h));
     const dropdownOpts = unassigned.length
@@ -4890,42 +5086,83 @@ function renderAdminShowsList() {
       </div>
       <div class="show-card-meta">
         ${s.date ? s.date + (s.location ? ' · ' : '') : ''}${s.location || ''}<br>
-        ${cardCount} cards · <span style="color:var(--accent);font-weight:600">${s.sellers.size}</span> seller${s.sellers.size !== 1 ? 's' : ''} authorized
+        <span style="color:var(--accent);font-weight:600">${cardCount}</span> cards ·
+        <span style="color:var(--accent);font-weight:600">${s.sellers.size}</span> seller${s.sellers.size !== 1 ? 's' : ''}
+        · ${setupSignal}
       </div>
+
+      <!-- Primary actions -->
+      <div class="show-card-actions" style="margin-bottom:0.3rem">
+        <button class="btn-xs primary" style="font-weight:700"
+          onclick="event.stopPropagation();toggleSellersPanel('${s.id}')">
+          👥 Sellers &amp; Tables
+        </button>
+        <button class="btn-xs primary"
+          onclick="event.stopPropagation();publishSelectedToShow('${s.id}')">
+          ⚡ Publish
+        </button>
+        <button class="btn-xs"
+          onclick="event.stopPropagation();copyShowPageLink('${s.id}')"
+          title="Copy shareable public show page">
+          🔗 Share
+        </button>
+      </div>
+      <!-- Secondary actions -->
       <div class="show-card-actions">
-        <div class="access-code-badge" onclick="event.stopPropagation();openShowAccessQr('${s.id}')" title="Generate buyer QR for this show" style="cursor:pointer">
+        <div class="access-code-badge"
+          onclick="event.stopPropagation();openShowAccessQr('${s.id}')"
+          title="Generate buyer QR" style="cursor:pointer">
           🔑 ${s.accessCode}
         </div>
-        <button class="btn-xs primary" onclick="event.stopPropagation();openShowAccessQr('${s.id}')" title="Marketing & signage QR codes">
-          📢 QR Codes
-        </button>
-        <button class="btn-xs" onclick="event.stopPropagation();toggleSellersPanel('${s.id}')">
-          👥 Sellers
-        </button>
-        <button class="btn-xs" onclick="event.stopPropagation();openCreateShowModal('${s.id}')">Edit</button>
-        <button class="btn-xs" onclick="event.stopPropagation();publishSelectedToShow('${s.id}')">⚡ Publish</button>
-        <button class="btn-xs" onclick="event.stopPropagation();copyShowPageLink('${s.id}')" title="Copy shareable public show page link">🔗 Share Page</button>
-        <button class="btn-xs danger" onclick="event.stopPropagation();deleteShow('${s.id}')">Delete</button>
+        <button class="btn-xs"
+          onclick="event.stopPropagation();openShowAccessQr('${s.id}')">📢 QR</button>
+        <button class="btn-xs"
+          onclick="event.stopPropagation();openCreateShowModal('${s.id}')">Edit</button>
+        <button class="btn-xs danger"
+          onclick="event.stopPropagation();deleteShow('${s.id}')">Delete</button>
       </div>
 
-      <!-- Inline Sellers Panel -->
-      <div class="show-sellers-panel ${wasOpen ? 'open' : ''}" id="sp-${s.id}" data-showid="${s.id}"
-           onclick="event.stopPropagation()">
+      <!-- Sellers + Table Numbers panel -->
+      <div class="show-sellers-panel ${wasOpen ? 'open' : ''}" id="sp-${s.id}"
+           data-showid="${s.id}" onclick="event.stopPropagation()">
         <div class="sellers-panel-header">
-          <span class="sellers-panel-label">Authorized Sellers</span>
-          <span class="sellers-panel-count">${s.sellers.size} of ${knownSellers.length} sellers</span>
+          <span class="sellers-panel-label">Sellers &amp; Table Numbers</span>
+          <span class="sellers-panel-count">${assignedCount}/${sellerArr.length} assigned</span>
         </div>
 
-        <div class="sellers-chip-row" id="stags-${s.id}">
+        <div id="stags-${s.id}" style="display:flex;flex-direction:column;gap:0.35rem;margin-bottom:0.5rem">
           ${sellerArr.length
-            ? sellerArr.map(h => `
-                <span class="seller-tag">
-                  ${h}
-                  <button class="seller-tag-remove" onclick="removeSellerFromShow('${s.id}','${h}')" title="Remove">✕</button>
-                </span>`).join('')
-            : '<span style="font-size:0.72rem;color:var(--muted);font-family:\'DM Mono\',monospace">No sellers authorized yet</span>'
+            ? sellerArr.map(h => {
+                const tbl      = tables[h] || '';
+                const hasTable = !!tbl;
+                return `
+                <div class="seller-tag-row" style="display:flex;align-items:center;gap:0.4rem">
+                  <span class="seller-tag" style="flex:1;min-width:0;overflow:hidden;
+                    ${hasTable ? 'border-color:rgba(34,197,94,0.4)' : 'border-color:rgba(245,200,66,0.25)'}">
+                    <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;font-size:0.7rem">${h}</span>
+                    <button class="seller-tag-remove"
+                      onclick="removeSellerFromShow('${s.id}','${h}')" title="Remove">✕</button>
+                  </span>
+                  <input class="table-num-input"
+                    value="${tbl}"
+                    placeholder="Table #"
+                    title="Assign table number for @${h}"
+                    onchange="setTableNumber('${s.id}','${h}',this.value)"
+                    onclick="event.stopPropagation()"
+                    style="width:62px;${hasTable ? 'border-color:rgba(34,197,94,0.5);color:#4ade80' : ''}">
+                </div>`;
+              }).join('')
+            : `<span style="font-size:0.72rem;color:var(--muted);font-family:'DM Mono',monospace;padding:0.25rem 0">
+                No sellers authorized yet
+               </span>`
           }
         </div>
+
+        ${sellerArr.length > 1 ? `
+        <button class="btn-xs" style="width:100%;margin-bottom:0.5rem;font-size:0.7rem;text-align:center"
+          onclick="event.stopPropagation();autoAssignTables('${s.id}')">
+          ↕ Auto-number 1–${sellerArr.length} in order
+        </button>` : ''}
 
         <div class="sellers-add-row">
           <select class="sellers-add-select" id="sdrop-${s.id}"
@@ -4933,7 +5170,6 @@ function renderAdminShowsList() {
             ${dropdownOpts}
           </select>
         </div>
-
         <div class="sellers-add-row" style="margin-top:0.4rem">
           <input class="sellers-add-input" id="sinput-${s.id}"
             placeholder="Or type a seller handle…"
@@ -5126,7 +5362,7 @@ function addSellerToShow(showId, handle) {
     return;
   }
   show.sellers.add(handle);
-  renderAdminShowsList();
+  renderAdminShowsList(); if(typeof renderAdminShowsDashboard==="function" && _adminTab==="shows") renderAdminShowsDashboard();
   renderSellerShowsList();
   showToast(`✓ @${handle} added to "${show.name}"`);
 }
@@ -5135,14 +5371,14 @@ function removeSellerFromShow(showId, handle) {
   const show = shows[showId];
   if (!show) return;
   show.sellers.delete(handle);
-  renderAdminShowsList();
+  renderAdminShowsList(); if(typeof renderAdminShowsDashboard==="function" && _adminTab==="shows") renderAdminShowsDashboard();
   renderSellerShowsList();
   showToast(`@${handle} removed from "${show.name}"`);
 }
 
 function selectAdminShow(showId) {
   activeShowId = showId;
-  renderAdminShowsList();
+  renderAdminShowsList(); if(typeof renderAdminShowsDashboard==="function" && _adminTab==="shows") renderAdminShowsDashboard();
   // Re-render admin QR panel for this show
   buildQRPanel();
 }
@@ -5155,7 +5391,7 @@ function deleteShow(showId) {
   inventory.forEach(r => { if (r._shows) r._shows.delete(showId); });
   delete shows[showId];
   if (activeShowId === showId) activeShowId = Object.keys(shows)[0] || null;
-  renderAdminShowsList();
+  renderAdminShowsList(); if(typeof renderAdminShowsDashboard==="function" && _adminTab==="shows") renderAdminShowsDashboard();
   if (currentRole === 'admin') populateAdminFilterOptions();
   showToast(`Show deleted`);
 }
@@ -5175,7 +5411,7 @@ function publishSelectedToShow(showId) {
   });
   show.publishedAt = new Date().toISOString();
   activeShowId = showId;
-  renderAdminShowsList();
+  renderAdminShowsList(); if(typeof renderAdminShowsDashboard==="function" && _adminTab==="shows") renderAdminShowsDashboard();
   buildQRPanel();
   if (currentRole === 'admin') populateAdminFilterOptions();
   showToast(`${count} cards added to "${show.name}"`);
@@ -5956,12 +6192,23 @@ function setTableNumber(showId, handle, value) {
   const trimmed = value.trim();
   if (trimmed) {
     show.tables[handle] = trimmed;
-    showToast(`Table ${trimmed} assigned to @${handle}`);
+    showToast(`Table ${trimmed} → @${handle}`);
   } else {
     delete show.tables[handle];
   }
-  // Refresh buyer grid if this show is active
   if (buyerShowId === showId) filterBuyer();
+  renderAdminShowsList(); if(typeof renderAdminShowsDashboard==="function" && _adminTab==="shows") renderAdminShowsDashboard();
+}
+
+function autoAssignTables(showId) {
+  const show = shows[showId];
+  if (!show) return;
+  if (!show.tables) show.tables = {};
+  const sellers = [...show.sellers].sort();
+  sellers.forEach((h, i) => { show.tables[h] = String(i + 1); });
+  renderAdminShowsList(); if(typeof renderAdminShowsDashboard==="function" && _adminTab==="shows") renderAdminShowsDashboard();
+  if (buyerShowId === showId) filterBuyer();
+  showToast(`✓ Tables 1–${sellers.length} assigned`);
 }
 
 // Returns table number for a seller at the active buyer show, or null
@@ -5969,6 +6216,256 @@ function getTableNumber(sellerHandle) {
   const show = buyerShowId && shows[buyerShowId];
   if (!show || !show.tables) return null;
   return show.tables[sellerHandle] || null;
+}
+
+
+// ── ADMIN TAB SYSTEM ──
+let _adminTab = 'shows'; // 'shows' | 'inventory'
+
+function switchAdminTab(tab) {
+  _adminTab = tab;
+  const showsTab  = document.getElementById('adminTabShows');
+  const invTab    = document.getElementById('adminTabInventory');
+  const dashboard = document.getElementById('adminShowsDashboard');
+  const inventory = document.getElementById('adminInventoryPanel');
+  const filterBar = document.getElementById('adminFilterBar');
+
+  if (tab === 'shows') {
+    showsTab.classList.add('active');
+    invTab.classList.remove('active');
+    if (dashboard) dashboard.style.display = 'block';
+    if (inventory) inventory.style.display = 'none';
+    renderAdminShowsDashboard();
+  } else {
+    invTab.classList.add('active');
+    showsTab.classList.remove('active');
+    if (dashboard) dashboard.style.display = 'none';
+    if (inventory) inventory.style.display = 'block';
+    renderSellerTable(getSellerInventory());
+    applyInventoryFilters();
+  }
+}
+
+// ── ADMIN SHOWS DASHBOARD ──
+function renderAdminShowsDashboard() {
+  const el = document.getElementById('adminShowsGrid');
+  if (!el) return;
+  const list = Object.values(shows);
+
+  if (!list.length) {
+    el.innerHTML = `
+      <div style="text-align:center;padding:3rem 1rem;background:var(--card);border:1px dashed var(--border);border-radius:12px">
+        <div style="font-size:2rem;margin-bottom:0.75rem">🎪</div>
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:1.4rem;letter-spacing:0.06em;color:var(--text);margin-bottom:0.4rem">No Shows Yet</div>
+        <div style="font-size:0.85rem;color:var(--muted);margin-bottom:1.2rem">Create your first show to get started</div>
+        <button class="btn btn-primary" onclick="openCreateShowModal()">+ Create New Show</button>
+      </div>`;
+    return;
+  }
+
+  // Preserve expanded state
+  const expanded = new Set(
+    [...(el.querySelectorAll('.asc-expanded') || [])].map(el => el.dataset.showid)
+  );
+
+  el.innerHTML = list.map(s => {
+    const isActive     = s.id === activeShowId;
+    const isExpanded   = expanded.has(s.id);
+    const cardCount    = getShowInventory(s.id).filter(r => r.Status !== 'Sold').length;
+    const sellerArr    = [...s.sellers].sort();
+    const tables       = s.tables || {};
+    const assignedCnt  = sellerArr.filter(h => tables[h]).length;
+    const needsTable   = sellerArr.length - assignedCnt;
+    const dotClass     = s.status === 'active' ? 'active' : s.status === 'past' ? 'past' : 'upcoming';
+
+    const statusLabel  = {active:'🟢 Active', upcoming:'⏳ Upcoming', past:'⚫ Past'}[s.status] || s.status;
+    const setupLabel   = sellerArr.length === 0
+      ? `<span style="color:var(--muted)">No sellers</span>`
+      : needsTable === 0
+        ? `<span style="color:#4ade80">✓ All tables set</span>`
+        : `<span style="color:var(--gold)">${needsTable} need table #</span>`;
+
+    // Sellers dropdown
+    const known      = [...new Set(inventory.map(r => r.Seller).filter(Boolean))].sort();
+    const unauth     = known.filter(h => !s.sellers.has(h));
+    const dropOpts   = unauth.length
+      ? `<option value="">+ Add from inventory…</option>` + unauth.map(h => `<option value="${h}">${h}</option>`).join('')
+      : `<option value="">All inventory sellers added</option>`;
+
+    return `
+    <div class="admin-show-card ${isActive ? 'is-active' : ''} ${isExpanded ? 'asc-expanded' : ''}"
+         id="asc-${s.id}" data-showid="${s.id}">
+
+      <!-- Card header — click to expand/collapse -->
+      <div class="asc-header" onclick="toggleAscExpand('${s.id}')">
+        <div style="min-width:0">
+          <div class="asc-name">
+            <span class="show-status-dot ${dotClass}"></span>
+            ${s.name}
+          </div>
+          <div class="asc-meta">
+            ${[s.date, s.location].filter(Boolean).join(' · ')}
+            &nbsp;·&nbsp; 🔑 <strong>${s.accessCode}</strong>
+            &nbsp;·&nbsp; ${setupLabel}
+          </div>
+        </div>
+        <div class="asc-stats">
+          <div class="asc-stat">
+            <span class="asc-stat-val">${cardCount}</span>
+            <div class="asc-stat-lbl">Cards</div>
+          </div>
+          <div class="asc-stat">
+            <span class="asc-stat-val">${s.sellers.size}</span>
+            <div class="asc-stat-lbl">Sellers</div>
+          </div>
+          <div class="asc-stat">
+            <span class="asc-stat-val">${assignedCnt}</span>
+            <div class="asc-stat-lbl">Tables</div>
+          </div>
+          <div style="align-self:center;color:var(--muted);font-size:0.8rem;padding-left:0.2rem">
+            ${isExpanded ? '▲' : '▼'}
+          </div>
+        </div>
+      </div>
+
+      <!-- Action bar — always visible -->
+      <div class="asc-actions">
+        <button class="asc-action-primary" onclick="event.stopPropagation();publishSelectedToShow('${s.id}')">
+          ⚡ Publish Inventory
+        </button>
+        <button class="asc-action-secondary" onclick="event.stopPropagation();copyShowPageLink('${s.id}')">
+          🔗 Share Page
+        </button>
+        <button class="asc-action-secondary" onclick="event.stopPropagation();openShowAccessQr('${s.id}')">
+          📢 QR Codes
+        </button>
+        <button class="asc-action-secondary" onclick="event.stopPropagation();openCreateShowModal('${s.id}')">
+          ✏ Edit
+        </button>
+        <button class="asc-action-danger" onclick="event.stopPropagation();deleteShow('${s.id}')">
+          Delete
+        </button>
+      </div>
+
+      <!-- Expanded body — sellers & table assignment -->
+      <div class="asc-body">
+
+        <div class="asc-section-label">Sellers &amp; Table Numbers</div>
+
+        <div class="asc-sellers-grid" id="asc-sellers-${s.id}">
+          ${sellerArr.length
+            ? sellerArr.map(h => {
+                const tbl = tables[h] || '';
+                const av  = h.split('_').map(w => w[0]).join('').toUpperCase().slice(0,2);
+                return `
+                <div class="asc-seller-row ${tbl ? 'has-table' : ''}" id="asc-row-${s.id}-${h}">
+                  <div class="asc-seller-avatar">${av}</div>
+                  <div class="asc-seller-handle" title="@${h}">@${h}</div>
+                  <input class="asc-table-input ${tbl ? 'filled' : ''}"
+                    value="${tbl}" placeholder="Table #"
+                    title="Assign table number for @${h}"
+                    onchange="ascSetTable('${s.id}','${h}',this)"
+                    onclick="event.stopPropagation()">
+                  <button class="asc-remove-btn"
+                    onclick="event.stopPropagation();removeSellerFromShow('${s.id}','${h}')"
+                    title="Remove @${h}">✕</button>
+                </div>`;
+              }).join('')
+            : `<div style="grid-column:1/-1;font-size:0.78rem;color:var(--muted);font-family:'DM Mono',monospace;padding:0.5rem 0">
+                No sellers authorized yet — add sellers below.
+               </div>`
+          }
+        </div>
+
+        ${sellerArr.length > 1 ? `
+        <button class="asc-action-secondary" style="font-size:0.72rem;margin-bottom:0.75rem"
+          onclick="event.stopPropagation();autoAssignTables('${s.id}')">
+          ↕ Auto-number tables 1–${sellerArr.length}
+        </button>` : ''}
+
+        <div class="asc-section-label" style="margin-top:0.25rem">Authorize Sellers</div>
+        <div class="asc-add-row">
+          <select class="asc-add-select" id="asc-drop-${s.id}"
+            onchange="event.stopPropagation();addSellerFromDropdown('${s.id}',this)">
+            ${dropOpts}
+          </select>
+        </div>
+        <div class="asc-add-row" style="margin-top:0.4rem">
+          <input class="asc-add-input" id="asc-input-${s.id}"
+            placeholder="Or type a handle and press Enter…"
+            onclick="event.stopPropagation()"
+            onkeydown="if(event.key==='Enter'){event.stopPropagation();addSellerByHandleAsc('${s.id}');event.preventDefault()}">
+          <button class="asc-action-secondary" style="font-size:0.75rem"
+            onclick="event.stopPropagation();addSellerByHandleAsc('${s.id}')">Add</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleAscExpand(showId) {
+  const card = document.getElementById('asc-' + showId);
+  if (!card) return;
+  const wasExpanded = card.classList.contains('asc-expanded');
+  card.classList.toggle('asc-expanded', !wasExpanded);
+  // Update chevron
+  const chevron = card.querySelector('.asc-header > div:last-child > div:last-child');
+  if (chevron) chevron.textContent = !wasExpanded ? '▲' : '▼';
+  // Select as active show
+  selectAdminShow(showId);
+}
+
+function ascSetTable(showId, handle, input) {
+  const show = shows[showId];
+  if (!show) return;
+  if (!show.tables) show.tables = {};
+  const val = input.value.trim();
+  if (val) {
+    show.tables[handle] = val;
+    input.classList.add('filled');
+    input.style.borderColor = 'rgba(34,197,94,0.5)';
+    input.style.color = '#4ade80';
+    // Update the row border
+    const row = document.getElementById('asc-row-' + showId + '-' + handle);
+    if (row) row.classList.add('has-table');
+    showToast(`Table ${val} → @${handle}`);
+  } else {
+    delete show.tables[handle];
+    input.classList.remove('filled');
+    input.style.borderColor = '';
+    input.style.color = '';
+    const row = document.getElementById('asc-row-' + showId + '-' + handle);
+    if (row) row.classList.remove('has-table');
+  }
+  // Update setup signal in header without full re-render
+  updateAscHeader(showId);
+  if (buyerShowId === showId) filterBuyer();
+}
+
+function updateAscHeader(showId) {
+  const s = shows[showId];
+  if (!s) return;
+  const tables      = s.tables || {};
+  const sellerArr   = [...s.sellers];
+  const assignedCnt = sellerArr.filter(h => tables[h]).length;
+  const needsTable  = sellerArr.length - assignedCnt;
+  const cardCount   = getShowInventory(s.id).filter(r => r.Status !== 'Sold').length;
+
+  const card = document.getElementById('asc-' + showId);
+  if (!card) return;
+  const statsEls = card.querySelectorAll('.asc-stat-val');
+  if (statsEls[0]) statsEls[0].textContent = cardCount;
+  if (statsEls[2]) statsEls[2].textContent = assignedCnt;
+}
+
+function addSellerByHandleAsc(showId) {
+  const input = document.getElementById('asc-input-' + showId);
+  if (!input) return;
+  const handle = input.value.trim().toLowerCase().replace(/\s+/g, '_');
+  if (!handle) return;
+  addSellerToShow(showId, handle);
+  input.value = '';
+  renderAdminShowsDashboard();
 }
 
 // ── CARD EDIT MODAL ──
