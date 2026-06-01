@@ -625,36 +625,84 @@ function gradeBadgeHtml(grade, grader) {
   return `<span class="badge ${cls}">${g} ${grade}</span>`;
 }
 
-// ── PARSE URL PARAMS ──
-const params   = new URLSearchParams(window.location.search);
-const showId   = params.get('id');
-const rawData  = params.get('data'); // base64-encoded JSON (Option A)
+// ── PARSE URL ──
+const params = new URLSearchParams(window.location.search);
+const showId = params.get('id');
+const hashData = window.location.hash.slice(1); // strip leading #
 
 // ── SHOW STATE ──
-let showMeta  = null;  // { id, name, date, location, status, accessCode, tables, sellers }
-let inventory = [];    // array of card objects
+let showMeta  = null;
+let inventory = [];
+
+// Expand short keys written by buildShowPageUrl back to full field names
+function expandPayload(payload) {
+  const m = payload.m;
+  return {
+    show: {
+      id:         m.id,
+      name:       m.n,
+      date:       m.d  || '',
+      location:   m.l  || '',
+      status:     m.st || 'upcoming',
+      tables:     m.tb || {},
+      sellers:    m.sl || [],
+      totalCards: m.tc || 0,
+    },
+    cards: (payload.c || []).map(c => ({
+      Seller:              c.s  || '',
+      'Card Title':        c.t  || '',
+      Player:              c.p  || '',
+      Year:                c.y  || null,
+      'Set ':              c.st || '',
+      'Parallel/Variant':  c.v  || '',
+      Grade:               c.g  || null,
+      Grader:              c.gr || null,
+      Condition:           c.c  || null,
+      Price:               c.pr || 0,
+      Status:              'Available',
+    })),
+  };
+}
 
 // ── ENTRY POINT ──
 (function init() {
-  if (!showId) { showError(); return; }
-
-  if (rawData) {
+  // 1. Try hash fragment (works on any device — primary path)
+  if (hashData) {
     try {
-      // Restore stripped = padding before decoding
-      const padded = rawData + '==='.slice((rawData.length + 3) % 4);
-      const json   = decodeURIComponent(escape(atob(padded)));
-      const decoded = JSON.parse(json);
+      const padded  = hashData + '==='.slice((hashData.length + 3) % 4);
+      const json    = decodeURIComponent(escape(atob(padded)));
+      const raw     = JSON.parse(json);
+      const decoded = expandPayload(raw);
       showMeta  = decoded.show;
       inventory = decoded.cards || [];
       renderPage();
+      return;
     } catch(e) {
-      console.error('Failed to decode show data:', e);
-      // Try demo fallback by ID before showing error
-      showDemoFallback(showId);
+      console.error('Hash decode failed:', e);
     }
-  } else {
-    showDemoFallback(showId);
   }
+
+  // 2. Try localStorage (same-browser fallback)
+  if (showId) {
+    try {
+      const stored = localStorage.getItem(`cardshow_show_${showId}`);
+      if (stored) {
+        const payload = JSON.parse(stored);
+        if (Date.now() - (payload.storedAt || 0) < 7 * 24 * 60 * 60 * 1000) {
+          showMeta  = payload.show;
+          inventory = payload.cards || [];
+          renderPage();
+          return;
+        }
+        localStorage.removeItem(`cardshow_show_${showId}`);
+      }
+    } catch(e) {
+      console.warn('localStorage read failed:', e);
+    }
+  }
+
+  // 3. Hardcoded demo fallback for the three sample shows
+  showDemoFallback(showId);
 })();
 
 function showError() {

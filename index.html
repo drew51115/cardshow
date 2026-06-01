@@ -5216,27 +5216,20 @@ function buildShowPageUrl(showId) {
   const origin = (window.location.hostname === 'localhost' ||
                   window.location.hostname === '127.0.0.1')
     ? window.location.origin : prodOrigin;
-  return `${origin}/show.html?id=${showId}`;
-}
-
-function storeShowPayload(showId) {
-  const s = shows[showId];
-  if (!s) return false;
 
   function compact(r) {
     const c = {};
-    if (r.Seller)              c.Seller             = r.Seller;
-    if (r['Card Title'])       c['Card Title']       = r['Card Title'];
-    if (r.Player)              c.Player              = r.Player;
-    if (r.Year)                c.Year                = r.Year;
+    if (r.Seller)              c.s  = r.Seller;
+    if (r['Card Title'])       c.t  = r['Card Title'];
+    if (r.Player)              c.p  = r.Player;
+    if (r.Year)                c.y  = r.Year;
     const set = r['Set '] || r.Set;
-    if (set)                   c['Set ']             = set;
-    if (r['Parallel/Variant']) c['Parallel/Variant'] = r['Parallel/Variant'];
-    if (r.Grade)               c.Grade               = r.Grade;
-    if (r.Grader)              c.Grader              = r.Grader;
-    if (r.Condition)           c.Condition           = r.Condition;
-    c.Price  = r.Price  || 0;
-    c.Status = r.Status || 'Available';
+    if (set)                   c.st = set;
+    if (r['Parallel/Variant']) c.v  = r['Parallel/Variant'];
+    if (r.Grade)               c.g  = r.Grade;
+    if (r.Grader)              c.gr = r.Grader;
+    if (r.Condition)           c.c  = r.Condition;
+    c.pr = r.Price  || 0;
     return c;
   }
 
@@ -5244,47 +5237,41 @@ function storeShowPayload(showId) {
     .filter(r => r.Status !== 'Sold')
     .sort((a, b) => Number(b.Price || 0) - Number(a.Price || 0));
 
-  // Up to 50 cards — one per seller first, then fill by price
   const preview = [];
-  const seenSellers = new Set();
+  const seen = new Set();
   for (const r of available) {
-    if (!seenSellers.has(r.Seller) && preview.length < 50) {
-      preview.push(r); seenSellers.add(r.Seller);
-    }
+    if (!seen.has(r.Seller) && preview.length < 50) { preview.push(r); seen.add(r.Seller); }
   }
   for (const r of available) {
     if (!preview.includes(r) && preview.length < 50) preview.push(r);
   }
 
   const payload = {
-    show: {
-      id:         s.id,
-      name:       s.name,
-      date:       s.date       || '',
-      location:   s.location   || '',
-      status:     s.status     || 'upcoming',
-      tables:     s.tables     || {},
-      sellers:    [...s.sellers],
-      totalCards: available.length,
+    m: { // show meta — short keys to save space
+      id: s.id,
+      n:  s.name,
+      d:  s.date       || '',
+      l:  s.location   || '',
+      st: s.status     || 'upcoming',
+      tb: s.tables     || {},
+      sl: [...s.sellers],
+      tc: available.length,
     },
-    cards:     preview.map(compact),
-    storedAt:  Date.now(),
+    c: preview.map(compact),
   };
 
-  try {
-    localStorage.setItem(`cardshow_show_${showId}`, JSON.stringify(payload));
-    return true;
-  } catch(e) {
-    console.error('localStorage write failed:', e);
-    return false;
-  }
+  const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(payload))))
+    .replace(/=+$/, '');
+
+  return `${origin}/show.html#${encoded}`;
 }
 
-function copyShowPageLink(showId) {
-  const stored = storeShowPayload(showId);
-  if (!stored) { showToast('Could not store show data', 'var(--danger)'); return; }
+function storeShowPayload() {} // kept for compat — no longer used
 
+function copyShowPageLink(showId) {
   const url = buildShowPageUrl(showId);
+  if (!url) { showToast('Could not build show URL', 'var(--danger)'); return; }
+
   const s = shows[showId];
   const cardCount   = getShowInventory(showId).filter(r => r.Status !== 'Sold').length;
   const sellerCount = [...s.sellers].length;
