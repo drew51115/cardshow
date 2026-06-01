@@ -4638,7 +4638,8 @@ let currentRole = null;   // 'seller' | 'admin' | 'buyer'
 let currentSeller = null; // seller handle when role === 'seller'
 // authRoleSelected, setAuthRole, submitAuth, enterAsBuyer are hoisted to top of script
 
-function showNavUser(name, role, avatarClass) {
+
+function loginAsSeller(handle) {
   currentRole   = 'seller';
   currentSeller = handle;
   document.getElementById('authOverlay').classList.add('hidden');
@@ -4649,18 +4650,25 @@ function showNavUser(name, role, avatarClass) {
   showNavUser(handle, 'Seller', 'seller');
 
   // Hide admin-only panels + filter bar
-  document.getElementById('adminShowsPanel').style.display  = 'none';
-  document.getElementById('activeShowBadge').style.display  = 'none';
-  document.getElementById('qrPanel').style.display          = 'none';
+  document.getElementById('adminTabBar').style.display           = 'none';
+  document.getElementById('adminShowsPanel').style.display       = 'none';
+  document.getElementById('activeShowBadge').style.display       = 'none';
+  document.getElementById('qrPanel').style.display               = 'none';
   document.getElementById('adminFilterBar').classList.remove('visible');
   document.getElementById('sellerQrPanel').classList.add('visible');
-  document.getElementById('sellerShowsPanel').style.display = 'block';
+  document.getElementById('sellerShowsPanel').style.display      = 'block';
 
-  // Seller: show Select All, hide admin tabs
+  // Show Select All for seller, hide admin-only buttons
   const selectAllBtn = document.getElementById('selectAllBtn');
   const backToShows  = document.getElementById('backToShowsBtn');
   if (selectAllBtn) selectAllBtn.style.display = '';
   if (backToShows)  backToShows.style.display  = 'none';
+
+  // Ensure inventory panel is visible (not hidden by a prior admin session)
+  const invPanel = document.getElementById('adminInventoryPanel');
+  const dash     = document.getElementById('adminShowsDashboard');
+  if (invPanel) invPanel.style.display = 'block';
+  if (dash)     dash.style.display     = 'none';
 
   switchView('seller');
   renderSellerTable(getSellerInventory());
@@ -4668,6 +4676,19 @@ function showNavUser(name, role, avatarClass) {
   renderSellerShowsList();
   buildSellerQrPanel();
   showToast(`Welcome, @${handle}`);
+}
+
+function showNavUser(name, role, avatarClass) {
+  const navUser = document.getElementById('navUser');
+  if (navUser) {
+    navUser.style.display = 'flex';
+    const av = document.getElementById('navUserAvatar');
+    if (av) { av.textContent = name.slice(0,2).toUpperCase(); av.className = `nav-user-avatar ${avatarClass}`; }
+    const nm = document.getElementById('navUserName');
+    if (nm) nm.textContent = name.length > 18 ? name.slice(0,16)+'…' : name;
+    const rl = document.getElementById('navUserRole');
+    if (rl) rl.textContent = role;
+  }
 }
 
 function loginAsAdmin() {
@@ -4680,7 +4701,7 @@ function loginAsAdmin() {
   showNavUser('Show Admin', 'Administrator', 'admin');
 
   // Show admin-only UI elements
-  document.getElementById('adminTabBar').style.display   = 'block';
+  document.getElementById('adminTabBar').style.display    = 'block';
   document.getElementById('adminShowsPanel').style.display = 'block';
   document.getElementById('sellerQrPanel').classList.remove('visible');
   document.getElementById('sellerShowsPanel').style.display = 'none';
@@ -4689,21 +4710,8 @@ function loginAsAdmin() {
   updateStats();
   populateAdminFilterOptions();
   renderAdminShowsList(); if(typeof renderAdminShowsDashboard==="function" && _adminTab==="shows") renderAdminShowsDashboard();
-
-  // Default to Shows tab
   switchAdminTab('shows');
-
   showToast('Admin access granted');
-}
-
-function showNavUser(name, role, avatarClass) {
-  const navUser = document.getElementById('navUser');
-  navUser.style.display = 'flex';
-  const av = document.getElementById('navUserAvatar');
-  av.textContent = name.slice(0,2).toUpperCase();
-  av.className = `nav-user-avatar ${avatarClass}`;
-  document.getElementById('navUserName').textContent = name.length > 18 ? name.slice(0,16)+'…' : name;
-  document.getElementById('navUserRole').textContent = role;
 }
 
 function toggleSidebar() {
