@@ -470,6 +470,7 @@ footer {
   <div class="state-logo">Card<span style="color:rgba(232,234,245,.4)">Show</span></div>
   <div class="spinner"></div>
   <div style="font-family:'DM Mono',monospace;font-size:0.72rem;color:var(--muted);letter-spacing:0.1em">Loading show…</div>
+  <div id="debugInfo" style="margin-top:1rem;font-family:'DM Mono',monospace;font-size:0.62rem;color:rgba(90,101,133,0.5);max-width:360px;word-break:break-all;text-align:center;line-height:1.5"></div>
 </div>
 
 <!-- Error state -->
@@ -692,6 +693,8 @@ function decodeAndRender(hash) {
     return true;
   } catch(e) {
     console.error('Hash decode failed:', e);
+    const dbg = document.getElementById('debugInfo');
+    if (dbg) dbg.innerHTML += '<br><span style="color:#f87171">Decode error: ' + e.message + '</span>';
     return false;
   }
 }
@@ -732,6 +735,19 @@ function expandPayload(payload) {
 
 // ── ENTRY POINT ──
 (function init() {
+  // Debug: show what the page actually received — visible on screen during load
+  const dbg = document.getElementById('debugInfo');
+  const h = window.location.hash;
+  const q = window.location.search;
+  const href = window.location.href;
+  if (dbg) {
+    dbg.innerHTML =
+      'href: ' + href.slice(0, 80) + (href.length > 80 ? '…' : '') + '<br>' +
+      'hash len: ' + h.length + '<br>' +
+      'search: ' + (q || '(none)') + '<br>' +
+      'hash start: ' + h.slice(0, 40) + (h.length > 40 ? '…' : '(empty)');
+  }
+
   // 1. Try hash fragment — primary path for all shared links
   hashData = window.location.hash.slice(1); // re-read in case it loaded late
   if (hashData && decodeAndRender(hashData)) return;
@@ -768,6 +784,10 @@ window.addEventListener('hashchange', () => {
 function showError() {
   document.getElementById('stateLoading').style.display = 'none';
   document.getElementById('stateError').style.display   = 'flex';
+  // Move debug info to error screen so it's visible
+  const dbg = document.getElementById('debugInfo');
+  const errScreen = document.getElementById('stateError');
+  if (dbg && errScreen) errScreen.appendChild(dbg);
 }
 
 // Demo fallback — hardcoded sample data so the page
