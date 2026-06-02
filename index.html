@@ -2031,6 +2031,309 @@
   .asc-add-input  { flex: 1; min-width: 140px; }
   .asc-add-select:focus, .asc-add-input:focus { border-color: var(--accent); }
 
+
+  /* ══════════════════════════════════════════
+     ADMIN DASHBOARD — MOBILE RESPONSIVE
+  ══════════════════════════════════════════ */
+
+  /* ── Tablet 600–899px ── */
+  @media (max-width: 899px) and (min-width: 600px) {
+    #adminTabBar { margin-bottom: 0.65rem; }
+    .admin-tab { padding: 0.4rem 0.85rem; font-size: 0.76rem; }
+
+    #adminShowsDashboard > div:first-child h2 { font-size: 1.3rem; }
+
+    .asc-header { padding: 0.75rem 0.9rem 0.65rem; gap: 0.75rem; }
+    .asc-name { font-size: 1.05rem; }
+    .asc-meta { font-size: 0.64rem; }
+    .asc-stat { padding: 0.3rem 0.55rem; min-width: 44px; }
+    .asc-stat-val { font-size: 1rem; }
+    .asc-stat-lbl { font-size: 0.5rem; }
+
+    .asc-actions { padding: 0.5rem 0.9rem; gap: 0.35rem; flex-wrap: wrap; }
+    .asc-action-primary { font-size: 0.74rem; padding: 0.38rem 0.75rem; }
+    .asc-action-secondary { font-size: 0.71rem; padding: 0.35rem 0.65rem; }
+    .asc-action-danger { font-size: 0.71rem; padding: 0.35rem 0.65rem; }
+
+    .asc-body { padding: 0.85rem 0.9rem; }
+    .asc-sellers-grid { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 0.4rem; }
+    .asc-seller-handle { font-size: 0.65rem; }
+    .asc-table-input { width: 52px; font-size: 0.68rem; }
+
+    .asc-add-select, .asc-add-input { font-size: 0.76rem; padding: 0.4rem 0.55rem; }
+  }
+
+  /* ── Small tablet / large phone 480–599px ── */
+  @media (max-width: 599px) and (min-width: 480px) {
+    #adminTabBar { margin-bottom: 0.55rem; }
+    .admin-tab { padding: 0.38rem 0.75rem; font-size: 0.74rem; }
+
+    #adminShowsDashboard > div:first-child {
+      flex-direction: column; align-items: flex-start; gap: 0.6rem;
+    }
+    #adminShowsDashboard > div:first-child h2 { font-size: 1.2rem; }
+    #adminShowsDashboard > div:first-child .btn { width: 100%; justify-content: center; }
+
+    .asc-header { padding: 0.7rem 0.75rem; flex-wrap: wrap; gap: 0.6rem; }
+    .asc-name { font-size: 1rem; }
+    .asc-meta { font-size: 0.62rem; }
+
+    /* Stats move below name on small screens */
+    .asc-stats { justify-content: flex-start; }
+    .asc-stat { padding: 0.28rem 0.5rem; min-width: 40px; }
+    .asc-stat-val { font-size: 0.95rem; }
+    .asc-stat-lbl { font-size: 0.48rem; }
+
+    /* Action buttons: two rows, primary full-width */
+    .asc-actions { flex-wrap: wrap; padding: 0.5rem 0.75rem; gap: 0.3rem; }
+    .asc-action-primary { width: 100%; text-align: center; justify-content: center; font-size: 0.76rem; }
+    .asc-action-secondary { font-size: 0.7rem; padding: 0.32rem 0.6rem; flex: 1; text-align: center; }
+    .asc-action-danger { font-size: 0.7rem; padding: 0.32rem 0.6rem; margin-left: 0; }
+
+    .asc-body { padding: 0.75rem; }
+    .asc-sellers-grid { grid-template-columns: 1fr; gap: 0.35rem; }
+    .asc-seller-row { padding: 0.4rem 0.5rem; }
+    .asc-seller-handle { font-size: 0.65rem; }
+    .asc-table-input { width: 54px; font-size: 0.68rem; }
+
+    .asc-add-row { flex-direction: column; gap: 0.35rem; }
+    .asc-add-select, .asc-add-input { min-width: 100%; width: 100%; font-size: 0.78rem; }
+  }
+
+  /* ── Mobile < 480px ── */
+  @media (max-width: 479px) {
+    #adminTabBar { margin-bottom: 0.5rem; }
+    .admin-tab { padding: 0.35rem 0.65rem; font-size: 0.72rem; }
+
+    #adminShowsDashboard > div:first-child {
+      flex-direction: column; align-items: flex-start; gap: 0.5rem;
+    }
+    #adminShowsDashboard > div:first-child h2 { font-size: 1.1rem; }
+    #adminShowsDashboard > div:first-child > div > div:last-child {
+      font-size: 0.72rem;
+    }
+    #adminShowsDashboard > div:first-child .btn {
+      width: 100%; justify-content: center; font-size: 0.78rem;
+    }
+    #adminShowsGrid { gap: 0.5rem; }
+
+    .asc-header { padding: 0.65rem 0.65rem 0.55rem; flex-wrap: wrap; gap: 0.5rem; }
+    .asc-name { font-size: 0.95rem; gap: 0.35rem; }
+    .asc-meta { font-size: 0.6rem; line-height: 1.45; }
+
+    /* Stats: compact row */
+    .asc-stats { gap: 0.25rem; }
+    .asc-stat { padding: 0.25rem 0.45rem; min-width: 36px; }
+    .asc-stat-val { font-size: 0.88rem; }
+    .asc-stat-lbl { font-size: 0.45rem; }
+
+    /* Action bar: stack primary, wrap rest */
+    .asc-actions { flex-wrap: wrap; padding: 0.45rem 0.65rem; gap: 0.28rem; }
+    .asc-action-primary {
+      width: 100%; text-align: center; font-size: 0.75rem;
+      padding: 0.5rem 0.75rem;
+    }
+    .asc-action-secondary {
+      font-size: 0.68rem; padding: 0.3rem 0.55rem;
+      flex: 1; text-align: center; min-width: 0;
+    }
+    .asc-action-danger {
+      font-size: 0.68rem; padding: 0.3rem 0.55rem; margin-left: 0;
+    }
+
+    /* Sellers grid: single column */
+    .asc-body { padding: 0.65rem; }
+    .asc-sellers-grid { grid-template-columns: 1fr; gap: 0.3rem; }
+    .asc-seller-row { padding: 0.38rem 0.5rem; gap: 0.35rem; }
+    .asc-seller-avatar { width: 20px; height: 20px; font-size: 0.55rem; }
+    .asc-seller-handle { font-size: 0.62rem; }
+    .asc-table-input { width: 50px; font-size: 0.66rem; padding: 0.18rem 0.35rem; }
+
+    .asc-section-label { font-size: 0.58rem; }
+
+    .asc-add-row { flex-direction: column; gap: 0.3rem; }
+    .asc-add-select, .asc-add-input {
+      min-width: 100%; width: 100%; font-size: 0.76rem;
+      padding: 0.42rem 0.55rem;
+    }
+
+    /* Show URL prompt modal: full width */
+    #urlPromptInput { font-size: 0.62rem; padding: 0.5rem 0.65rem; }
+
+    /* Admin tab bar full width on xs */
+    #adminTabBar > div { width: 100%; }
+    .admin-tab { flex: 1; text-align: center; }
+  }
+
+
+  /* ── INSTAGRAM BUTTON ── */
+  .btn-instagram {
+    display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+    padding: 0.75rem 1rem; border-radius: 10px; font-size: 0.88rem;
+    font-weight: 700; text-decoration: none; transition: all 0.2s;
+    background: linear-gradient(135deg, #833ab4, #fd1d1d, #fcb045);
+    color: #fff; border: none; cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .btn-instagram:hover { opacity: 0.88; transform: translateY(-1px); }
+
+  /* ── EDIT PROFILE MODAL ── */
+  .profile-overlay {
+    position: absolute; inset: 0; z-index: 300;
+    background: rgba(0,0,0,0.7); display: none;
+    align-items: center; justify-content: center;
+    padding: 1.5rem;
+  }
+  .profile-overlay.open { display: flex; }
+
+  .profile-modal {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 16px; width: 100%; max-width: 420px;
+    box-shadow: 0 24px 64px rgba(0,0,0,0.6);
+    display: flex; flex-direction: column;
+  }
+
+  .profile-header {
+    display: flex; align-items: center;
+    justify-content: space-between;
+    padding: 1.1rem 1.3rem 0.9rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .profile-title {
+    font-family: 'Bebas Neue', sans-serif; font-size: 1.3rem;
+    letter-spacing: 0.06em; color: var(--text);
+  }
+
+  .profile-body {
+    padding: 1.1rem 1.3rem;
+    display: flex; flex-direction: column; gap: 0.85rem;
+  }
+
+  .profile-field-label {
+    font-family: 'DM Mono', monospace; font-size: 0.62rem;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 0.3rem;
+  }
+  .profile-field-hint {
+    font-size: 0.68rem; color: var(--muted);
+    margin-top: 0.22rem; line-height: 1.4;
+  }
+  .profile-field-hint.privacy {
+    color: rgba(74,222,128,0.8);
+  }
+  .profile-input {
+    width: 100%; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 0.6rem 0.85rem; color: var(--text);
+    font-family: 'DM Sans', sans-serif; font-size: 0.88rem;
+    outline: none; transition: border-color 0.15s;
+  }
+  .profile-input:focus { border-color: var(--accent); }
+  .profile-input::placeholder { color: var(--muted); }
+
+  .profile-input-wrap {
+    position: relative;
+  }
+  .profile-input-prefix {
+    position: absolute; left: 0.85rem; top: 50%;
+    transform: translateY(-50%);
+    font-family: 'DM Mono', monospace; font-size: 0.88rem;
+    color: var(--muted); pointer-events: none;
+  }
+  .profile-input-wrap .profile-input {
+    padding-left: 1.6rem;
+  }
+
+  .profile-wa-rec {
+    display: inline-flex; align-items: center; gap: 0.3rem;
+    background: rgba(37,211,102,0.1); border: 1px solid rgba(37,211,102,0.25);
+    border-radius: 20px; padding: 0.15rem 0.55rem;
+    font-size: 0.62rem; font-family: 'DM Mono', monospace;
+    color: #25d366; letter-spacing: 0.04em; margin-left: 0.5rem;
+    vertical-align: middle;
+  }
+
+  .profile-actions {
+    display: flex; gap: 0.6rem;
+    padding: 0.9rem 1.3rem 1.1rem;
+    border-top: 1px solid var(--border);
+  }
+
+  /* Sidebar edit profile button */
+  .btn-edit-profile {
+    display: flex; align-items: center; gap: 0.5rem;
+    width: 100%; background: transparent;
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 0.5rem 0.75rem; color: var(--muted);
+    font-size: 0.78rem; cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+    transition: all 0.15s; text-align: left;
+  }
+  .btn-edit-profile:hover { border-color: var(--accent); color: var(--text); }
+  .profile-banner {
+    display: flex; align-items: flex-start; gap: 0.6rem;
+    background: rgba(245,200,66,0.07);
+    border: 1px solid rgba(245,200,66,0.2);
+    border-radius: 8px; padding: 0.65rem 0.75rem;
+    font-size: 0.75rem; color: var(--text); line-height: 1.4;
+    cursor: pointer; transition: background 0.15s;
+  }
+  .profile-banner:hover { background: rgba(245,200,66,0.12); }
+  .profile-banner .icon { font-size: 1rem; flex-shrink: 0; margin-top: 0.05rem; }
+
+
+  /* ── NAV PROFILE BUTTON ── */
+  .nav-profile-btn {
+    display: none; /* shown via JS for sellers only */
+    align-items: center; gap: 0.45rem;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 0.32rem 0.7rem 0.32rem 0.4rem;
+    cursor: pointer; transition: all 0.18s; position: relative;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .nav-profile-btn:hover {
+    border-color: var(--accent); background: rgba(245,200,66,0.06);
+  }
+  .nav-profile-avatar {
+    width: 26px; height: 26px; border-radius: 50%;
+    background: rgba(245,200,66,0.15);
+    border: 1.5px solid #f5c842;
+    color: #f5c842;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.65rem; font-weight: 800;
+    font-family: 'DM Sans', sans-serif; flex-shrink: 0;
+    overflow: hidden;
+  }
+  #navProfilePhoneIcon { flex-shrink: 0; color: #f5c842; }
+  #navProfileInitials  { color: #f5c842; }
+  .nav-profile-label {
+    font-size: 0.76rem; font-weight: 600; color: var(--text);
+    max-width: 100px; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap;
+  }
+
+  /* Red dot — pulsing attention signal when contact info is missing */
+  .nav-profile-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #ef4444;
+    position: absolute; top: -3px; right: -3px;
+    display: none; /* shown by updateProfileUI when contact info is missing */
+    box-shadow: 0 0 0 0 rgba(239,68,68,0.6);
+    animation: profile-dot-pulse 2s ease infinite;
+  }
+  .nav-profile-dot.visible { display: block; }
+
+  @keyframes profile-dot-pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(239,68,68,0.6); }
+    70%  { box-shadow: 0 0 0 5px rgba(239,68,68,0); }
+    100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); }
+  }
+
+  @media (max-width: 479px) {
+    .nav-profile-label { display: none; }
+    .nav-profile-btn { padding: 0.32rem 0.4rem; }
+  }
+
 </style>
 </head>
 <body>
@@ -2076,6 +2379,20 @@
     <button class="nav-tab" id="navTabBuyer" onclick="switchView('buyer')">◎ Buyer</button>
   </div>
   <div class="nav-right">
+    <!-- Seller profile button — only visible when logged in as seller -->
+    <button class="nav-profile-btn" id="navProfileBtn"
+      onclick="openProfile()" style="display:none" title="Edit your seller profile &amp; contact info">
+      <!-- Phone icon shown when no contact info yet -->
+      <div class="nav-profile-avatar" id="navProfileAvatar">
+        <svg id="navProfilePhoneIcon" width="13" height="13" viewBox="0 0 24 24"
+          fill="currentColor" style="display:block">
+          <path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/>
+        </svg>
+        <span id="navProfileInitials" style="display:none;font-size:0.6rem;font-weight:800;font-family:'DM Sans',sans-serif;color:var(--gold)"></span>
+      </div>
+      <div class="nav-profile-label" id="navProfileLabel">Contact Info</div>
+      <div class="nav-profile-dot" id="navProfileDot" title="Add contact info so buyers can reach you"></div>
+    </button>
     <a href="#" id="partnershipLink" onclick="this.href='mailto:stephen.a.wilhelm@gmail.com?subject=Partnership%20Inquiry'"
       class="nav-partnership-link">
       🤝 Partnership
@@ -2088,6 +2405,9 @@
       </div>
       <button class="btn-signout" onclick="signOut()">Sign out</button>
     </div>
+    <!-- Buyer sign-out — minimal, no identity display -->
+    <button class="btn-signout" id="buyerSignOut"
+      onclick="signOut()" style="display:none">Sign out</button>
   </div>
 </nav>
 
@@ -2218,12 +2538,12 @@
 
       <!-- Admin: Shows Dashboard (default tab) -->
       <div id="adminShowsDashboard" style="display:none">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem">
-          <div>
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:0.6rem">
+          <div style="min-width:0">
             <h2 style="font-family:'Bebas Neue',sans-serif;font-size:1.6rem;letter-spacing:0.06em;color:var(--text);line-height:1">Show Management</h2>
-            <div style="font-size:0.78rem;color:var(--muted);margin-top:0.2rem">Create shows, manage sellers, assign tables, share your show page</div>
+            <div style="font-size:0.75rem;color:var(--muted);margin-top:0.2rem">Create shows · manage sellers · assign tables · share</div>
           </div>
-          <button class="btn btn-primary" onclick="openCreateShowModal()" style="font-size:0.82rem">
+          <button class="btn btn-primary" onclick="openCreateShowModal()" style="font-size:0.82rem;white-space:nowrap;flex-shrink:0">
             + Create New Show
           </button>
         </div>
@@ -2305,6 +2625,64 @@
       </div>
     </div><!-- /adminInventoryPanel -->
   </div><!-- /main-content -->
+
+  <!-- ═══════ EDIT PROFILE MODAL (position:absolute inside view-seller) ═══════ -->
+  <div class="profile-overlay" id="profileOverlay" onclick="if(event.target===this)closeProfile()">
+    <div class="profile-modal">
+
+      <div class="profile-header">
+        <div class="profile-title">My Seller Profile</div>
+        <button class="modal-close" onclick="closeProfile()">✕</button>
+      </div>
+
+      <div class="profile-body">
+
+        <div>
+          <div class="profile-field-label">Display Name</div>
+          <input class="profile-input" id="prof_name"
+            placeholder="e.g. Bleeding Ink Sports">
+          <div class="profile-field-hint">Shown to buyers instead of your handle</div>
+        </div>
+
+        <div>
+          <div class="profile-field-label">
+            WhatsApp Number
+            <span class="profile-wa-rec">✓ Recommended</span>
+          </div>
+          <input class="profile-input" id="prof_wa" type="tel"
+            placeholder="+1 (555) 000-0000">
+          <div class="profile-field-hint privacy">
+            🔒 Only shown to buyers at shows you're part of — never public
+          </div>
+        </div>
+
+        <div>
+          <div class="profile-field-label">Instagram Handle <span style="color:var(--muted);font-size:0.58rem;letter-spacing:0.06em">(OPTIONAL)</span></div>
+          <div class="profile-input-wrap">
+            <span class="profile-input-prefix">@</span>
+            <input class="profile-input" id="prof_ig"
+              placeholder="yourhandle">
+          </div>
+          <div class="profile-field-hint">Shown as a secondary contact option in buyer view</div>
+        </div>
+
+      </div>
+
+      <div class="profile-actions">
+        <button class="btn btn-primary" style="flex:1" onclick="saveProfile()">Save Profile</button>
+        <button class="btn btn-ghost" onclick="closeProfile()">Cancel</button>
+      </div>
+      <div style="text-align:center;padding:0.5rem 1.3rem 1rem">
+        <button onclick="closeProfile();signOut()"
+          style="background:none;border:none;color:var(--muted);font-size:0.75rem;
+          cursor:pointer;font-family:'DM Sans',sans-serif;transition:color 0.15s"
+          onmouseover="this.style.color='#ef4444'"
+          onmouseout="this.style.color='var(--muted)'"
+          id="profileSignOutBtn">Sign out of <span id="profileSignOutHandle"></span></button>
+      </div>
+
+    </div>
+  </div>
 
   <!-- ═══════ ADD CARD MODAL (position:absolute inside view-seller) ═══════ -->
   <div class="card-edit-overlay" id="addCardOverlay" onclick="if(event.target===this)closeAddCard()">
@@ -2626,12 +3004,18 @@
         </div>
       </div>
     </div>
-    <div class="modal-actions">
+    <div class="modal-actions" id="modalActions">
       <a class="btn-whatsapp" id="modalWhatsApp" href="#" target="_blank" rel="noopener">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
           <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
         </svg>
-        Message Seller on WhatsApp
+        Message on WhatsApp
+      </a>
+      <a class="btn-instagram" id="modalInstagram" href="#" target="_blank" rel="noopener" style="display:none">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/>
+        </svg>
+        DM on Instagram
       </a>
       <button class="btn-modal-close" onclick="closeModal()">Close</button>
     </div>
@@ -2905,17 +3289,25 @@ function enterAsBuyer() {
   currentSeller = null;
   const overlay = document.getElementById('authOverlay');
   if (overlay) overlay.classList.add('hidden');
+
+  // Hide nav tabs and identity display — buyers are anonymous
   const navTabSeller = document.getElementById('navTabSeller');
   const navTabBuyer  = document.getElementById('navTabBuyer');
   const navTabs      = document.getElementById('navTabs');
   if (navTabSeller) navTabSeller.style.display = 'none';
   if (navTabBuyer)  navTabBuyer.style.display  = 'none';
   if (navTabs)      navTabs.style.display      = 'none';
+
+  // Hide seller/admin nav blocks
+  document.getElementById('navUser').style.display       = 'none';
+  document.getElementById('navProfileBtn').style.display = 'none';
+  document.getElementById('buyerSignOut').style.display  = 'block';
+
   const adminFilterBar = document.getElementById('adminFilterBar');
   const sellerQrPanel  = document.getElementById('sellerQrPanel');
   if (adminFilterBar) adminFilterBar.classList.remove('visible');
   if (sellerQrPanel)  sellerQrPanel.classList.remove('visible');
-  showNavUser('Guest', 'Buyer', 'seller');
+
   switchView('buyer');
   openBuyerShowPicker();
 }
@@ -4055,30 +4447,38 @@ function switchView(v) {
 
 // ── SELLER WHATSAPP REGISTRY ──
 // In production this would come from seller profiles
-const SELLER_WHATSAPP = {
-  'bleeding_ink_sports':  '14805550101',
-  'refbrand':             '14805550102',
-  'chrome_kings_atl':     '14045550103',
-  'wax_vault_chicago':    '13125550104',
-  'the_foil_lab':         '14695550105',
-  'slab_city_sd':         '16195550106',
-  'golden_era_cards':     '17025550107',
-  'prizm_palace_nyc':     '12125550108',
-  'rookie_run_houston':   '17135550109',
-  'patch_work_pdx':       '15035550110',
-  'diamond_cut_dallas':   '12145550111',
-  'spectrum_breaks_sea':  '12065550112',
-  'foil_factory_miami':   '13055550113',
-  'comic_grade_comics_sf':'14155550114',
-  'vintage_vault_bos':    '16175550115',
-  'three_slab_denver':    '17205550116',
-  'gem_mint_philly':      '12155550117',
-  'cgc_central_nyc':      '12125550118',
-  'black_label_atl':      '14045550119',
-  'all_grade_garage_stl': '13145550120',
-  'precision_slabs_min':  '16125550121',
-  'cross_grade_crew_la':  '12135550122',
+// ── SELLER PROFILES ──
+// Keyed by seller handle. Stores display name, WhatsApp, and Instagram.
+// Populated by the seller via the Edit Profile sheet.
+const sellerProfiles = {
+  'bleeding_ink_sports':  { displayName:'Bleeding Ink Sports',  whatsapp:'14805550101', instagram:'bleeding_ink_sports' },
+  'refbrand':             { displayName:'RefBrand',             whatsapp:'14805550102', instagram:'refbrand' },
+  'chrome_kings_atl':     { displayName:'Chrome Kings ATL',     whatsapp:'14045550103', instagram:'chrome_kings_atl' },
+  'wax_vault_chicago':    { displayName:'Wax Vault Chicago',    whatsapp:'13125550104', instagram:'wax_vault_chicago' },
+  'the_foil_lab':         { displayName:'The Foil Lab',         whatsapp:'14695550105', instagram:'the_foil_lab' },
+  'slab_city_sd':         { displayName:'Slab City SD',         whatsapp:'16195550106', instagram:'slab_city_sd' },
+  'golden_era_cards':     { displayName:'Golden Era Cards',     whatsapp:'17025550107', instagram:'golden_era_cards' },
+  'prizm_palace_nyc':     { displayName:'Prizm Palace NYC',     whatsapp:'12125550108', instagram:'prizm_palace_nyc' },
+  'rookie_run_houston':   { displayName:'Rookie Run Houston',   whatsapp:'17135550109', instagram:'rookie_run_houston' },
+  'patch_work_pdx':       { displayName:'Patch Work PDX',       whatsapp:'15035550110', instagram:'patch_work_pdx' },
+  'diamond_cut_dallas':   { displayName:'Diamond Cut Dallas',   whatsapp:'12145550111', instagram:'diamond_cut_dallas' },
+  'spectrum_breaks_sea':  { displayName:'Spectrum Breaks',      whatsapp:'12065550112', instagram:'spectrum_breaks_sea' },
+  'foil_factory_miami':   { displayName:'Foil Factory Miami',   whatsapp:'13055550113', instagram:'foil_factory_miami' },
+  'comic_grade_comics_sf':{ displayName:'Comic Grade Comics',   whatsapp:'14155550114', instagram:'comic_grade_comics_sf' },
+  'vintage_vault_bos':    { displayName:'Vintage Vault BOS',    whatsapp:'16175550115', instagram:'vintage_vault_bos' },
+  'three_slab_denver':    { displayName:'Three Slab Denver',    whatsapp:'17205550116', instagram:'three_slab_denver' },
+  'gem_mint_philly':      { displayName:'Gem Mint Philly',      whatsapp:'12155550117', instagram:'gem_mint_philly' },
+  'cgc_central_nyc':      { displayName:'CGC Central NYC',      whatsapp:'12125550118', instagram:'cgc_central_nyc' },
+  'black_label_atl':      { displayName:'Black Label ATL',      whatsapp:'14045550119', instagram:'black_label_atl' },
+  'all_grade_garage_stl': { displayName:'All Grade Garage',     whatsapp:'13145550120', instagram:'all_grade_garage_stl' },
+  'precision_slabs_min':  { displayName:'Precision Slabs',      whatsapp:'16125550121', instagram:'precision_slabs_min' },
+  'cross_grade_crew_la':  { displayName:'Cross Grade Crew',     whatsapp:'12135550122', instagram:'cross_grade_crew_la' },
 };
+
+// Helper: get profile for a handle (returns empty object if not found)
+function getProfile(handle) {
+  return sellerProfiles[handle] || {};
+}
 
 // Condition only applies to ungraded (raw) cards
 const CONDITION_LABELS = ['Gem Mint', 'Near Mint', 'Good', 'Fair', 'Poor'];
@@ -4118,7 +4518,7 @@ async function openCardModal(idx) {
   const isGraded    = r.Grade && !isNaN(Number(r.Grade));
   const grader      = r.Grader || (isGraded ? 'PSA' : null);
   const sellerHandle = r.Seller || 'unknown';
-  const phone       = SELLER_WHATSAPP[sellerHandle];
+  const phone       = getProfile(sellerHandle).whatsapp;
 
   // Header
   document.getElementById('modalPlayer').textContent = r.Player || 'Unknown';
@@ -4131,16 +4531,18 @@ async function openCardModal(idx) {
   document.getElementById('modalGradeBadge').innerHTML = gradeBadge(r.Grade, r.Grader);
 
   // Seller + Table Number
-  const initials = sellerHandle.split('_').map(w => w[0]).join('').toUpperCase().slice(0,2);
+  const profile     = getProfile(sellerHandle);
+  const displayName = profile.displayName || ('@' + sellerHandle);
+  const initials    = sellerHandle.split('_').map(w => w[0]).join('').toUpperCase().slice(0,2);
   document.getElementById('modalSellerAvatar').textContent = initials;
-  const tableNum = getTableNumber(sellerHandle);
+  const tableNum     = getTableNumber(sellerHandle);
   const modalSellerEl = document.getElementById('modalSellerName');
   if (tableNum) {
     modalSellerEl.innerHTML =
-      `<span style="font-family:'DM Mono',monospace">@${sellerHandle}</span>` +
+      `<span style="font-family:'DM Mono',monospace">${displayName}</span>` +
       `<span class="table-badge" style="margin-left:0.4rem">📍 Table ${tableNum}</span>`;
   } else {
-    modalSellerEl.textContent = '@' + sellerHandle;
+    modalSellerEl.textContent = displayName;
   }
 
   // Detail grid fields
@@ -4200,6 +4602,29 @@ async function openCardModal(idx) {
     wa.style.display = 'flex';
   } else {
     wa.style.display = 'none';
+  }
+
+  // Instagram link — secondary if WhatsApp present, primary if not
+  const ig       = document.getElementById('modalInstagram');
+  const igHandle = profile.instagram;
+  if (ig && igHandle) {
+    ig.href = `https://instagram.com/${igHandle}`;
+    ig.style.display = 'flex';
+    if (phone) {
+      // Secondary style — outlined, not filled
+      ig.style.background = 'transparent';
+      ig.style.border     = '1px solid var(--border)';
+      ig.style.color      = 'var(--muted)';
+      ig.style.fontSize   = '0.78rem';
+    } else {
+      // Primary style — no WhatsApp, make Instagram prominent
+      ig.style.background = '';
+      ig.style.border     = '';
+      ig.style.color      = '';
+      ig.style.fontSize   = '';
+    }
+  } else if (ig) {
+    ig.style.display = 'none';
   }
 
 }
@@ -4644,10 +5069,14 @@ function loginAsSeller(handle) {
   currentSeller = handle;
   document.getElementById('authOverlay').classList.add('hidden');
 
-  document.getElementById('navTabSeller').textContent = '⬡ My Inventory';
-  document.getElementById('navTabBuyer').style.display = 'none';
+  document.getElementById('navTabSeller').style.display = 'none';
+  document.getElementById('navTabBuyer').style.display  = 'none'; // hidden for sellers
+  document.getElementById('navUser').style.display      = 'none'; // seller uses Profile btn
+  document.getElementById('buyerSignOut').style.display = 'none';
   document.getElementById('inventoryTitle').textContent = 'My Inventory';
-  showNavUser(handle, 'Seller', 'seller');
+  // Set sign-out handle in profile modal
+  const soHandle = document.getElementById('profileSignOutHandle');
+  if (soHandle) soHandle.textContent = '@' + handle;
 
   // Hide admin-only panels + filter bar
   document.getElementById('adminTabBar').style.display           = 'none';
@@ -4675,6 +5104,7 @@ function loginAsSeller(handle) {
   updateStats();
   renderSellerShowsList();
   buildSellerQrPanel();
+  updateProfileUI(handle);
   showToast(`Welcome, @${handle}`);
 }
 
@@ -4696,8 +5126,15 @@ function loginAsAdmin() {
   currentSeller = null;
   document.getElementById('authOverlay').classList.add('hidden');
 
-  document.getElementById('navTabSeller').textContent = '⬡ Admin';
-  document.getElementById('navTabBuyer').style.display = '';
+  document.getElementById('navTabSeller').textContent   = '⬡ Admin';
+  document.getElementById('navTabBuyer').style.display  = '';
+
+  // Admin uses navUser block — hide seller/buyer alternatives
+  const navProfileBtn = document.getElementById('navProfileBtn');
+  if (navProfileBtn) navProfileBtn.style.display = 'none';
+  const buyerSOBtn = document.getElementById('buyerSignOut');
+  if (buyerSOBtn) buyerSOBtn.style.display = 'none';
+
   showNavUser('Show Admin', 'Administrator', 'admin');
 
   // Show admin-only UI elements
@@ -4743,6 +5180,16 @@ function signOut() {
   document.getElementById('navTabBuyer').style.display  = '';
   document.getElementById('navTabs').style.display      = '';
   document.getElementById('navUser').style.display      = 'none';
+
+  const buyerSOBtn = document.getElementById('buyerSignOut');
+  if (buyerSOBtn) buyerSOBtn.style.display = 'none';
+
+  const navProfileBtn = document.getElementById('navProfileBtn');
+  if (navProfileBtn) navProfileBtn.style.display = 'none';
+
+  // Reset profile sign-out handle text
+  const soHandle = document.getElementById('profileSignOutHandle');
+  if (soHandle) soHandle.textContent = '';
 
   document.getElementById('adminTabBar').style.display  = 'none';
   document.getElementById('adminFilterBar').classList.remove('visible');
@@ -6565,6 +7012,80 @@ function addSellerByHandleAsc(showId) {
   addSellerToShow(showId, handle);
   input.value = '';
   renderAdminShowsDashboard();
+}
+
+// ── SELLER PROFILE ──
+
+function openProfile() {
+  const p = getProfile(currentSeller || '');
+  document.getElementById('prof_name').value = p.displayName || '';
+  // Format stored phone back to readable
+  const raw = p.whatsapp || '';
+  document.getElementById('prof_wa').value = raw
+    ? raw.replace(/^1(\d{3})(\d{3})(\d{4})$/, '+1 ($1) $2-$3') || raw
+    : '';
+  document.getElementById('prof_ig').value = p.instagram || '';
+  document.getElementById('profileOverlay').classList.add('open');
+}
+
+function closeProfile() {
+  document.getElementById('profileOverlay').classList.remove('open');
+}
+
+function saveProfile() {
+  const handle = currentSeller;
+  if (!handle) return;
+
+  const name  = document.getElementById('prof_name').value.trim();
+  // Strip everything except digits from WhatsApp
+  const waRaw = document.getElementById('prof_wa').value.replace(/\D/g,'');
+  // Strip @ and spaces from Instagram
+  const ig    = document.getElementById('prof_ig').value.trim().replace(/^@/,'').replace(/\s/g,'');
+
+  if (!sellerProfiles[handle]) sellerProfiles[handle] = {};
+  if (name)  sellerProfiles[handle].displayName = name;
+  if (waRaw) sellerProfiles[handle].whatsapp    = waRaw;
+  if (ig)    sellerProfiles[handle].instagram   = ig;
+
+  closeProfile();
+  updateProfileUI(handle);
+  showToast('✓ Profile saved');
+}
+
+function updateProfileUI(handle) {
+  const p = getProfile(handle);
+  const hasContact = !!(p.whatsapp || p.instagram);
+
+  const navBtn      = document.getElementById('navProfileBtn');
+  const phoneIcon   = document.getElementById('navProfilePhoneIcon');
+  const initials    = document.getElementById('navProfileInitials');
+  const navLabel    = document.getElementById('navProfileLabel');
+  const navDot      = document.getElementById('navProfileDot');
+
+  if (navBtn && currentRole === 'seller') {
+    navBtn.style.display = 'flex';
+
+    if (hasContact) {
+      const ini = handle.split('_').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+      if (phoneIcon) phoneIcon.style.display  = 'none';
+      if (initials)  { initials.style.display = 'block'; initials.textContent = ini; }
+    } else {
+      if (phoneIcon) phoneIcon.style.display  = 'block';
+      if (initials)  initials.style.display   = 'none';
+    }
+
+    // Label: show display name once saved, otherwise prompt
+    if (navLabel) {
+      navLabel.textContent = hasContact
+        ? (p.displayName || ('@' + handle))
+        : 'Contact Info';
+    }
+
+    // Pulsing red dot while contact info is missing
+    if (navDot) navDot.classList.toggle('visible', !hasContact);
+  } else if (navBtn) {
+    navBtn.style.display = 'none';
+  }
 }
 
 // ── CARD EDIT MODAL ──
