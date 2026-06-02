@@ -284,6 +284,22 @@ nav {
   font-weight: 600; color: rgba(245,200,66,0.6); letter-spacing: 0.03em;
 }
 
+/* ── SPORT FILTER CHIPS ── */
+.sport-chip {
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 20px; padding: 0.32rem 0.8rem;
+  font-family: 'DM Sans', sans-serif; font-size: 0.78rem;
+  font-weight: 500; color: var(--muted);
+  cursor: pointer; transition: all 0.15s; white-space: nowrap;
+}
+.sport-chip:hover { border-color: rgba(245,200,66,0.4); color: var(--text); }
+.sport-chip.active {
+  background: rgba(245,200,66,0.12);
+  border-color: rgba(245,200,66,0.45);
+  color: var(--gold); font-weight: 600;
+}
+
 /* ══════════════════════════════════════
    SPORT BREAKDOWN
 ══════════════════════════════════════ */
@@ -503,17 +519,44 @@ footer {
     </div>
   </section>
 
-  <!-- ══════ FEATURED CARDS ══════ -->
+  <!-- ══════ BROWSE INVENTORY ══════ -->
   <section class="section" style="padding-top:60px">
     <div class="container">
       <div class="section-header reveal">
-        <div class="label">Highlights</div>
-        <h2 class="section-headline">Featured at <em id="featShowName">this show</em></h2>
+        <div class="label">Browse Inventory</div>
+        <h2 class="section-headline">Available at <em id="featShowName">this show</em></h2>
         <div style="font-size:0.88rem;color:var(--muted);margin-top:0.5rem" id="featuredSub">
-          A preview of what's available. Scan the QR at the entrance to search every card.
+          A preview of what's available. Table numbers and seller contact revealed at the show.
         </div>
       </div>
-      <div class="featured-grid reveal reveal-d2" id="featuredGrid"></div>
+
+      <!-- Search + filter bar -->
+      <div style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:center;margin-bottom:1.2rem" class="reveal reveal-d1">
+        <div style="position:relative;flex:1;min-width:200px">
+          <svg style="position:absolute;left:0.75rem;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none"
+            width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+          </svg>
+          <input id="browseSearch" type="text" placeholder="Search player, set, card title…"
+            oninput="filterBrowse()"
+            style="width:100%;background:var(--surface);border:1px solid var(--border);
+              border-radius:8px;padding:0.6rem 0.85rem 0.6rem 2.2rem;
+              color:var(--text);font-family:'DM Sans',sans-serif;font-size:0.88rem;
+              outline:none;transition:border-color 0.2s"
+            onfocus="this.style.borderColor='var(--gold)'"
+            onblur="this.style.borderColor='var(--border)'">
+        </div>
+        <div id="sportFilters" style="display:flex;gap:0.4rem;flex-wrap:wrap"></div>
+        <div style="font-family:'DM Mono',monospace;font-size:0.68rem;color:var(--muted);
+          letter-spacing:0.06em;white-space:nowrap" id="browseCount"></div>
+      </div>
+
+      <div class="featured-grid" id="featuredGrid"></div>
+
+      <div id="browseEmpty" style="display:none;text-align:center;padding:3rem 1rem;
+        color:var(--muted);font-family:'DM Mono',monospace;font-size:0.82rem;letter-spacing:0.04em">
+        No cards match your search — try a different player or set name
+      </div>
     </div>
   </section>
 
@@ -819,36 +862,97 @@ function renderHero() {
   document.getElementById('ctaHeadline').textContent  = `${cardCount}+ cards at ${s.name.split(' ')[0]}.`;
 }
 
-function renderFeaturedCards() {
-  // Pick top 8 by price descending, then fill with variety across sports
-  const sorted  = [...inventory]
-    .filter(c => c.Status !== 'Sold')
-    .sort((a,b) => Number(b.Price||0) - Number(a.Price||0));
+// ── State for the browse grid ──
+let _browseAll       = [];   // full sorted inventory
+let _browseActiveSport = ''; // '' = all sports
 
-  const featured = [];
+function renderFeaturedCards() {
+  // Sort: one card per seller first (variety), then fill by price
+  const sorted = [...inventory]
+    .filter(c => c.Status !== 'Sold')
+    .sort((a, b) => Number(b.Price || 0) - Number(a.Price || 0));
+
+  const firstPass = [];
   const seen = new Set();
-  // First pass: top card per seller (ensures variety)
   for (const r of sorted) {
-    if (!seen.has(r.Seller) && featured.length < 8) {
-      featured.push(r); seen.add(r.Seller);
-    }
+    if (!seen.has(r.Seller)) { firstPass.push(r); seen.add(r.Seller); }
   }
-  // Fill remaining slots from top by price
   for (const r of sorted) {
-    if (!featured.includes(r) && featured.length < 8) featured.push(r);
+    if (!firstPass.includes(r)) firstPass.push(r);
   }
+  _browseAll = firstPass;
 
   const grid = document.getElementById('featuredGrid');
-  if (!featured.length) {
-    grid.innerHTML = '<div style="color:var(--muted);font-size:0.88rem;grid-column:1/-1">No cards published yet — check back closer to show day.</div>';
+  if (!_browseAll.length) {
+    grid.innerHTML = '<div style="color:var(--muted);font-size:0.88rem;grid-column:1/-1;padding:2rem 0">No cards published yet — check back closer to show day.</div>';
     return;
   }
 
-  grid.innerHTML = featured.map(r => {
-    const sport  = detectSport(r);
-    const icon   = SPORT_ICONS[sport] || '🃏';
-    const grade  = gradeBadgeHtml(r.Grade, r.Grader);
-    const par    = r['Parallel/Variant'];
+  // Build sport filter chips
+  buildSportChips();
+  // Render all cards initially
+  applyBrowseFilters();
+}
+
+function buildSportChips() {
+  const counts = {};
+  _browseAll.forEach(r => {
+    const s = detectSport(r);
+    counts[s] = (counts[s] || 0) + 1;
+  });
+  const sports = Object.entries(counts).sort((a,b) => b[1]-a[1]);
+  if (sports.length <= 1) { document.getElementById('sportFilters').innerHTML = ''; return; }
+
+  document.getElementById('sportFilters').innerHTML =
+    `<button class="sport-chip active" data-sport="" onclick="setSportFilter(this,'')">All</button>` +
+    sports.map(([sport]) =>
+      `<button class="sport-chip" data-sport="${sport}" onclick="setSportFilter(this,'${sport}')">
+        ${SPORT_ICONS[sport]||'🃏'} ${sport}
+      </button>`
+    ).join('');
+}
+
+function setSportFilter(btn, sport) {
+  _browseActiveSport = sport;
+  document.querySelectorAll('.sport-chip').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  applyBrowseFilters();
+}
+
+function filterBrowse() { applyBrowseFilters(); }
+
+function applyBrowseFilters() {
+  const q     = (document.getElementById('browseSearch')?.value || '').toLowerCase().trim();
+  const sport = _browseActiveSport;
+
+  const results = _browseAll.filter(r => {
+    const matchSport = !sport || detectSport(r) === sport;
+    const matchQ     = !q ||
+      (r.Player        || '').toLowerCase().includes(q) ||
+      (r['Card Title'] || '').toLowerCase().includes(q) ||
+      (r['Set '] || r.Set || '').toLowerCase().includes(q) ||
+      (r['Parallel/Variant'] || '').toLowerCase().includes(q);
+    return matchSport && matchQ;
+  });
+
+  const grid     = document.getElementById('featuredGrid');
+  const emptyEl  = document.getElementById('browseEmpty');
+  const countEl  = document.getElementById('browseCount');
+
+  if (countEl) countEl.textContent = `${results.length} card${results.length !== 1 ? 's' : ''}`;
+
+  if (!results.length) {
+    grid.innerHTML = '';
+    if (emptyEl) emptyEl.style.display = 'block';
+    return;
+  }
+  if (emptyEl) emptyEl.style.display = 'none';
+
+  grid.innerHTML = results.map(r => {
+    const sport = detectSport(r);
+    const icon  = SPORT_ICONS[sport] || '🃏';
+    const grade = gradeBadgeHtml(r.Grade, r.Grader);
+    const par   = r['Parallel/Variant'];
     return `
     <div class="feat-card">
       <div class="feat-sport">${icon} ${sport}</div>
