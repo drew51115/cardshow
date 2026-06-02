@@ -677,6 +677,10 @@ const showId = params.get('id');
 // and also listen for hashchange as a safety net.
 let hashData = window.location.hash.slice(1);
 
+// ── Browse grid state — declared early to avoid temporal dead zone ──
+let _browseAll        = [];
+let _browseActiveSport = '';
+
 function decodeAndRender(hash) {
   if (!hash) return false;
   try {
@@ -898,10 +902,6 @@ function renderHero() {
   document.getElementById('sellerCount').textContent  = sellerCount;
   document.getElementById('ctaHeadline').textContent  = `${cardCount}+ cards at ${s.name.split(' ')[0]}.`;
 }
-
-// ── State for the browse grid ──
-let _browseAll       = [];   // full sorted inventory
-let _browseActiveSport = ''; // '' = all sports
 
 function renderFeaturedCards() {
   // Sort: one card per seller first (variety), then fill by price
