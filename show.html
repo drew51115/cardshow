@@ -712,9 +712,12 @@ function expandPayload(payload) {
   // 1. Try hash fragment (works on any device — primary path)
   if (hashData) {
     try {
-      const padded  = hashData + '==='.slice((hashData.length + 3) % 4);
-      const json    = decodeURIComponent(escape(atob(padded)));
-      const raw     = JSON.parse(json);
+      const padded = hashData + '==='.slice((hashData.length + 3) % 4);
+      const binary = atob(padded);
+      const bytes  = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      const json   = new TextDecoder().decode(bytes);
+      const raw    = JSON.parse(json);
       const decoded = expandPayload(raw);
       showMeta  = decoded.show;
       inventory = decoded.cards || [];
