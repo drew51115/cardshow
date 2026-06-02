@@ -1,0 +1,14 @@
+# CardShow — Netlify redirect rules
+#
+# CRITICAL: show.html must NOT be redirected to /show (pretty URLs)
+# because hash fragments (#data=...) are stripped on HTTP redirects.
+# The show page embeds all inventory data in the URL hash — if the
+# hash is lost, the page shows "Show Not Found".
+#
+# Force show.html to always serve from its exact .html path.
+/show   /show.html  200
+/show/  /show.html  200
+
+# Keep other pages at their canonical .html paths too
+/seller-browse   /seller-browse.html  200
+/seller-browse/  /seller-browse.html  200

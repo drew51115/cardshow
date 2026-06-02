@@ -1,0 +1,11 @@
+[build]
+  publish = "."
+
+# Disable pretty URLs globally — prevents Netlify from redirecting
+# show.html → /show which strips the URL hash fragment containing
+# the show inventory payload.
+[build.processing]
+  skip_processing = false
+
+[build.processing.html]
+  pretty_urls = false

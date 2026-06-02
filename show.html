@@ -671,7 +671,30 @@ function gradeBadgeHtml(grade, grader) {
 // ── PARSE URL ──
 const params = new URLSearchParams(window.location.search);
 const showId = params.get('id');
-const hashData = window.location.hash.slice(1); // strip leading #
+
+// Hash may load after script in some mobile browsers — read it in init()
+// and also listen for hashchange as a safety net.
+let hashData = window.location.hash.slice(1);
+
+function decodeAndRender(hash) {
+  if (!hash) return false;
+  try {
+    const padded = hash + '==='.slice((hash.length + 3) % 4);
+    const binary = atob(padded);
+    const bytes  = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const json   = new TextDecoder().decode(bytes);
+    const raw    = JSON.parse(json);
+    const decoded = expandPayload(raw);
+    showMeta  = decoded.show;
+    inventory = decoded.cards || [];
+    renderPage();
+    return true;
+  } catch(e) {
+    console.error('Hash decode failed:', e);
+    return false;
+  }
+}
 
 // ── SHOW STATE ──
 let showMeta  = null;
@@ -709,24 +732,9 @@ function expandPayload(payload) {
 
 // ── ENTRY POINT ──
 (function init() {
-  // 1. Try hash fragment (works on any device — primary path)
-  if (hashData) {
-    try {
-      const padded = hashData + '==='.slice((hashData.length + 3) % 4);
-      const binary = atob(padded);
-      const bytes  = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-      const json   = new TextDecoder().decode(bytes);
-      const raw    = JSON.parse(json);
-      const decoded = expandPayload(raw);
-      showMeta  = decoded.show;
-      inventory = decoded.cards || [];
-      renderPage();
-      return;
-    } catch(e) {
-      console.error('Hash decode failed:', e);
-    }
-  }
+  // 1. Try hash fragment — primary path for all shared links
+  hashData = window.location.hash.slice(1); // re-read in case it loaded late
+  if (hashData && decodeAndRender(hashData)) return;
 
   // 2. Try localStorage (same-browser fallback)
   if (showId) {
@@ -750,6 +758,12 @@ function expandPayload(payload) {
   // 3. Hardcoded demo fallback for the three sample shows
   showDemoFallback(showId);
 })();
+
+// Safety net: some mobile browsers set the hash after DOMContentLoaded
+window.addEventListener('hashchange', () => {
+  const h = window.location.hash.slice(1);
+  if (h && !showMeta) decodeAndRender(h);
+});
 
 function showError() {
   document.getElementById('stateLoading').style.display = 'none';
