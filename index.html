@@ -5672,6 +5672,12 @@ function buildShowPageUrl(showId) {
                   window.location.hostname === '127.0.0.1')
     ? window.location.origin : prodOrigin;
 
+  // Normalise sellers — could be a Set or an Array depending on how the show was created
+  const sellersSet = (s.sellers instanceof Set)
+    ? s.sellers
+    : new Set(Array.isArray(s.sellers) ? s.sellers : []);
+  const sellersArr = [...sellersSet];
+
   function compact(r) {
     const c = {};
     if (r.Seller)              c.s  = r.Seller;
@@ -5688,13 +5694,12 @@ function buildShowPageUrl(showId) {
     return c;
   }
 
-  // Use ALL cards from authorized sellers — same source as the dashboard
-  // card count. Works whether or not Publish has been clicked.
+  // All available cards from authorized sellers
   const available = inventory
-    .filter(r => s.sellers.has(r.Seller) && r.Status !== 'Sold')
+    .filter(r => sellersSet.has(r.Seller) && r.Status !== 'Sold')
     .sort((a, b) => Number(b.Price || 0) - Number(a.Price || 0));
 
-  // Up to 50 preview cards — one per seller first for variety, then by price
+  // Up to 50 preview cards — one per seller first, then fill by price
   const preview = [];
   const seen = new Set();
   for (const r of available) {
@@ -5712,16 +5717,20 @@ function buildShowPageUrl(showId) {
       l:  s.location   || '',
       st: s.status     || 'upcoming',
       tb: s.tables     || {},
-      sl: [...s.sellers],
-      tc: available.length, // total authorized cards (not just published)
+      sl: sellersArr,
+      tc: available.length,
     },
     c: preview.map(compact),
   };
 
-  const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(payload))))
-    .replace(/=+$/, '');
-
-  return `${origin}/show.html#${encoded}`;
+  try {
+    const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(payload))))
+      .replace(/=+$/, '');
+    return `${origin}/show.html#${encoded}`;
+  } catch(e) {
+    console.error('buildShowPageUrl encode failed:', e);
+    return null;
+  }
 }
 
 function storeShowPayload() {} // kept for compat — no longer used
@@ -5731,11 +5740,10 @@ function copyShowPageLink(showId) {
   if (!url) { showToast('Could not build show URL', 'var(--danger)'); return; }
 
   const s = shows[showId];
-  const cardCount   = inventory.filter(r => s.sellers.has(r.Seller) && r.Status !== 'Sold').length;
-  const sellerCount = [...s.sellers].length;
+  const sellersSet = (s.sellers instanceof Set) ? s.sellers : new Set(s.sellers || []);
+  const cardCount   = inventory.filter(r => sellersSet.has(r.Seller) && r.Status !== 'Sold').length;
+  const sellerCount = sellersSet.size;
 
-  // Always show the modal so the admin can see and copy the URL.
-  // Attempt clipboard write automatically on open.
   showUrlPrompt(url, cardCount, sellerCount);
 }
 
@@ -5863,6 +5871,8 @@ function addSellerByHandle(showId) {
 function addSellerToShow(showId, handle) {
   const show = shows[showId];
   if (!show) return;
+  // Normalise to Set if somehow stored as array
+  if (!(show.sellers instanceof Set)) show.sellers = new Set(show.sellers || []);
   if (show.sellers.has(handle)) {
     showToast(`@${handle} already authorized`, 'var(--muted)');
     return;
@@ -5876,6 +5886,7 @@ function addSellerToShow(showId, handle) {
 function removeSellerFromShow(showId, handle) {
   const show = shows[showId];
   if (!show) return;
+  if (!(show.sellers instanceof Set)) show.sellers = new Set(show.sellers || []);
   show.sellers.delete(handle);
   renderAdminShowsList(); if(typeof renderAdminShowsDashboard==="function" && _adminTab==="shows") renderAdminShowsDashboard();
   renderSellerShowsList();
