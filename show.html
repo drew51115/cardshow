@@ -284,7 +284,36 @@ nav {
   font-weight: 600; color: rgba(245,200,66,0.6); letter-spacing: 0.03em;
 }
 
-/* ── SPORT FILTER CHIPS ── */
+/* ── SEE ALL CARDS DRAWER ── */
+.browse-drawer-cta {
+  grid-column: 1 / -1;
+  display: flex; flex-direction: column; align-items: center;
+  gap: 0.75rem; padding: 1.5rem 1rem 0.5rem;
+  position: relative;
+}
+.browse-drawer-cta::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0;
+  height: 80px; pointer-events: none;
+  background: linear-gradient(to bottom, transparent, var(--black));
+  margin-top: -80px;
+}
+.btn-see-all {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  background: var(--surface); border: 1px solid rgba(245,200,66,0.35);
+  border-radius: 50px; padding: 0.65rem 1.8rem;
+  font-family: 'DM Sans', sans-serif; font-size: 0.88rem;
+  font-weight: 700; color: var(--gold); cursor: pointer;
+  transition: all 0.2s; letter-spacing: 0.01em;
+}
+.btn-see-all:hover {
+  background: rgba(245,200,66,0.1);
+  border-color: rgba(245,200,66,0.6);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(245,200,66,0.15);
+}
+.btn-see-all svg { transition: transform 0.2s; }
+.btn-see-all:hover svg { transform: translateY(2px); }
 .sport-chip {
   display: inline-flex; align-items: center; gap: 0.3rem;
   background: var(--surface); border: 1px solid var(--border);
@@ -680,6 +709,7 @@ let hashData = window.location.hash.slice(1);
 // ── Browse grid state — declared early to avoid temporal dead zone ──
 let _browseAll        = [];
 let _browseActiveSport = '';
+let _browseExpanded   = false; // true once "See All Cards" has been clicked
 
 function decodeAndRender(hash) {
   if (!hash) return false;
@@ -952,16 +982,26 @@ function buildSportChips() {
 
 function setSportFilter(btn, sport) {
   _browseActiveSport = sport;
+  _browseExpanded    = false; // reset so drawer reappears for new filter
   document.querySelectorAll('.sport-chip').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   applyBrowseFilters();
 }
 
-function filterBrowse() { applyBrowseFilters(); }
+function filterBrowse() {
+  _browseExpanded = false; // reset expansion when search/filter changes
+  applyBrowseFilters();
+}
+
+function expandBrowse() {
+  _browseExpanded = true;
+  applyBrowseFilters();
+}
 
 function applyBrowseFilters() {
   const q     = (document.getElementById('browseSearch')?.value || '').toLowerCase().trim();
   const sport = _browseActiveSport;
+  const PREVIEW = 12;
 
   const results = _browseAll.filter(r => {
     const matchSport = !sport || detectSport(r) === sport;
@@ -973,9 +1013,9 @@ function applyBrowseFilters() {
     return matchSport && matchQ;
   });
 
-  const grid     = document.getElementById('featuredGrid');
-  const emptyEl  = document.getElementById('browseEmpty');
-  const countEl  = document.getElementById('browseCount');
+  const grid    = document.getElementById('featuredGrid');
+  const emptyEl = document.getElementById('browseEmpty');
+  const countEl = document.getElementById('browseCount');
 
   if (countEl) countEl.textContent = `${results.length} card${results.length !== 1 ? 's' : ''}`;
 
@@ -986,7 +1026,14 @@ function applyBrowseFilters() {
   }
   if (emptyEl) emptyEl.style.display = 'none';
 
-  grid.innerHTML = results.map(r => {
+  // When a search/filter is active always show all results — the user is
+  // looking for something specific and shouldn't be gated by the drawer
+  const isFiltered    = q || sport;
+  const showAll       = _browseExpanded || isFiltered || results.length <= PREVIEW;
+  const visible       = showAll ? results : results.slice(0, PREVIEW);
+  const hiddenCount   = results.length - PREVIEW;
+
+  function cardHtml(r) {
     const sport = detectSport(r);
     const icon  = SPORT_ICONS[sport] || '🃏';
     const grade = gradeBadgeHtml(r.Grade, r.Grader);
@@ -1005,7 +1052,25 @@ function applyBrowseFilters() {
         <span class="at-show-badge">📍 At the show</span>
       </div>
     </div>`;
-  }).join('');
+  }
+
+  // Render visible cards + optional drawer CTA
+  const drawerHtml = (!showAll && hiddenCount > 0) ? `
+    <div class="browse-drawer-cta">
+      <button class="btn-see-all" onclick="expandBrowse()">
+        See All ${results.length} Cards
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2.5">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </button>
+      <div style="font-family:'DM Mono',monospace;font-size:0.65rem;
+        color:var(--muted);letter-spacing:0.06em">
+        ${hiddenCount} more card${hiddenCount !== 1 ? 's' : ''} hidden
+      </div>
+    </div>` : '';
+
+  grid.innerHTML = visible.map(cardHtml).join('') + drawerHtml;
 }
 
 function renderSportBreakdown() {
