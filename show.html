@@ -591,7 +591,7 @@ footer {
     <div class="container">
       <div class="section-header reveal">
         <div class="label">Confirmed Sellers</div>
-        <h2 class="section-headline"><em id="sellerCount">0</em> Sellers at this show</h2>
+        <h2 class="section-headline"><em id="sellerCount">0</em> Sellers at <span id="sellerShowName">this show</span></h2>
       </div>
       <div class="seller-roster reveal reveal-d2" id="sellerRoster"></div>
     </div>
@@ -898,9 +898,10 @@ function renderHero() {
     <div class="hero-stat"><span class="hero-stat-val">${sportSet.size}</span><div class="hero-stat-lbl">Sports</div></div>
   `;
 
-  document.getElementById('featShowName').textContent = s.name.split(' ').slice(-2).join(' ');
-  document.getElementById('sellerCount').textContent  = sellerCount;
-  document.getElementById('ctaHeadline').textContent  = `${cardCount}+ cards at ${s.name.split(' ')[0]}.`;
+  document.getElementById('featShowName').textContent   = s.name;
+  document.getElementById('sellerShowName') && (document.getElementById('sellerShowName').textContent = s.name);
+  document.getElementById('sellerCount').textContent    = sellerCount;
+  document.getElementById('ctaHeadline').textContent    = `${cardCount}+ cards at ${s.name}.`;
 }
 
 function renderFeaturedCards() {
