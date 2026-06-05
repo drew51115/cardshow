@@ -3067,9 +3067,9 @@
       <button class="modal-close" onclick="closeShowModal()">✕</button>
     </div>
     <div class="modal-body" style="display:flex;flex-direction:column;gap:0.65rem">
-      <input class="show-input" id="smName"     placeholder="Show name (e.g. Newport Showcase Card Show)" style="margin:0">
+      <input class="show-input" id="smName"     placeholder="Show name (e.g. MLP Card Show)" style="margin:0">
       <input class="show-input" id="smDate"     placeholder="Date (e.g. May 23, 2026)" style="margin:0">
-      <input class="show-input" id="smLocation" placeholder="Location (e.g. Newport Beach, CA)" style="margin:0">
+      <input class="show-input" id="smLocation" placeholder="Location (e.g. Grand Hyatt Tampa Bay, FL)" style="margin:0">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.65rem">
         <div>
           <div class="section-label" style="margin-bottom:0.35rem">Status</div>
@@ -3106,17 +3106,20 @@
       <div style="font-family:'Bebas Neue',sans-serif;font-size:2rem;letter-spacing:0.08em;margin-bottom:0.3rem">Find Your Show</div>
       <div style="font-size:0.82rem;color:var(--muted);margin-bottom:1.5rem;font-family:'DM Mono',monospace">Enter the access code from your show's QR or invite</div>
 
+      <!-- Demo show — injected by openBuyerShowPicker() -->
+      <div id="buyerDemoShow" style="display:none;margin-bottom:1.2rem"></div>
+
       <div style="display:flex;flex-direction:column;gap:0.5rem;margin-bottom:1rem">
-        <input class="show-input" id="buyerAccessCode" placeholder="Access code (e.g. EXPO25)"
+        <input class="show-input" id="buyerAccessCode" placeholder="Access code (e.g. MLPTPA)"
           style="margin:0;width:100%;font-family:'DM Mono',monospace;letter-spacing:0.15em;text-transform:uppercase;text-align:center;font-size:1.1rem;padding:0.85rem 1rem;"
           oninput="this.value=this.value.toUpperCase()" onkeydown="if(event.key==='Enter')joinShowByCode()">
         <button class="btn btn-primary" style="width:100%;justify-content:center;padding:0.85rem" onclick="joinShowByCode()">Enter Show →</button>
       </div>
       <div id="buyerCodeError" style="font-size:0.78rem;color:var(--danger);font-family:'DM Mono',monospace;min-height:1.1rem;margin-bottom:1rem"></div>
 
-      <!-- Or pick from active public shows -->
+      <!-- Active public shows -->
       <div id="buyerPublicShows" style="display:none">
-        <div style="font-size:0.72rem;color:var(--muted);font-family:'DM Mono',monospace;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:0.6rem">— or select a public show —</div>
+        <div style="font-size:0.72rem;color:var(--muted);font-family:'DM Mono',monospace;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:0.6rem">— or select a show —</div>
         <div id="buyerPublicShowList" style="display:flex;flex-direction:column;gap:0.5rem"></div>
       </div>
     </div>
@@ -6024,8 +6027,61 @@ function openBuyerShowPicker() {
   el.style.display = '';
   el.classList.add('open');
 
-  // Show public/active shows if any
-  const activeShows = Object.values(shows).filter(s => s.status === 'active');
+  // ── MLP demo show — always shown at top, no code required ──
+  const demoEl = document.getElementById('buyerDemoShow');
+  const mlpShow = Object.values(shows).find(s => s.name === 'MLP Card Show');
+  if (mlpShow && demoEl) {
+    // Auto-publish MLP inventory if not yet published
+    if (!mlpShow.publishedAt) {
+      inventory.forEach(card => {
+        if (mlpShow.sellers.has(card.Seller)) {
+          if (!card._shows) card._shows = new Set();
+          card._shows.add(mlpShow.id);
+        }
+      });
+      mlpShow.publishedAt = new Date().toISOString();
+    }
+    const cardCount = getShowInventory(mlpShow.id).filter(r => r.Status !== 'Sold').length;
+    demoEl.style.display = 'block';
+    demoEl.innerHTML = `
+      <div style="margin-bottom:0.75rem;text-align:left">
+        <div style="font-family:'DM Mono',monospace;font-size:0.6rem;letter-spacing:0.12em;
+          text-transform:uppercase;color:var(--gold);margin-bottom:0.5rem">Demo Show</div>
+        <div onclick="joinShow('${mlpShow.id}')"
+          style="background:rgba(245,200,66,0.07);border:1px solid rgba(245,200,66,0.3);
+            border-radius:10px;padding:0.85rem 1rem;cursor:pointer;transition:all 0.15s;text-align:left"
+          onmouseover="this.style.background='rgba(245,200,66,0.12)'"
+          onmouseout="this.style.background='rgba(245,200,66,0.07)'">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.25rem">
+            <div style="font-family:'Bebas Neue',sans-serif;font-size:1.15rem;
+              letter-spacing:0.05em;color:var(--text)">${mlpShow.name}</div>
+            <span style="background:var(--gold);color:var(--black);border-radius:20px;
+              padding:0.15rem 0.65rem;font-size:0.65rem;font-weight:700;
+              font-family:'DM Sans',sans-serif;white-space:nowrap">Browse Free →</span>
+          </div>
+          <div style="font-family:'DM Mono',monospace;font-size:0.68rem;color:var(--muted)">
+            ${mlpShow.date} · ${mlpShow.location}
+          </div>
+          <div style="font-family:'DM Mono',monospace;font-size:0.65rem;
+            color:rgba(245,200,66,0.7);margin-top:0.3rem">
+            ${cardCount.toLocaleString()} cards available · no code required
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:1.2rem">
+        <div style="flex:1;height:1px;background:var(--border)"></div>
+        <div style="font-family:'DM Mono',monospace;font-size:0.62rem;color:var(--muted);
+          letter-spacing:0.1em">OR ENTER A CODE</div>
+        <div style="flex:1;height:1px;background:var(--border)"></div>
+      </div>`;
+  } else if (demoEl) {
+    demoEl.style.display = 'none';
+  }
+
+  // Active shows (other than MLP demo)
+  const activeShows = Object.values(shows).filter(s =>
+    s.status === 'active' && s.name !== 'MLP Card Show'
+  );
   const publicEl = document.getElementById('buyerPublicShows');
   const listEl   = document.getElementById('buyerPublicShowList');
   if (activeShows.length) {
@@ -6038,6 +6094,7 @@ function openBuyerShowPicker() {
   } else {
     publicEl.style.display = 'none';
   }
+
   document.getElementById('buyerCodeError').textContent = '';
   document.getElementById('buyerAccessCode').value = '';
 }
@@ -6225,9 +6282,9 @@ function seedSampleShows() {
   const group3 = new Set(allSellers);
 
   const s1 = genShowId(), s2 = genShowId(), s3 = genShowId();
-  shows[s1] = { id: s1, name: 'Newport Showcase Card Show', date: 'May 23, 2026', location: 'Newport Beach, CA', status: 'active', accessCode: 'NEWPORT', sellers: group1, publishedAt: null };
-  shows[s2] = { id: s2, name: 'Chicago Sports Card Show',date: 'May 3, 2026',   location: 'Navy Pier, Chicago',         status: 'upcoming', accessCode: 'CHI503', sellers: group2, publishedAt: null };
-  shows[s3] = { id: s3, name: 'NYC Collectors Fair',     date: 'June 21, 2026', location: 'Javits Center, New York',    status: 'upcoming', accessCode: 'NYC621', sellers: group3, publishedAt: null };
+  shows[s1] = { id: s1, name: 'MLP Card Show', date: 'Oct 17-18, 2026', location: 'Grand Hyatt Tampa Bay, FL', status: 'upcoming', accessCode: 'MLPTPA', sellers: group1, tables: {}, publishedAt: null };
+  shows[s2] = { id: s2, name: 'Chicago Sports Card Expo', date: 'Nov 8, 2026', location: 'Navy Pier, Chicago, IL', status: 'upcoming', accessCode: 'CHI2026', sellers: group2, tables: {}, publishedAt: null };
+  shows[s3] = { id: s3, name: 'NYC Collectors Fair', date: 'Dec 6, 2026', location: 'Javits Center, New York', status: 'upcoming', accessCode: 'NYC2026', sellers: group3, tables: {}, publishedAt: null };
 
   // Publish sample inventory to shows
   inventory.forEach(r => {
