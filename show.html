@@ -1058,7 +1058,7 @@ function applyBrowseFilters() {
   const drawerHtml = (!showAll && hiddenCount > 0) ? `
     <div class="browse-drawer-cta">
       <button class="btn-see-all" onclick="expandBrowse()">
-        See All ${results.length} Cards
+        See All Cards
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
           stroke="currentColor" stroke-width="2.5">
           <polyline points="6 9 12 15 18 9"/>
@@ -1066,7 +1066,7 @@ function applyBrowseFilters() {
       </button>
       <div style="font-family:'DM Mono',monospace;font-size:0.65rem;
         color:var(--muted);letter-spacing:0.06em">
-        ${hiddenCount} more card${hiddenCount !== 1 ? 's' : ''} hidden
+        ${hiddenCount} more card${hiddenCount !== 1 ? 's' : ''} in this preview
       </div>
     </div>` : '';
 
