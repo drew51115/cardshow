@@ -5,6 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CardShow — Unified Inventory Platform</title>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,500;0,9..40,700;1,9..40,300&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+  const { createClient } = supabase;
+  const db = createClient(
+    'https://qtnqawqlmttogwnjieky.supabase.co',
+    'sb_publishable_R8Yok9YAfb_wfhR5nmwpmg_1FWaCdqU'
+  );
+</script>
+  
 <style>
   :root {
     --black: #0a0a0a;
