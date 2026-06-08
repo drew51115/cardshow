@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CardShow — Unified Inventory Platform</title>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,500;0,9..40,700;1,9..40,300&display=swap" rel="stylesheet">
+
+<!-- Supabase client -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
   const { createClient } = supabase;
@@ -13,7 +15,6 @@
     'sb_publishable_R8Yok9YAfb_wfhR5nmwpmg_1FWaCdqU'
   );
 </script>
-  
 <style>
   :root {
     --black: #0a0a0a;
@@ -4153,6 +4154,11 @@ function loadInventory(rows) {
     if (badge) badge.textContent = `${showInventory.filter(r => r.Status !== 'Sold').length} cards live`;
   }
 
+  // Persist to Supabase — only for logged-in sellers, not sample/demo data
+  if (currentRole === 'seller' && currentSeller) {
+    upsertCardsToDB(deduped);
+  }
+
   // Summary toast
   const parts = [];
   if (added)     parts.push(`${added} new`);
@@ -4900,6 +4906,9 @@ function cycleStatus(realIdx, el) {
   const cb = document.querySelector(`.card-check[data-idx="${realIdx}"]`);
   if (cb) cb.checked = next !== 'Sold';
 
+  // Persist status change to Supabase
+  updateCardInDB(card);
+
   // Live-sync buyer view — filter out sold, update counts
   syncBuyerView();
   updateStats();
@@ -5122,6 +5131,19 @@ function loginAsSeller(handle) {
   renderSellerShowsList();
   buildSellerQrPanel();
   updateProfileUI(handle);
+
+  // Fetch from Supabase — replaces sample data for this seller if DB has records
+  fetchSellerInventoryFromDB(handle).then(loaded => {
+    if (loaded) {
+      renderSellerTable(getSellerInventory());
+      updateStats();
+      const myCards = inventory.filter(c => c.Seller === handle);
+      if (myCards.length > 0) {
+        showToast(`✓ ${myCards.length} cards loaded from your inventory`);
+      }
+    }
+  });
+
   showToast(`Welcome, @${handle}`);
 }
 
@@ -6775,6 +6797,11 @@ function saveAddCard() {
   card._shows = new Set();
   inventory.push(card);
 
+  // Persist to Supabase and store the returned UUID on the card
+  insertCardToDB(card).then(dbId => {
+    if (dbId) card._dbId = dbId;
+  });
+
   closeAddCard();
   renderSellerTable(getSellerInventory());
   updateStats();
@@ -7237,6 +7264,10 @@ function saveCEM() {
   closeCEM();
   renderSellerTable(getSellerInventory());
   updateStats();
+
+  // Persist edit to Supabase
+  updateCardInDB(card);
+
   showToast('✓ Card updated');
 }
 
@@ -7250,6 +7281,227 @@ function saveCEM() {
   });
   seedSampleShows();
 })();
+
+// ══════════════════════════════════════════════
+//  SUPABASE PERSISTENCE LAYER
+//  Wraps all inventory reads/writes.
+//  The in-memory inventory[] array remains the
+//  runtime cache — all UI code is unchanged.
+// ══════════════════════════════════════════════
+
+// Map from Supabase column names → CardShow field names
+const DB_TO_CARD = {
+  card_title: 'Card Title',
+  player:     'Player',
+  year:       'Year',
+  card_set:   'Set ',
+  parallel:   'Parallel/Variant',
+  grader:     'Grader',
+  grade:      'Grade',
+  cert_number:'Cert #',
+  condition:  'Condition',
+  price:      'Price',
+  status:     'Status',
+  seller:     'Seller',
+  location:   'Location',
+};
+
+// Map from CardShow field names → Supabase column names
+const CARD_TO_DB = Object.fromEntries(
+  Object.entries(DB_TO_CARD).map(([k, v]) => [v, k])
+);
+
+function cardToDbRow(card) {
+  return {
+    card_title:  card['Card Title'] || '',
+    player:      card.Player        || null,
+    year:        card.Year          ? parseInt(card.Year) : null,
+    card_set:    card['Set ']       || card['Set'] || null,
+    parallel:    card['Parallel/Variant'] || null,
+    grader:      card.Grader        || null,
+    grade:       card.Grade         != null ? parseFloat(card.Grade) : null,
+    cert_number: card['Cert #']     || null,
+    condition:   card.Condition     || null,
+    price:       parseFloat(card.Price) || 0,
+    status:      card.Status        || 'Available',
+    location:    card.Location      || null,
+  };
+}
+
+function dbRowToCard(row) {
+  const card = {
+    _dbId:           row.id,
+    Seller:          row.seller_handle || currentSeller,
+    'Card Title':    row.card_title    || '',
+    Player:          row.player        || '',
+    Year:            row.year          || null,
+    'Set ':          row.card_set      || '',
+    'Parallel/Variant': row.parallel   || '',
+    Grader:          row.grader        || null,
+    Grade:           row.grade         != null ? row.grade : null,
+    'Cert #':        row.cert_number   || null,
+    Condition:       row.condition     || null,
+    Price:           row.price         || 0,
+    Status:          row.status        || 'Available',
+    Location:        row.location      || null,
+    _shows:          new Set(),
+  };
+  return validateAndNormalizeCard(card);
+}
+
+// ── Fetch seller inventory from Supabase on login ──
+async function fetchSellerInventoryFromDB(sellerHandle) {
+  if (typeof db === 'undefined') return false; // Supabase not connected
+
+  try {
+    // First get the seller's UUID from their handle
+    const { data: seller, error: sellerErr } = await db
+      .from('sellers')
+      .select('id')
+      .eq('handle', sellerHandle)
+      .single();
+
+    if (sellerErr || !seller) {
+      // Seller doesn't exist in DB yet — create them
+      const { data: newSeller, error: createErr } = await db
+        .from('sellers')
+        .insert({ handle: sellerHandle })
+        .select('id')
+        .single();
+      if (createErr) {
+        console.warn('Could not create seller in DB:', createErr.message);
+        return false;
+      }
+      // New seller — no inventory yet, that's fine
+      return true;
+    }
+
+    // Fetch their inventory with seller handle joined
+    const { data: rows, error: invErr } = await db
+      .from('inventory')
+      .select('*, sellers!inner(handle)')
+      .eq('seller_id', seller.id)
+      .order('created_at', { ascending: true });
+
+    if (invErr) {
+      console.warn('Could not fetch inventory:', invErr.message);
+      return false;
+    }
+
+    if (rows && rows.length > 0) {
+      // Replace in-memory inventory for this seller with DB rows
+      // Keep other sellers' cards intact (for admin view)
+      const otherSellers = inventory.filter(c => c.Seller !== sellerHandle);
+      const dbCards = rows.map(r => {
+        const card = dbRowToCard(r);
+        card.Seller = r.sellers?.handle || sellerHandle;
+        return card;
+      });
+      inventory.length = 0;
+      otherSellers.forEach(c => inventory.push(c));
+      dbCards.forEach(c => inventory.push(c));
+      console.log(`Loaded ${rows.length} cards from Supabase for @${sellerHandle}`);
+    }
+
+    return true;
+  } catch(e) {
+    console.warn('Supabase fetch failed:', e.message);
+    return false;
+  }
+}
+
+// ── Insert a single card to Supabase ──
+async function insertCardToDB(card) {
+  if (typeof db === 'undefined') return null;
+
+  try {
+    const { data: seller } = await db
+      .from('sellers').select('id').eq('handle', currentSeller).single();
+    if (!seller) return null;
+
+    const row = { ...cardToDbRow(card), seller_id: seller.id };
+    const { data, error } = await db
+      .from('inventory').insert(row).select('id').single();
+
+    if (error) { console.warn('Insert failed:', error.message); return null; }
+    return data.id; // return the UUID so we can store it on the card
+  } catch(e) {
+    console.warn('insertCardToDB error:', e.message);
+    return null;
+  }
+}
+
+// ── Update an existing card in Supabase ──
+async function updateCardInDB(card) {
+  if (typeof db === 'undefined' || !card._dbId) return;
+
+  try {
+    const { error } = await db
+      .from('inventory')
+      .update(cardToDbRow(card))
+      .eq('id', card._dbId);
+
+    if (error) console.warn('Update failed:', error.message);
+  } catch(e) {
+    console.warn('updateCardInDB error:', e.message);
+  }
+}
+
+// ── Upsert multiple cards (CSV import) ──
+async function upsertCardsToDB(cards) {
+  if (typeof db === 'undefined') return;
+
+  try {
+    const { data: seller } = await db
+      .from('sellers').select('id').eq('handle', currentSeller).single();
+    if (!seller) return;
+
+    // Fetch existing cards to check for duplicates by fingerprint
+    const { data: existing } = await db
+      .from('inventory').select('id, card_title, player, year, card_set, grade, grader')
+      .eq('seller_id', seller.id);
+
+    const existingFps = new Map();
+    (existing || []).forEach(row => {
+      const fp = [row.card_title, row.player, row.year, row.card_set, row.grade, row.grader]
+        .map(v => String(v || '').toLowerCase().trim()).join('|');
+      existingFps.set(fp, row.id);
+    });
+
+    const toInsert = [];
+    const toUpdate = [];
+
+    cards.forEach(card => {
+      const fp = [card['Card Title'], card.Player, card.Year,
+                  card['Set '] || card['Set'], card.Grade, card.Grader]
+        .map(v => String(v || '').toLowerCase().trim()).join('|');
+
+      const row = { ...cardToDbRow(card), seller_id: seller.id };
+      if (existingFps.has(fp)) {
+        toUpdate.push({ ...row, id: existingFps.get(fp) });
+      } else {
+        toInsert.push(row);
+      }
+    });
+
+    // Batch insert new cards
+    if (toInsert.length) {
+      const { error } = await db.from('inventory').insert(toInsert);
+      if (error) console.warn('Batch insert error:', error.message);
+    }
+
+    // Update existing cards one at a time (Supabase upsert requires unique constraint)
+    for (const row of toUpdate) {
+      const { id, ...updates } = row;
+      await db.from('inventory').update(updates).eq('id', id);
+    }
+
+    console.log(`Upserted ${toInsert.length} new + ${toUpdate.length} updated cards`);
+  } catch(e) {
+    console.warn('upsertCardsToDB error:', e.message);
+  }
+}
+
 </script>
 
 
