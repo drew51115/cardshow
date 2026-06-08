@@ -5144,6 +5144,23 @@ function loginAsSeller(handle) {
     }
   });
 
+  // Load seller profile from Supabase (display name, WhatsApp, Instagram)
+  if (typeof db !== 'undefined') {
+    db.from('sellers')
+      .select('display_name, whatsapp, instagram')
+      .eq('handle', handle)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data) {
+          if (!sellerProfiles[handle]) sellerProfiles[handle] = {};
+          if (data.display_name) sellerProfiles[handle].displayName = data.display_name;
+          if (data.whatsapp)     sellerProfiles[handle].whatsapp    = data.whatsapp;
+          if (data.instagram)    sellerProfiles[handle].instagram   = data.instagram;
+          updateProfileUI(handle);
+        }
+      });
+  }
+
   showToast(`Welcome, @${handle}`);
 }
 
@@ -7149,15 +7166,31 @@ function saveProfile() {
   if (!handle) return;
 
   const name  = document.getElementById('prof_name').value.trim();
-  // Strip everything except digits from WhatsApp
   const waRaw = document.getElementById('prof_wa').value.replace(/\D/g,'');
-  // Strip @ and spaces from Instagram
   const ig    = document.getElementById('prof_ig').value.trim().replace(/^@/,'').replace(/\s/g,'');
 
+  // Update in-memory profile
   if (!sellerProfiles[handle]) sellerProfiles[handle] = {};
   if (name)  sellerProfiles[handle].displayName = name;
   if (waRaw) sellerProfiles[handle].whatsapp    = waRaw;
   if (ig)    sellerProfiles[handle].instagram   = ig;
+
+  // Persist to Supabase sellers table
+  if (typeof db !== 'undefined') {
+    const updates = {};
+    if (name)  updates.display_name = name;
+    if (waRaw) updates.whatsapp     = waRaw;
+    if (ig)    updates.instagram    = ig;
+
+    if (Object.keys(updates).length) {
+      db.from('sellers')
+        .update(updates)
+        .eq('handle', handle)
+        .then(({ error }) => {
+          if (error) console.warn('Profile save to DB failed:', error.message);
+        });
+    }
+  }
 
   closeProfile();
   updateProfileUI(handle);
