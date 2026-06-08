@@ -7359,15 +7359,15 @@ async function fetchSellerInventoryFromDB(sellerHandle) {
       .from('sellers')
       .select('id')
       .eq('handle', sellerHandle)
-      .single();
+      .maybeSingle();
 
-    if (sellerErr || !seller) {
+    if (!seller) {
       // Seller doesn't exist in DB yet — create them
       const { data: newSeller, error: createErr } = await db
         .from('sellers')
         .insert({ handle: sellerHandle })
         .select('id')
-        .single();
+        .maybeSingle();
       if (createErr) {
         console.warn('Could not create seller in DB:', createErr.message);
         return false;
@@ -7416,12 +7416,12 @@ async function insertCardToDB(card) {
 
   try {
     const { data: seller } = await db
-      .from('sellers').select('id').eq('handle', currentSeller).single();
+      .from('sellers').select('id').eq('handle', currentSeller).maybeSingle();
     if (!seller) return null;
 
     const row = { ...cardToDbRow(card), seller_id: seller.id };
     const { data, error } = await db
-      .from('inventory').insert(row).select('id').single();
+      .from('inventory').insert(row).select('id').maybeSingle();
 
     if (error) { console.warn('Insert failed:', error.message); return null; }
     return data.id; // return the UUID so we can store it on the card
@@ -7453,7 +7453,7 @@ async function upsertCardsToDB(cards) {
 
   try {
     const { data: seller } = await db
-      .from('sellers').select('id').eq('handle', currentSeller).single();
+      .from('sellers').select('id').eq('handle', currentSeller).maybeSingle();
     if (!seller) return;
 
     // Fetch existing cards to check for duplicates by fingerprint
