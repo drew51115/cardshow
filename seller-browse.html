@@ -5,6 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CardShow — Browse Seller Inventory</title>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,500;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet">
+
+<!-- Supabase client -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+  const { createClient } = supabase;
+  const db = createClient(
+    'https://qtnqawqlmttogwnjieky.supabase.co',
+    'sb_publishable_R8Yok9YAfb_wfhR5nmwpmg_1FWaCdqU'
+  );
+</script>
 <style>
 :root {
   --black:   #08090c;
@@ -547,8 +557,22 @@ footer a { color: var(--accent); text-decoration: none; }
       <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
       Contact
     </a>
+    <a href="#" class="btn btn-ghost" id="hContactIG" style="display:none;white-space:nowrap;font-size:0.76rem;padding:0.38rem 0.7rem" target="_blank" rel="noopener">
+      📸 Instagram
+    </a>
   </div>
 </header>
+
+<!-- Loading state -->
+<div id="loadingState" style="display:none;position:fixed;inset:0;z-index:200;
+  background:var(--black);align-items:center;justify-content:center;flex-direction:column;gap:0.75rem">
+  <div style="font-family:'Bebas Neue',sans-serif;font-size:1.8rem;letter-spacing:0.1em;color:var(--text)">
+    Card<span style="color:rgba(232,234,245,0.3)">Show</span>
+  </div>
+  <div style="font-family:'DM Mono',monospace;font-size:0.72rem;color:var(--muted);letter-spacing:0.1em">
+    Loading inventory…
+  </div>
+</div>
 
 <div id="mainContent">
 
@@ -1377,41 +1401,114 @@ function conditionBar(r) {
 let sellerInventory = [];
 let displayRows = [];
 
-function init() {
+async function init() {
   if (!SELLER) { showNotFound('(none)'); return; }
 
-  // Filter SAMPLE to this seller, exclude sold
-  sellerInventory = SAMPLE
-    .map(r => ({ ...r, Seller: (r.Seller||'').toLowerCase() }))
-    .filter(r => r.Seller === SELLER && (r.Status||'Available') !== 'Sold');
+  // Show loading state
+  document.getElementById('loadingState').style.display = 'flex';
+
+  // ── Try Supabase first ──
+  let loaded = false;
+  try {
+    if (typeof db !== 'undefined') {
+      const { data: seller } = await db
+        .from('sellers')
+        .select('id, display_name, whatsapp, instagram')
+        .eq('handle', SELLER)
+        .maybeSingle();
+
+      if (seller) {
+        const { data: rows, error } = await db
+          .from('inventory')
+          .select('*')
+          .eq('seller_id', seller.id)
+          .neq('status', 'Sold')
+          .order('price', { ascending: false });
+
+        if (!error && rows && rows.length > 0) {
+          sellerInventory = rows.map(r => ({
+            Seller:              SELLER,
+            'Card Title':        r.card_title   || '',
+            Player:              r.player       || '',
+            Year:                r.year         || null,
+            'Set ':              r.card_set     || '',
+            'Parallel/Variant':  r.parallel     || '',
+            Grader:              r.grader       || null,
+            Grade:               r.grade        != null ? r.grade : null,
+            'Cert #':            r.cert_number  || null,
+            Condition:           r.condition    || null,
+            Price:               r.price        || 0,
+            Status:              r.status       || 'Available',
+            Location:            r.location     || null,
+            _dbId:               r.id,
+          }));
+
+          // Use DB profile over SELLER_WHATSAPP if available
+          if (seller.whatsapp || seller.instagram) {
+            window._sellerProfile = {
+              displayName: seller.display_name || null,
+              whatsapp:    seller.whatsapp     || null,
+              instagram:   seller.instagram    || null,
+            };
+          }
+          loaded = true;
+        }
+      }
+    }
+  } catch(e) {
+    console.warn('Supabase fetch failed, falling back to SAMPLE:', e.message);
+  }
+
+  // ── Fall back to SAMPLE for demo sellers ──
+  if (!loaded) {
+    sellerInventory = SAMPLE
+      .map(r => ({ ...r, Seller: (r.Seller||'').toLowerCase() }))
+      .filter(r => r.Seller === SELLER && (r.Status||'Available') !== 'Sold');
+  }
+
+  document.getElementById('loadingState').style.display = 'none';
 
   if (!sellerInventory.length) { showNotFound(SELLER); return; }
+
+  // Profile — use DB profile if fetched, else SELLER_WHATSAPP lookup
+  const profile = window._sellerProfile || {};
+  const phone   = profile.whatsapp || (typeof SELLER_WHATSAPP !== 'undefined' && SELLER_WHATSAPP[SELLER]) || null;
+  const igHandle = profile.instagram || null;
+  const displayName = profile.displayName || null;
 
   // Update header
   const initials = SELLER.split('_').map(w=>w[0]).join('').toUpperCase().slice(0,2);
   document.getElementById('hAvatar').textContent = initials;
-  document.getElementById('hName').textContent   = '@' + SELLER;
-  document.title = `@${SELLER} · CardShow`;
+  document.getElementById('hName').textContent   = displayName || ('@' + SELLER);
+  document.title = `${displayName || '@' + SELLER} · CardShow`;
 
   // WhatsApp contact in header
-  const phone = SELLER_WHATSAPP[SELLER];
   if (phone) {
     const hContact = document.getElementById('hContact');
     hContact.href = `https://wa.me/${phone}?text=${encodeURIComponent('Hi! I found you on CardShow and I\'m interested in browsing your inventory.')}`;
     hContact.style.display = 'flex';
   }
 
+  // Instagram contact (secondary)
+  if (igHandle) {
+    const hIG = document.getElementById('hContactIG');
+    if (hIG) {
+      hIG.href = `https://instagram.com/${igHandle}`;
+      hIG.style.display = 'flex';
+    }
+  }
+
   // Hero
-  document.getElementById('heroEyebrow').textContent = '@' + SELLER;
-  document.getElementById('heroTitle').innerHTML     =
-    `Browse <em>${SELLER.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())}</em>`;
+  document.getElementById('heroEyebrow').textContent = displayName || ('@' + SELLER);
+  const heroLabel = displayName || SELLER.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
+  document.getElementById('heroTitle').innerHTML = `Browse <em>${heroLabel}</em>`;
 
   // Show pill
   if (SHOW) {
     document.getElementById('showPill').style.display = 'inline-flex';
     document.getElementById('showPillText').textContent = decodeURIComponent(SHOW);
     document.getElementById('heroSub').textContent =
-      `Browsing live inventory at ${decodeURIComponent(SHOW)}. Tap any card for details and to contact me on WhatsApp.`;
+      `Browsing live inventory at ${decodeURIComponent(SHOW)}. Tap any card for details and to contact me directly.`;
   }
 
   // Stats
