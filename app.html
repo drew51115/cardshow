@@ -7186,8 +7186,17 @@ function saveProfile() {
       db.from('sellers')
         .update(updates)
         .eq('handle', handle)
-        .then(({ error }) => {
-          if (error) console.warn('Profile save to DB failed:', error.message);
+        .select()
+        .then(({ data, error }) => {
+          if (error) {
+            console.error('Profile save failed:', error.message, error.details);
+            showToast('⚠ Profile saved locally — DB sync failed', '#ef4444');
+          } else if (!data || data.length === 0) {
+            console.warn('Profile update matched 0 rows — handle not found in sellers table:', handle);
+            showToast('⚠ Seller not found in DB — try logging out and back in', '#f59e0b');
+          } else {
+            console.log('Profile saved to DB:', data[0]);
+          }
         });
     }
   }
