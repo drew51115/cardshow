@@ -5202,7 +5202,17 @@ function loginAsAdmin() {
   switchView('seller');
   updateStats();
   populateAdminFilterOptions();
-  renderAdminShowsList(); if(typeof renderAdminShowsDashboard==="function" && _adminTab==="shows") renderAdminShowsDashboard();
+
+  // Load real shows from Supabase, then render
+  loadShowsFromDB().then(loaded => {
+    if (loaded) {
+      renderAdminShowsList(); if(typeof renderAdminShowsDashboard==="function" && _adminTab==="shows") renderAdminShowsDashboard();
+      showToast(`Shows loaded from database`);
+    } else {
+      renderAdminShowsList(); if(typeof renderAdminShowsDashboard==="function" && _adminTab==="shows") renderAdminShowsDashboard();
+    }
+  });
+
   switchAdminTab('shows');
   showToast('Admin access granted');
 }
@@ -5561,6 +5571,9 @@ function saveShow() {
   renderAdminShowsList(); if(typeof renderAdminShowsDashboard==="function" && _adminTab==="shows") renderAdminShowsDashboard();
   renderSellerShowsList();
   if (currentRole === 'admin') populateAdminFilterOptions();
+
+  // Persist to Supabase
+  upsertShowToDB(shows[id]);
 
   showToast(`Show "${name}" ${editingShowId ? 'updated' : 'created'}`);
 }
@@ -5939,6 +5952,10 @@ function addSellerToShow(showId, handle) {
   show.sellers.add(handle);
   renderAdminShowsList(); if(typeof renderAdminShowsDashboard==="function" && _adminTab==="shows") renderAdminShowsDashboard();
   renderSellerShowsList();
+
+  // Persist to Supabase
+  addShowSellerToDB(showId, handle);
+
   showToast(`✓ @${handle} added to "${show.name}"`);
 }
 
@@ -5949,6 +5966,10 @@ function removeSellerFromShow(showId, handle) {
   show.sellers.delete(handle);
   renderAdminShowsList(); if(typeof renderAdminShowsDashboard==="function" && _adminTab==="shows") renderAdminShowsDashboard();
   renderSellerShowsList();
+
+  // Persist to Supabase
+  removeShowSellerFromDB(showId, handle);
+
   showToast(`@${handle} removed from "${show.name}"`);
 }
 
@@ -5969,6 +5990,10 @@ function deleteShow(showId) {
   if (activeShowId === showId) activeShowId = Object.keys(shows)[0] || null;
   renderAdminShowsList(); if(typeof renderAdminShowsDashboard==="function" && _adminTab==="shows") renderAdminShowsDashboard();
   if (currentRole === 'admin') populateAdminFilterOptions();
+
+  // Delete from Supabase (cascades to show_sellers and show_inventory)
+  deleteShowFromDB(showId);
+
   showToast(`Show deleted`);
 }
 
@@ -5996,6 +6021,10 @@ function publishSelectedToShow(showId) {
   updateAscHeader(showId);
   buildQRPanel();
   if (currentRole === 'admin') populateAdminFilterOptions();
+
+  // Persist published state and show_inventory rows to Supabase
+  upsertShowToDB(show);
+  publishShowInventoryToDB(showId);
 
   const sellerCount = show.sellers.size;
   showToast(`✓ ${added} cards published · ${sellerCount} seller${sellerCount !== 1 ? 's' : ''} · "${show.name}"`);
@@ -7082,10 +7111,10 @@ function ascSetTable(showId, handle, input) {
     input.classList.add('filled');
     input.style.borderColor = 'rgba(34,197,94,0.5)';
     input.style.color = '#4ade80';
-    // Update the row border
     const row = document.getElementById('asc-row-' + showId + '-' + handle);
     if (row) row.classList.add('has-table');
     showToast(`Table ${val} → @${handle}`);
+    updateTableNumberInDB(showId, handle, val);
   } else {
     delete show.tables[handle];
     input.classList.remove('filled');
@@ -7093,8 +7122,8 @@ function ascSetTable(showId, handle, input) {
     input.style.color = '';
     const row = document.getElementById('asc-row-' + showId + '-' + handle);
     if (row) row.classList.remove('has-table');
+    updateTableNumberInDB(showId, handle, null);
   }
-  // Update setup signal in header without full re-render
   updateAscHeader(showId);
   if (buyerShowId === showId) filterBuyer();
 }
@@ -7242,7 +7271,177 @@ function updateProfileUI(handle) {
   }
 }
 
-// ── CARD EDIT MODAL ──
+// ══════════════════════════════════════════════
+//  SHOWS PERSISTENCE LAYER
+//  All show CRUD, show_sellers, show_inventory
+// ══════════════════════════════════════════════
+
+// ── Map shows{} object to DB row ──
+function showToDbRow(show) {
+  return {
+    id:          show.id,
+    name:        show.name,
+    date:        show.date        || null,
+    location:    show.location    || null,
+    status:      show.status      || 'upcoming',
+    access_code: show.accessCode  || null,
+    published_at: show.publishedAt || null,
+  };
+}
+
+// ── Upsert a show to the shows table ──
+async function upsertShowToDB(show) {
+  if (typeof db === 'undefined') return;
+  try {
+    const { error } = await db
+      .from('shows')
+      .upsert(showToDbRow(show), { onConflict: 'id' });
+    if (error) console.error('upsertShowToDB failed:', error.message);
+  } catch(e) { console.warn('upsertShowToDB error:', e.message); }
+}
+
+// ── Delete a show from the DB ──
+async function deleteShowFromDB(showId) {
+  if (typeof db === 'undefined') return;
+  try {
+    // Cascade deletes show_sellers and show_inventory via FK constraints
+    const { error } = await db.from('shows').delete().eq('id', showId);
+    if (error) console.error('deleteShowFromDB failed:', error.message);
+  } catch(e) { console.warn('deleteShowFromDB error:', e.message); }
+}
+
+// ── Sync show_sellers: add a seller to a show ──
+async function addShowSellerToDB(showId, handle) {
+  if (typeof db === 'undefined') return;
+  try {
+    // Look up seller UUID by handle
+    const { data: seller } = await db
+      .from('sellers').select('id').eq('handle', handle).maybeSingle();
+    if (!seller) { console.warn('addShowSellerToDB: seller not found:', handle); return; }
+
+    const { error } = await db
+      .from('show_sellers')
+      .upsert({ show_id: showId, seller_id: seller.id }, { onConflict: 'show_id,seller_id' });
+    if (error) console.error('addShowSellerToDB failed:', error.message);
+  } catch(e) { console.warn('addShowSellerToDB error:', e.message); }
+}
+
+// ── Sync show_sellers: remove a seller from a show ──
+async function removeShowSellerFromDB(showId, handle) {
+  if (typeof db === 'undefined') return;
+  try {
+    const { data: seller } = await db
+      .from('sellers').select('id').eq('handle', handle).maybeSingle();
+    if (!seller) return;
+
+    const { error } = await db
+      .from('show_sellers')
+      .delete()
+      .eq('show_id', showId)
+      .eq('seller_id', seller.id);
+    if (error) console.error('removeShowSellerFromDB failed:', error.message);
+  } catch(e) { console.warn('removeShowSellerFromDB error:', e.message); }
+}
+
+// ── Sync show_sellers: update table number ──
+async function updateTableNumberInDB(showId, handle, tableNum) {
+  if (typeof db === 'undefined') return;
+  try {
+    const { data: seller } = await db
+      .from('sellers').select('id').eq('handle', handle).maybeSingle();
+    if (!seller) return;
+
+    const { error } = await db
+      .from('show_sellers')
+      .update({ table_number: tableNum || null })
+      .eq('show_id', showId)
+      .eq('seller_id', seller.id);
+    if (error) console.error('updateTableNumberInDB failed:', error.message);
+  } catch(e) { console.warn('updateTableNumberInDB error:', e.message); }
+}
+
+// ── Publish: write card IDs to show_inventory ──
+async function publishShowInventoryToDB(showId) {
+  if (typeof db === 'undefined') return;
+  try {
+    const cards = inventory.filter(r =>
+      r._shows && r._shows.has(showId) && r._dbId
+    );
+    if (!cards.length) return;
+
+    const rows = cards.map(c => ({ show_id: showId, card_id: c._dbId }));
+    const { error } = await db
+      .from('show_inventory')
+      .upsert(rows, { onConflict: 'show_id,card_id' });
+    if (error) console.error('publishShowInventoryToDB failed:', error.message);
+    else console.log(`Published ${rows.length} cards to show_inventory for ${showId}`);
+  } catch(e) { console.warn('publishShowInventoryToDB error:', e.message); }
+}
+
+// ── Load all shows from DB on admin login ──
+async function loadShowsFromDB() {
+  if (typeof db === 'undefined') return false;
+  try {
+    // Fetch shows
+    const { data: showRows, error: showErr } = await db
+      .from('shows')
+      .select('*')
+      .order('created_at', { ascending: true });
+    if (showErr) { console.warn('loadShowsFromDB: shows fetch failed:', showErr.message); return false; }
+    if (!showRows || !showRows.length) return false;
+
+    // Fetch show_sellers with seller handle joined
+    const { data: ssRows, error: ssErr } = await db
+      .from('show_sellers')
+      .select('show_id, table_number, sellers(handle)');
+    if (ssErr) console.warn('loadShowsFromDB: show_sellers fetch failed:', ssErr.message);
+
+    // Build sellers Set and tables map per show
+    const sellersByShow = {};
+    const tablesByShow  = {};
+    (ssRows || []).forEach(row => {
+      const handle = row.sellers?.handle;
+      if (!handle) return;
+      if (!sellersByShow[row.show_id]) sellersByShow[row.show_id] = new Set();
+      sellersByShow[row.show_id].add(handle);
+      if (row.table_number) {
+        if (!tablesByShow[row.show_id]) tablesByShow[row.show_id] = {};
+        tablesByShow[row.show_id][handle] = row.table_number;
+      }
+    });
+
+    // Hydrate shows{} — merge DB shows with any existing in-memory sample shows
+    // (keep demo shows so the buyer onboarding still works)
+    showRows.forEach(row => {
+      shows[row.id] = {
+        id:          row.id,
+        name:        row.name,
+        date:        row.date        || '',
+        location:    row.location    || '',
+        status:      row.status      || 'upcoming',
+        accessCode:  row.access_code || '',
+        publishedAt: row.published_at || null,
+        sellers:     sellersByShow[row.id] || new Set(),
+        tables:      tablesByShow[row.id]  || {},
+      };
+    });
+
+    console.log(`Loaded ${showRows.length} show(s) from Supabase`);
+    return true;
+  } catch(e) {
+    console.warn('loadShowsFromDB error:', e.message);
+    return false;
+  }
+}
+
+// ── RLS policy check helper — surfaces clear error if policies are missing ──
+async function checkShowsRLS() {
+  if (typeof db === 'undefined') return;
+  const { error } = await db.from('shows').select('id').limit(1);
+  if (error) console.error('Shows RLS check failed:', error.message,
+    '— Run the SQL policies from the setup guide in Supabase SQL Editor');
+}
+
 let _cemIdx = null;
 
 function openCEM(idx) {
