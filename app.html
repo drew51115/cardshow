@@ -6868,6 +6868,8 @@ function setTableNumber(showId, handle, value) {
   } else {
     delete show.tables[handle];
   }
+  // Persist to Supabase
+  updateTableNumberInDB(showId, handle, trimmed || null);
   if (buyerShowId === showId) filterBuyer();
   renderAdminShowsList(); if(typeof renderAdminShowsDashboard==="function" && _adminTab==="shows") renderAdminShowsDashboard();
 }
@@ -6880,6 +6882,8 @@ function autoAssignTables(showId) {
   sellers.forEach((h, i) => { show.tables[h] = String(i + 1); });
   renderAdminShowsList(); if(typeof renderAdminShowsDashboard==="function" && _adminTab==="shows") renderAdminShowsDashboard();
   if (buyerShowId === showId) filterBuyer();
+  // Persist all table assignments to Supabase
+  sellers.forEach((h, i) => updateTableNumberInDB(showId, h, String(i + 1)));
   showToast(`✓ Tables 1–${sellers.length} assigned`);
 }
 
