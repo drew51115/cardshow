@@ -2381,8 +2381,9 @@
     </div>
 
     <div id="authAdminFields" style="display:none">
-      <input class="auth-field" id="authAdminPass" type="password" placeholder="Admin password">
-      <div class="auth-hint">Admin access shows all seller inventory and publish controls.<br>Demo password: <code>admin123</code></div>
+      <input class="auth-field" id="authAdminEmail" type="email" placeholder="Admin email" autocomplete="email">
+      <input class="auth-field" id="authAdminPass" type="password" placeholder="Admin password" autocomplete="current-password">
+      <div class="auth-hint">Show organizer access — manage shows, sellers, and publish inventory.</div>
     </div>
 
     <div class="auth-error" id="authError"></div>
@@ -3378,11 +3379,25 @@ async function submitAuth() {
       _setAuthError(e.message || 'Something went wrong. Please try again.');
     }
   } else {
-    if (btn) { btn.disabled = false; btn.textContent = 'Enter →'; }
-    const input = document.getElementById('authAdminPass');
-    const pass = input ? input.value : '';
-    if (pass !== 'admin123') { document.getElementById('authError').textContent = 'Incorrect password.'; return; }
-    loginAsAdmin();
+    // Admin login via Supabase Auth + admins table check
+    try {
+      const email = (document.getElementById('authAdminEmail').value || '').trim();
+      const pass  =  document.getElementById('authAdminPass').value  || '';
+      if (!email || !pass) { _setAuthError('Enter admin email and password.'); return; }
+
+      const { data, error } = await db.auth.signInWithPassword({ email, password: pass });
+      if (error) { _setAuthError('Incorrect credentials.'); return; }
+
+      const { data: adminRow } = await db.from('admins').select('id').eq('id', data.user.id).maybeSingle();
+      if (!adminRow) {
+        await db.auth.signOut();
+        _setAuthError('This account does not have admin access.');
+        return;
+      }
+      loginAsAdmin();
+    } catch(e) {
+      _setAuthError(e.message || 'Something went wrong.');
+    }
   }
 }
 
@@ -5168,7 +5183,6 @@ function downloadQR() {
 }
 
 // ── AUTH & ROLE SYSTEM ──
-const ADMIN_PASSWORD = 'admin123';
 let currentRole = null;   // 'seller' | 'admin' | 'buyer'
 let currentSeller = null; // seller handle when role === 'seller'
 // authRoleSelected, setAuthRole, submitAuth, enterAsBuyer are hoisted to top of script
@@ -5362,6 +5376,7 @@ async function signOut() {
   document.getElementById('authSignUpEmail').value      = '';
   document.getElementById('authSignUpPassword').value   = '';
   document.getElementById('authSignUpHandle').value     = '';
+  document.getElementById('authAdminEmail').value       = '';
   document.getElementById('authAdminPass').value        = '';
   document.getElementById('authError').textContent      = '';
   // Reset to sign-in mode
