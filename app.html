@@ -1806,6 +1806,22 @@
     to   { opacity:1; transform: translateY(0); }
   }
 
+  .item-type-btn {
+    flex: 1; padding: 0.38rem 0.5rem;
+    font-size: 0.72rem; font-weight: 500; letter-spacing: 0.04em;
+    text-transform: uppercase; cursor: pointer; border: none;
+    background: transparent; color: var(--muted); transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .item-type-btn.active { background: var(--accent); color: var(--black); }
+  .item-type-btn:hover:not(.active) { color: var(--text); }
+
+  .grade-toggle-link {
+    display: inline-block; font-size: 0.72rem; color: var(--muted);
+    cursor: pointer; padding: 0.15rem 0; border: none; background: none;
+    text-decoration: underline; text-underline-offset: 2px; font-family: 'DM Mono', monospace;
+  }
+  .grade-toggle-link:hover { color: var(--accent); }
 
   /* ── ADD CARD ── */
   .btn-add-card-result {
@@ -2722,8 +2738,16 @@
 
       <div class="modal-body" style="display:flex;flex-direction:column;gap:0.6rem">
 
-        <!-- Search -->
-        <div>
+        <!-- Item Type Selector -->
+        <div style="display:flex;gap:0;background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden">
+          <button class="item-type-btn active" id="ac_type_card"   onclick="acSetType('card')">Single Card</button>
+          <button class="item-type-btn"        id="ac_type_sealed" onclick="acSetType('sealed')">📦 Sealed</button>
+          <button class="item-type-btn"        id="ac_type_lot"    onclick="acSetType('lot')">Lot</button>
+        </div>
+        <input type="hidden" id="ac_item_type" value="card">
+
+        <!-- Search (card mode only) -->
+        <div id="ac_search_wrap">
           <div class="section-label" style="margin-bottom:0.3rem">Search Card</div>
           <input class="show-input" id="ac_search"
             placeholder="e.g. Cooper Flagg 2025, Luka Doncic RC Silver…"
@@ -2732,63 +2756,119 @@
           <div id="ac_results"></div>
         </div>
 
-        <!-- Divider -->
-        <div style="display:flex;align-items:center;gap:0.6rem;margin:0.1rem 0">
+        <!-- Divider (card mode only) -->
+        <div id="ac_divider" style="display:flex;align-items:center;gap:0.6rem;margin:0.1rem 0">
           <div style="flex:1;height:1px;background:var(--border)"></div>
           <div style="font-size:0.62rem;color:var(--muted);font-family:'DM Mono',monospace;letter-spacing:0.1em">CARD DETAILS</div>
           <div style="flex:1;height:1px;background:var(--border)"></div>
         </div>
 
+        <!-- Title (label changes per type) -->
         <div>
-          <div class="section-label" style="margin-bottom:0.3rem">Card Title *</div>
+          <div class="section-label" id="ac_title_label" style="margin-bottom:0.3rem">Card Title *</div>
           <input class="show-input" id="ac_title" placeholder="e.g. 2025-26 Topps Chrome Cooper Flagg RC Auto" style="margin:0">
         </div>
 
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.55rem">
-          <div>
-            <div class="section-label" style="margin-bottom:0.3rem">Player</div>
-            <input class="show-input" id="ac_player" placeholder="Player name" style="margin:0">
-          </div>
-          <div>
-            <div class="section-label" style="margin-bottom:0.3rem">Year</div>
-            <input class="show-input" id="ac_year" placeholder="e.g. 2025" style="margin:0">
+        <!-- Player / Year (card mode only) -->
+        <div id="ac_card_fields" style="display:flex;flex-direction:column;gap:0.6rem">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.55rem">
+            <div>
+              <div class="section-label" style="margin-bottom:0.3rem">Player / Card Name</div>
+              <input class="show-input" id="ac_player" placeholder="e.g. Mike Trout, Charizard" style="margin:0">
+            </div>
+            <div>
+              <div class="section-label" style="margin-bottom:0.3rem">Year</div>
+              <input class="show-input" id="ac_year" placeholder="e.g. 2025" style="margin:0">
+            </div>
           </div>
         </div>
 
+        <!-- Set + Card # or Quantity -->
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.55rem">
           <div>
-            <div class="section-label" style="margin-bottom:0.3rem">Set</div>
+            <div class="section-label" id="ac_set_label" style="margin-bottom:0.3rem">Set</div>
             <input class="show-input" id="ac_set" placeholder="e.g. Topps Chrome" style="margin:0">
           </div>
-          <div>
+          <div id="ac_number_wrap">
             <div class="section-label" style="margin-bottom:0.3rem">Card #</div>
-            <input class="show-input" id="ac_number" placeholder="e.g. 101" style="margin:0">
+            <input class="show-input" id="ac_number" placeholder="e.g. 4/102, #025" style="margin:0">
+          </div>
+          <div id="ac_qty_wrap" style="display:none">
+            <div class="section-label" style="margin-bottom:0.3rem">Quantity</div>
+            <input class="show-input" id="ac_quantity" type="number" min="1" placeholder="1" style="margin:0">
           </div>
         </div>
 
-        <div>
+        <!-- Parallel / Variant (card mode only) -->
+        <div id="ac_parallel_wrap">
           <div class="section-label" style="margin-bottom:0.3rem">Parallel / Variant</div>
           <input class="show-input" id="ac_parallel" placeholder="e.g. Gold Refractor /50, Sapphire" style="margin:0">
         </div>
 
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.55rem">
+        <!-- Sealed-specific fields -->
+        <div id="ac_sealed_fields" style="display:none;flex-direction:column;gap:0.6rem">
           <div>
-            <div class="section-label" style="margin-bottom:0.3rem">Grader</div>
-            <select class="show-input" id="ac_grader" style="margin:0" onchange="acToggle()">
-              <option value="">Raw</option>
-              <option value="PSA">PSA</option>
-              <option value="BGS">BGS</option>
-              <option value="CGC">CGC</option>
-              <option value="SGC">SGC</option>
+            <div class="section-label" style="margin-bottom:0.3rem">Product Type</div>
+            <select class="show-input" id="ac_product_type" style="margin:0">
+              <option value="">Select type</option>
+              <option value="Booster Pack">Booster Pack</option>
+              <option value="Booster Box">Booster Box</option>
+              <option value="Elite Trainer Box">Elite Trainer Box</option>
+              <option value="Bundle">Bundle</option>
+              <option value="Tin">Tin</option>
+              <option value="Blister">Blister</option>
+              <option value="Other">Other</option>
             </select>
           </div>
-          <div>
-            <div class="section-label" style="margin-bottom:0.3rem">Grade</div>
-            <input class="show-input" id="ac_grade" placeholder="e.g. 10" style="margin:0">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.55rem">
+            <div>
+              <div class="section-label" style="margin-bottom:0.3rem">Language</div>
+              <select class="show-input" id="ac_language" style="margin:0">
+                <option value="">Select</option>
+                <option value="English">English</option>
+                <option value="Japanese">Japanese</option>
+                <option value="Korean">Korean</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+            <div>
+              <div class="section-label" style="margin-bottom:0.3rem">Edition</div>
+              <select class="show-input" id="ac_edition" style="margin:0">
+                <option value="">N/A</option>
+                <option value="1st Edition">1st Edition</option>
+                <option value="Shadowless">Shadowless</option>
+                <option value="Unlimited">Unlimited</option>
+              </select>
+            </div>
           </div>
-          <div>
-            <div class="section-label" style="margin-bottom:0.3rem">Cert #</div>
-            <input class="show-input" id="ac_cert" placeholder="Cert #" style="margin:0">
+        </div>
+
+        <!-- Grade info toggle (card mode only) -->
+        <div id="ac_grade_toggle_wrap">
+          <button class="grade-toggle-link" id="ac_grade_toggle" onclick="acToggleGrade()">+ Add grade info</button>
+        </div>
+
+        <!-- Grade fields (hidden by default) -->
+        <div id="ac_grade_fields" style="display:none">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.55rem">
+            <div>
+              <div class="section-label" style="margin-bottom:0.3rem">Grader</div>
+              <select class="show-input" id="ac_grader" style="margin:0" onchange="acToggle()">
+                <option value="">Raw</option>
+                <option value="PSA">PSA</option>
+                <option value="BGS">BGS</option>
+                <option value="CGC">CGC</option>
+                <option value="SGC">SGC</option>
+              </select>
+            </div>
+            <div>
+              <div class="section-label" style="margin-bottom:0.3rem">Grade</div>
+              <input class="show-input" id="ac_grade" placeholder="e.g. 10" style="margin:0">
+            </div>
+            <div>
+              <div class="section-label" style="margin-bottom:0.3rem">Cert #</div>
+              <input class="show-input" id="ac_cert" placeholder="Cert #" style="margin:0">
+            </div>
           </div>
         </div>
 
@@ -2803,11 +2883,11 @@
             <option value="Poor">Poor</option>
           </select>
         </div>
+
         <div>
           <div class="section-label" style="margin-bottom:0.3rem">Asking Price ($)</div>
-            <input class="show-input" id="ac_price" placeholder="e.g. 250" style="margin:0">
-          </div>
-
+          <input class="show-input" id="ac_price" placeholder="e.g. 250" style="margin:0">
+        </div>
 
         <div>
           <div class="section-label" style="margin-bottom:0.3rem">Status</div>
@@ -2843,56 +2923,120 @@
 
       <div class="modal-body" style="display:flex;flex-direction:column;gap:0.55rem">
 
+        <!-- Item Type Selector -->
+        <div style="display:flex;gap:0;background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden">
+          <button class="item-type-btn active" id="cem_type_card"   onclick="cemSetType('card')">Single Card</button>
+          <button class="item-type-btn"        id="cem_type_sealed" onclick="cemSetType('sealed')">📦 Sealed</button>
+          <button class="item-type-btn"        id="cem_type_lot"    onclick="cemSetType('lot')">Lot</button>
+        </div>
+        <input type="hidden" id="cem_item_type" value="card">
+
+        <!-- Title (label changes per type) -->
         <div>
-          <div class="section-label" style="margin-bottom:0.3rem">Card Title *</div>
+          <div class="section-label" id="cem_title_label" style="margin-bottom:0.3rem">Card Title *</div>
           <input class="show-input" id="cem_title" placeholder="e.g. 2025-26 Topps Chrome Cooper Flagg RC Auto" style="margin:0">
         </div>
 
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.55rem">
-          <div>
-            <div class="section-label" style="margin-bottom:0.3rem">Player</div>
-            <input class="show-input" id="cem_player" placeholder="Player name" style="margin:0">
-          </div>
-          <div>
-            <div class="section-label" style="margin-bottom:0.3rem">Year</div>
-            <input class="show-input" id="cem_year" placeholder="e.g. 2025" style="margin:0">
+        <!-- Player / Year (card mode only) -->
+        <div id="cem_card_fields" style="display:flex;flex-direction:column;gap:0.55rem">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.55rem">
+            <div>
+              <div class="section-label" style="margin-bottom:0.3rem">Player / Card Name</div>
+              <input class="show-input" id="cem_player" placeholder="e.g. Mike Trout, Charizard" style="margin:0">
+            </div>
+            <div>
+              <div class="section-label" style="margin-bottom:0.3rem">Year</div>
+              <input class="show-input" id="cem_year" placeholder="e.g. 2025" style="margin:0">
+            </div>
           </div>
         </div>
 
+        <!-- Set + Card # or Quantity -->
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.55rem">
           <div>
-            <div class="section-label" style="margin-bottom:0.3rem">Set</div>
+            <div class="section-label" id="cem_set_label" style="margin-bottom:0.3rem">Set</div>
             <input class="show-input" id="cem_set" placeholder="e.g. Topps Chrome" style="margin:0">
           </div>
-          <div>
+          <div id="cem_number_wrap">
             <div class="section-label" style="margin-bottom:0.3rem">Card #</div>
-            <input class="show-input" id="cem_number" placeholder="e.g. 101" style="margin:0">
+            <input class="show-input" id="cem_number" placeholder="e.g. 4/102, #025" style="margin:0">
+          </div>
+          <div id="cem_qty_wrap" style="display:none">
+            <div class="section-label" style="margin-bottom:0.3rem">Quantity</div>
+            <input class="show-input" id="cem_quantity" type="number" min="1" placeholder="1" style="margin:0">
           </div>
         </div>
 
-        <div>
+        <!-- Parallel / Variant (card mode only) -->
+        <div id="cem_parallel_wrap">
           <div class="section-label" style="margin-bottom:0.3rem">Parallel / Variant</div>
           <input class="show-input" id="cem_parallel" placeholder="e.g. Gold Refractor /50, Sapphire" style="margin:0">
         </div>
 
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.55rem">
+        <!-- Sealed-specific fields -->
+        <div id="cem_sealed_fields" style="display:none;flex-direction:column;gap:0.55rem">
           <div>
-            <div class="section-label" style="margin-bottom:0.3rem">Grader</div>
-            <select class="show-input" id="cem_grader" style="margin:0" onchange="cemToggle()">
-              <option value="">Raw</option>
-              <option value="PSA">PSA</option>
-              <option value="BGS">BGS</option>
-              <option value="CGC">CGC</option>
-              <option value="SGC">SGC</option>
+            <div class="section-label" style="margin-bottom:0.3rem">Product Type</div>
+            <select class="show-input" id="cem_product_type" style="margin:0">
+              <option value="">Select type</option>
+              <option value="Booster Pack">Booster Pack</option>
+              <option value="Booster Box">Booster Box</option>
+              <option value="Elite Trainer Box">Elite Trainer Box</option>
+              <option value="Bundle">Bundle</option>
+              <option value="Tin">Tin</option>
+              <option value="Blister">Blister</option>
+              <option value="Other">Other</option>
             </select>
           </div>
-          <div>
-            <div class="section-label" style="margin-bottom:0.3rem">Grade</div>
-            <input class="show-input" id="cem_grade" placeholder="e.g. 10" style="margin:0">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.55rem">
+            <div>
+              <div class="section-label" style="margin-bottom:0.3rem">Language</div>
+              <select class="show-input" id="cem_language" style="margin:0">
+                <option value="">Select</option>
+                <option value="English">English</option>
+                <option value="Japanese">Japanese</option>
+                <option value="Korean">Korean</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+            <div>
+              <div class="section-label" style="margin-bottom:0.3rem">Edition</div>
+              <select class="show-input" id="cem_edition" style="margin:0">
+                <option value="">N/A</option>
+                <option value="1st Edition">1st Edition</option>
+                <option value="Shadowless">Shadowless</option>
+                <option value="Unlimited">Unlimited</option>
+              </select>
+            </div>
           </div>
-          <div>
-            <div class="section-label" style="margin-bottom:0.3rem">Cert #</div>
-            <input class="show-input" id="cem_cert" placeholder="Cert #" style="margin:0">
+        </div>
+
+        <!-- Grade info toggle (card mode only) -->
+        <div id="cem_grade_toggle_wrap">
+          <button class="grade-toggle-link" id="cem_grade_toggle" onclick="cemToggleGrade()">+ Add grade info</button>
+        </div>
+
+        <!-- Grade fields (shown when card has grade, collapsed otherwise) -->
+        <div id="cem_grade_fields" style="display:none">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.55rem">
+            <div>
+              <div class="section-label" style="margin-bottom:0.3rem">Grader</div>
+              <select class="show-input" id="cem_grader" style="margin:0" onchange="cemToggle()">
+                <option value="">Raw</option>
+                <option value="PSA">PSA</option>
+                <option value="BGS">BGS</option>
+                <option value="CGC">CGC</option>
+                <option value="SGC">SGC</option>
+              </select>
+            </div>
+            <div>
+              <div class="section-label" style="margin-bottom:0.3rem">Grade</div>
+              <input class="show-input" id="cem_grade" placeholder="e.g. 10" style="margin:0">
+            </div>
+            <div>
+              <div class="section-label" style="margin-bottom:0.3rem">Cert #</div>
+              <input class="show-input" id="cem_cert" placeholder="Cert #" style="margin:0">
+            </div>
           </div>
         </div>
 
@@ -2907,10 +3051,10 @@
             <option value="Poor">Poor</option>
           </select>
         </div>
+
         <div>
           <div class="section-label" style="margin-bottom:0.3rem">Asking Price ($)</div>
-            <input class="show-input" id="cem_price" placeholder="e.g. 250" style="margin:0">
-          </div>
+          <input class="show-input" id="cem_price" placeholder="e.g. 250" style="margin:0">
         </div>
 
         <div>
@@ -4321,14 +4465,19 @@ function renderSellerTable(rows) {
       <td>
         <div class="card-title" style="${status === 'Sold' ? 'opacity:0.4;text-decoration:line-through' : ''}">${r['Card Title'] || '—'}</div>
         <div class="card-sub" style="font-family:'DM Mono',monospace;font-size:0.65rem;color:var(--muted);margin-top:0.15rem">
-          ${[r.Player, r.Year, getSet(r)].filter(Boolean).join(' · ')}
+          ${[r.Player, r.Year, getSet(r)].filter(Boolean).join(' · ')}${r.Number ? ` <span style="color:var(--muted)">#${r.Number}</span>` : ''}
         </div>
       </td>
       ${sellerCell}
       <td data-label="Grade">
-        ${gradeBadge(r.Grade, r.Grader)}
-        ${isGraded && r['Cert #'] ? `<div style="font-family:'DM Mono',monospace;font-size:0.6rem;color:var(--muted);margin-top:0.2rem">${r['Cert #']}</div>` : ''}
-        ${!isGraded && r.Condition ? `<div style="font-size:0.68rem;color:var(--muted);margin-top:0.2rem">${r.Condition}</div>` : ''}
+        ${r.item_type === 'sealed'
+          ? `<span class="badge" style="background:rgba(59,130,246,0.2);color:#60a5fa;border:1px solid rgba(59,130,246,0.3)">📦 Sealed</span>`
+          : r.item_type === 'lot'
+          ? `<span class="badge badge-raw">Lot</span>`
+          : gradeBadge(r.Grade, r.Grader)}
+        ${r.item_type === 'card' && isGraded && r['Cert #'] ? `<div style="font-family:'DM Mono',monospace;font-size:0.6rem;color:var(--muted);margin-top:0.2rem">${r['Cert #']}</div>` : ''}
+        ${r.item_type === 'card' && !isGraded && r.Condition ? `<div style="font-size:0.68rem;color:var(--muted);margin-top:0.2rem">${r.Condition}</div>` : ''}
+        ${r.item_type === 'sealed' && r.product_type ? `<div style="font-size:0.65rem;color:var(--muted);margin-top:0.2rem">${r.product_type}</div>` : ''}
       </td>
 
       <td data-label="Price" class="price" style="${status === 'Sold' ? 'opacity:0.4;text-decoration:line-through' : ''}">$${Number(r.Price || 0).toLocaleString()}</td>
@@ -6844,13 +6993,16 @@ let _acLastQuery = '';
 function openAddCard() {
   // Clear all fields
   ['ac_search','ac_title','ac_player','ac_year','ac_set',
-   'ac_number','ac_parallel','ac_grade','ac_cert','ac_price']
+   'ac_number','ac_parallel','ac_grade','ac_cert','ac_price','ac_quantity']
     .forEach(id => { document.getElementById(id).value = ''; });
-  document.getElementById('ac_grader').value    = '';
-  document.getElementById('ac_condition').value = '';
-  document.getElementById('ac_status').value    = 'Available';
-  document.getElementById('ac_results').innerHTML = '';
-  acToggle();
+  document.getElementById('ac_grader').value       = '';
+  document.getElementById('ac_condition').value    = '';
+  document.getElementById('ac_status').value       = 'Available';
+  document.getElementById('ac_product_type').value = '';
+  document.getElementById('ac_language').value     = '';
+  document.getElementById('ac_edition').value      = '';
+  document.getElementById('ac_results').innerHTML  = '';
+  acSetType('card'); // reset to card mode
   document.getElementById('addCardOverlay').classList.add('open');
 }
 
@@ -6859,8 +7011,46 @@ function closeAddCard() {
 }
 
 function acToggle() {
-  const graded = !!document.getElementById('ac_grader').value;
+  const gradeVisible = document.getElementById('ac_grade_fields').style.display !== 'none';
+  const graded = gradeVisible && !!document.getElementById('ac_grader').value;
   document.getElementById('ac_cond_row').style.display = graded ? 'none' : 'block';
+}
+
+function acToggleGrade() {
+  const fields  = document.getElementById('ac_grade_fields');
+  const btn     = document.getElementById('ac_grade_toggle');
+  const showing = fields.style.display !== 'none';
+  fields.style.display = showing ? 'none' : 'block';
+  btn.textContent      = showing ? '+ Add grade info' : '− Hide grade info';
+  if (showing) {
+    document.getElementById('ac_grader').value = '';
+    document.getElementById('ac_grade').value  = '';
+    document.getElementById('ac_cert').value   = '';
+    acToggle();
+  }
+}
+
+function acSetType(type) {
+  document.getElementById('ac_item_type').value = type;
+  ['card','sealed','lot'].forEach(t =>
+    document.getElementById('ac_type_' + t).classList.toggle('active', t === type));
+  const isCard   = type === 'card';
+  const isSealed = type === 'sealed';
+  const labels   = { card: 'Card Title *', sealed: 'Product Name *', lot: 'Lot Description *' };
+  const setLbls  = { card: 'Set', sealed: 'Set / Series', lot: 'Set(s)' };
+  document.getElementById('ac_title_label').textContent = labels[type];
+  document.getElementById('ac_set_label').textContent   = setLbls[type];
+  document.getElementById('ac_search_wrap').style.display    = isCard   ? '' : 'none';
+  document.getElementById('ac_divider').style.display        = isCard   ? '' : 'none';
+  document.getElementById('ac_card_fields').style.display    = isCard   ? 'flex' : 'none';
+  document.getElementById('ac_number_wrap').style.display    = isCard   ? '' : 'none';
+  document.getElementById('ac_parallel_wrap').style.display  = isCard   ? '' : 'none';
+  document.getElementById('ac_qty_wrap').style.display       = !isCard  ? '' : 'none';
+  document.getElementById('ac_sealed_fields').style.display  = isSealed ? 'flex' : 'none';
+  document.getElementById('ac_grade_toggle_wrap').style.display = isCard ? '' : 'none';
+  document.getElementById('ac_grade_fields').style.display   = 'none';
+  document.getElementById('ac_grade_toggle').textContent     = '+ Add grade info';
+  acToggle();
 }
 
 // Search the local CARD_DB with debounce
@@ -6929,7 +7119,9 @@ function saveAddCard() {
   const title = document.getElementById('ac_title').value.trim();
   if (!title) { showToast('Card Title is required', 'var(--danger)'); return; }
 
-  const grader = document.getElementById('ac_grader').value;
+  const itemType    = document.getElementById('ac_item_type').value || 'card';
+  const gradeVisible = document.getElementById('ac_grade_fields').style.display !== 'none';
+  const grader      = gradeVisible ? document.getElementById('ac_grader').value : '';
   const card = validateAndNormalizeCard({
     'Card Title':       title,
     Player:             document.getElementById('ac_player').value.trim(),
@@ -6945,6 +7137,11 @@ function saveAddCard() {
     Price:              parseFloat(document.getElementById('ac_price').value) || 0,
     Status:             document.getElementById('ac_status').value || 'Available',
     Seller:             currentSeller,
+    item_type:          itemType,
+    quantity:           parseInt(document.getElementById('ac_quantity').value) || 1,
+    product_type:       document.getElementById('ac_product_type').value || null,
+    language:           document.getElementById('ac_language').value || null,
+    edition:            document.getElementById('ac_edition').value || null,
   });
   card._shows = new Set();
   inventory.push(card);
@@ -7559,22 +7756,37 @@ function openCEM(idx) {
   if (!card) return;
   _cemIdx = idx;
 
-  document.getElementById('cemHeading').textContent    = 'Edit Card';
+  const itemType = card.item_type || 'card';
+  document.getElementById('cemHeading').textContent    = itemType === 'sealed' ? 'Edit Sealed Product' : itemType === 'lot' ? 'Edit Lot' : 'Edit Card';
   document.getElementById('cemSubheading').textContent =
     [card.Player, card.Year].filter(Boolean).join(' · ');
 
-  document.getElementById('cem_title').value     = card['Card Title']       || '';
-  document.getElementById('cem_player').value    = card.Player              || '';
-  document.getElementById('cem_year').value      = card.Year                || '';
-  document.getElementById('cem_set').value       = card['Set '] || card.Set || '';
-  document.getElementById('cem_number').value    = card.Number              || '';
-  document.getElementById('cem_parallel').value  = card['Parallel/Variant'] || '';
-  document.getElementById('cem_grader').value    = card.Grader              || '';
-  document.getElementById('cem_grade').value     = card.Grade != null ? card.Grade : '';
-  document.getElementById('cem_cert').value      = card['Cert #']           || '';
-  document.getElementById('cem_condition').value = card.Condition           || '';
-  document.getElementById('cem_price').value     = card.Price != null ? card.Price : '';
-  document.getElementById('cem_status').value    = card.Status              || 'Available';
+  // Set type first so visibility is correct before populating fields
+  cemSetType(itemType);
+
+  document.getElementById('cem_title').value        = card['Card Title']       || '';
+  document.getElementById('cem_player').value       = card.Player              || '';
+  document.getElementById('cem_year').value         = card.Year                || '';
+  document.getElementById('cem_set').value          = card['Set '] || card.Set || '';
+  document.getElementById('cem_number').value       = card.Number              || '';
+  document.getElementById('cem_parallel').value     = card['Parallel/Variant'] || '';
+  document.getElementById('cem_condition').value    = card.Condition           || '';
+  document.getElementById('cem_price').value        = card.Price != null ? card.Price : '';
+  document.getElementById('cem_status').value       = card.Status              || 'Available';
+  document.getElementById('cem_quantity').value     = card.quantity            || '';
+  document.getElementById('cem_product_type').value = card.product_type        || '';
+  document.getElementById('cem_language').value     = card.language            || '';
+  document.getElementById('cem_edition').value      = card.edition             || '';
+
+  // Show grade fields if card has a grade
+  const hasGrade = card.Grader || (card.Grade != null && card.Grade !== '');
+  if (hasGrade && itemType === 'card') {
+    document.getElementById('cem_grade_fields').style.display = 'block';
+    document.getElementById('cem_grade_toggle').textContent   = '− Hide grade info';
+  }
+  document.getElementById('cem_grader').value = card.Grader || '';
+  document.getElementById('cem_grade').value  = card.Grade != null ? card.Grade : '';
+  document.getElementById('cem_cert').value   = card['Cert #'] || '';
 
   cemToggle();
   document.getElementById('cardEditOverlay').classList.add('open');
@@ -7586,8 +7798,46 @@ function closeCEM() {
 }
 
 function cemToggle() {
-  const graded = !!document.getElementById('cem_grader').value;
+  const gradeVisible = document.getElementById('cem_grade_fields').style.display !== 'none';
+  const graded = gradeVisible && !!document.getElementById('cem_grader').value;
   document.getElementById('cem_cond_row').style.display = graded ? 'none' : 'block';
+}
+
+function cemToggleGrade() {
+  const fields  = document.getElementById('cem_grade_fields');
+  const btn     = document.getElementById('cem_grade_toggle');
+  const showing = fields.style.display !== 'none';
+  fields.style.display = showing ? 'none' : 'block';
+  btn.textContent      = showing ? '+ Add grade info' : '− Hide grade info';
+  if (showing) {
+    document.getElementById('cem_grader').value = '';
+    document.getElementById('cem_grade').value  = '';
+    document.getElementById('cem_cert').value   = '';
+    cemToggle();
+  }
+}
+
+function cemSetType(type) {
+  document.getElementById('cem_item_type').value = type;
+  ['card','sealed','lot'].forEach(t =>
+    document.getElementById('cem_type_' + t).classList.toggle('active', t === type));
+  const isCard   = type === 'card';
+  const isSealed = type === 'sealed';
+  const labels   = { card: 'Card Title *', sealed: 'Product Name *', lot: 'Lot Description *' };
+  const setLbls  = { card: 'Set', sealed: 'Set / Series', lot: 'Set(s)' };
+  document.getElementById('cem_title_label').textContent = labels[type];
+  document.getElementById('cem_set_label').textContent   = setLbls[type];
+  document.getElementById('cem_card_fields').style.display    = isCard   ? 'flex' : 'none';
+  document.getElementById('cem_number_wrap').style.display    = isCard   ? '' : 'none';
+  document.getElementById('cem_parallel_wrap').style.display  = isCard   ? '' : 'none';
+  document.getElementById('cem_qty_wrap').style.display       = !isCard  ? '' : 'none';
+  document.getElementById('cem_sealed_fields').style.display  = isSealed ? 'flex' : 'none';
+  document.getElementById('cem_grade_toggle_wrap').style.display = isCard ? '' : 'none';
+  if (!isCard) {
+    document.getElementById('cem_grade_fields').style.display = 'none';
+    document.getElementById('cem_grade_toggle').textContent   = '+ Add grade info';
+  }
+  cemToggle();
 }
 
 function saveCEM() {
@@ -7597,7 +7847,8 @@ function saveCEM() {
   const title = document.getElementById('cem_title').value.trim();
   if (!title) { showToast('Card Title is required', 'var(--danger)'); return; }
 
-  const grader = document.getElementById('cem_grader').value;
+  const gradeVisible = document.getElementById('cem_grade_fields').style.display !== 'none';
+  const grader = gradeVisible ? document.getElementById('cem_grader').value : '';
   card['Card Title']       = title;
   card.Player              = document.getElementById('cem_player').value.trim();
   card.Year                = document.getElementById('cem_year').value.trim() || null;
@@ -7611,6 +7862,11 @@ function saveCEM() {
   card.Condition           = !grader ? (document.getElementById('cem_condition').value || null) : null;
   card.Price               = parseFloat(document.getElementById('cem_price').value) || 0;
   card.Status              = document.getElementById('cem_status').value || 'Available';
+  card.item_type           = document.getElementById('cem_item_type').value || 'card';
+  card.quantity            = parseInt(document.getElementById('cem_quantity').value) || 1;
+  card.product_type        = document.getElementById('cem_product_type').value || null;
+  card.language            = document.getElementById('cem_language').value || null;
+  card.edition             = document.getElementById('cem_edition').value || null;
 
   closeCEM();
   renderSellerTable(getSellerInventory());
@@ -7642,19 +7898,25 @@ function saveCEM() {
 
 // Map from Supabase column names → CardShow field names
 const DB_TO_CARD = {
-  card_title: 'Card Title',
-  player:     'Player',
-  year:       'Year',
-  card_set:   'Set ',
-  parallel:   'Parallel/Variant',
-  grader:     'Grader',
-  grade:      'Grade',
-  cert_number:'Cert #',
-  condition:  'Condition',
-  price:      'Price',
-  status:     'Status',
-  seller:     'Seller',
-  location:   'Location',
+  card_title:   'Card Title',
+  player:       'Player',
+  year:         'Year',
+  card_set:     'Set ',
+  card_number:  'Number',
+  parallel:     'Parallel/Variant',
+  grader:       'Grader',
+  grade:        'Grade',
+  cert_number:  'Cert #',
+  condition:    'Condition',
+  price:        'Price',
+  status:       'Status',
+  seller:       'Seller',
+  location:     'Location',
+  item_type:    'item_type',
+  quantity:     'quantity',
+  product_type: 'product_type',
+  language:     'language',
+  edition:      'edition',
 };
 
 // Map from CardShow field names → Supabase column names
@@ -7664,38 +7926,50 @@ const CARD_TO_DB = Object.fromEntries(
 
 function cardToDbRow(card) {
   return {
-    card_title:  card['Card Title'] || '',
-    player:      card.Player        || null,
-    year:        card.Year          ? parseInt(card.Year) : null,
-    card_set:    card['Set ']       || card['Set'] || null,
-    parallel:    card['Parallel/Variant'] || null,
-    grader:      card.Grader        || null,
-    grade:       card.Grade         != null ? parseFloat(card.Grade) : null,
-    cert_number: card['Cert #']     || null,
-    condition:   card.Condition     || null,
-    price:       parseFloat(card.Price) || 0,
-    status:      card.Status        || 'Available',
-    location:    card.Location      || null,
+    card_title:   card['Card Title'] || '',
+    player:       card.Player        || null,
+    year:         card.Year          ? parseInt(card.Year) : null,
+    card_set:     card['Set ']       || card['Set'] || null,
+    card_number:  card.Number        || null,
+    parallel:     card['Parallel/Variant'] || null,
+    grader:       card.Grader        || null,
+    grade:        card.Grade         != null ? parseFloat(card.Grade) : null,
+    cert_number:  card['Cert #']     || null,
+    condition:    card.Condition     || null,
+    price:        parseFloat(card.Price) || 0,
+    status:       card.Status        || 'Available',
+    location:     card.Location      || null,
+    item_type:    card.item_type     || 'card',
+    quantity:     card.quantity      || 1,
+    product_type: card.product_type  || null,
+    language:     card.language      || null,
+    edition:      card.edition       || null,
   };
 }
 
 function dbRowToCard(row) {
   const card = {
-    _dbId:           row.id,
-    Seller:          row.seller_handle || currentSeller,
-    'Card Title':    row.card_title    || '',
-    Player:          row.player        || '',
-    Year:            row.year          || null,
-    'Set ':          row.card_set      || '',
-    'Parallel/Variant': row.parallel   || '',
-    Grader:          row.grader        || null,
-    Grade:           row.grade         != null ? row.grade : null,
-    'Cert #':        row.cert_number   || null,
-    Condition:       row.condition     || null,
-    Price:           row.price         || 0,
-    Status:          row.status        || 'Available',
-    Location:        row.location      || null,
-    _shows:          new Set(),
+    _dbId:              row.id,
+    Seller:             row.seller_handle || currentSeller,
+    'Card Title':       row.card_title    || '',
+    Player:             row.player        || '',
+    Year:               row.year          || null,
+    'Set ':             row.card_set      || '',
+    Number:             row.card_number   || '',
+    'Parallel/Variant': row.parallel      || '',
+    Grader:             row.grader        || null,
+    Grade:              row.grade         != null ? row.grade : null,
+    'Cert #':           row.cert_number   || null,
+    Condition:          row.condition     || null,
+    Price:              row.price         || 0,
+    Status:             row.status        || 'Available',
+    Location:           row.location      || null,
+    item_type:          row.item_type     || 'card',
+    quantity:           row.quantity      || 1,
+    product_type:       row.product_type  || null,
+    language:           row.language      || null,
+    edition:            row.edition       || null,
+    _shows:             new Set(),
   };
   return validateAndNormalizeCard(card);
 }

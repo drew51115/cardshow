@@ -32,10 +32,23 @@ sellers       — id (uuid PRIMARY KEY = auth.uid()), handle, display_name, what
 shows         — id (text), name, date, location, status, access_code, published_at, created_at
 show_sellers  — show_id, seller_id (uuid → sellers.id), table_number (junction)
 inventory     — id (uuid), seller_id (uuid → sellers.id), card_title, player, year,
-                card_set, parallel, grader, grade, cert_number, condition, price,
-                status, location, created_at, updated_at
+                card_set, card_number, parallel, grader, grade, cert_number, condition, price,
+                status, location, item_type text default 'card',
+                quantity integer default 1, product_type text,
+                language text, edition text,
+                created_at, updated_at
 show_inventory — show_id, card_id (junction)
 admins        — id (uuid PRIMARY KEY REFERENCES auth.users) — admin identity gate
+```
+
+### New columns (run to add to existing DB):
+```sql
+ALTER TABLE inventory ADD COLUMN IF NOT EXISTS card_number text;
+ALTER TABLE inventory ADD COLUMN IF NOT EXISTS item_type text default 'card';
+ALTER TABLE inventory ADD COLUMN IF NOT EXISTS quantity integer default 1;
+ALTER TABLE inventory ADD COLUMN IF NOT EXISTS product_type text;
+ALTER TABLE inventory ADD COLUMN IF NOT EXISTS language text;
+ALTER TABLE inventory ADD COLUMN IF NOT EXISTS edition text;
 ```
 
 ## Supabase Persistence Status — All Complete
@@ -47,20 +60,26 @@ admins        — id (uuid PRIMARY KEY REFERENCES auth.users) — admin identity
 - ✅ seller-browse.html — fetches live inventory from Supabase on QR scan
 - ✅ Phase 2 email auth — Supabase email + password, sessions persist across refreshes
 
-## Auth Status — Phase 2 Deployed
-- **Current:** Supabase email + password auth via `supabase.auth.signUp()` / `signInWithPassword()`
-- **Session persistence:** `supabase.auth.getSession()` on page load keeps sellers logged in
-- **Seller records:** linked to `auth.uid()` in the sellers table
-- **⚠ RLS policies:** still using permissive `using (true)` — tightening to `auth.uid() = seller_id` is the next priority
-- **⚠ Admin password:** still hardcoded `admin123` — needs replacing with a protected Supabase admin account
+## Auth Status — Phase 2 Complete
+- Seller: `signUp` / `signInWithPassword` → `sellers` row with `id = auth.uid()`
+- Admin: `signInWithPassword` → verified against `admins` table → `loginAsAdmin()`
+- Session persistence: `getSession()` IIFE on page load auto-restores sellers
+- Sign out: `db.auth.signOut()` + UI reset (both seller and admin)
 
-## Current RLS Policies (Needs Tightening)
-All tables currently use permissive `using (true)` / `with check (true)`.
-Next step: replace with `auth.uid() = seller_id` for inventory, `auth.uid() = id` for sellers.
+## RLS Policies — Tightened (Session 2)
+| Table | SELECT | INSERT/UPDATE/DELETE |
+|---|---|---|
+| `sellers` | public | `auth.uid() = id` |
+| `inventory` | public | `auth.uid() = seller_id` |
+| `shows` | public | admin only (`EXISTS admins`) |
+| `show_sellers` | public | admin only |
+| `show_inventory` | public | admin only |
+| `admins` | `auth.uid() = id` | — |
 
 ## Key Data Structures (in-memory runtime cache)
 ```js
-inventory[]     // [{Seller, 'Card Title', Player, Year, 'Set ', Price, Status, _dbId, _shows: Set, ...}]
+inventory[]     // [{Seller, 'Card Title', Player, Year, 'Set ', Number, Price, Status,
+                //   item_type, quantity, product_type, language, edition, _dbId, _shows: Set, ...}]
 shows{}         // {showId: {id, name, date, location, status, accessCode, sellers: Set, tables: {}, publishedAt}}
 sellerProfiles  // {handle: {displayName, whatsapp, instagram}}
 currentRole     // 'seller' | 'admin' | 'buyer' | null
@@ -83,7 +102,7 @@ Fonts: Bebas Neue (headlines), DM Sans (body), DM Mono (labels/badges), Barlow C
 
 ## Three User Roles
 - **Seller** — email + password login → inventory management → profile (display name, WhatsApp, Instagram) → joins shows → QR code for table
-- **Admin** — password: admin123 (⚠ needs replacing) → Shows dashboard (default) → All Inventory tab → create/manage shows, authorize sellers, assign tables, publish, share
+- **Admin** — email + password login (verified against `admins` table) → Shows dashboard (default) → All Inventory tab → create/manage shows, authorize sellers, assign tables, publish, share
 - **Buyer** — guest → show picker → MLP Card Show demo (no code needed) → browse by sport/search → contact seller via WhatsApp or Instagram
 
 ## Key Functions Reference
@@ -126,8 +145,18 @@ Fonts: Bebas Neue (headlines), DM Sans (body), DM Mono (labels/badges), Barlow C
 4. **.maybeSingle() not .single()** — always use maybeSingle() for queries that might return 0 rows. .single() returns 406 on empty result.
 5. **No build step** — vanilla HTML only. No webpack, no npm, no compilation. Edit HTML files directly.
 6. **Domain** — all absolute URLs use getcardshow.com. The old card-show.netlify.app domain is fully deprecated.
-7. **RLS currently permissive** — all policies use `using (true)`. Do not tighten until confirming auth.uid() is reliably set in all write paths.
-8. **Seller handle in DB** — inventory rows store seller_id (UUID), not handle. Always look up seller UUID by handle before querying inventory.
+7. **seller_id is auth.uid()** — `inventory.seller_id` and `show_sellers.seller_id` are UUID (= `sellers.id` = `auth.uid()`), not the handle string.
+8. **item_type defaults** — existing cards without `item_type` in DB default to `'card'`; `dbRowToCard` sets `item_type: row.item_type || 'card'`.
+
+## Item Type System (Session 3)
+Three item types gated at the top of Add Card / Edit Card modals:
+- **card** (default) — Single Card. All existing fields. Grade info collapsed behind toggle.
+- **sealed** — Sealed Product. Shows Product Name, Set/Series, Product Type dropdown, Language, Edition, Quantity. Hides Player/Year/Card#/Parallel/grade fields. Displays 📦 Sealed badge in inventory table.
+- **lot** — Lot. Shows Lot Description, Set(s), Approximate Count, Condition Range. Hides Player/Year/Card#/Parallel/grade.
+
+In show.html, `detectSport()` returns `'Sealed'` for sealed items (🎴 → 📦 Sealed filter chip). TCG detection added before sport detection.
+
+Field label changes: "Player" → "Player / Card Name", Card # placeholder → "e.g. 4/102, #025". Card # now persisted to `card_number` column.
 
 ## Backlog Priority
 
@@ -138,9 +167,7 @@ Fonts: Bebas Neue (headlines), DM Sans (body), DM Mono (labels/badges), Barlow C
 - Phase 2 email authentication (Supabase Auth, session persistence)
 
 ### Tier 1 — Ship before beta show
-- **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`
 - **eBay comp lookup at card entry** (urgent, medium complexity) — #1 pain point from seller feedback
-- **Replace admin123 password** (urgent, low complexity) — security risk now that real auth exists
 
 ### Tier 2 — First show retrospective
 - Barcode/camera scan for card entry (high complexity) — moved up from Tier 4 based on show feedback
@@ -151,7 +178,7 @@ Fonts: Bebas Neue (headlines), DM Sans (body), DM Mono (labels/badges), Barlow C
 - Per-show card selection toggle (medium complexity)
 - Post-show summary for sellers (low complexity)
 - Show page from DB — removes 50-card hash cap (high complexity)
-- Item type support — boxes, packs, lots (low complexity)
+- ~~Item type support~~ ✅ shipped Session 3
 
 ### Tier 3 — Growth and monetisation
 - Want list / saved cards for buyers

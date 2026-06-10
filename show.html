@@ -658,16 +658,31 @@ footer {
 const SPORT_ICONS = {
   'Basketball': '🏀', 'Football': '🏈', 'Baseball': '⚾',
   'Hockey': '🏒', 'WNBA': '🏀', 'Soccer': '⚽', 'Tennis': '🎾',
-  'Golf': '⛳', 'TCG': '🃏', 'Other': '🃏'
+  'Golf': '⛳', 'TCG': '🎴', 'Sealed': '📦', 'Other': '🃏'
 };
 
 function detectSport(r) {
+  // Sealed products always appear in the Sealed category
+  if (r.item_type === 'sealed') return 'Sealed';
+
   if (r.Sport) return r.Sport;
   const p = (r.Player || '').toLowerCase();
   const s = (r['Set '] || r.Set || '').toLowerCase();
   const t = (r['Card Title'] || '').toLowerCase();
   const all = p + ' ' + s + ' ' + t;
 
+  const tcg = ['pokemon','charizard','pikachu','mewtwo','eevee','bulbasaur','squirtle',
+    'gengar','snorlax','lugia','rayquaza','umbreon','espeon','blastoise','venusaur',
+    'magic the gathering','magic: the gathering','mtg ','the gathering',
+    'yu-gi-oh','yugioh','ygo ','lorcana','one piece card','dragon ball super card',
+    'digimon card','flesh and blood','weiss schwarz',
+    'scarlet & violet','scarlet and violet','temporal forces','paldea evolved',
+    'obsidian flames','paradox rift','twilight masquerade','crown zenith',
+    'pokemon 151','base set','jungle set','fossil set','team rocket set',
+    'neo genesis','neo discovery','skyridge','aquapolis',
+    'ex ruby','ex sapphire','diamond & pearl','heartgold soulsilver',
+    'black & white','xy ','sun & moon','sword & shield','swsh',
+    'sv1 ','sv2 ','sv3 ','sv4 ','sv5 '];
   const bball = ['lebron','curry','durant','giannis','luka','wembanyama','flagg','jokic','tatum',
     'morant','edwards','banchero','zion','jayson','anthony','kawhi','harden','westbrook',
     'kobe','jordan','magic','bird','shaq','iverson','garnett','nba','prizm basketball',
@@ -683,6 +698,8 @@ function detectSport(r) {
     'draisaitl','makar','nhl','upper deck','parkhurst','o-pee-chee','young guns'];
   const wnba  = ['clark','reese','wilson','bird','taurasi','wnba'];
 
+  // TCG checked before sports — many TCG set names are generic
+  if (tcg.some(k => all.includes(k)))   return 'TCG';
   if (bball.some(k => all.includes(k))) return 'Basketball';
   if (fball.some(k => all.includes(k))) return 'Football';
   if (bsball.some(k => all.includes(k))) return 'Baseball';
