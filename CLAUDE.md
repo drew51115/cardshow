@@ -23,17 +23,19 @@ CLAUDE.md           → This file
 ## Supabase Configuration
 - **Project URL:** https://qtnqawqlmttogwnjieky.supabase.co
 - **Anon key:** sb_publishable_R8Yok9YAfb_wfhR5nmwpmg_1FWaCdqU
-- **Client:** Loaded via CDN in <head> of both app.html and seller-browse.html
+- **Client:** Loaded via CDN in `<head>` of app.html and seller-browse.html
 
 ## Database Schema
 ```sql
-sellers       — id (uuid), handle, display_name, whatsapp, instagram, email, created_at
+sellers       — id (uuid PRIMARY KEY = auth.uid()), handle, display_name, whatsapp,
+                instagram, email, created_at
 shows         — id (text), name, date, location, status, access_code, published_at, created_at
-show_sellers  — show_id, seller_id, table_number (junction)
-inventory     — id (uuid), seller_id, card_title, player, year, card_set, parallel,
-                grader, grade, cert_number, condition, price, status, location,
-                created_at, updated_at
+show_sellers  — show_id, seller_id (uuid → sellers.id), table_number (junction)
+inventory     — id (uuid), seller_id (uuid → sellers.id), card_title, player, year,
+                card_set, parallel, grader, grade, cert_number, condition, price,
+                status, location, created_at, updated_at
 show_inventory — show_id, card_id (junction)
+admins        — id (uuid PRIMARY KEY REFERENCES auth.users) — admin identity gate
 ```
 
 ## Supabase Persistence Status — All Complete
@@ -100,8 +102,12 @@ Fonts: Bebas Neue (headlines), DM Sans (body), DM Mono (labels/badges), Barlow C
 - `loadShowsFromDB()` — fetch all shows on admin login
 - `cardToDbRow(card)` / `dbRowToCard(row)` — field mapping helpers
 
+### Auth Functions (app.html)
+- `submitAuth()` — async; handles seller sign-in/sign-up and admin sign-in via Supabase Auth
+- `toggleAuthMode()` — switches auth overlay between sign-in and sign-up for sellers
+- `loginAsSeller(handle)` / `loginAsAdmin()` / `enterAsBuyer()` / `signOut()` (async)
+
 ### Core UI Functions (app.html)
-- `loginAsSeller(handle)` / `loginAsAdmin()` / `enterAsBuyer()` / `signOut()`
 - `renderAdminShowsDashboard()` — Shows tab full render
 - `switchAdminTab('shows'|'inventory')` — admin tab switcher
 - `publishSelectedToShow(showId)` — publish all authorized seller cards
