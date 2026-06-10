@@ -69,13 +69,18 @@ activeShowId    // active show for admin/seller
 Fonts: Bebas Neue (headlines), DM Sans (body), DM Mono (labels/badges), Barlow Condensed (CTAs), Instrument Serif italic (subheadlines)
 
 ## Three User Roles
-- **Seller** — logs in via handle → uploads/manages inventory → profile (display name, WhatsApp, Instagram) → joins shows → QR code for table
+- **Seller** — logs in via email+password → uploads/manages inventory → profile (display name, WhatsApp, Instagram) → joins shows → QR code for table
 - **Admin** — password: admin123 → Shows dashboard (default) → All Inventory tab → create/manage shows, authorize sellers, assign tables, publish, share
 - **Buyer** — guest → show picker → browse inventory by sport/search → contact seller via WhatsApp or Instagram
 
 ## Auth Status
-- **Current:** Handle-based entry (no real auth) — Phase 2 in progress
-- **Phase 2 (next):** Replace handle entry with Supabase email + password auth
+- **Current:** Phase 2 complete — Supabase email+password auth for sellers
+  - Sign up: email, password, handle → creates Supabase Auth user + sellers row (id = auth.uid())
+  - Sign in: email+password → `signInWithPassword` → look up sellers by id → `loginAsSeller(handle)`
+  - Session persistence: `getSession()` on page load auto-restores logged-in sellers
+  - Sign out: `db.auth.signOut()` + UI reset
+  - Admin still uses hardcoded admin123 (Phase 3: migrate to protected Supabase Auth account)
+- **Phase 2 was:** Replace handle entry with Supabase email + password auth
   - `supabase.auth.signUp()` / `signInWithPassword()`
   - Link seller record to `auth.uid()`
   - Tighten RLS: replace `using (true)` with `using (auth.uid() = seller_id)`

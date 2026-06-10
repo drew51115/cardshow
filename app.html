@@ -2365,10 +2365,18 @@
     </div>
 
     <div id="authSellerFields">
-      <input class="auth-field" id="authSellerHandle" placeholder="Your seller handle (e.g. bleeding_ink_sports)" autocomplete="off">
-      <div class="auth-hint">
-        Enter your seller handle to access your inventory.<br>
-        Demo handles: <code>bleeding_ink_sports</code> · <code>refbrand</code> · <code>slab_city_sd</code>
+      <div id="authSignInFields">
+        <input class="auth-field" id="authEmail" type="email" placeholder="Email address" autocomplete="email">
+        <input class="auth-field" id="authPassword" type="password" placeholder="Password" autocomplete="current-password">
+      </div>
+      <div id="authSignUpFields" style="display:none">
+        <input class="auth-field" id="authSignUpEmail" type="email" placeholder="Email address" autocomplete="email">
+        <input class="auth-field" id="authSignUpPassword" type="password" placeholder="Password (min 6 chars)" autocomplete="new-password">
+        <input class="auth-field" id="authSignUpHandle" placeholder="Seller handle (e.g. bleeding_ink_sports)" autocomplete="off">
+        <div class="auth-hint">Your handle is your unique storefront ID — lowercase, underscores ok.</div>
+      </div>
+      <div style="text-align:center;margin-top:0.5rem">
+        <button class="btn btn-ghost" id="authToggleMode" style="width:100%;justify-content:center;font-size:0.8rem" onclick="toggleAuthMode()">Don't have an account? Sign Up →</button>
       </div>
     </div>
 
@@ -3273,6 +3281,7 @@ let sellerSearch = '';
 
 // ── AUTH FUNCTIONS — hoisted to top so HTML onclick handlers always find them ──
 var authRoleSelected = 'seller';
+var authMode = 'signin'; // 'signin' | 'signup'
 
 function setAuthRole(role) {
   authRoleSelected = role;
@@ -3286,18 +3295,93 @@ function setAuthRole(role) {
   if (er) er.textContent = '';
 }
 
-function submitAuth() {
-  const err = document.getElementById('authError');
-  if (err) err.textContent = '';
-  if (authRoleSelected === 'seller') {
-    const input = document.getElementById('authSellerHandle');
-    const handle = input ? input.value.trim().toLowerCase().replace(/\s+/g,'_') : '';
-    if (!handle) { if (err) err.textContent = 'Enter your seller handle.'; return; }
-    loginAsSeller(handle);
+function toggleAuthMode() {
+  authMode = authMode === 'signin' ? 'signup' : 'signin';
+  const signIn  = document.getElementById('authSignInFields');
+  const signUp  = document.getElementById('authSignUpFields');
+  const toggle  = document.getElementById('authToggleMode');
+  const btn     = document.querySelector('.auth-box .btn-primary');
+  if (authMode === 'signup') {
+    if (signIn)  signIn.style.display  = 'none';
+    if (signUp)  signUp.style.display  = 'block';
+    if (toggle)  toggle.textContent    = 'Already have an account? Sign In →';
+    if (btn)     btn.textContent       = 'Create Account →';
   } else {
+    if (signIn)  signIn.style.display  = 'block';
+    if (signUp)  signUp.style.display  = 'none';
+    if (toggle)  toggle.textContent    = "Don't have an account? Sign Up →";
+    if (btn)     btn.textContent       = 'Enter →';
+  }
+  document.getElementById('authError').textContent = '';
+}
+
+function _setAuthError(msg) {
+  const err = document.getElementById('authError');
+  if (err) err.textContent = msg;
+  const btn = document.querySelector('.auth-box .btn-primary');
+  if (btn) { btn.disabled = false; btn.textContent = authMode === 'signup' ? 'Create Account →' : 'Enter →'; }
+}
+
+async function submitAuth() {
+  document.getElementById('authError').textContent = '';
+  const btn = document.querySelector('.auth-box .btn-primary');
+  if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
+
+  if (authRoleSelected === 'seller') {
+    try {
+      if (authMode === 'signup') {
+        const email  = (document.getElementById('authSignUpEmail').value  || '').trim();
+        const pass   =  document.getElementById('authSignUpPassword').value || '';
+        const handle = (document.getElementById('authSignUpHandle').value  || '').trim().toLowerCase().replace(/\s+/g,'_');
+        if (!email || !pass || !handle) { _setAuthError('All fields are required.'); return; }
+        if (pass.length < 6) { _setAuthError('Password must be at least 6 characters.'); return; }
+
+        const { data, error } = await db.auth.signUp({ email, password: pass });
+        if (error) { _setAuthError(error.message); return; }
+
+        if (!data.session) {
+          // Email confirmation required
+          if (btn) { btn.disabled = false; btn.textContent = 'Create Account →'; }
+          document.getElementById('authError').style.color = 'var(--success)';
+          document.getElementById('authError').textContent = 'Check your email to confirm your account, then sign in.';
+          toggleAuthMode(); // switch back to sign-in
+          document.getElementById('authError').style.color = '';
+          return;
+        }
+
+        const uid = data.user.id;
+        const { error: insertErr } = await db.from('sellers').insert({ id: uid, handle, email });
+        if (insertErr) {
+          await db.auth.signOut();
+          _setAuthError(insertErr.message);
+          return;
+        }
+        loginAsSeller(handle);
+      } else {
+        const email = (document.getElementById('authEmail').value    || '').trim();
+        const pass  =  document.getElementById('authPassword').value || '';
+        if (!email || !pass) { _setAuthError('Enter your email and password.'); return; }
+
+        const { data, error } = await db.auth.signInWithPassword({ email, password: pass });
+        if (error) { _setAuthError(error.message); return; }
+
+        const uid = data.user.id;
+        const { data: seller, error: selErr } = await db.from('sellers').select('handle').eq('id', uid).maybeSingle();
+        if (selErr || !seller) {
+          await db.auth.signOut();
+          _setAuthError('No seller account found. Please sign up first.');
+          return;
+        }
+        loginAsSeller(seller.handle);
+      }
+    } catch(e) {
+      _setAuthError(e.message || 'Something went wrong. Please try again.');
+    }
+  } else {
+    if (btn) { btn.disabled = false; btn.textContent = 'Enter →'; }
     const input = document.getElementById('authAdminPass');
     const pass = input ? input.value : '';
-    if (pass !== 'admin123') { if (err) err.textContent = 'Incorrect password.'; return; }
+    if (pass !== 'admin123') { document.getElementById('authError').textContent = 'Incorrect password.'; return; }
     loginAsAdmin();
   }
 }
@@ -5234,7 +5318,8 @@ function initSidebarState() {
   }
 }
 
-function signOut() {
+async function signOut() {
+  await db.auth.signOut().catch(() => {});
   currentRole   = null;
   currentSeller = null;
   sellerQrMode  = 'table';
@@ -5272,9 +5357,15 @@ function signOut() {
   document.getElementById('inventoryTitle').textContent = 'Inventory';
   clearAdminFilters();
   document.getElementById('authOverlay').classList.remove('hidden');
-  document.getElementById('authSellerHandle').value = '';
-  document.getElementById('authAdminPass').value    = '';
-  document.getElementById('authError').textContent  = '';
+  document.getElementById('authEmail').value            = '';
+  document.getElementById('authPassword').value         = '';
+  document.getElementById('authSignUpEmail').value      = '';
+  document.getElementById('authSignUpPassword').value   = '';
+  document.getElementById('authSignUpHandle').value     = '';
+  document.getElementById('authAdminPass').value        = '';
+  document.getElementById('authError').textContent      = '';
+  // Reset to sign-in mode
+  if (authMode !== 'signin') toggleAuthMode();
 }
 
 // Returns inventory scoped to current seller, or all if admin
@@ -7746,6 +7837,19 @@ async function upsertCardsToDB(cards) {
     console.warn('upsertCardsToDB error:', e.message);
   }
 }
+
+// ── SESSION PERSISTENCE — auto-login if Supabase session exists ──
+(async () => {
+  try {
+    const { data: { session } } = await db.auth.getSession();
+    if (!session) return;
+    const uid = session.user.id;
+    const { data: seller } = await db.from('sellers').select('handle').eq('id', uid).maybeSingle();
+    if (seller) loginAsSeller(seller.handle);
+  } catch(e) {
+    console.warn('Session restore failed:', e.message);
+  }
+})();
 
 </script>
 
