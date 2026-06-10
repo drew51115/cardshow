@@ -23,17 +23,19 @@ CLAUDE.md           → This file
 ## Supabase Configuration
 - **Project URL:** https://qtnqawqlmttogwnjieky.supabase.co
 - **Anon key:** sb_publishable_R8Yok9YAfb_wfhR5nmwpmg_1FWaCdqU
-- **Client:** Loaded via CDN in <head> of app.html and seller-browse.html
+- **Client:** Loaded via CDN in `<head>` of app.html and seller-browse.html
 
 ## Database Schema
 ```sql
-sellers       — id (uuid), handle, display_name, whatsapp, instagram, email, created_at
+sellers       — id (uuid PRIMARY KEY = auth.uid()), handle, display_name, whatsapp,
+                instagram, email, created_at
 shows         — id (text), name, date, location, status, access_code, published_at, created_at
-show_sellers  — show_id, seller_id, table_number (junction)
-inventory     — id (uuid), seller_id, card_title, player, year, card_set, parallel,
-                grader, grade, cert_number, condition, price, status, location,
-                created_at, updated_at
+show_sellers  — show_id, seller_id (uuid → sellers.id), table_number (junction)
+inventory     — id (uuid), seller_id (uuid → sellers.id), card_title, player, year,
+                card_set, parallel, grader, grade, cert_number, condition, price,
+                status, location, created_at, updated_at
 show_inventory — show_id, card_id (junction)
+admins        — id (uuid PRIMARY KEY REFERENCES auth.users) — admin identity gate
 ```
 
 ## Supabase Persistence Status
@@ -70,26 +72,43 @@ Fonts: Bebas Neue (headlines), DM Sans (body), DM Mono (labels/badges), Barlow C
 
 ## Three User Roles
 - **Seller** — logs in via email+password → uploads/manages inventory → profile (display name, WhatsApp, Instagram) → joins shows → QR code for table
-- **Admin** — password: admin123 → Shows dashboard (default) → All Inventory tab → create/manage shows, authorize sellers, assign tables, publish, share
+- **Admin** — logs in via email+password (verified against `admins` table) → Shows dashboard (default) → All Inventory tab → create/manage shows, authorize sellers, assign tables, publish, share
 - **Buyer** — guest → show picker → browse inventory by sport/search → contact seller via WhatsApp or Instagram
 
-## Auth Status
-- **Current:** Phase 2 complete — Supabase email+password auth for sellers
-  - Sign up: email, password, handle → creates Supabase Auth user + sellers row (id = auth.uid())
-  - Sign in: email+password → `signInWithPassword` → look up sellers by id → `loginAsSeller(handle)`
-  - Session persistence: `getSession()` on page load auto-restores logged-in sellers
-  - Sign out: `db.auth.signOut()` + UI reset
-  - Admin still uses hardcoded admin123 (Phase 3: migrate to protected Supabase Auth account)
-- **Phase 2 was:** Replace handle entry with Supabase email + password auth
-  - `supabase.auth.signUp()` / `signInWithPassword()`
-  - Link seller record to `auth.uid()`
-  - Tighten RLS: replace `using (true)` with `using (auth.uid() = seller_id)`
-  - `supabase.auth.getSession()` on page load for session persistence
-  - Replace hardcoded `admin123` with protected admin account
+## Auth Status — Phase 2 Complete
+All three roles use real Supabase Auth. Hardcoded handle entry and admin123 are gone.
 
-## Current RLS Policies
-All tables use permissive `using (true)` / `with check (true)` policies pre-Phase 2 auth.
-Phase 2 will lock down to `auth.uid() = seller_id` / `auth.uid() = id`.
+### Seller auth
+- **Sign up:** email + password + handle → `db.auth.signUp()` → insert `sellers` row with `id = auth.uid()`
+- **Sign in:** `db.auth.signInWithPassword()` → look up `sellers` by `auth.uid()` → `loginAsSeller(handle)`
+- **Session persistence:** `db.auth.getSession()` IIFE on page load auto-restores active sessions
+- **Sign out:** `db.auth.signOut()` then UI reset
+
+### Admin auth
+- **Sign in:** email + password → `db.auth.signInWithPassword()` → verify `EXISTS` in `admins` table → `loginAsAdmin()`
+- **Setup:** create user in Supabase Auth dashboard, then `INSERT INTO admins (id) VALUES ('<uuid>')`
+- **Sign out:** `db.auth.signOut()` (shared signOut function)
+
+## RLS Policies (applied Session 2)
+| Table | SELECT | INSERT | UPDATE | DELETE |
+|---|---|---|---|---|
+| `sellers` | public | `auth.uid() = id` | `auth.uid() = id` | `auth.uid() = id` |
+| `inventory` | public | `auth.uid() = seller_id` | `auth.uid() = seller_id` | `auth.uid() = seller_id` |
+| `shows` | public | admin only | admin only | admin only |
+| `show_sellers` | public | admin only | admin only | admin only |
+| `show_inventory` | public | admin only | admin only | admin only |
+| `admins` | `auth.uid() = id` | — | — | — |
+
+"Admin only" = `EXISTS (SELECT 1 FROM admins WHERE id = auth.uid())`
+
+Public SELECT on inventory/sellers is intentional — buyers on seller-browse.html are unauthenticated.
+
+### Pre-Phase-2 inventory migration note
+Cards inserted before Phase 2 may have a `seller_id` that doesn't match the seller's current `auth.uid()`. If a seller can't edit existing cards, run:
+```sql
+UPDATE inventory SET seller_id = '<new-auth-uid>'
+WHERE seller_id = '<old-uuid>';
+```
 
 ## Key Functions Reference
 ### Supabase Persistence (app.html)
@@ -106,8 +125,12 @@ Phase 2 will lock down to `auth.uid() = seller_id` / `auth.uid() = id`.
 - `loadShowsFromDB()` — fetch all shows on admin login
 - `cardToDbRow(card)` / `dbRowToCard(row)` — field mapping helpers
 
+### Auth Functions (app.html)
+- `submitAuth()` — async; handles seller sign-in/sign-up and admin sign-in via Supabase Auth
+- `toggleAuthMode()` — switches auth overlay between sign-in and sign-up for sellers
+- `loginAsSeller(handle)` / `loginAsAdmin()` / `enterAsBuyer()` / `signOut()` (async)
+
 ### Core UI Functions (app.html)
-- `loginAsSeller(handle)` / `loginAsAdmin()` / `enterAsBuyer()` / `signOut()`
 - `renderAdminShowsDashboard()` — Shows tab full render
 - `switchAdminTab('shows'|'inventory')` — admin tab switcher
 - `publishSelectedToShow(showId)` — publish all authorized seller cards
@@ -123,10 +146,10 @@ Phase 2 will lock down to `auth.uid() = seller_id` / `auth.uid() = id`.
 4. **.maybeSingle() not .single()** — always use maybeSingle() for Supabase queries that might return 0 rows to avoid 406 errors.
 5. **No build step** — this is vanilla HTML. No webpack, no npm, no compilation. Edit the HTML files directly.
 6. **Domain** — all absolute URLs use getcardshow.com. The old card-show.netlify.app domain is deprecated.
+7. **seller_id is auth.uid()** — `inventory.seller_id` and `show_sellers.seller_id` are both the seller's `auth.uid()` (= `sellers.id`), not the handle string.
 
 ## Backlog Priority
 ### Tier 1 (immediate)
-- Phase 2 email auth (Supabase Auth)
 - eBay comp lookup at card entry
 
 ### Tier 2
