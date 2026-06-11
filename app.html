@@ -3340,6 +3340,15 @@ async function submitAuth() {
         const { data, error } = await db.auth.signUp({ email, password: pass });
         if (error) { _setAuthError(error.message); return; }
 
+        const uid = data.user.id;
+        const { error: insertErr } = await db.from('sellers').insert({ id: uid, handle, email });
+        if (insertErr && insertErr.code !== '23505') {
+          // 23505 = unique violation — seller row already exists, safe to ignore
+          await db.auth.signOut();
+          _setAuthError(insertErr.message);
+          return;
+        }
+
         if (!data.session) {
           // Email confirmation required — show message AFTER toggleAuthMode
           // (toggleAuthMode clears authError, so the message must be set after)
@@ -3350,14 +3359,6 @@ async function submitAuth() {
             errEl.style.color = '#4ade80';
             errEl.textContent = '✓ Account created — check your email to confirm, then sign in.';
           }
-          return;
-        }
-
-        const uid = data.user.id;
-        const { error: insertErr } = await db.from('sellers').insert({ id: uid, handle, email });
-        if (insertErr) {
-          await db.auth.signOut();
-          _setAuthError(insertErr.message);
           return;
         }
         loginAsSeller(handle);
