@@ -138,6 +138,8 @@
     display: flex;
     flex-direction: column;
     gap: 1.5rem;
+    min-width: 0;
+    overflow-x: hidden;
   }
 
   .section-label {
@@ -193,21 +195,24 @@
     background: var(--card);
     border: 1px solid var(--border);
     border-radius: 10px;
-    padding: 0.9rem;
+    padding: 0.65rem 0.75rem;
   }
   .stat-box .val {
     font-family: 'Bebas Neue', sans-serif;
-    font-size: 1.8rem;
+    font-size: 1.5rem;
     color: var(--accent);
     line-height: 1;
   }
   .stat-box .lbl {
-    font-size: 0.72rem;
+    font-size: 0.62rem;
     color: var(--muted);
     margin-top: 0.2rem;
     font-family: 'DM Mono', monospace;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.05em;
     text-transform: uppercase;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   /* Show publish panel */
@@ -651,6 +656,8 @@
     flex-direction: column;
     gap: 1.25rem;
     overflow-y: auto;
+    overflow-x: hidden;
+    min-width: 0;
   }
 
   .main-content { padding: 1.25rem 1.5rem; overflow-x: auto; }
@@ -697,10 +704,10 @@
     }
 
     /* Sidebar content compact */
-    .stats-row { gap: 0.5rem; }
-    .stat-box { padding: 0.65rem 0.7rem; }
-    .stat-box .val { font-size: 1.5rem; }
-    .stat-box .lbl { font-size: 0.6rem; }
+    .stats-row { gap: 0.4rem; }
+    .stat-box { padding: 0.55rem 0.6rem; }
+    .stat-box .val { font-size: 1.35rem; }
+    .stat-box .lbl { font-size: 0.58rem; }
     .upload-zone { padding: 1rem 0.75rem; }
     .upload-icon { font-size: 1.5rem; margin-bottom: 0.3rem; }
     .upload-zone strong { font-size: 0.8rem; }
