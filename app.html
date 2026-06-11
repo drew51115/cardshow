@@ -1057,6 +1057,209 @@
     background: rgba(34,197,94,0.1); color: #4ade80;
     border-color: rgba(34,197,94,0.3);
   }
+  /* ── SELL DRAWER ── */
+  .drawer-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.72);
+    z-index: 500; opacity: 0; pointer-events: none;
+    transition: opacity 0.25s; backdrop-filter: blur(4px);
+  }
+  .drawer-overlay.open { opacity: 1; pointer-events: all; }
+  .drawer {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: var(--surface); border-top: 1px solid var(--border);
+    border-radius: 18px 18px 0 0; z-index: 501;
+    transform: translateY(100%);
+    transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+    max-height: 92vh; overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    max-width: 560px; margin: 0 auto;
+  }
+  .drawer-overlay.open .drawer { transform: translateY(0); }
+  .drawer-handle {
+    width: 36px; height: 4px; border-radius: 2px;
+    background: var(--border); margin: 12px auto 0;
+  }
+  .drawer-header {
+    padding: 14px 20px 12px; border-bottom: 1px solid var(--border);
+  }
+  .drawer-player {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 22px; letter-spacing: 0.04em; color: var(--text); line-height: 1;
+  }
+  .drawer-card-sub { font-size: 12px; color: var(--muted); margin-top: 3px; }
+  .drawer-ask {
+    font-family: 'DM Mono', monospace; font-size: 12px;
+    color: var(--muted); margin-top: 5px;
+  }
+  .drawer-ask span { color: var(--accent); }
+  .drawer-body { padding: 16px 20px; display: flex; flex-direction: column; gap: 14px; }
+  .drawer-field-label {
+    font-family: 'DM Mono', monospace; font-size: 10px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 7px;
+    display: flex; align-items: center; gap: 5px;
+  }
+  .drawer-field-label::before {
+    content: ''; width: 12px; height: 1.5px;
+    background: var(--accent); border-radius: 2px; display: block;
+  }
+  .sold-price-wrap { position: relative; }
+  .sold-price-sym {
+    position: absolute; left: 13px; top: 50%; transform: translateY(-50%);
+    font-family: 'DM Mono', monospace; font-size: 16px;
+    color: var(--accent); pointer-events: none;
+  }
+  .sold-price-input {
+    width: 100%; background: var(--card); border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px 14px 12px 28px;
+    font-family: 'DM Mono', monospace; font-size: 22px; font-weight: 500;
+    color: var(--accent); outline: none; letter-spacing: 0.04em;
+  }
+  .sold-price-input:focus {
+    border-color: var(--accent); box-shadow: 0 0 0 3px rgba(245,200,66,0.1);
+  }
+  .sold-price-input::placeholder { color: rgba(245,200,66,0.2); }
+  .quick-price-btns { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .qp-btn {
+    font-family: 'DM Mono', monospace; font-size: 11px;
+    padding: 6px 12px; border-radius: 5px; cursor: pointer;
+    background: var(--card); border: 1px solid var(--border);
+    color: var(--muted); transition: all 0.12s;
+  }
+  .qp-btn:hover, .qp-btn.qp-active {
+    background: rgba(245,200,66,0.08);
+    border-color: rgba(245,200,66,0.4); color: var(--accent);
+  }
+  .payment-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
+  .pay-opt {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 8px; padding: 11px 8px; text-align: center;
+    cursor: pointer; transition: all 0.12s;
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+  }
+  .pay-opt:hover { border-color: rgba(245,200,66,0.35); }
+  .pay-opt.pay-selected {
+    background: rgba(245,200,66,0.07); border-color: rgba(245,200,66,0.5);
+  }
+  .pay-opt-icon { font-size: 20px; }
+  .pay-opt-label {
+    font-family: 'DM Mono', monospace; font-size: 10px;
+    letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--muted); line-height: 1;
+  }
+  .pay-opt.pay-selected .pay-opt-label { color: var(--accent); }
+  .sale-notes-input {
+    width: 100%; background: var(--card); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 12px;
+    font-family: 'DM Sans', sans-serif; font-size: 13px; color: var(--text);
+    outline: none; resize: none; height: 62px; line-height: 1.5;
+  }
+  .sale-notes-input:focus { border-color: var(--accent); }
+  .sale-notes-input::placeholder { color: var(--muted); }
+  .btn-confirm-sale {
+    width: 100%; background: var(--accent); color: var(--black);
+    border: none; border-radius: 8px; padding: 15px;
+    font-family: 'Barlow Condensed', sans-serif; font-weight: 800;
+    font-size: 17px; letter-spacing: 0.08em; text-transform: uppercase;
+    cursor: pointer; display: flex; align-items: center;
+    justify-content: center; gap: 8px; transition: background 0.15s;
+  }
+  .btn-confirm-sale:hover { background: #f0c030; }
+  .btn-confirm-sale:active { transform: scale(0.99); }
+  .btn-cancel-sale {
+    width: 100%; background: transparent; color: var(--muted);
+    border: 1px solid var(--border); border-radius: 8px; padding: 11px;
+    font-family: 'DM Mono', monospace; font-size: 11px;
+    letter-spacing: 0.1em; text-transform: uppercase; cursor: pointer;
+    margin-top: -6px;
+  }
+
+  /* ── SOLD PRICE / PAYMENT in table rows ── */
+  .sold-price-cell {
+    font-family: 'DM Mono', monospace; font-size: 0.82rem;
+    font-weight: 500; color: #4ade80;
+  }
+  .price-delta-sm { font-size: 0.66rem; margin-top: 1px; }
+  .price-delta-sm.pos { color: #4ade80; }
+  .price-delta-sm.neg { color: #f87171; }
+  .pay-chip-sm {
+    font-family: 'DM Mono', monospace; font-size: 0.65rem;
+    letter-spacing: 0.06em; text-transform: uppercase;
+    padding: 2px 7px; border-radius: 3px;
+    border: 1px solid var(--border); color: var(--muted);
+    background: var(--surface); white-space: nowrap;
+  }
+  .pay-chip-sm.Cash   { color: #4ade80; border-color: rgba(34,197,94,0.3);   background: rgba(34,197,94,0.06); }
+  .pay-chip-sm.Venmo  { color: #60a5fa; border-color: rgba(59,130,246,0.3);  background: rgba(59,130,246,0.06); }
+  .pay-chip-sm.Zelle  { color: #c084fc; border-color: rgba(192,132,252,0.3); background: rgba(192,132,252,0.06); }
+  .pay-chip-sm.PayPal { color: #fbbf24; border-color: rgba(245,158,11,0.3);  background: rgba(245,158,11,0.06); }
+  .pay-chip-sm.Square { color: #f87171; border-color: rgba(239,68,68,0.3);   background: rgba(239,68,68,0.06); }
+
+  /* ── DELETE BUTTON in edit modal ── */
+  .btn-delete-card {
+    background: transparent; border: 1px solid rgba(239,68,68,0.35);
+    color: #f87171; border-radius: 6px; padding: 0.42rem 0.9rem;
+    font-family: 'DM Mono', monospace; font-size: 0.72rem;
+    letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer;
+    transition: all 0.15s; display: flex; align-items: center; gap: 5px;
+    flex-shrink: 0;
+  }
+  .btn-delete-card:hover {
+    background: rgba(239,68,68,0.1); border-color: rgba(239,68,68,0.6);
+  }
+  .btn-bulk-delete {
+    background: transparent; border: 1px solid rgba(239,68,68,0.3);
+    color: #f87171; border-radius: 6px; padding: 0.42rem 0.9rem;
+    font-family: 'DM Mono', monospace; font-size: 0.72rem;
+    letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer;
+    transition: all 0.15s; display: none; align-items: center; gap: 5px;
+  }
+  .btn-bulk-delete:hover {
+    background: rgba(239,68,68,0.1); border-color: rgba(239,68,68,0.6);
+  }
+  .btn-bulk-delete.visible { display: flex; }
+
+  /* ── REPORT TAB ── */
+  .report-grid-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+  .report-stat-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 11px; padding: 14px;
+  }
+  .report-stat-label {
+    font-family: 'DM Mono', monospace; font-size: 0.6rem;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 6px;
+    display: flex; align-items: center; gap: 5px;
+  }
+  .report-stat-label::before {
+    content: ''; width: 12px; height: 1.5px;
+    background: var(--accent); border-radius: 2px; display: block;
+  }
+  .report-stat-val {
+    font-family: 'Bebas Neue', sans-serif; font-size: 36px;
+    color: var(--accent); letter-spacing: 0.04em; line-height: 1;
+  }
+  .report-stat-val.rsv-green { color: #4ade80; }
+  .report-stat-sub { font-size: 11px; color: var(--muted); margin-top: 3px; line-height: 1.4; }
+  .report-pay-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 9px 0; border-bottom: 1px solid rgba(30,38,64,0.6);
+  }
+  .report-pay-row:last-child { border-bottom: none; }
+  .report-pay-left { display: flex; align-items: center; gap: 7px; }
+  .report-pay-amount {
+    font-family: 'DM Mono', monospace; font-size: 13px;
+    color: var(--accent); font-weight: 500;
+  }
+  .report-bar-track {
+    height: 4px; background: var(--border); border-radius: 3px;
+    overflow: hidden; margin-top: 3px; width: 80px;
+  }
+  .report-bar-fill { height: 100%; border-radius: 3px; }
+  @media (max-width: 479px) {
+    .report-grid-2col { grid-template-columns: 1fr 1fr; }
+  }
+
   .status-toggle.sold {
     background: rgba(239,68,68,0.1); color: #f87171;
     border-color: rgba(239,68,68,0.3);
@@ -2561,6 +2764,9 @@
           <button class="admin-tab" id="adminTabInventory" onclick="switchAdminTab('inventory')">
             📋 All Inventory
           </button>
+          <button class="admin-tab" id="adminTabReport" onclick="switchAdminTab('report')" style="display:none">
+            📊 Report
+          </button>
         </div>
       </div>
 
@@ -2584,6 +2790,7 @@
           <h2 id="inventoryTitle">Inventory</h2>
           <input type="text" class="search-input" id="sellerSearchInput" placeholder="Search cards…" oninput="applyInventoryFilters()">
           <button class="btn btn-ghost" id="selectAllBtn" onclick="selectAll()" style="display:none">Select All</button>
+          <button class="btn-bulk-delete" id="bulkDeleteBtn" onclick="confirmBulkDelete()">🗑 Delete Selected</button>
           <button class="btn btn-ghost" id="backToShowsBtn" style="display:none;font-size:0.8rem" onclick="switchAdminTab('shows')">← Shows</button>
         </div>
 
@@ -2637,6 +2844,8 @@
               <th style="width:110px">Grade</th>
               <th style="width:80px">Price</th>
               <th style="width:160px">Status</th>
+              <th style="width:90px" id="thSoldPrice">Sold</th>
+              <th style="width:80px" id="thPayment">Payment</th>
             </tr>
           </thead>
           <tbody id="inventoryBody">
@@ -2650,6 +2859,57 @@
             </tr>
           </tbody>
         </table>
+      </div>
+      <!-- ── Show Report Panel ── -->
+      <div id="adminReportPanel" style="display:none; padding: 0.25rem 0 0.5rem;">
+        <div class="report-grid-2col">
+          <div class="report-stat-card">
+            <div class="report-stat-label">Revenue</div>
+            <div class="report-stat-val rsv-green" id="rptRevenue">$0</div>
+            <div class="report-stat-sub" id="rptRevSub">0 transactions</div>
+          </div>
+          <div class="report-stat-card">
+            <div class="report-stat-label">vs. Ask</div>
+            <div class="report-stat-val" id="rptVsAsk">—</div>
+            <div class="report-stat-sub" id="rptVsAskSub">No sales yet</div>
+          </div>
+          <div class="report-stat-card">
+            <div class="report-stat-label">Ask remaining</div>
+            <div class="report-stat-val" id="rptAskLeft">—</div>
+            <div class="report-stat-sub" id="rptAskLeftSub">—</div>
+          </div>
+          <div class="report-stat-card">
+            <div class="report-stat-label">Sell-through</div>
+            <div class="report-stat-val" id="rptSellThru">0%</div>
+            <div class="report-stat-sub" id="rptSellThruSub">—</div>
+          </div>
+        </div>
+        <div class="report-stat-card" style="margin-bottom:12px">
+          <div class="report-stat-label">Revenue by payment method</div>
+          <div id="rptPayBreakdown">
+            <div style="color:var(--muted);font-size:13px;padding:12px 0">No transactions yet</div>
+          </div>
+        </div>
+        <div class="report-stat-card">
+          <div class="report-stat-label">Transaction log</div>
+          <div style="overflow-x:auto">
+            <table style="width:100%;border-collapse:collapse;font-size:12px" id="rptTxTable">
+              <thead>
+                <tr>
+                  <th style="text-align:left;padding:6px 8px;font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--border)">Card</th>
+                  <th style="text-align:left;padding:6px 8px;font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--border)">Ask</th>
+                  <th style="text-align:left;padding:6px 8px;font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--border)">Sold</th>
+                  <th style="text-align:left;padding:6px 8px;font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--border)">+/-</th>
+                  <th style="text-align:left;padding:6px 8px;font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--border)">Payment</th>
+                  <th style="text-align:left;padding:6px 8px;font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--border)">Time</th>
+                </tr>
+              </thead>
+              <tbody id="rptTxBody">
+                <tr><td colspan="6" style="padding:16px 8px;color:var(--muted);font-size:12px">No sales yet</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div><!-- /adminInventoryPanel -->
   </div><!-- /main-content -->
@@ -2928,14 +3188,75 @@
 
       </div>
 
-      <div class="modal-actions">
-        <button class="btn btn-primary" style="flex:1" onclick="saveCEM()">Save Changes</button>
+      <div class="modal-actions" style="flex-wrap:wrap;gap:0.5rem">
+        <button class="btn btn-primary" style="flex:1;min-width:120px" onclick="saveCEM()">Save Changes</button>
         <button class="btn-modal-close" onclick="closeCEM()">Cancel</button>
+        <button class="btn-delete-card" onclick="confirmDeleteCard()">🗑 Delete</button>
       </div>
 
     </div>
   </div>
 
+</div>
+
+<!-- ═══════════════ SELL DRAWER ═══════════════ -->
+<div class="drawer-overlay" id="sellDrawerOverlay" onclick="if(event.target===this)closeSellDrawer()">
+  <div class="drawer" id="sellDrawer">
+    <div class="drawer-handle"></div>
+    <div class="drawer-header">
+      <div class="drawer-player" id="sdPlayer">—</div>
+      <div class="drawer-card-sub" id="sdCardSub">—</div>
+      <div class="drawer-ask">Asking <span id="sdAsk">—</span></div>
+    </div>
+    <div class="drawer-body">
+      <div>
+        <div class="drawer-field-label">Sold price</div>
+        <div class="sold-price-wrap">
+          <span class="sold-price-sym">$</span>
+          <input class="sold-price-input" id="sdPrice" type="number"
+            inputmode="decimal" placeholder="0"
+            oninput="sdSyncQBtns()">
+        </div>
+        <div class="quick-price-btns" id="sdQBtns"></div>
+      </div>
+      <div>
+        <div class="drawer-field-label">Payment method</div>
+        <div class="payment-grid">
+          <div class="pay-opt" onclick="sdSelPay(this,'Cash')">
+            <div class="pay-opt-icon">💵</div>
+            <div class="pay-opt-label">Cash</div>
+          </div>
+          <div class="pay-opt" onclick="sdSelPay(this,'Venmo')">
+            <div class="pay-opt-icon">💙</div>
+            <div class="pay-opt-label">Venmo</div>
+          </div>
+          <div class="pay-opt" onclick="sdSelPay(this,'Zelle')">
+            <div class="pay-opt-icon">⚡</div>
+            <div class="pay-opt-label">Zelle</div>
+          </div>
+          <div class="pay-opt" onclick="sdSelPay(this,'PayPal')">
+            <div class="pay-opt-icon">🅿️</div>
+            <div class="pay-opt-label">PayPal</div>
+          </div>
+          <div class="pay-opt" onclick="sdSelPay(this,'Square')">
+            <div class="pay-opt-icon">⬛</div>
+            <div class="pay-opt-label">Square</div>
+          </div>
+          <div class="pay-opt" onclick="sdSelPay(this,'Other')">
+            <div class="pay-opt-icon">···</div>
+            <div class="pay-opt-label">Other</div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="drawer-field-label">Notes (optional)</div>
+        <textarea class="sale-notes-input" id="sdNotes"
+          placeholder="Buyer name, trade details…"></textarea>
+      </div>
+      <button class="btn-confirm-sale" onclick="sdConfirm()">✓ Confirm Sale</button>
+      <button class="btn-cancel-sale" onclick="closeSellDrawer()">Cancel</button>
+    </div>
+  </div>
 </div>
 
 <!-- ═══════════════ BUYER VIEW ═══════════════ -->
@@ -4339,7 +4660,7 @@ function renderSellerTable(rows) {
 
     return `
     <tr id="inv-row-${realIdx}">
-      <td class="checkbox-cell"><input type="checkbox" class="card-check" data-idx="${realIdx}" ${status !== 'Sold' ? 'checked' : ''}></td>
+      <td class="checkbox-cell"><input type="checkbox" class="card-check" data-idx="${realIdx}" ${status !== 'Sold' ? 'checked' : ''} onchange="updateBulkDeleteVisibility()"></td>
       <td>
         <div class="card-title" style="${status === 'Sold' ? 'opacity:0.4;text-decoration:line-through' : ''}">${r['Card Title'] || '—'}</div>
         <div class="card-sub" style="font-family:'DM Mono',monospace;font-size:0.65rem;color:var(--muted);margin-top:0.15rem">
@@ -4361,6 +4682,21 @@ function renderSellerTable(rows) {
           </div>
           <button class="btn-card-edit" onclick="openCEM(${realIdx})">✏ Edit</button>
         </div>
+      </td>
+      <td data-label="Sold">
+        ${r.SoldPrice != null
+          ? `<div class="sold-price-cell">$${Number(r.SoldPrice).toLocaleString()}</div>
+             <div class="price-delta-sm ${r.SoldPrice >= Number(r.Price) ? 'pos' : 'neg'}">
+               ${r.SoldPrice >= Number(r.Price) ? '+' : '-'}$${Math.abs(r.SoldPrice - Number(r.Price)).toLocaleString()}
+             </div>`
+          : `<span style="color:var(--muted);font-size:0.72rem">—</span>`
+        }
+      </td>
+      <td data-label="Payment">
+        ${r.PaymentMethod
+          ? `<span class="pay-chip-sm ${r.PaymentMethod}">${r.PaymentMethod}</span>`
+          : `<span style="color:var(--muted);font-size:0.72rem">—</span>`
+        }
       </td>
     </tr>`;
   }).join('');
@@ -5013,45 +5349,197 @@ let currentDisplayRows = [];
 // ── LIVE INVENTORY STATUS ──
 const STATUS_CYCLE = ['Available', 'On Hold', 'Sold'];
 
+// ── SELL DRAWER STATE ──
+let sdActiveIdx = null;
+let sdSelectedPayment = null;
+
 function cycleStatus(realIdx, el) {
   const card = inventory[realIdx];
   if (!card) return;
   const cur = card.Status || 'Available';
-  const next = STATUS_CYCLE[(STATUS_CYCLE.indexOf(cur) + 1) % STATUS_CYCLE.length];
-  card.Status = next;
 
-  // Update toggle UI
-  const cls = next === 'Sold' ? 'sold' : next === 'On Hold' ? 'hold' : 'available';
-  const icon = next === 'Sold' ? '✕' : next === 'On Hold' ? '⏸' : '●';
-  el.className = `status-toggle ${cls}`;
-  el.innerHTML = `<span class="status-dot"></span>${icon} ${next}`;
-
-  // Dim/restore the row
-  const row = document.getElementById(`inv-row-${realIdx}`);
-  if (row) {
-    row.classList.add('row-flash');
-    setTimeout(() => row.classList.remove('row-flash'), 800);
-    // Dim sold rows
-    row.querySelectorAll('td').forEach((td, i) => {
-      if (i > 0 && i < 6) td.style.opacity = next === 'Sold' ? '0.35' : '';
-    });
-    const titleEl = row.querySelector('.card-title');
-    if (titleEl) titleEl.style.textDecoration = next === 'Sold' ? 'line-through' : '';
+  // Sold → Available (undo sale, clear captured data)
+  if (cur === 'Sold') {
+    card.Status        = 'Available';
+    card.SoldPrice     = null;
+    card.PaymentMethod = null;
+    card.SaleNotes     = null;
+    card.SoldTime      = null;
+    updateCardInDB(card);
+    syncBuyerView();
+    updateStats();
+    updateReport();
+    renderSellerTable(getSellerInventory());
+    showToast(`🟢 ${card.Player || 'Card'} restored to Available`);
+    return;
   }
 
-  // Uncheck checkbox if sold
-  const cb = document.querySelector(`.card-check[data-idx="${realIdx}"]`);
-  if (cb) cb.checked = next !== 'Sold';
+  // On Hold → Available
+  if (cur === 'On Hold') {
+    card.Status = 'Available';
+    updateCardInDB(card);
+    syncBuyerView();
+    updateStats();
+    renderSellerTable(getSellerInventory());
+    showToast(`🟢 ${card.Player || 'Card'} back to Available`);
+    return;
+  }
 
-  // Persist status change to Supabase
+  // Available → open sell drawer
+  openSellDrawer(realIdx);
+}
+
+function openSellDrawer(realIdx) {
+  const card = inventory[realIdx];
+  if (!card) return;
+  sdActiveIdx = realIdx;
+  sdSelectedPayment = null;
+
+  document.getElementById('sdPlayer').textContent =
+    card.Player || card['Card Title'] || 'Card';
+  document.getElementById('sdCardSub').textContent =
+    [card['Card Title'],
+     card.Grader && card.Grade != null ? card.Grader + ' ' + card.Grade : null
+    ].filter(Boolean).join(' · ');
+  document.getElementById('sdAsk').textContent =
+    '$' + Number(card.Price || 0).toLocaleString();
+  document.getElementById('sdPrice').value = '';
+  document.getElementById('sdNotes').value = '';
+  document.querySelectorAll('.pay-opt').forEach(b => b.classList.remove('pay-selected'));
+
+  const ask = Number(card.Price || 0);
+  const prices = [ask, Math.round(ask * 0.95), Math.round(ask * 0.9)];
+  const labels = [
+    'Ask $' + ask.toLocaleString(),
+    '-5% $' + Math.round(ask * 0.95).toLocaleString(),
+    '-10% $' + Math.round(ask * 0.9).toLocaleString()
+  ];
+  document.getElementById('sdQBtns').innerHTML = prices
+    .map((p, i) => `<button class="qp-btn" onclick="sdSetPrice(${p})">${labels[i]}</button>`)
+    .join('');
+
+  document.getElementById('sellDrawerOverlay').classList.add('open');
+  setTimeout(() => document.getElementById('sdPrice').focus(), 350);
+}
+
+function sdSetPrice(p) {
+  document.getElementById('sdPrice').value = p;
+  document.querySelectorAll('.qp-btn').forEach(b => {
+    b.classList.toggle('qp-active',
+      parseInt(b.textContent.replace(/[^0-9]/g, '')) === p);
+  });
+}
+
+function sdSyncQBtns() {
+  document.querySelectorAll('.qp-btn').forEach(b => b.classList.remove('qp-active'));
+}
+
+function sdSelPay(el, method) {
+  document.querySelectorAll('.pay-opt').forEach(b => b.classList.remove('pay-selected'));
+  el.classList.add('pay-selected');
+  sdSelectedPayment = method;
+}
+
+function sdConfirm() {
+  const price = parseFloat(document.getElementById('sdPrice').value);
+  if (!price || price <= 0) { showToast('⚠️ Enter a sold price', 'var(--danger)'); return; }
+  if (!sdSelectedPayment)   { showToast('⚠️ Select a payment method', 'var(--danger)'); return; }
+
+  const card = inventory[sdActiveIdx];
+  card.Status        = 'Sold';
+  card.SoldPrice     = price;
+  card.PaymentMethod = sdSelectedPayment;
+  card.SaleNotes     = document.getElementById('sdNotes').value || null;
+  card.SoldTime      = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  closeSellDrawer();
   updateCardInDB(card);
-
-  // Live-sync buyer view — filter out sold, update counts
   syncBuyerView();
   updateStats();
+  updateReport();
+  renderSellerTable(getSellerInventory());
+  showToast(`✓ ${card.Player || 'Card'} · $${price.toLocaleString()} · ${sdSelectedPayment}`);
+}
 
-  const statusEmoji = next === 'Sold' ? '🔴' : next === 'On Hold' ? '🟡' : '🟢';
-  showToast(`${statusEmoji} ${card.Player || 'Card'} marked as ${next}`);
+function closeSellDrawer() {
+  document.getElementById('sellDrawerOverlay').classList.remove('open');
+  sdActiveIdx = null;
+  sdSelectedPayment = null;
+}
+
+function updateReport() {
+  const scoped    = getSellerInventory();
+  const soldCards = scoped.filter(r => r.Status === 'Sold');
+  const total     = scoped.length;
+  const revenue   = soldCards.reduce((s, r) => s + (Number(r.SoldPrice) || 0), 0);
+  const askOfSold = soldCards.reduce((s, r) => s + (Number(r.Price)     || 0), 0);
+  const askLeft   = scoped.filter(r => r.Status !== 'Sold').reduce((s, r) => s + (Number(r.Price) || 0), 0);
+  const pct       = askOfSold ? Math.round(revenue / askOfSold * 100) : null;
+  const el = id => document.getElementById(id);
+  if (!el('rptRevenue')) return;
+
+  el('rptRevenue').textContent = '$' + revenue.toLocaleString();
+  el('rptRevSub').textContent  = soldCards.length + ' transaction' +
+    (soldCards.length !== 1 ? 's' : '') +
+    (soldCards.length ? ' · avg $' + Math.round(revenue / soldCards.length).toLocaleString() : '');
+  el('rptVsAsk').textContent    = pct != null ? pct + '%' : '—';
+  el('rptVsAskSub').textContent = pct != null
+    ? '$' + Math.abs(revenue - askOfSold).toLocaleString() + ' ' + (revenue >= askOfSold ? 'above' : 'below') + ' ask'
+    : 'No sales yet';
+  el('rptAskLeft').textContent    = '$' + askLeft.toLocaleString();
+  el('rptAskLeftSub').textContent = scoped.filter(r => r.Status !== 'Sold').length + ' cards remaining';
+  el('rptSellThru').textContent    = total ? Math.round(soldCards.length / total * 100) + '%' : '0%';
+  el('rptSellThruSub').textContent = soldCards.length + ' of ' + total + ' cards sold';
+
+  const methods = ['Cash','Venmo','Zelle','PayPal','Square','Other'];
+  const colors  = {Cash:'#22c55e',Venmo:'#3b82f6',Zelle:'#c084fc',PayPal:'#f59e0b',Square:'#ef4444',Other:'#5a6585'};
+  const totals  = {};
+  soldCards.forEach(r => {
+    const m = r.PaymentMethod || 'Other';
+    totals[m] = (totals[m] || 0) + (Number(r.SoldPrice) || 0);
+  });
+  const maxAmt = Math.max(...Object.values(totals), 1);
+  const payEl  = el('rptPayBreakdown');
+  if (!soldCards.length) {
+    payEl.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:12px 0">No transactions yet</div>';
+  } else {
+    payEl.innerHTML = methods.filter(m => totals[m]).map(m => {
+      const cnt = soldCards.filter(r => (r.PaymentMethod || 'Other') === m).length;
+      return `<div class="report-pay-row">
+        <div class="report-pay-left">
+          <span class="pay-chip-sm ${m}">${m}</span>
+          <span style="font-size:13px;font-weight:500;color:var(--text)">${m}</span>
+          <span style="font-family:'DM Mono',monospace;font-size:10px;color:var(--muted)">${cnt} sale${cnt!==1?'s':''}</span>
+        </div>
+        <div style="text-align:right">
+          <div class="report-pay-amount">$${totals[m].toLocaleString()}</div>
+          <div class="report-bar-track">
+            <div class="report-bar-fill" style="width:${Math.round(totals[m]/maxAmt*100)}%;background:${colors[m]||'#5a6585'}"></div>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  const tbody = el('rptTxBody');
+  if (!soldCards.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="padding:16px 8px;color:var(--muted);font-size:12px">No sales yet</td></tr>';
+  } else {
+    tbody.innerHTML = soldCards.map(r => {
+      const delta = (Number(r.SoldPrice) || 0) - (Number(r.Price) || 0);
+      return `<tr>
+        <td style="padding:7px 8px;border-bottom:1px solid rgba(30,38,64,.5)">
+          <div style="font-weight:500;font-size:12px;color:var(--text)">${r.Player || '—'}</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:1px">${r['Card Title'] || ''}</div>
+        </td>
+        <td style="padding:7px 8px;border-bottom:1px solid rgba(30,38,64,.5);font-family:'DM Mono',monospace;font-size:11px;color:var(--muted)">$${Number(r.Price||0).toLocaleString()}</td>
+        <td style="padding:7px 8px;border-bottom:1px solid rgba(30,38,64,.5);font-family:'DM Mono',monospace;font-size:12px;color:#4ade80;font-weight:500">$${Number(r.SoldPrice).toLocaleString()}</td>
+        <td style="padding:7px 8px;border-bottom:1px solid rgba(30,38,64,.5);font-family:'DM Mono',monospace;font-size:11px;color:${delta>=0?'#4ade80':'#f87171'}">${delta>=0?'+':'-'}$${Math.abs(delta).toLocaleString()}</td>
+        <td style="padding:7px 8px;border-bottom:1px solid rgba(30,38,64,.5)"><span class="pay-chip-sm ${r.PaymentMethod||'Other'}">${r.PaymentMethod||'—'}</span></td>
+        <td style="padding:7px 8px;border-bottom:1px solid rgba(30,38,64,.5);font-family:'DM Mono',monospace;font-size:10px;color:var(--muted)">${r.SoldTime||'—'}</td>
+      </tr>`;
+    }).join('');
+  }
 }
 
 function syncBuyerView() {
@@ -5258,6 +5746,8 @@ function loginAsSeller(handle) {
   const backToShows  = document.getElementById('backToShowsBtn');
   if (selectAllBtn) selectAllBtn.style.display = '';
   if (backToShows)  backToShows.style.display  = 'none';
+  const reportTabBtn = document.getElementById('adminTabReport');
+  if (reportTabBtn) reportTabBtn.style.display = '';
 
   // Ensure inventory panel is visible (not hidden by a prior admin session)
   const invPanel = document.getElementById('adminInventoryPanel');
@@ -7059,6 +7549,7 @@ function selectAll() {
   const boxes = document.querySelectorAll('.card-check');
   const anyUnchecked = [...boxes].some(b => !b.checked);
   boxes.forEach(b => { b.checked = anyUnchecked; });
+  updateBulkDeleteVisibility();
 }
 
 // ── ADMIN TAB SYSTEM ──
@@ -7066,24 +7557,42 @@ let _adminTab = 'shows'; // 'shows' | 'inventory'
 
 function switchAdminTab(tab) {
   _adminTab = tab;
-  const showsTab  = document.getElementById('adminTabShows');
-  const invTab    = document.getElementById('adminTabInventory');
-  const dashboard = document.getElementById('adminShowsDashboard');
-  const inventory = document.getElementById('adminInventoryPanel');
-  const filterBar = document.getElementById('adminFilterBar');
+  const showsTab    = document.getElementById('adminTabShows');
+  const invTab      = document.getElementById('adminTabInventory');
+  const reportTab   = document.getElementById('adminTabReport');
+  const dashboard   = document.getElementById('adminShowsDashboard');
+  const invPanel    = document.getElementById('adminInventoryPanel');
+  const reportPanel = document.getElementById('adminReportPanel');
+  const filterBar   = document.getElementById('adminFilterBar');
+  const tableWrap   = invPanel ? invPanel.querySelector('.table-wrap') : null;
+
+  [showsTab, invTab, reportTab].forEach(t => t && t.classList.remove('active'));
+  [dashboard, invPanel, reportPanel].forEach(p => p && (p.style.display = 'none'));
 
   if (tab === 'shows') {
-    showsTab.classList.add('active');
-    invTab.classList.remove('active');
+    showsTab && showsTab.classList.add('active');
     if (dashboard) dashboard.style.display = 'block';
-    if (inventory) inventory.style.display = 'none';
     renderAdminShowsDashboard();
+
+  } else if (tab === 'report') {
+    reportTab && reportTab.classList.add('active');
+    if (invPanel) {
+      invPanel.style.display = 'block';
+      if (tableWrap) tableWrap.style.display = 'none';
+      if (reportPanel) reportPanel.style.display = 'block';
+      if (filterBar) filterBar.classList.remove('visible');
+    }
+    const backBtn = document.getElementById('backToShowsBtn');
+    const selectAllBtn = document.getElementById('selectAllBtn');
+    if (backBtn) backBtn.style.display = 'none';
+    if (selectAllBtn) selectAllBtn.style.display = 'none';
+    updateReport();
+
   } else {
-    invTab.classList.add('active');
-    showsTab.classList.remove('active');
-    if (dashboard) dashboard.style.display = 'none';
-    if (inventory) inventory.style.display = 'block';
-    // Show "← Shows" back button for admins, hide Select All
+    invTab && invTab.classList.add('active');
+    if (invPanel) invPanel.style.display = 'block';
+    if (reportPanel) reportPanel.style.display = 'none';
+    if (tableWrap) tableWrap.style.display = '';
     const backBtn      = document.getElementById('backToShowsBtn');
     const selectAllBtn = document.getElementById('selectAllBtn');
     if (backBtn)      backBtn.style.display      = currentRole === 'admin' ? '' : 'none';
@@ -7639,6 +8148,47 @@ function closeCEM() {
   _cemIdx = null;
 }
 
+function confirmDeleteCard() {
+  if (_cemIdx === null) return;
+  const card = inventory[_cemIdx];
+  if (!card) return;
+  const label = card.Player || card['Card Title'] || 'this card';
+  if (!confirm(`Delete "${label}"? This cannot be undone.`)) return;
+  closeCEM();
+  deleteCardFromDB(card);
+  inventory.splice(_cemIdx, 1);
+  renderSellerTable(getSellerInventory());
+  updateStats();
+  updateReport();
+  syncBuyerView();
+  showToast(`🗑 ${label} deleted`);
+}
+
+function confirmBulkDelete() {
+  const checked = document.querySelectorAll('.card-check:checked');
+  if (!checked.length) { showToast('No cards selected'); return; }
+  const indices = [...checked].map(cb => parseInt(cb.dataset.idx));
+  const cards   = indices.map(i => inventory[i]).filter(Boolean);
+  if (!cards.length) return;
+  if (!confirm(`Delete ${cards.length} card${cards.length !== 1 ? 's' : ''}? This cannot be undone.`)) return;
+  cards.forEach(c => deleteCardFromDB(c));
+  indices.sort((a, b) => b - a).forEach(i => inventory.splice(i, 1));
+  renderSellerTable(getSellerInventory());
+  updateStats();
+  updateReport();
+  syncBuyerView();
+  const bulkBtn = document.getElementById('bulkDeleteBtn');
+  if (bulkBtn) bulkBtn.classList.remove('visible');
+  showToast(`🗑 ${cards.length} card${cards.length !== 1 ? 's' : ''} deleted`);
+}
+
+function updateBulkDeleteVisibility() {
+  const checked = document.querySelectorAll('.card-check:checked');
+  const bulkBtn = document.getElementById('bulkDeleteBtn');
+  if (!bulkBtn) return;
+  bulkBtn.classList.toggle('visible', checked.length > 0);
+}
+
 function cemToggle() {
   const graded = !!document.getElementById('cem_grader').value;
   document.getElementById('cem_cond_row').style.display = graded ? 'none' : 'block';
@@ -7756,6 +8306,10 @@ function dbRowToCard(row) {
     Location:        row.location      || null,
     _shows:          new Set(),
   };
+  if (row.sold_price     != null) card.SoldPrice     = row.sold_price;
+  if (row.payment_method)         card.PaymentMethod = row.payment_method;
+  if (row.sale_notes)             card.SaleNotes     = row.sale_notes;
+  if (row.sold_time)              card.SoldTime      = row.sold_time;
   return validateAndNormalizeCard(card);
 }
 
@@ -7842,13 +8396,34 @@ async function insertCardToDB(card) {
 }
 
 // ── Update an existing card in Supabase ──
+// ── Delete a single card from Supabase ──
+async function deleteCardFromDB(card) {
+  if (typeof db === 'undefined' || !card._dbId) return;
+  try {
+    const { error } = await db
+      .from('inventory')
+      .delete()
+      .eq('id', card._dbId);
+    if (error) console.warn('deleteCardFromDB failed:', error.message);
+  } catch(e) {
+    console.warn('deleteCardFromDB error:', e.message);
+  }
+}
+
 async function updateCardInDB(card) {
   if (typeof db === 'undefined' || !card._dbId) return;
 
   try {
+    const payload = {
+      ...cardToDbRow(card),
+      sold_price:     card.SoldPrice     ?? null,
+      payment_method: card.PaymentMethod ?? null,
+      sale_notes:     card.SaleNotes     ?? null,
+      sold_time:      card.SoldTime      ?? null,
+    };
     const { error } = await db
       .from('inventory')
-      .update(cardToDbRow(card))
+      .update(payload)
       .eq('id', card._dbId);
 
     if (error) console.warn('Update failed:', error.message);
@@ -7912,21 +8487,8 @@ async function upsertCardsToDB(cards) {
   }
 }
 
-// ── SESSION PERSISTENCE — auto-login if Supabase session exists ──
-(async () => {
-  try {
-    const { data: { session } } = await db.auth.getSession();
-    if (!session) return;
-    const uid = session.user.id;
-    // Check admin first, then seller
-    const { data: adminRow } = await db.from('admins').select('id').eq('id', uid).maybeSingle();
-    if (adminRow) { loginAsAdmin(); return; }
-    const { data: seller } = await db.from('sellers').select('handle').eq('id', uid).maybeSingle();
-    if (seller?.handle) loginAsSeller(seller.handle);
-  } catch(e) {
-    console.warn('Session restore failed:', e.message);
-  }
-})();
+// Always show the login page on fresh navigation — clear any lingering Supabase session.
+db.auth.signOut().catch(() => {});
 
 </script>
 
