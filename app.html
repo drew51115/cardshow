@@ -3426,6 +3426,7 @@ function enterAsBuyer() {
   if (sellerQrPanel)  sellerQrPanel.classList.remove('visible');
 
   switchView('buyer');
+  loadDemoInventory();
   openBuyerShowPicker();
 }
 // ── END AUTH HOISTING ──
@@ -4278,7 +4279,20 @@ function renderSellerTable(rows) {
   if (thSeller) thSeller.style.display = isAdmin ? '' : 'none';
 
   if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="${isAdmin ? 12 : 11}"><div class="empty-state"><div class="icon">📂</div><p><strong>No inventory</strong><br>Upload a file to get started</p></div></td></tr>`;
+    if (currentRole === 'seller') {
+      tbody.innerHTML = `<tr><td colspan="11" style="padding:0">
+        <div style="text-align:center;padding:3rem 2rem;background:var(--card);border-radius:12px;margin:1rem 0;border:1px dashed var(--border)">
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:1.5rem;letter-spacing:0.05em;color:var(--text);margin-bottom:0.5rem">Your inventory is empty</div>
+          <div style="font-family:'DM Sans',sans-serif;font-size:0.88rem;color:var(--muted);margin-bottom:1.5rem">Add cards individually or upload a CSV to get started</div>
+          <div style="display:flex;gap:0.75rem;justify-content:center;flex-wrap:wrap">
+            <button class="btn btn-primary" onclick="openAddCard()">+ Add a Card</button>
+            <button class="btn btn-ghost" onclick="document.querySelector('#uploadZone input[type=file]').click()">↑ Upload CSV</button>
+          </div>
+        </div>
+      </td></tr>`;
+    } else {
+      tbody.innerHTML = `<tr><td colspan="${isAdmin ? 12 : 11}"><div class="empty-state"><div class="icon">📂</div><p><strong>No inventory</strong><br>Upload a file to get started</p></div></td></tr>`;
+    }
     return;
   }
   tbody.innerHTML = rows.map((r, displayIdx) => {
@@ -5223,6 +5237,10 @@ function loginAsSeller(handle) {
   if (invPanel) invPanel.style.display = 'block';
   if (dash)     dash.style.display     = 'none';
 
+  // Clear any demo/sample data so new sellers start with a blank slate
+  inventory.length = 0;
+  _demoInventoryLoaded = false;
+
   switchView('seller');
   renderSellerTable(getSellerInventory());
   updateStats();
@@ -5230,7 +5248,7 @@ function loginAsSeller(handle) {
   buildSellerQrPanel();
   updateProfileUI(handle);
 
-  // Fetch from Supabase — replaces sample data for this seller if DB has records
+  // Fetch from Supabase — loads only this seller's real cards
   fetchSellerInventoryFromDB(handle).then(loaded => {
     if (loaded) {
       renderSellerTable(getSellerInventory());
@@ -5296,6 +5314,10 @@ function loginAsAdmin() {
   document.getElementById('adminShowsPanel').style.display = 'block';
   document.getElementById('sellerQrPanel').classList.remove('visible');
   document.getElementById('sellerShowsPanel').style.display = 'none';
+
+  // Clear any demo/sample data — admin sees only real DB inventory
+  inventory.length = 0;
+  _demoInventoryLoaded = false;
 
   switchView('seller');
   updateStats();
@@ -7622,8 +7644,11 @@ function saveCEM() {
   showToast('✓ Card updated');
 }
 
-// ── LOAD SAMPLE DATA ON INIT ──
-(function initSampleData() {
+// ── LOAD SAMPLE DATA — buyer demo only, not on page load ──
+let _demoInventoryLoaded = false;
+function loadDemoInventory() {
+  if (_demoInventoryLoaded) return;
+  _demoInventoryLoaded = true;
   const incoming = SAMPLE.map(r => validateAndNormalizeCard({ ...r }));
   const seen = new Set();
   incoming.forEach(r => {
@@ -7631,7 +7656,9 @@ function saveCEM() {
     if (!seen.has(fp)) { seen.add(fp); inventory.push(r); }
   });
   seedSampleShows();
-})();
+}
+
+// Demo shows and inventory are loaded lazily when a buyer enters the demo flow.
 
 // ══════════════════════════════════════════════
 //  SUPABASE PERSISTENCE LAYER
