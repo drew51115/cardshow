@@ -45,14 +45,13 @@ admins        — id (uuid PRIMARY KEY REFERENCES auth.users) — admin identity
 - ✅ Show sellers — authorize, remove, table numbers (ascSetTable, setTableNumber, autoAssignTables)
 - ✅ Show inventory — publish writes to show_inventory junction table
 - ✅ seller-browse.html — fetches live inventory from Supabase on QR scan
-- ✅ Phase 2 email auth — Supabase email + password, sessions persist across refreshes
+- ✅ Phase 2 email auth — Supabase email + password auth
 
 ## Auth Status — Phase 2 Deployed
 - **Current:** Supabase email + password auth via `supabase.auth.signUp()` / `signInWithPassword()`
-- **Session persistence:** `supabase.auth.getSession()` on page load keeps sellers logged in
+- **Session persistence:** Intentionally disabled — `db.auth.signOut()` runs on every page load so the login page always shows on fresh navigation. Sellers log in each visit.
 - **Seller records:** linked to `auth.uid()` in the sellers table
 - **⚠ RLS policies:** still using permissive `using (true)` — tightening to `auth.uid() = seller_id` is the next priority
-- **⚠ Admin password:** still hardcoded `admin123` — needs replacing with a protected Supabase admin account
 
 ## Current RLS Policies (Needs Tightening)
 All tables currently use permissive `using (true)` / `with check (true)`.
@@ -60,14 +59,21 @@ Next step: replace with `auth.uid() = seller_id` for inventory, `auth.uid() = id
 
 ## Key Data Structures (in-memory runtime cache)
 ```js
-inventory[]     // [{Seller, 'Card Title', Player, Year, 'Set ', Price, Status, _dbId, _shows: Set, ...}]
-shows{}         // {showId: {id, name, date, location, status, accessCode, sellers: Set, tables: {}, publishedAt}}
-sellerProfiles  // {handle: {displayName, whatsapp, instagram}}
-currentRole     // 'seller' | 'admin' | 'buyer' | null
-currentSeller   // handle string or null
-buyerShowId     // active show for buyer view
-activeShowId    // active show for admin/seller
+inventory[]          // [{Seller, 'Card Title', Player, Year, 'Set ', Price, Status, _dbId, _shows: Set, ...}]
+shows{}              // {showId: {id, name, date, location, status, accessCode, sellers: Set, tables: {}, publishedAt}}
+sellerProfiles       // {handle: {displayName, whatsapp, instagram}}
+currentRole          // 'seller' | 'admin' | 'buyer' | null
+currentSeller        // handle string or null
+buyerShowId          // active show for buyer view
+activeShowId         // active show for admin/seller
+_demoInventoryLoaded // bool — guards loadDemoInventory() from running more than once per session
 ```
+
+## Demo / Sample Data — Buyer Only
+- `loadDemoInventory()` — loads SAMPLE cards into `inventory[]` and calls `seedSampleShows()`. **Only called from `enterAsBuyer()`**, never on page load.
+- `seedSampleShows()` — seeds the three demo shows into `shows{}` using the current inventory array. Only meaningful after `loadDemoInventory()` runs.
+- `_demoInventoryLoaded` flag — prevents duplicate loads if buyer navigates back to show picker.
+- `loginAsSeller()` and `loginAsAdmin()` both call `inventory.length = 0` and reset `_demoInventoryLoaded = false` to ensure demo cards never bleed into real sessions.
 
 ## Brand System
 ```css
@@ -83,7 +89,7 @@ Fonts: Bebas Neue (headlines), DM Sans (body), DM Mono (labels/badges), Barlow C
 
 ## Three User Roles
 - **Seller** — email + password login → inventory management → profile (display name, WhatsApp, Instagram) → joins shows → QR code for table
-- **Admin** — password: admin123 (⚠ needs replacing) → Shows dashboard (default) → All Inventory tab → create/manage shows, authorize sellers, assign tables, publish, share
+- **Admin** — Supabase Auth + admins table gate → Shows dashboard (default) → All Inventory tab → create/manage shows, authorize sellers, assign tables, publish, share
 - **Buyer** — guest → show picker → MLP Card Show demo (no code needed) → browse by sport/search → contact seller via WhatsApp or Instagram
 
 ## Key Functions Reference
@@ -110,6 +116,7 @@ Fonts: Bebas Neue (headlines), DM Sans (body), DM Mono (labels/badges), Barlow C
 ### Core UI Functions (app.html)
 - `renderAdminShowsDashboard()` — Shows tab full render
 - `switchAdminTab('shows'|'inventory')` — admin tab switcher
+- `switchView(v)` — switches active view panel; safe to call from async code (guards `event?.target`)
 - `publishSelectedToShow(showId)` — publish all authorized seller cards
 - `buildShowPageUrl(showId)` — generates hash-encoded show page URL
 - `copyShowPageLink(showId)` — opens share modal with URL
@@ -128,6 +135,10 @@ Fonts: Bebas Neue (headlines), DM Sans (body), DM Mono (labels/badges), Barlow C
 6. **Domain** — all absolute URLs use getcardshow.com. The old card-show.netlify.app domain is fully deprecated.
 7. **RLS currently permissive** — all policies use `using (true)`. Do not tighten until confirming auth.uid() is reliably set in all write paths.
 8. **Seller handle in DB** — inventory rows store seller_id (UUID), not handle. Always look up seller UUID by handle before querying inventory.
+9. **switchView() is async-safe** — guards `event?.target` so it can be called from async functions without throwing. Previously calling it after any `await` would throw a TypeError and halt the calling function silently.
+10. **No session restore on page load** — `db.auth.signOut()` runs on init. The login page always shows on fresh navigation. Do not re-add session restore without discussing UX implications first.
+11. **Demo inventory is buyer-only** — `loadDemoInventory()` must only be called from `enterAsBuyer()`. Never call it on page load or from seller/admin login paths.
+12. **partnershipLink visibility** — hidden in `loginAsSeller()` and `loginAsAdmin()`, restored in `signOut()`. Seller Profile button occupies the same nav-right area.
 
 ## Backlog Priority
 
@@ -135,12 +146,16 @@ Fonts: Bebas Neue (headlines), DM Sans (body), DM Mono (labels/badges), Barlow C
 - Supabase inventory persistence (read, write, edit, mark sold, CSV import)
 - Seller profile persistence (display name, WhatsApp, Instagram)
 - Shows persistence layer (create, edit, delete, sellers, table numbers, publish)
-- Phase 2 email authentication (Supabase Auth, session persistence)
+- Phase 2 email authentication (Supabase Auth)
+- Demo inventory gated to buyer flow only — sellers/admins start with empty inventory
+- Seller empty-state CTA ("Your inventory is empty" + Add Card / Upload CSV buttons)
+- switchView() async-safe fix — resolves blank seller screen on login
+- Partnership link / Profile button visibility fix
+- Login page always shown on fresh navigation (session restore removed)
 
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`
 - **eBay comp lookup at card entry** (urgent, medium complexity) — #1 pain point from seller feedback
-- **Replace admin123 password** (urgent, low complexity) — security risk now that real auth exists
 
 ### Tier 2 — First show retrospective
 - Barcode/camera scan for card entry (high complexity) — moved up from Tier 4 based on show feedback
