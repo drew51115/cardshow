@@ -186,7 +186,7 @@
   /* Stats */
   .stats-row {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(3, 1fr);
     gap: 0.75rem;
   }
   .stat-box {
@@ -790,7 +790,7 @@
       font-family: 'Bebas Neue', sans-serif; font-size: 1.05rem;
       color: var(--accent); letter-spacing: 0.04em;
     }
-    .stats-row { grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+    .stats-row { grid-template-columns: repeat(3, 1fr); gap: 0.5rem; }
     .stat-box { padding: 0.65rem; }
     .stat-box .val { font-size: 1.4rem; }
   }
@@ -853,7 +853,7 @@
       font-family: 'Bebas Neue', sans-serif; font-size: 1rem;
       color: var(--accent); letter-spacing: 0.04em;
     }
-    .stats-row { grid-template-columns: 1fr 1fr; gap: 0.4rem; }
+    .stats-row { grid-template-columns: repeat(3, 1fr); gap: 0.4rem; }
     .stat-box { padding: 0.55rem; }
     .stat-box .val { font-size: 1.3rem; }
     .stat-box .lbl { font-size: 0.58rem; }
@@ -2665,19 +2665,23 @@
       <div class="stats-row">
         <div class="stat-box">
           <div class="val" id="statTotal">0</div>
-          <div class="lbl">Total Cards</div>
+          <div class="lbl">Available</div>
         </div>
         <div class="stat-box">
           <div class="val" id="statValue">$0</div>
-          <div class="lbl">Total Value</div>
+          <div class="lbl">Ask Value</div>
         </div>
         <div class="stat-box">
           <div class="val" id="statGraded">0</div>
           <div class="lbl">Graded</div>
         </div>
-        <div class="stat-box">
-          <div class="val" id="statSellers">0</div>
-          <div class="lbl">Sellers</div>
+        <div class="stat-box" id="statSoldBox" style="display:none">
+          <div class="val" id="statSold" style="color:var(--green,#22c55e)">0</div>
+          <div class="lbl">Sold</div>
+        </div>
+        <div class="stat-box" id="statRevenueBox" style="display:none">
+          <div class="val" id="statRevenue" style="color:var(--green,#22c55e)">$0</div>
+          <div class="lbl">Revenue</div>
         </div>
       </div>
 
@@ -4764,23 +4768,34 @@ function clearAdminFilters() {
 }
 
 function updateStats() {
-  const scoped = getSellerInventory();
+  const scoped    = getSellerInventory();
+  const el        = id => document.getElementById(id);
 
-  const total   = scoped.length;
-  const value   = scoped.reduce((sum, r) => sum + (Number(r.Price) || 0), 0);
-  const graded  = scoped.filter(r => r.Grade && !isNaN(Number(r.Grade))).length;
-  const sellers = new Set(scoped.map(r => r.Seller).filter(Boolean)).size;
-
-  const el = id => document.getElementById(id);
-  if (el('statTotal'))   el('statTotal').textContent   = total.toLocaleString();
-  if (el('statValue'))   el('statValue').textContent   = '$' + value.toLocaleString();
-  if (el('statGraded'))  el('statGraded').textContent  = graded.toLocaleString();
-  if (el('statSellers')) el('statSellers').textContent = sellers.toLocaleString();
-
+  // Available = unsold cards only
+  const available = scoped.filter(r => r.Status !== 'Sold').length;
+  // Ask Value = sum of asking prices on unsold cards
+  const askValue  = scoped
+    .filter(r => r.Status !== 'Sold')
+    .reduce((sum, r) => sum + (Number(r.Price) || 0), 0);
+  // Graded = slabs in full inventory
+  const graded    = scoped.filter(r => r.Grade && !isNaN(Number(r.Grade))).length;
+  // Sold count + revenue — always computed, shown only when show is active
   const soldCards = scoped.filter(r => r.Status === 'Sold');
-  const revenue   = soldCards.reduce((s, r) => s + (Number(r.SoldPrice) || 0), 0);
-  if (el('statSoldCount')) el('statSoldCount').textContent = soldCards.length.toLocaleString();
-  if (el('statRevenue'))   el('statRevenue').textContent   = '$' + revenue.toLocaleString();
+  const soldCount = soldCards.length;
+  const revenue   = soldCards.reduce((sum, r) => sum + (Number(r.SoldPrice) || 0), 0);
+
+  if (el('statTotal'))   el('statTotal').textContent   = available.toLocaleString();
+  if (el('statValue'))   el('statValue').textContent   = '$' + askValue.toLocaleString();
+  if (el('statGraded'))  el('statGraded').textContent  = graded.toLocaleString();
+  if (el('statSold'))    el('statSold').textContent    = soldCount.toLocaleString();
+  if (el('statRevenue')) el('statRevenue').textContent = '$' + revenue.toLocaleString();
+
+  // Two-state: show Sold + Revenue chips only when a show is active
+  const showActive = !!activeShowId;
+  const soldBox    = el('statSoldBox');
+  const revBox     = el('statRevenueBox');
+  if (soldBox) soldBox.style.display = showActive ? '' : 'none';
+  if (revBox)  revBox.style.display  = showActive ? '' : 'none';
 }
 
 function populateAdminFilterOptions() {
