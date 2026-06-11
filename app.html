@@ -4560,7 +4560,7 @@ function switchView(v) {
   document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active'));
   document.getElementById('view-' + v).classList.add('active');
-  event.target.classList.add('active');
+  if (typeof event !== 'undefined' && event?.target) event.target.classList.add('active');
 }
 
 // ── DRAG & DROP ──
@@ -5081,12 +5081,12 @@ function selectQRSeller(seller) {
 
 // Minimal QR code renderer using qrcode-generator approach
 // We'll use the qrcodejs CDN library loaded dynamically
-function loadQRLib(cb) {
+function loadQRLib(cb, onErr) {
   if (window.QRCode) { cb(); return; }
   const s = document.createElement('script');
   s.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
   s.onload = cb;
-  s.onerror = () => { renderQRFallback('qrCanvas', activeQRSeller); };
+  s.onerror = onErr || (() => { renderQRFallback('qrCanvas', activeQRSeller); });
   document.head.appendChild(s);
 }
 
@@ -5216,6 +5216,10 @@ function loginAsSeller(handle) {
   const soHandle = document.getElementById('profileSignOutHandle');
   if (soHandle) soHandle.textContent = '@' + handle;
 
+  // Hide partnership link — replaced by Profile button for sellers
+  const partnerLink = document.getElementById('partnershipLink');
+  if (partnerLink) partnerLink.style.display = 'none';
+
   // Hide admin-only panels + filter bar
   document.getElementById('adminTabBar').style.display           = 'none';
   document.getElementById('adminShowsPanel').style.display       = 'none';
@@ -5306,6 +5310,8 @@ function loginAsAdmin() {
   if (navProfileBtn) navProfileBtn.style.display = 'none';
   const buyerSOBtn = document.getElementById('buyerSignOut');
   if (buyerSOBtn) buyerSOBtn.style.display = 'none';
+  const partnerLink = document.getElementById('partnershipLink');
+  if (partnerLink) partnerLink.style.display = 'none';
 
   showNavUser('Show Admin', 'Administrator', 'admin');
 
@@ -5373,6 +5379,8 @@ async function signOut() {
 
   const navProfileBtn = document.getElementById('navProfileBtn');
   if (navProfileBtn) navProfileBtn.style.display = 'none';
+  const partnerLink = document.getElementById('partnershipLink');
+  if (partnerLink) partnerLink.style.display = '';
 
   // Reset profile sign-out handle text
   const soHandle = document.getElementById('profileSignOutHandle');
@@ -7886,8 +7894,11 @@ async function upsertCardsToDB(cards) {
     const { data: { session } } = await db.auth.getSession();
     if (!session) return;
     const uid = session.user.id;
+    // Check admin first, then seller
+    const { data: adminRow } = await db.from('admins').select('id').eq('id', uid).maybeSingle();
+    if (adminRow) { loginAsAdmin(); return; }
     const { data: seller } = await db.from('sellers').select('handle').eq('id', uid).maybeSingle();
-    if (seller) loginAsSeller(seller.handle);
+    if (seller?.handle) loginAsSeller(seller.handle);
   } catch(e) {
     console.warn('Session restore failed:', e.message);
   }
