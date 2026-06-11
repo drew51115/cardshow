@@ -3662,12 +3662,15 @@ async function submitAuth() {
         if (error) { _setAuthError(error.message); return; }
 
         if (!data.session) {
-          // Email confirmation required
+          // Email confirmation required — show message AFTER toggleAuthMode
+          // (toggleAuthMode clears authError, so the message must be set after)
           if (btn) { btn.disabled = false; btn.textContent = 'Create Account →'; }
-          document.getElementById('authError').style.color = 'var(--success)';
-          document.getElementById('authError').textContent = 'Check your email to confirm your account, then sign in.';
-          toggleAuthMode(); // switch back to sign-in
-          document.getElementById('authError').style.color = '';
+          toggleAuthMode();
+          const errEl = document.getElementById('authError');
+          if (errEl) {
+            errEl.style.color = '#4ade80';
+            errEl.textContent = '✓ Account created — check your email to confirm, then sign in.';
+          }
           return;
         }
 
