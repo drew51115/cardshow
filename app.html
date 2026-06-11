@@ -5778,6 +5778,9 @@ function loginAsSeller(handle) {
     }
   });
 
+  // Load shows from Supabase so seller can see which shows they're authorized for
+  loadShowsFromDB().then(() => renderSellerShowsList());
+
   // Load seller profile from Supabase (display name, WhatsApp, Instagram)
   if (typeof db !== 'undefined') {
     db.from('sellers')
@@ -6156,21 +6159,31 @@ function openCreateShowModal(showId) {
     genAccessCode();
   }
 
-  // Build seller checkboxes
-  const allSellers = [...new Set(inventory.map(r => r.Seller).filter(Boolean))].sort();
+  // Build seller checkboxes — load from DB so all registered sellers appear,
+  // not just those who already have cards in inventory
   const authorizedSet = (showId && shows[showId]) ? shows[showId].sellers : new Set();
   const list = document.getElementById('smSellerList');
-  if (!allSellers.length) {
-    list.innerHTML = '<span style="font-size:0.78rem;color:var(--muted)">No sellers in inventory yet</span>';
-  } else {
-    list.innerHTML = allSellers.map(s => `
-      <div class="seller-chip ${authorizedSet.has(s) ? 'selected' : ''}" onclick="toggleSellerChip(this,'${s}')">
-        <span class="chip-check">${authorizedSet.has(s) ? '✓' : '+'}</span>${s}
-      </div>`).join('');
-  }
+  list.innerHTML = '<span style="font-size:0.78rem;color:var(--muted)">Loading sellers…</span>';
 
   modal.classList.add('open');
   document.body.style.overflow = 'hidden';
+
+  if (typeof db !== 'undefined') {
+    db.from('sellers').select('handle').order('handle').then(({ data, error }) => {
+      const dbHandles = (data || []).map(r => r.handle).filter(Boolean);
+      // Merge with any in-memory sellers (e.g. demo mode)
+      const memHandles = [...new Set(inventory.map(r => r.Seller).filter(Boolean))];
+      const allSellers = [...new Set([...dbHandles, ...memHandles])].sort();
+      if (!allSellers.length) {
+        list.innerHTML = '<span style="font-size:0.78rem;color:var(--muted)">No registered sellers yet</span>';
+      } else {
+        list.innerHTML = allSellers.map(s => `
+          <div class="seller-chip ${authorizedSet.has(s) ? 'selected' : ''}" onclick="toggleSellerChip(this,'${s}')">
+            <span class="chip-check">${authorizedSet.has(s) ? '✓' : '+'}</span>${s}
+          </div>`).join('');
+      }
+    });
+  }
 }
 
 function toggleSellerChip(el, seller) {
