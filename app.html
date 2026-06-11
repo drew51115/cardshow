@@ -7888,21 +7888,8 @@ async function upsertCardsToDB(cards) {
   }
 }
 
-// ── SESSION PERSISTENCE — auto-login if Supabase session exists ──
-(async () => {
-  try {
-    const { data: { session } } = await db.auth.getSession();
-    if (!session) return;
-    const uid = session.user.id;
-    // Check admin first, then seller
-    const { data: adminRow } = await db.from('admins').select('id').eq('id', uid).maybeSingle();
-    if (adminRow) { loginAsAdmin(); return; }
-    const { data: seller } = await db.from('sellers').select('handle').eq('id', uid).maybeSingle();
-    if (seller?.handle) loginAsSeller(seller.handle);
-  } catch(e) {
-    console.warn('Session restore failed:', e.message);
-  }
-})();
+// Always show the login page on fresh navigation — clear any lingering Supabase session.
+db.auth.signOut().catch(() => {});
 
 </script>
 
