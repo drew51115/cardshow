@@ -5936,8 +5936,8 @@ function loginAsAdmin() {
   updateStats();
   populateAdminFilterOptions();
 
-  // Load real shows from Supabase, then render
-  loadShowsFromDB().then(loaded => {
+  // Load real shows + seller handles from Supabase, then render
+  Promise.all([loadShowsFromDB(), refreshSellerHandlesCache()]).then(([loaded]) => {
     if (loaded) {
       renderAdminShowsList(); if(typeof renderAdminShowsDashboard==="function" && _adminTab==="shows") renderAdminShowsDashboard();
       showToast(`Shows loaded from database`);
@@ -6363,13 +6363,15 @@ function renderAdminShowsList() {
         ? `<span style="font-size:0.62rem;color:#4ade80;font-family:'DM Mono',monospace">✓ All tables set</span>`
         : `<span style="font-size:0.62rem;color:var(--gold);font-family:'DM Mono',monospace">${unassignedCount} need table #</span>`;
 
-    // Sellers dropdown
-    const knownSellers = [...new Set(inventory.map(r => r.Seller).filter(Boolean))].sort();
+    // Sellers dropdown — sourced from DB cache, not in-memory inventory
+    const knownSellers = _allSellerHandles.length
+      ? _allSellerHandles
+      : [...new Set(inventory.map(r => r.Seller).filter(Boolean))].sort();
     const unassigned   = knownSellers.filter(h => !s.sellers.has(h));
     const dropdownOpts = unassigned.length
-      ? `<option value="">+ Add from inventory…</option>` +
+      ? `<option value="">+ Add seller…</option>` +
         unassigned.map(h => `<option value="${h}">${h}</option>`).join('')
-      : `<option value="">All inventory sellers added</option>`;
+      : `<option value="">All registered sellers added</option>`;
 
     return `
     <div class="show-card ${isActive ? 'active-show' : ''}" onclick="selectAdminShow('${s.id}')">
@@ -8544,6 +8546,15 @@ function saveCEM() {
 
 // ── LOAD SAMPLE DATA — buyer demo only, not on page load ──
 let _demoInventoryLoaded = false;
+let _allSellerHandles = []; // cache of registered seller handles from DB
+
+async function refreshSellerHandlesCache() {
+  if (typeof db === 'undefined') return;
+  const { data, error } = await db.from('sellers').select('handle').order('handle');
+  if (!error && data) {
+    _allSellerHandles = data.map(r => r.handle).filter(Boolean);
+  }
+}
 function loadDemoInventory() {
   if (_demoInventoryLoaded) return;
   _demoInventoryLoaded = true;
