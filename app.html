@@ -3094,6 +3094,11 @@
           </select>
         </div>
 
+        <div style="grid-column:1/-1">
+          <div class="section-label" style="margin-bottom:0.3rem">Location <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--muted);font-family:'DM Sans',sans-serif;font-size:0.78rem">— box, binder, case slot…</span></div>
+          <input class="show-input" id="ac_location" placeholder="e.g. Binder 2 · Page 4 · Slot 3" style="margin:0">
+        </div>
+
       </div>
 
       <div class="modal-actions">
@@ -3196,6 +3201,11 @@
             <option value="On Hold">On Hold</option>
             <option value="Sold">Sold</option>
           </select>
+        </div>
+
+        <div style="grid-column:1/-1">
+          <div class="section-label" style="margin-bottom:0.3rem">Location <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--muted);font-family:'DM Sans',sans-serif;font-size:0.78rem">— box, binder, case slot…</span></div>
+          <input class="show-input" id="cem_location" placeholder="e.g. Binder 2 · Page 4 · Slot 3" style="margin:0">
         </div>
 
       </div>
@@ -4695,6 +4705,7 @@ function renderSellerTable(rows) {
         <div class="card-sub" style="font-family:'DM Mono',monospace;font-size:0.65rem;color:var(--muted);margin-top:0.15rem">
           ${[r.Player, r.Year, getSet(r)].filter(Boolean).join(' · ')}
         </div>
+        ${r.Location ? `<div style="font-family:'DM Mono',monospace;font-size:0.6rem;color:var(--muted);opacity:0.7;margin-top:0.1rem">📦 ${r.Location}</div>` : ''}
       </td>
       ${sellerCell}
       <td data-label="Grade">
@@ -7085,6 +7096,7 @@ const CS_FIELDS = [
   { key: 'Condition',        label: 'Condition',         required: false, hint: 'Gem Mint, Near Mint…' },
   { key: 'Price',            label: 'Price',             required: false, hint: 'Asking price (numeric)' },
   { key: 'Status',           label: 'Status',            required: false, hint: 'Available, Sold, On Hold' },
+  { key: 'Location',         label: 'Location',          required: false, hint: 'Box, binder, case slot…' },
   { key: 'Image URL',        label: 'Image URL',         required: false, hint: 'CDN URL for card image' },
   { key: '__SKIP__',          label: '— Skip this column —',         required: false, hint: '' },
   { key: '__SHOPIFY_TAGS__',  label: 'Shopify Tags (auto-parse)',     required: false, hint: 'Extracts grade, year, condition' },
@@ -7173,7 +7185,7 @@ const ALIAS_MAP = [
   [/^high\s*value$/i,           'low',    '__SKIP__'],
   [/^quantity$/i,               'low',    '__SKIP__'],
   [/^qty$/i,                    'low',    '__SKIP__'],
-  [/^location$/i,               'low',    '__SKIP__'],
+  [/^location$/i,               'high',   'Location'],
   [/^notes$/i,                  'low',    '__SKIP__'],
   [/^description$/i,            'medium', 'Card Title'],
   [/^sku$/i,                    'low',    '__SKIP__'],
@@ -7639,6 +7651,7 @@ function saveAddCard() {
     Condition:          !grader ? (document.getElementById('ac_condition').value || null) : null,
     Price:              parseFloat(document.getElementById('ac_price').value) || 0,
     Status:             document.getElementById('ac_status').value || 'Available',
+    Location:           document.getElementById('ac_location').value.trim() || null,
     Seller:             currentSeller,
   });
   card._shows = new Set();
@@ -8289,6 +8302,7 @@ function openCEM(idx) {
   document.getElementById('cem_condition').value = card.Condition           || '';
   document.getElementById('cem_price').value     = card.Price != null ? card.Price : '';
   document.getElementById('cem_status').value    = card.Status              || 'Available';
+  document.getElementById('cem_location').value  = card.Location            || '';
 
   cemToggle();
   document.getElementById('cardEditOverlay').classList.add('open');
@@ -8366,6 +8380,7 @@ function saveCEM() {
   card.Condition           = !grader ? (document.getElementById('cem_condition').value || null) : null;
   card.Price               = parseFloat(document.getElementById('cem_price').value) || 0;
   card.Status              = document.getElementById('cem_status').value || 'Available';
+  card.Location            = document.getElementById('cem_location').value.trim() || null;
 
   closeCEM();
   renderSellerTable(getSellerInventory());
