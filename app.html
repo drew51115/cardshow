@@ -6488,6 +6488,45 @@ function renderAdminShowsList() {
 // Stores show payload in localStorage (same origin as show.html)
 // then generates a clean short URL — no data in the query string.
 
+// Builds a minimal URL for QR codes — show metadata only, no card payload.
+// QR codes have a ~2-3KB data limit; the full card hash often exceeds this.
+function buildShowQrUrl(showId) {
+  const s = shows[showId];
+  if (!s) return null;
+  const prodOrigin = 'https://getcardshow.com';
+  const origin = (window.location.hostname === 'localhost' ||
+                  window.location.hostname === '127.0.0.1')
+    ? window.location.origin : prodOrigin;
+
+  const sellersSet = (s.sellers instanceof Set) ? s.sellers : new Set(Array.isArray(s.sellers) ? s.sellers : []);
+  const sellersArr = [...sellersSet];
+
+  const payload = {
+    m: {
+      id: s.id,
+      n:  s.name,
+      d:  s.date     || '',
+      l:  s.location || '',
+      st: s.status   || 'upcoming',
+      tb: s.tables   || {},
+      sl: sellersArr,
+      tc: 0,
+    },
+    c: [],
+  };
+
+  try {
+    const json   = JSON.stringify(payload);
+    const bytes  = new TextEncoder().encode(json);
+    const binary = Array.from(bytes).map(b => String.fromCharCode(b)).join('');
+    const encoded = btoa(binary).replace(/=+$/, '');
+    return `${origin}/show.html#${encoded}`;
+  } catch(e) {
+    console.error('buildShowQrUrl encode failed:', e);
+    return null;
+  }
+}
+
 function buildShowPageUrl(showId) {
   const s = shows[showId];
   if (!s) return null;
@@ -7017,10 +7056,11 @@ function openShowAccessQr(showId) {
   document.getElementById('saqSgnCardCount').textContent   = cardCnt.toLocaleString();
   document.getElementById('saqSgnSellerCount').textContent = sellCnt.toLocaleString();
 
-  // Render QR codes
+  // Render QR codes — use minimal metadata-only URL so payload fits QR data limit
+  const qrUrl = buildShowQrUrl(showId) || url;
   setTimeout(() => {
-    renderQR('saqCanvas',        show.accessCode, 200, url);
-    renderQR('saqCanvasSignage', show.accessCode, 200, url);
+    renderQR('saqCanvas',        show.accessCode, 200, qrUrl);
+    renderQR('saqCanvasSignage', show.accessCode, 200, qrUrl);
   }, 80);
 
   document.getElementById('showAccessQrOverlay').classList.add('open');
