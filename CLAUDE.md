@@ -33,7 +33,7 @@ shows         — id (text), name, date, location, status, access_code, publishe
 show_sellers  — show_id, seller_id (uuid → sellers.id), table_number (junction)
 inventory     — id (uuid), seller_id (uuid → sellers.id), card_title, player, year,
                 card_set, parallel, grader, grade, cert_number, condition, price,
-                status, location, created_at, updated_at
+                status, location, item_type, product_type, created_at, updated_at
 show_inventory — show_id, card_id (junction)
 admins        — id (uuid PRIMARY KEY REFERENCES auth.users) — admin identity gate
 ```
@@ -58,7 +58,7 @@ admins        — id (uuid PRIMARY KEY REFERENCES auth.users) — admin identity
 All tables currently use permissive `using (true)` / `with check (true)`.
 Next step: replace with `auth.uid() = seller_id` for inventory, `auth.uid() = id` for sellers.
 
-## Pending DB Migration (run in Supabase SQL editor)
+## Pending DB Migrations (run in Supabase SQL editor)
 Required for sold tracking to persist:
 ```sql
 ALTER TABLE inventory
@@ -68,9 +68,16 @@ ALTER TABLE inventory
   ADD COLUMN IF NOT EXISTS sold_time      text;
 ```
 
+Required for sealed product / lot support:
+```sql
+ALTER TABLE inventory
+  ADD COLUMN IF NOT EXISTS item_type    text DEFAULT 'card',
+  ADD COLUMN IF NOT EXISTS product_type text;
+```
+
 ## Key Data Structures (in-memory runtime cache)
 ```js
-inventory[]          // [{Seller, 'Card Title', Player, Year, 'Set ', Price, Status, _dbId, _shows: Set, ...}]
+inventory[]          // [{Seller, 'Card Title', Player, Year, 'Set ', Price, Status, item_type, product_type, _dbId, _shows: Set, ...}]
 shows{}              // {showId: {id, name, date, location, status, accessCode, sellers: Set, tables: {}, publishedAt}}
 sellerProfiles       // {handle: {displayName, whatsapp, instagram}}
 currentRole          // 'seller' | 'admin' | 'buyer' | null
@@ -78,6 +85,8 @@ currentSeller        // handle string or null
 buyerShowId          // active show for buyer view
 activeShowId         // active show for admin/seller
 _demoInventoryLoaded // bool — guards loadDemoInventory() from running more than once per session
+_allSellerHandles    // string[] — DB cache of all registered seller handles; refreshed on admin login
+_acItemType          // 'card' | 'sealed' | 'lot' — active item type in Add Card modal
 ```
 
 ## Demo / Sample Data — Buyer Only
@@ -117,7 +126,8 @@ Fonts: Bebas Neue (headlines), DM Sans (body), DM Mono (labels/badges), Barlow C
 - `updateTableNumberInDB(showId, handle, tableNum)` — table assignment
 - `publishShowInventoryToDB(showId)` — write show_inventory rows
 - `loadShowsFromDB()` — fetch all shows on admin login
-- `cardToDbRow(card)` / `dbRowToCard(row)` — field mapping helpers
+- `refreshSellerHandlesCache()` — fetches all seller handles from DB into `_allSellerHandles`; called on admin login in parallel with loadShowsFromDB
+- `cardToDbRow(card)` / `dbRowToCard(row)` — field mapping helpers (includes item_type, product_type)
 
 ### Auth Functions (app.html)
 - `submitAuth()` — async; handles seller sign-in/sign-up and admin sign-in via Supabase Auth
@@ -129,13 +139,17 @@ Fonts: Bebas Neue (headlines), DM Sans (body), DM Mono (labels/badges), Barlow C
 - `switchAdminTab('shows'|'inventory')` — admin tab switcher
 - `switchView(v)` — switches active view panel; safe to call from async code (guards `event?.target`)
 - `publishSelectedToShow(showId)` — publish all authorized seller cards
-- `buildShowPageUrl(showId)` — generates hash-encoded show page URL
+- `buildShowPageUrl(showId)` — generates full hash-encoded show page URL (up to 50 cards)
+- `buildShowQrUrl(showId)` — generates minimal metadata-only URL for QR codes (no card payload, avoids QR data limit)
 - `copyShowPageLink(showId)` — opens share modal with URL
 - `saveProfile()` — saves display name, WhatsApp, Instagram to memory + DB
 - `saveShow()` / `deleteShow(showId)` — create/delete shows
 - `ascSetTable(showId, handle, input)` — inline table assignment in dashboard
 - `setTableNumber(showId, handle, value)` — sidebar table assignment
 - `autoAssignTables(showId)` — auto-number all sellers 1–N
+- `openAddCard()` / `closeAddCard()` / `saveAddCard()` — Add Card modal (supports card / sealed / lot item types)
+- `acSetType(type)` — switches Add Card modal between 'card', 'sealed', 'lot' modes; shows/hides relevant fields
+- `acToggle()` — shows/hides condition field based on grader selection (card mode only)
 
 ## Critical Implementation Notes
 1. **show.html hash routing** — inventory encoded in URL hash via TextEncoder/TextDecoder. netlify.toml disables pretty URLs to prevent hash stripping on redirect. Hash must be decoded with TextDecoder, not escape/unescape (deprecated).
@@ -155,6 +169,9 @@ Fonts: Bebas Neue (headlines), DM Sans (body), DM Mono (labels/badges), Barlow C
 15. **loginAsSeller loads shows from DB** — `loadShowsFromDB()` is called on seller login so `renderSellerShowsList()` can show authorized shows immediately.
 16. **Stat strip is two-state** — 3 chips (Available / Ask Value / Graded) by default; Sold + Revenue chips appear only when `activeShowId` is set. Grid is 2-column so chips never overflow the sidebar.
 17. **Supabase Site URL must be set** — Authentication → URL Configuration in Supabase dashboard must point to `https://getcardshow.com` or confirmation email links go to localhost.
+18. **Admin sidebar seller dropdown uses DB cache** — `renderAdminShowsList()` reads `_allSellerHandles` (populated by `refreshSellerHandlesCache()` on login) rather than in-memory `inventory[]`. This ensures renamed/updated seller handles appear correctly. Falls back to inventory[] if cache is empty.
+19. **QR codes use metadata-only URL** — `buildShowQrUrl()` encodes only show metadata + seller list (no card data). Full hash URLs with 50 cards exceed the QR data limit (~2–3KB) and cause silent rendering failure. The share link still uses the full `buildShowPageUrl()`.
+20. **item_type on inventory cards** — values are `'card'` (default), `'sealed'`, `'lot'`. `product_type` stores the specific sealed format (e.g. 'Blaster Box'). Both fields are passed through `cardToDbRow`/`dbRowToCard` and require the DB migration above to persist.
 
 ## Backlog Priority
 
@@ -174,6 +191,12 @@ Fonts: Bebas Neue (headlines), DM Sans (body), DM Mono (labels/badges), Barlow C
 - Authorize Sellers dropdown queries sellers DB table (not inventory[])
 - loginAsSeller loads shows from DB so authorized shows appear immediately
 - Sidebar overflow fixes — 2-col stat grid, overflow-x hidden, min-width 0
+- Shopify CSV import — auto-detected from headers, Tags parsing for grade/grader/year, title splitting
+- Location field — box/binder/case slot tracking per card, shown in inventory table and show page
+- Sealed Product + Lot support — item type toggle in Add Card modal (Single Card / Sealed Product / Lot / Bundle); type-specific fields and condition options; badges in inventory table and show page
+- Admin sidebar seller dropdown sources from DB (`_allSellerHandles` cache) — not in-memory inventory
+- Show QR code fix — `buildShowQrUrl()` uses metadata-only payload to stay within QR data limit
+- TCG detection expanded — 100+ Pokémon names, rarity keyword regex (Radiant, Reverse Holo, SIR, etc.), MTG/One Piece/Yu-Gi-Oh keywords in both app.html and show.html
 
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`
@@ -184,11 +207,9 @@ Fonts: Bebas Neue (headlines), DM Sans (body), DM Mono (labels/badges), Barlow C
 - Card Ladder API integration (high complexity) — partnership outreach needed, no public API
 - Quick mark-sold button (low complexity)
 - Price refresh before show (medium complexity)
-- Box/location field per card (low complexity)
 - Per-show card selection toggle (medium complexity)
 - Post-show summary for sellers (low complexity)
 - Show page from DB — removes 50-card hash cap (high complexity)
-- Item type support — boxes, packs, lots (low complexity)
 
 ### Tier 3 — Growth and monetisation
 - Want list / saved cards for buyers
