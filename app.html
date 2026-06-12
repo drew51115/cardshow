@@ -5567,7 +5567,7 @@ function getSellerShowURL(seller) {
   const showName = activeShow ? encodeURIComponent(activeShow.name) : 'show';
   const sellerSlug = encodeURIComponent(seller);
   // In production this would be a real domain; for demo we simulate it
-  return `https://cardshow.io/browse?show=${showName}&seller=${sellerSlug}`;
+  return `https://getcardshow.com/seller-browse.html?show=${showName}&seller=${sellerSlug}`;
 }
 
 function buildQRPanel() {
@@ -6911,7 +6911,7 @@ function openShowAccessQr(showId) {
   switchSaqTab('marketing');
 
   // Populate show details
-  const url      = `https://cardshow.io/show?code=${show.accessCode}`;
+  const url      = buildShowPageUrl(showId) || `https://getcardshow.com/show.html`;
   const cardCnt  = inventory.filter(r => r._shows && r._shows.has(showId) && r.Status !== 'Sold').length;
   const sellCnt  = show.sellers.size;
   const meta     = [show.date, show.location].filter(Boolean).join(' · ');
@@ -7005,7 +7005,7 @@ function downloadShowQr() {
 function copyShowQrLink() {
   const show = _saqShowId ? shows[_saqShowId] : null;
   if (!show) return;
-  const url = `https://cardshow.io/show?code=${show.accessCode}`;
+  const url = buildShowPageUrl(_saqShowId) || `https://getcardshow.com/show.html`;
   navigator.clipboard.writeText(url).catch(() => {
     const ta = document.createElement('textarea');
     ta.value = url; ta.style.cssText = 'position:fixed;opacity:0';
