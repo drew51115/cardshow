@@ -6601,12 +6601,22 @@ function buildShowPageUrl(showId) {
 
 function storeShowPayload() {} // kept for compat — no longer used
 
-function copyShowPageLink(showId) {
+async function copyShowPageLink(showId) {
+  const s = shows[showId];
+  if (!s) { showToast('Show not found', 'var(--danger)'); return; }
+
+  const sellersSet = (s.sellers instanceof Set) ? s.sellers : new Set(s.sellers || []);
+
+  // Fetch all authorized sellers' inventory so the URL contains real cards
+  // (admin sessions don't have seller cards in memory by default)
+  if (sellersSet.size) {
+    showToast('Building show link…');
+    await Promise.all([...sellersSet].map(h => fetchSellerInventoryFromDB(h)));
+  }
+
   const url = buildShowPageUrl(showId);
   if (!url) { showToast('Could not build show URL', 'var(--danger)'); return; }
 
-  const s = shows[showId];
-  const sellersSet = (s.sellers instanceof Set) ? s.sellers : new Set(s.sellers || []);
   const cardCount   = inventory.filter(r => sellersSet.has(r.Seller) && r.Status !== 'Sold').length;
   const sellerCount = sellersSet.size;
 
@@ -6791,7 +6801,7 @@ function deleteShow(showId) {
   showToast(`Show deleted`);
 }
 
-function publishSelectedToShow(showId) {
+async function publishSelectedToShow(showId) {
   const show = shows[showId];
   if (!show) return;
 
@@ -6800,11 +6810,17 @@ function publishSelectedToShow(showId) {
     return;
   }
 
-  // Publish ALL cards belonging to authorized sellers — no checkbox selection needed
+  showToast('Loading seller inventory…');
+
+  // Fetch every authorized seller's inventory from DB so the admin has
+  // their cards in memory — without this, inventory[] is empty for admin.
+  const handles = [...show.sellers];
+  await Promise.all(handles.map(h => fetchSellerInventoryFromDB(h)));
+
+  // Mark matching cards as belonging to this show
   let added = 0;
-  let skipped = 0;
   inventory.forEach(card => {
-    if (!show.sellers.has(card.Seller)) { skipped++; return; }
+    if (!show.sellers.has(card.Seller)) return;
     if (!card._shows) card._shows = new Set();
     if (!card._shows.has(showId)) { card._shows.add(showId); added++; }
   });
@@ -7025,11 +7041,16 @@ function renderShowSelectorBuyer() {
 let _saqShowId    = null;
 let _saqTab       = 'marketing';
 
-function openShowAccessQr(showId) {
+async function openShowAccessQr(showId) {
   const show = shows[showId];
   if (!show) return;
   _saqShowId = showId;
   _saqTab = 'marketing';
+
+  // Fetch seller inventory so QR URL contains real cards
+  if (show.sellers && show.sellers.size) {
+    await Promise.all([...show.sellers].map(h => fetchSellerInventoryFromDB(h)));
+  }
 
   // Switch to marketing tab
   switchSaqTab('marketing');
