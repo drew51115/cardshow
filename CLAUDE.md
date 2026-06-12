@@ -46,6 +46,7 @@ admins        — id (uuid PRIMARY KEY REFERENCES auth.users) — admin identity
 - ✅ Show inventory — publish writes to show_inventory junction table
 - ✅ seller-browse.html — fetches live inventory from Supabase on QR scan
 - ✅ Phase 2 email auth — Supabase email + password auth
+- ✅ Sold tracking columns — sold_price, payment_method, sale_notes, sold_time on inventory table (requires DB migration below)
 
 ## Auth Status — Phase 2 Deployed
 - **Current:** Supabase email + password auth via `supabase.auth.signUp()` / `signInWithPassword()`
@@ -56,6 +57,16 @@ admins        — id (uuid PRIMARY KEY REFERENCES auth.users) — admin identity
 ## Current RLS Policies (Needs Tightening)
 All tables currently use permissive `using (true)` / `with check (true)`.
 Next step: replace with `auth.uid() = seller_id` for inventory, `auth.uid() = id` for sellers.
+
+## Pending DB Migration (run in Supabase SQL editor)
+Required for sold tracking to persist:
+```sql
+ALTER TABLE inventory
+  ADD COLUMN IF NOT EXISTS sold_price     numeric,
+  ADD COLUMN IF NOT EXISTS payment_method text,
+  ADD COLUMN IF NOT EXISTS sale_notes     text,
+  ADD COLUMN IF NOT EXISTS sold_time      text;
+```
 
 ## Key Data Structures (in-memory runtime cache)
 ```js
@@ -139,6 +150,11 @@ Fonts: Bebas Neue (headlines), DM Sans (body), DM Mono (labels/badges), Barlow C
 10. **No session restore on page load** — `db.auth.signOut()` runs on init. The login page always shows on fresh navigation. Do not re-add session restore without discussing UX implications first.
 11. **Demo inventory is buyer-only** — `loadDemoInventory()` must only be called from `enterAsBuyer()`. Never call it on page load or from seller/admin login paths.
 12. **partnershipLink visibility** — hidden in `loginAsSeller()` and `loginAsAdmin()`, restored in `signOut()`. Seller Profile button occupies the same nav-right area.
+13. **Seller signup inserts sellers row immediately** — `signUp()` inserts the sellers row before checking `data.session`. When email confirmation is required, `data.session` is null and the code returns early; inserting first ensures the row exists by the time the user confirms and signs in. Unique violation (code 23505) is silently ignored.
+14. **Authorize Sellers queries DB** — the show modal chip list fetches from `db.from('sellers').select('handle')` so all registered sellers appear, not just those with existing inventory. In-memory sellers (demo mode) are merged in.
+15. **loginAsSeller loads shows from DB** — `loadShowsFromDB()` is called on seller login so `renderSellerShowsList()` can show authorized shows immediately.
+16. **Stat strip is two-state** — 3 chips (Available / Ask Value / Graded) by default; Sold + Revenue chips appear only when `activeShowId` is set. Grid is 2-column so chips never overflow the sidebar.
+17. **Supabase Site URL must be set** — Authentication → URL Configuration in Supabase dashboard must point to `https://getcardshow.com` or confirmation email links go to localhost.
 
 ## Backlog Priority
 
@@ -152,6 +168,12 @@ Fonts: Bebas Neue (headlines), DM Sans (body), DM Mono (labels/badges), Barlow C
 - switchView() async-safe fix — resolves blank seller screen on login
 - Partnership link / Profile button visibility fix
 - Login page always shown on fresh navigation (session restore removed)
+- Sell drawer, sold price + payment tracking, report tab, delete card (single + bulk)
+- Stat strip redesign: Available / Ask Value / Graded / Sold / Revenue (two-state)
+- Seller signup fix — sellers row inserted before email confirmation check
+- Authorize Sellers dropdown queries sellers DB table (not inventory[])
+- loginAsSeller loads shows from DB so authorized shows appear immediately
+- Sidebar overflow fixes — 2-col stat grid, overflow-x hidden, min-width 0
 
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`
