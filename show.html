@@ -682,17 +682,58 @@ function detectSport(r) {
   const hcky  = ['gretzky','crosby','mcdavid','ovechkin','bedard','celebrini','matthews',
     'draisaitl','makar','nhl','upper deck','parkhurst','o-pee-chee','young guns'];
   const wnba  = ['clark','reese','wilson','bird','taurasi','wnba'];
-  const tcg   = ['pokemon','pikachu','charizard','mewtwo','eevee','gengar','lugia','rayquaza',
-    'bulbasaur','squirtle','umbreon','vmax','vstar','ex card','gx card','holo rare',
-    'secret rare','rainbow rare','full art','hyper rare','illustrator','gold star',
-    'magic the gathering','mtg','black lotus','mox','ancestral recall','force of will',
-    'time walk','dual land','underground sea','volcanic island','tundra','savannah',
+
+  // ── Pokémon-specific rarity/type keywords — these only appear on TCG cards ──
+  const tcgTypes = /\b(radiant|reverse holo|special illustration rare|illustration rare|amazing rare|hyper rare|rainbow rare|secret rare|full art|gold star|lv\.x|lvx|v-star|v-max|break card|ex card|gx card|trainer gallery|alternate art|shiny vault)\b/i;
+  if (tcgTypes.test(t)) return 'TCG';
+
+  const tcg   = [
+    // Pokémon — broad catch
+    'pokemon','pikachu','charizard','mewtwo','mew ','eevee','gengar','lugia','rayquaza',
+    'bulbasaur','squirtle','umbreon','vmax','vstar','snorlax','gyarados','dragonite',
+    'darkrai','togekiss','lunala','urshifu','yveltal','flareon','jolteon','vaporeon',
+    'sylveon','espeon','glaceon','leafeon','sylveon','arcanine','alakazam','raichu',
+    'blastoise','venusaur','articuno','zapdos','moltres','dragonair','dratini',
+    'lapras','snorlax','clefairy','jigglypuff','slowpoke','magikarp','haunter',
+    'scyther','tauros','grimer','voltorb','exeggcute','cubone','hitmonlee','hitmonchan',
+    'kangaskhan','horsea','goldeen','staryu','mr. mime','scyther','electabuzz','magmar',
+    'pinsir','tauros','magikarp','gyarados','lapras','ditto','eevee','vaporeon','jolteon',
+    'flareon','porygon','omanyte','kabuto','aerodactyl','snorlax','articuno','zapdos',
+    'moltres','dratini','dragonair','dragonite','mewtwo','mew ',
+    'chikorita','cyndaquil','totodile','mareep','flaaffy','ampharos','bellossom',
+    'marill','sudowoodo','politoed','aipom','sunkern','yanma','espeon','umbreon',
+    'murkrow','misdreavus','unown','wobbuffet','girafarig','pineco','forretress',
+    'dunsparce','gligar','steelix','snubbull','granbull','qwilfish','scizor',
+    'heracross','sneasel','teddiursa','ursaring','slugma','magcargo','swinub',
+    'piloswine','corsola','remoraid','octillery','delibird','mantine','skarmory',
+    'houndour','houndoom','kingdra','phanpy','donphan','porygon2','stantler',
+    'smeargle','tyrogue','hitmontop','smoochum','elekid','magby','miltank',
+    'blissey','raikou','entei','suicune','larvitar','pupitar','tyranitar',
+    'lugia','ho-oh','celebi',
+    // Pokémon card type/mechanic keywords
+    ' ex ',' gx ',' vmax ',' vstar ',' break ','radiant ','lv.x','tag team',
+    'trainer gallery','alternate art','shiny vault','prism star','legend card',
+    // MTG
+    'magic the gathering','mtg','black lotus','mox ruby','mox sapphire','mox jet',
+    'mox pearl','mox emerald','ancestral recall','force of will','time walk',
+    'dual land','underground sea','volcanic island','tundra','savannah','bayou',
+    'tropical island','plateau','scrubland','taiga','badlands',
+    // One Piece
     'one piece','luffy','zoro','nami','sanji','franky','robin','brook','chopper',
-    'yu-gi-oh','yugioh','yu gi oh','blue-eyes','dark magician','exodia','pot of greed',
-    'mirror force','ash blossom','nibiru','forbidden droplet','crossout designator',
-    'digimon','flesh and blood','lorcana','disney lorcana','dragon ball','dragonball',
-    'naruto','pokemon tcg','battle styles','evolving skies','silver tempest','obsidian flames',
-    'paldea','scarlet violet','surging sparks','prismatic evolutions','stellar crown'];
+    'usopp','ace ','sabo','shanks','whitebeard','kaido','big mom',
+    // Yu-Gi-Oh
+    'yu-gi-oh','yugioh','yu gi oh','blue-eyes white dragon','dark magician',
+    'exodia','pot of greed','mirror force','ash blossom','nibiru',
+    'forbidden droplet','crossout designator','red-eyes','elemental hero',
+    // Other TCGs
+    'digimon','flesh and blood','lorcana','disney lorcana','dragon ball super card',
+    'dragonball tcg','naruto tcg','weiss schwarz','cardfight vanguard',
+    // Pokémon set names
+    'pokemon tcg','battle styles','evolving skies','silver tempest','obsidian flames',
+    'paldea','scarlet violet','surging sparks','prismatic evolutions','stellar crown',
+    'chilling reign','fusion strike','brilliant stars','astral radiance','lost origin',
+    'paldean fates','twilight masquerade','shrouded fable','paradox rift','temporal forces',
+  ];
 
   if (bball.some(k => all.includes(k))) return 'Basketball';
   if (fball.some(k => all.includes(k))) return 'Football';
