@@ -682,12 +682,24 @@ function detectSport(r) {
   const hcky  = ['gretzky','crosby','mcdavid','ovechkin','bedard','celebrini','matthews',
     'draisaitl','makar','nhl','upper deck','parkhurst','o-pee-chee','young guns'];
   const wnba  = ['clark','reese','wilson','bird','taurasi','wnba'];
+  const tcg   = ['pokemon','pikachu','charizard','mewtwo','eevee','gengar','lugia','rayquaza',
+    'bulbasaur','squirtle','umbreon','vmax','vstar','ex card','gx card','holo rare',
+    'secret rare','rainbow rare','full art','hyper rare','illustrator','gold star',
+    'magic the gathering','mtg','black lotus','mox','ancestral recall','force of will',
+    'time walk','dual land','underground sea','volcanic island','tundra','savannah',
+    'one piece','luffy','zoro','nami','sanji','franky','robin','brook','chopper',
+    'yu-gi-oh','yugioh','yu gi oh','blue-eyes','dark magician','exodia','pot of greed',
+    'mirror force','ash blossom','nibiru','forbidden droplet','crossout designator',
+    'digimon','flesh and blood','lorcana','disney lorcana','dragon ball','dragonball',
+    'naruto','pokemon tcg','battle styles','evolving skies','silver tempest','obsidian flames',
+    'paldea','scarlet violet','surging sparks','prismatic evolutions','stellar crown'];
 
   if (bball.some(k => all.includes(k))) return 'Basketball';
   if (fball.some(k => all.includes(k))) return 'Football';
   if (bsball.some(k => all.includes(k))) return 'Baseball';
   if (hcky.some(k => all.includes(k)))  return 'Hockey';
   if (wnba.some(k => all.includes(k)))  return 'WNBA';
+  if (tcg.some(k => all.includes(k)))   return 'TCG';
   return 'Other';
 }
 
