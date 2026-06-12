@@ -1087,20 +1087,25 @@ function applyBrowseFilters() {
   const hiddenCount   = results.length - PREVIEW;
 
   function cardHtml(r) {
-    const sport = detectSport(r);
-    const icon  = SPORT_ICONS[sport] || '🃏';
-    const grade = gradeBadgeHtml(r.Grade, r.Grader);
-    const par   = r['Parallel/Variant'];
+    const isSealed = r.item_type === 'sealed';
+    const isLot    = r.item_type === 'lot';
+    const sport = isSealed || isLot ? null : detectSport(r);
+    const icon  = isSealed ? '📦' : isLot ? '📋' : (SPORT_ICONS[sport] || '🃏');
+    const sportLabel = isSealed ? (r.product_type || 'Sealed Product') : isLot ? 'Lot / Bundle' : sport;
+    const grade = isSealed || isLot ? '' : gradeBadgeHtml(r.Grade, r.Grader);
+    const par   = isSealed || isLot ? null : r['Parallel/Variant'];
     const headline = r.Player || r['Card Title'] || 'Unknown';
     const subtitle  = r.Player ? (r['Card Title'] || '—') : '';
     return `
     <div class="feat-card">
-      <div class="feat-sport">${icon} ${sport}</div>
+      <div class="feat-sport">${icon} ${sportLabel}</div>
       <div class="feat-player">${headline}</div>
       ${subtitle ? `<div class="feat-title">${subtitle}</div>` : ''}
       <div class="feat-badges">
         ${grade}
         ${par ? `<span class="badge badge-var">${par.slice(0,22)}</span>` : ''}
+        ${isSealed ? `<span class="badge" style="background:#1e3a5f;color:#60a5fa">${r.Condition || 'Factory Sealed'}</span>` : ''}
+        ${isLot ? `<span class="badge" style="background:#2d1b5e;color:#a78bfa">Lot</span>` : ''}
       </div>
       <div class="feat-footer">
         <div class="feat-price">$${Number(r.Price||0).toLocaleString()}</div>

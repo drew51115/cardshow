@@ -2985,16 +2985,32 @@
 
       <div class="modal-header">
         <div>
-          <div class="modal-player" style="font-size:1.35rem">Add Card</div>
-          <div style="font-size:0.78rem;color:var(--muted);margin-top:0.2rem">Search by player, set, or card name</div>
+          <div class="modal-player" style="font-size:1.35rem" id="ac_modal_title">Add Card</div>
+          <div style="font-size:0.78rem;color:var(--muted);margin-top:0.2rem" id="ac_modal_sub">Search by player, set, or card name</div>
         </div>
         <button class="modal-close" onclick="closeAddCard()">✕</button>
       </div>
 
       <div class="modal-body" style="display:flex;flex-direction:column;gap:0.6rem">
 
-        <!-- Search -->
-        <div>
+        <!-- Item Type Toggle -->
+        <div style="display:flex;gap:0.4rem;background:var(--surface);border-radius:8px;padding:0.25rem">
+          <button id="ac_type_card" onclick="acSetType('card')"
+            style="flex:1;padding:0.4rem 0.6rem;border-radius:6px;border:none;cursor:pointer;font-size:0.78rem;font-family:'DM Sans',sans-serif;font-weight:600;transition:all 0.15s;background:var(--gold);color:var(--black)">
+            🃏 Single Card
+          </button>
+          <button id="ac_type_sealed" onclick="acSetType('sealed')"
+            style="flex:1;padding:0.4rem 0.6rem;border-radius:6px;border:none;cursor:pointer;font-size:0.78rem;font-family:'DM Sans',sans-serif;font-weight:600;transition:all 0.15s;background:transparent;color:var(--muted)">
+            📦 Sealed Product
+          </button>
+          <button id="ac_type_lot" onclick="acSetType('lot')"
+            style="flex:1;padding:0.4rem 0.6rem;border-radius:6px;border:none;cursor:pointer;font-size:0.78rem;font-family:'DM Sans',sans-serif;font-weight:600;transition:all 0.15s;background:transparent;color:var(--muted)">
+            📋 Lot / Bundle
+          </button>
+        </div>
+
+        <!-- Search (card only) -->
+        <div id="ac_search_row">
           <div class="section-label" style="margin-bottom:0.3rem">Search Card</div>
           <input class="show-input" id="ac_search"
             placeholder="e.g. Cooper Flagg 2025, Luka Doncic RC Silver…"
@@ -3006,16 +3022,16 @@
         <!-- Divider -->
         <div style="display:flex;align-items:center;gap:0.6rem;margin:0.1rem 0">
           <div style="flex:1;height:1px;background:var(--border)"></div>
-          <div style="font-size:0.62rem;color:var(--muted);font-family:'DM Mono',monospace;letter-spacing:0.1em">CARD DETAILS</div>
+          <div style="font-size:0.62rem;color:var(--muted);font-family:'DM Mono',monospace;letter-spacing:0.1em" id="ac_divider_label">CARD DETAILS</div>
           <div style="flex:1;height:1px;background:var(--border)"></div>
         </div>
 
         <div>
-          <div class="section-label" style="margin-bottom:0.3rem">Card Title *</div>
+          <div class="section-label" style="margin-bottom:0.3rem" id="ac_title_label">Card Title *</div>
           <input class="show-input" id="ac_title" placeholder="e.g. 2025-26 Topps Chrome Cooper Flagg RC Auto" style="margin:0">
         </div>
 
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.55rem">
+        <div id="ac_player_row" style="display:grid;grid-template-columns:1fr 1fr;gap:0.55rem">
           <div>
             <div class="section-label" style="margin-bottom:0.3rem">Player</div>
             <input class="show-input" id="ac_player" placeholder="Player name" style="margin:0">
@@ -3025,24 +3041,48 @@
             <input class="show-input" id="ac_year" placeholder="e.g. 2025" style="margin:0">
           </div>
         </div>
+        <div id="ac_year_only_row" style="display:none">
+          <div class="section-label" style="margin-bottom:0.3rem">Year</div>
+          <input class="show-input" id="ac_year_sealed" placeholder="e.g. 2025" style="margin:0">
+        </div>
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.55rem">
           <div>
-            <div class="section-label" style="margin-bottom:0.3rem">Set</div>
+            <div class="section-label" style="margin-bottom:0.3rem" id="ac_set_label">Set</div>
             <input class="show-input" id="ac_set" placeholder="e.g. Topps Chrome" style="margin:0">
           </div>
-          <div>
+          <div id="ac_number_col">
             <div class="section-label" style="margin-bottom:0.3rem">Card #</div>
             <input class="show-input" id="ac_number" placeholder="e.g. 101" style="margin:0">
           </div>
         </div>
 
-        <div>
+        <div id="ac_parallel_row">
           <div class="section-label" style="margin-bottom:0.3rem">Parallel / Variant</div>
           <input class="show-input" id="ac_parallel" placeholder="e.g. Gold Refractor /50, Sapphire" style="margin:0">
         </div>
 
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.55rem">
+        <!-- Sealed: product type dropdown -->
+        <div id="ac_product_type_row" style="display:none">
+          <div class="section-label" style="margin-bottom:0.3rem">Product Type</div>
+          <select class="show-input" id="ac_product_type" style="margin:0">
+            <option value="">Select type…</option>
+            <option value="Blaster Box">Blaster Box</option>
+            <option value="Hobby Box">Hobby Box</option>
+            <option value="Jumbo Box">Jumbo Box</option>
+            <option value="Mega Box">Mega Box</option>
+            <option value="Hanger Box">Hanger Box</option>
+            <option value="Gravity Feed">Gravity Feed</option>
+            <option value="Retail Pack">Retail Pack</option>
+            <option value="Hobby Pack">Hobby Pack</option>
+            <option value="Fat Pack">Fat Pack</option>
+            <option value="Value Pack">Value Pack</option>
+            <option value="Case">Case</option>
+            <option value="Other Sealed">Other Sealed</option>
+          </select>
+        </div>
+
+        <div id="ac_grading_row" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.55rem">
           <div>
             <div class="section-label" style="margin-bottom:0.3rem">Grader</div>
             <select class="show-input" id="ac_grader" style="margin:0" onchange="acToggle()">
@@ -3073,6 +3113,21 @@
             <option value="Fair">Fair</option>
             <option value="Poor">Poor</option>
           </select>
+        </div>
+
+        <!-- Sealed: condition for sealed = sealed / opened -->
+        <div id="ac_sealed_cond_row" style="display:none">
+          <div class="section-label" style="margin-bottom:0.3rem">Condition</div>
+          <select class="show-input" id="ac_sealed_condition" style="margin:0">
+            <option value="Factory Sealed">Factory Sealed</option>
+            <option value="Opened">Opened</option>
+          </select>
+        </div>
+
+        <!-- Lot: description -->
+        <div id="ac_lot_desc_row" style="display:none">
+          <div class="section-label" style="margin-bottom:0.3rem">Lot Description</div>
+          <input class="show-input" id="ac_lot_desc" placeholder="e.g. 50-card rookie lot, mixed sports" style="margin:0">
         </div>
         <div>
           <div class="section-label" style="margin-bottom:0.3rem">Asking Price ($)</div>
@@ -4698,7 +4753,7 @@ function renderSellerTable(rows) {
       <td>
         <div class="card-title" style="${status === 'Sold' ? 'opacity:0.4;text-decoration:line-through' : ''}">${r['Card Title'] || '—'}</div>
         <div class="card-sub" style="font-family:'DM Mono',monospace;font-size:0.65rem;color:var(--muted);margin-top:0.15rem">
-          ${[r.Player, r.Year, getSet(r)].filter(Boolean).join(' · ')}
+          ${r.item_type === 'sealed' ? `<span style="background:#1e3a5f;color:#60a5fa;font-size:0.58rem;padding:0.1rem 0.35rem;border-radius:4px;margin-right:0.3rem;font-family:'DM Mono',monospace">📦 SEALED</span>` : r.item_type === 'lot' ? `<span style="background:#2d1b5e;color:#a78bfa;font-size:0.58rem;padding:0.1rem 0.35rem;border-radius:4px;margin-right:0.3rem;font-family:'DM Mono',monospace">📋 LOT</span>` : ''}${[r.Player, r.Year, getSet(r)].filter(Boolean).join(' · ')}
         </div>
         ${r.Location ? `<div style="font-family:'DM Mono',monospace;font-size:0.6rem;color:var(--muted);opacity:0.7;margin-top:0.1rem">📦 ${r.Location}</div>` : ''}
       </td>
@@ -5881,8 +5936,8 @@ function loginAsAdmin() {
   updateStats();
   populateAdminFilterOptions();
 
-  // Load real shows from Supabase, then render
-  loadShowsFromDB().then(loaded => {
+  // Load real shows + seller handles from Supabase, then render
+  Promise.all([loadShowsFromDB(), refreshSellerHandlesCache()]).then(([loaded]) => {
     if (loaded) {
       renderAdminShowsList(); if(typeof renderAdminShowsDashboard==="function" && _adminTab==="shows") renderAdminShowsDashboard();
       showToast(`Shows loaded from database`);
@@ -6308,13 +6363,15 @@ function renderAdminShowsList() {
         ? `<span style="font-size:0.62rem;color:#4ade80;font-family:'DM Mono',monospace">✓ All tables set</span>`
         : `<span style="font-size:0.62rem;color:var(--gold);font-family:'DM Mono',monospace">${unassignedCount} need table #</span>`;
 
-    // Sellers dropdown
-    const knownSellers = [...new Set(inventory.map(r => r.Seller).filter(Boolean))].sort();
+    // Sellers dropdown — sourced from DB cache, not in-memory inventory
+    const knownSellers = _allSellerHandles.length
+      ? _allSellerHandles
+      : [...new Set(inventory.map(r => r.Seller).filter(Boolean))].sort();
     const unassigned   = knownSellers.filter(h => !s.sellers.has(h));
     const dropdownOpts = unassigned.length
-      ? `<option value="">+ Add from inventory…</option>` +
+      ? `<option value="">+ Add seller…</option>` +
         unassigned.map(h => `<option value="${h}">${h}</option>`).join('')
-      : `<option value="">All inventory sellers added</option>`;
+      : `<option value="">All registered sellers added</option>`;
 
     return `
     <div class="show-card ${isActive ? 'active-show' : ''}" onclick="selectAdminShow('${s.id}')">
@@ -6430,6 +6487,45 @@ function renderAdminShowsList() {
 // ── SESSION 2: PUBLIC SHOW PAGE LINK ──
 // Stores show payload in localStorage (same origin as show.html)
 // then generates a clean short URL — no data in the query string.
+
+// Builds a minimal URL for QR codes — show metadata only, no card payload.
+// QR codes have a ~2-3KB data limit; the full card hash often exceeds this.
+function buildShowQrUrl(showId) {
+  const s = shows[showId];
+  if (!s) return null;
+  const prodOrigin = 'https://getcardshow.com';
+  const origin = (window.location.hostname === 'localhost' ||
+                  window.location.hostname === '127.0.0.1')
+    ? window.location.origin : prodOrigin;
+
+  const sellersSet = (s.sellers instanceof Set) ? s.sellers : new Set(Array.isArray(s.sellers) ? s.sellers : []);
+  const sellersArr = [...sellersSet];
+
+  const payload = {
+    m: {
+      id: s.id,
+      n:  s.name,
+      d:  s.date     || '',
+      l:  s.location || '',
+      st: s.status   || 'upcoming',
+      tb: s.tables   || {},
+      sl: sellersArr,
+      tc: 0,
+    },
+    c: [],
+  };
+
+  try {
+    const json   = JSON.stringify(payload);
+    const bytes  = new TextEncoder().encode(json);
+    const binary = Array.from(bytes).map(b => String.fromCharCode(b)).join('');
+    const encoded = btoa(binary).replace(/=+$/, '');
+    return `${origin}/show.html#${encoded}`;
+  } catch(e) {
+    console.error('buildShowQrUrl encode failed:', e);
+    return null;
+  }
+}
 
 function buildShowPageUrl(showId) {
   const s = shows[showId];
@@ -6981,10 +7077,11 @@ async function openShowAccessQr(showId) {
   document.getElementById('saqSgnCardCount').textContent   = cardCnt.toLocaleString();
   document.getElementById('saqSgnSellerCount').textContent = sellCnt.toLocaleString();
 
-  // Render QR codes
+  // Render QR codes — use minimal metadata-only URL so payload fits QR data limit
+  const qrUrl = buildShowQrUrl(showId) || url;
   setTimeout(() => {
-    renderQR('saqCanvas',        show.accessCode, 200, url);
-    renderQR('saqCanvasSignage', show.accessCode, 200, url);
+    renderQR('saqCanvas',        show.accessCode, 200, qrUrl);
+    renderQR('saqCanvasSignage', show.accessCode, 200, qrUrl);
   }, 80);
 
   document.getElementById('showAccessQrOverlay').classList.add('open');
@@ -7564,17 +7661,82 @@ const SPORT_ICON = {Basketball:'🏀',Football:'🏈',Baseball:'⚾',Hockey:'�
 let _acTimer = null;
 let _acLastQuery = '';
 
+let _acItemType = 'card';
+
 function openAddCard() {
   // Clear all fields
-  ['ac_search','ac_title','ac_player','ac_year','ac_set',
-   'ac_number','ac_parallel','ac_grade','ac_cert','ac_price']
-    .forEach(id => { document.getElementById(id).value = ''; });
+  ['ac_search','ac_title','ac_player','ac_year','ac_year_sealed','ac_set',
+   'ac_number','ac_parallel','ac_grade','ac_cert','ac_price','ac_location','ac_lot_desc']
+    .forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
   document.getElementById('ac_grader').value    = '';
   document.getElementById('ac_condition').value = '';
+  document.getElementById('ac_sealed_condition').value = 'Factory Sealed';
   document.getElementById('ac_status').value    = 'Available';
   document.getElementById('ac_results').innerHTML = '';
-  acToggle();
+  acSetType('card');
   document.getElementById('addCardOverlay').classList.add('open');
+}
+
+function acSetType(type) {
+  _acItemType = type;
+  const isCard   = type === 'card';
+  const isSealed = type === 'sealed';
+  const isLot    = type === 'lot';
+
+  // Toggle buttons
+  ['card','sealed','lot'].forEach(t => {
+    const btn = document.getElementById('ac_type_' + t);
+    if (!btn) return;
+    const active = t === type;
+    btn.style.background = active ? 'var(--gold)' : 'transparent';
+    btn.style.color       = active ? 'var(--black)' : 'var(--muted)';
+  });
+
+  // Modal header
+  const titles = { card: 'Add Card', sealed: 'Add Sealed Product', lot: 'Add Lot / Bundle' };
+  const subs   = { card: 'Search by player, set, or card name', sealed: 'Blasters, hobby boxes, packs & more', lot: 'Multi-card lots and bundles' };
+  document.getElementById('ac_modal_title').textContent = titles[type];
+  document.getElementById('ac_modal_sub').textContent   = subs[type];
+
+  // Divider label
+  const divLabels = { card: 'CARD DETAILS', sealed: 'PRODUCT DETAILS', lot: 'LOT DETAILS' };
+  document.getElementById('ac_divider_label').textContent = divLabels[type];
+
+  // Title field label + placeholder
+  const titleLabel = document.getElementById('ac_title_label');
+  const titleInput = document.getElementById('ac_title');
+  if (isCard) {
+    titleLabel.textContent = 'Card Title *';
+    titleInput.placeholder = 'e.g. 2025-26 Topps Chrome Cooper Flagg RC Auto';
+  } else if (isSealed) {
+    titleLabel.textContent = 'Product Name *';
+    titleInput.placeholder = 'e.g. 2025 Topps Chrome Baseball Blaster Box';
+  } else {
+    titleLabel.textContent = 'Lot Title *';
+    titleInput.placeholder = 'e.g. 50-card rookie lot, mixed sports';
+  }
+
+  // Set label
+  document.getElementById('ac_set_label').textContent = isCard ? 'Set' : 'Series / Brand';
+
+  // Show/hide rows
+  _acShow('ac_search_row', isCard);
+  _acShow('ac_player_row', isCard);
+  _acShow('ac_year_only_row', !isCard);
+  _acShow('ac_number_col', isCard);
+  _acShow('ac_parallel_row', isCard);
+  _acShow('ac_product_type_row', isSealed);
+  _acShow('ac_grading_row', isCard);
+  _acShow('ac_cond_row', isCard);
+  _acShow('ac_sealed_cond_row', isSealed);
+  _acShow('ac_lot_desc_row', isLot);
+
+  if (isCard) acToggle();
+}
+
+function _acShow(id, show) {
+  const el = document.getElementById(id);
+  if (el) el.style.display = show ? '' : 'none';
 }
 
 function closeAddCard() {
@@ -7582,6 +7744,7 @@ function closeAddCard() {
 }
 
 function acToggle() {
+  if (_acItemType !== 'card') return;
   const graded = !!document.getElementById('ac_grader').value;
   document.getElementById('ac_cond_row').style.display = graded ? 'none' : 'block';
 }
@@ -7650,26 +7813,60 @@ async function acSelect(idx) {
 
 function saveAddCard() {
   const title = document.getElementById('ac_title').value.trim();
-  if (!title) { showToast('Card Title is required', 'var(--danger)'); return; }
+  const labelMap = { card: 'Card Title', sealed: 'Product Name', lot: 'Lot Title' };
+  if (!title) { showToast(`${labelMap[_acItemType] || 'Title'} is required`, 'var(--danger)'); return; }
 
-  const grader = document.getElementById('ac_grader').value;
-  const card = validateAndNormalizeCard({
-    'Card Title':       title,
-    Player:             document.getElementById('ac_player').value.trim(),
-    Year:               document.getElementById('ac_year').value.trim() || null,
-    'Set ':             document.getElementById('ac_set').value.trim(),
-    Number:             document.getElementById('ac_number').value.trim(),
-    'Parallel/Variant': document.getElementById('ac_parallel').value.trim(),
-    Grader:             grader || null,
-    Grade:              grader && document.getElementById('ac_grade').value !== ''
-                          ? parseFloat(document.getElementById('ac_grade').value) : null,
-    'Cert #':           grader ? document.getElementById('ac_cert').value.trim() : null,
-    Condition:          !grader ? (document.getElementById('ac_condition').value || null) : null,
-    Price:              parseFloat(document.getElementById('ac_price').value) || 0,
-    Status:             document.getElementById('ac_status').value || 'Available',
-    Location:           document.getElementById('ac_location').value.trim() || null,
-    Seller:             currentSeller,
-  });
+  let rawCard;
+  if (_acItemType === 'sealed') {
+    const year = document.getElementById('ac_year_sealed').value.trim() || null;
+    rawCard = {
+      'Card Title': title,
+      'Set ':       document.getElementById('ac_set').value.trim(),
+      Year:         year,
+      Condition:    document.getElementById('ac_sealed_condition').value || 'Factory Sealed',
+      Price:        parseFloat(document.getElementById('ac_price').value) || 0,
+      Status:       document.getElementById('ac_status').value || 'Available',
+      Location:     document.getElementById('ac_location').value.trim() || null,
+      Seller:       currentSeller,
+      item_type:    'sealed',
+      product_type: document.getElementById('ac_product_type').value || null,
+    };
+  } else if (_acItemType === 'lot') {
+    const year = document.getElementById('ac_year_sealed').value.trim() || null;
+    rawCard = {
+      'Card Title': title,
+      'Set ':       document.getElementById('ac_set').value.trim(),
+      Year:         year,
+      Price:        parseFloat(document.getElementById('ac_price').value) || 0,
+      Status:       document.getElementById('ac_status').value || 'Available',
+      Location:     document.getElementById('ac_location').value.trim() || null,
+      Seller:       currentSeller,
+      item_type:    'lot',
+      'Parallel/Variant': document.getElementById('ac_lot_desc').value.trim() || null,
+    };
+  } else {
+    const grader = document.getElementById('ac_grader').value;
+    rawCard = {
+      'Card Title':       title,
+      Player:             document.getElementById('ac_player').value.trim(),
+      Year:               document.getElementById('ac_year').value.trim() || null,
+      'Set ':             document.getElementById('ac_set').value.trim(),
+      Number:             document.getElementById('ac_number').value.trim(),
+      'Parallel/Variant': document.getElementById('ac_parallel').value.trim(),
+      Grader:             grader || null,
+      Grade:              grader && document.getElementById('ac_grade').value !== ''
+                            ? parseFloat(document.getElementById('ac_grade').value) : null,
+      'Cert #':           grader ? document.getElementById('ac_cert').value.trim() : null,
+      Condition:          !grader ? (document.getElementById('ac_condition').value || null) : null,
+      Price:              parseFloat(document.getElementById('ac_price').value) || 0,
+      Status:             document.getElementById('ac_status').value || 'Available',
+      Location:           document.getElementById('ac_location').value.trim() || null,
+      Seller:             currentSeller,
+      item_type:          'card',
+    };
+  }
+
+  const card = validateAndNormalizeCard(rawCard);
   card._shows = new Set();
   inventory.push(card);
 
@@ -8410,6 +8607,15 @@ function saveCEM() {
 
 // ── LOAD SAMPLE DATA — buyer demo only, not on page load ──
 let _demoInventoryLoaded = false;
+let _allSellerHandles = []; // cache of registered seller handles from DB
+
+async function refreshSellerHandlesCache() {
+  if (typeof db === 'undefined') return;
+  const { data, error } = await db.from('sellers').select('handle').order('handle');
+  if (!error && data) {
+    _allSellerHandles = data.map(r => r.handle).filter(Boolean);
+  }
+}
 function loadDemoInventory() {
   if (_demoInventoryLoaded) return;
   _demoInventoryLoaded = true;
@@ -8455,18 +8661,20 @@ const CARD_TO_DB = Object.fromEntries(
 
 function cardToDbRow(card) {
   return {
-    card_title:  card['Card Title'] || '',
-    player:      card.Player        || null,
-    year:        card.Year          ? parseInt(card.Year) : null,
-    card_set:    card['Set ']       || card['Set'] || null,
-    parallel:    card['Parallel/Variant'] || null,
-    grader:      card.Grader        || null,
-    grade:       card.Grade         != null ? parseFloat(card.Grade) : null,
-    cert_number: card['Cert #']     || null,
-    condition:   card.Condition     || null,
-    price:       parseFloat(card.Price) || 0,
-    status:      card.Status        || 'Available',
-    location:    card.Location      || null,
+    card_title:   card['Card Title'] || '',
+    player:       card.Player        || null,
+    year:         card.Year          ? parseInt(card.Year) : null,
+    card_set:     card['Set ']       || card['Set'] || null,
+    parallel:     card['Parallel/Variant'] || null,
+    grader:       card.Grader        || null,
+    grade:        card.Grade         != null ? parseFloat(card.Grade) : null,
+    cert_number:  card['Cert #']     || null,
+    condition:    card.Condition     || null,
+    price:        parseFloat(card.Price) || 0,
+    status:       card.Status        || 'Available',
+    location:     card.Location      || null,
+    item_type:    card.item_type     || 'card',
+    product_type: card.product_type  || null,
   };
 }
 
@@ -8486,6 +8694,8 @@ function dbRowToCard(row) {
     Price:           row.price         || 0,
     Status:          row.status        || 'Available',
     Location:        row.location      || null,
+    item_type:       row.item_type     || 'card',
+    product_type:    row.product_type  || null,
     _shows:          new Set(),
   };
   if (row.sold_price     != null) card.SoldPrice     = row.sold_price;
