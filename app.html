@@ -2667,6 +2667,11 @@
           <strong>Drop your spreadsheet here</strong>
           <p>Supports CSV & XLSX<br>Columns: Seller, Player, Card Title, Year, Set, Grade, Grader (PSA/BGS/CGC/SGC), Price…</p>
         </div>
+        <input type="file" accept=".csv" id="shopifyFileInput" style="display:none" onchange="handleShopifyUpload(this)">
+        <button class="btn btn-ghost" style="width:100%;justify-content:center;gap:0.5rem;margin-top:0.4rem" onclick="document.getElementById('shopifyFileInput').click()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>
+          Shopify CSV
+        </button>
       </div>
 
       <div class="stats-row">
@@ -4432,6 +4437,23 @@ function handleFileUpload(input) {
       readXLSX(file);
     }
   }
+}
+
+function handleShopifyUpload(input) {
+  const file = input.files[0];
+  if (!file) return;
+  input.value = '';
+  const reader = new FileReader();
+  reader.onload = e => {
+    const rows = parseCSV(e.target.result);
+    if (!rows.length) { showToast('File appears empty', 'var(--danger)'); return; }
+    if (!isShopifyExport(Object.keys(rows[0] || {}))) {
+      showToast('This doesn\'t look like a Shopify export — missing required columns', 'var(--danger)');
+      return;
+    }
+    openMapper(rows);
+  };
+  reader.readAsText(file);
 }
 
 function readXLSX(file) {
@@ -7064,7 +7086,9 @@ const CS_FIELDS = [
   { key: 'Price',            label: 'Price',             required: false, hint: 'Asking price (numeric)' },
   { key: 'Status',           label: 'Status',            required: false, hint: 'Available, Sold, On Hold' },
   { key: 'Image URL',        label: 'Image URL',         required: false, hint: 'CDN URL for card image' },
-  { key: '__SKIP__',         label: '— Skip this column —', required: false, hint: '' },
+  { key: '__SKIP__',          label: '— Skip this column —',         required: false, hint: '' },
+  { key: '__SHOPIFY_TAGS__',  label: 'Shopify Tags (auto-parse)',     required: false, hint: 'Extracts grade, year, condition' },
+  { key: '__SHOPIFY_TYPE__',  label: 'Shopify Type (item type)',      required: false, hint: 'Detects sealed/lot/card' },
 ];
 
 // ── Known header aliases by source ──
@@ -7155,6 +7179,16 @@ const ALIAS_MAP = [
   [/^sku$/i,                    'low',    '__SKIP__'],
   [/^category$/i,               'low',    '__SKIP__'],
 
+  // ── Shopify ──
+  [/^handle$/i,                    'high',   '__SKIP__'],
+  [/^vendor$/i,                    'high',   'Seller'],
+  [/^tags$/i,                      'high',   '__SHOPIFY_TAGS__'],
+  [/^variant\s*price$/i,           'high',   'Price'],
+  [/^variant\s*sku$/i,             'high',   'Cert #'],
+  [/^variant\s*inventory\s*qty$/i, 'high',   '__SKIP__'],
+  [/^type$/i,                      'medium', '__SHOPIFY_TYPE__'],
+  [/^image\s*src$/i,               'high',   'Image URL'],
+
   // ── Generic spreadsheet catch-alls ──
   [/^#$/,                       'low',    'Number'],
   [/^no\.?$/i,                  'low',    'Number'],
@@ -7170,9 +7204,18 @@ const SOURCE_SIGNATURES = {
   'Flipwise':        ['Card Name', 'Set Name', 'Parallel', 'List Price', 'Athlete'],
   'Ludex':           ['Card #', 'Manufacturer', 'Quantity'],
   'CardShow Native': ['Card Title', 'Player', 'Parallel/Variant', 'Grader'],
+  'Shopify':         ['Handle', 'Title', 'Vendor', 'Variant Price', 'Variant SKU', 'Variant Inventory Qty'],
 };
 
+const SHOPIFY_REQUIRED = ['Handle', 'Title', 'Vendor', 'Variant Price'];
+
+function isShopifyExport(headers) {
+  const hSet = new Set(headers.map(h => h.trim()));
+  return SHOPIFY_REQUIRED.every(h => hSet.has(h));
+}
+
 function detectSource(headers) {
+  if (isShopifyExport(headers)) return 'Shopify';
   const hSet = new Set(headers.map(h => h.trim()));
   let best = { name: 'Generic Spreadsheet', score: 0 };
   for (const [src, sigs] of Object.entries(SOURCE_SIGNATURES)) {
@@ -7180,6 +7223,42 @@ function detectSource(headers) {
     if (score > best.score) best = { name: src, score };
   }
   return best.name;
+}
+
+// ── Shopify Tags smart extraction ──
+function parseShopifyTags(tagsStr) {
+  const tags   = (tagsStr || '').split(',').map(t => t.trim()).filter(Boolean);
+  const result = { grade: null, grader: null, year: null, condition: null, setHints: [] };
+
+  const graderPat  = /^(PSA|BGS|CGC|SGC)\s*(\d+(?:\.\d+)?)$/i;
+  const graderSep  = /^(PSA|BGS|CGC|SGC)[-\s]?(\d+(?:\.\d+)?)$/i;
+  const yearPat    = /^(19[5-9]\d|20[0-2]\d)$/;
+  const condPat    = /^(NM|Near\s*Mint|LP|Lightly\s*Played|MP|Moderately\s*Played|HP|Heavily\s*Played|Raw|Ungraded)$/i;
+  const sportPat   = /^(Pokemon|MTG|Magic|Basketball|Baseball|Football|Hockey|Soccer|TCG)$/i;
+
+  for (const tag of tags) {
+    const gm = tag.match(graderPat) || tag.match(graderSep);
+    if (gm) {
+      result.grader = gm[1].toUpperCase();
+      result.grade  = gm[2];
+      continue;
+    }
+    if (yearPat.test(tag))  { result.year = tag; continue; }
+    if (condPat.test(tag))  { result.condition = tag; continue; }
+    if (sportPat.test(tag)) { continue; } // skip sport keywords — not a CardShow field
+    result.setHints.push(tag);
+  }
+
+  return result;
+}
+
+// ── Shopify Title splitting: "Player Name - Card Description" ──
+function splitShopifyTitle(title) {
+  const sep = title.indexOf(' - ');
+  if (sep !== -1) {
+    return { cardTitle: title.slice(sep + 3).trim(), player: title.slice(0, sep).trim() };
+  }
+  return { cardTitle: title, player: '' };
 }
 
 function autoMatch(header) {
@@ -7200,9 +7279,21 @@ function openMapper(rawRows) {
   mapperHeaders  = Object.keys(rawRows[0] || {});
   mapperMappings = {};
 
-  const source = detectSource(mapperHeaders);
-  document.getElementById('mapperSourceBadge').textContent = '📄 Detected: ' + source;
+  const source   = detectSource(mapperHeaders);
+  const shopify  = source === 'Shopify';
+  document.getElementById('mapperSourceBadge').textContent = (shopify ? '🛍 ' : '📄 ') + 'Detected: ' + source;
   document.getElementById('mapperRowCount').textContent = `${rawRows.length} rows found`;
+
+  // Shopify gold banner
+  let shopifyBanner = document.getElementById('shopifyDetectedBanner');
+  if (!shopifyBanner) {
+    shopifyBanner = document.createElement('div');
+    shopifyBanner.id = 'shopifyDetectedBanner';
+    shopifyBanner.style.cssText = 'background:rgba(245,200,66,0.12);border:1px solid rgba(245,200,66,0.4);border-radius:8px;padding:0.6rem 0.9rem;font-family:"DM Sans",sans-serif;font-size:0.82rem;color:var(--accent);margin-bottom:0.75rem;display:none';
+    shopifyBanner.textContent = '🛍 Shopify export detected — auto-mapping columns';
+    document.getElementById('mapperRows').before(shopifyBanner);
+  }
+  shopifyBanner.style.display = shopify ? 'block' : 'none';
 
   // Build mapping rows
   const container = document.getElementById('mapperRows');
@@ -7288,24 +7379,64 @@ function updateMapperPreview() {
 }
 
 function applyMapping() {
-  const hasTitle = Object.values(mapperMappings).includes('Card Title');
+  const vals     = Object.values(mapperMappings);
+  const shopify  = vals.includes('__SHOPIFY_TAGS__') || vals.includes('__SHOPIFY_TYPE__');
+  const hasTitle = vals.includes('Card Title') || shopify; // Shopify Title → Card Title
+
   if (!hasTitle) { showToast('Map at least Card Title before importing', 'var(--danger)'); return; }
 
-  // Transform raw rows using the mapping
+  // Find source headers for Shopify virtual fields
+  const tagsSrc  = Object.entries(mapperMappings).find(([,v]) => v === '__SHOPIFY_TAGS__')?.[0];
+  const typeSrc  = Object.entries(mapperMappings).find(([,v]) => v === '__SHOPIFY_TYPE__')?.[0];
+
   const transformed = mapperRawRows.map(rawRow => {
     const card = {};
+
     for (const [srcHeader, csKey] of Object.entries(mapperMappings)) {
-      if (csKey === '__SKIP__') continue;
+      if (csKey === '__SKIP__' || csKey === '__SHOPIFY_TAGS__' || csKey === '__SHOPIFY_TYPE__') continue;
       const val = rawRow[srcHeader];
       if (val === undefined || val === null || val === '') continue;
-      // Handle the Set field's trailing space quirk
       const destKey = csKey === 'Set' ? 'Set ' : csKey;
       card[destKey] = val;
     }
-    // If seller role, force their handle
+
+    // ── Shopify-specific transforms ──
+    if (shopify) {
+      // Title: split "Player - Card Title" or use whole title
+      const rawTitle = card['Card Title'] || '';
+      if (rawTitle) {
+        const { cardTitle, player } = splitShopifyTitle(rawTitle);
+        card['Card Title'] = cardTitle;
+        if (player && !card['Player']) card['Player'] = player;
+      }
+
+      // Tags: extract grade, year, condition, set hints
+      if (tagsSrc) {
+        const parsed = parseShopifyTags(rawRow[tagsSrc] || '');
+        if (parsed.grader && !card['Grader'])    card['Grader']    = parsed.grader;
+        if (parsed.grade  && !card['Grade'])     card['Grade']     = parsed.grade;
+        if (parsed.year   && !card['Year'])      card['Year']      = parsed.year;
+        if (parsed.condition && !card['Condition']) card['Condition'] = parsed.condition;
+        if (parsed.setHints.length && !card['Set ']) card['Set ']  = parsed.setHints.join(' ');
+      }
+
+      // Type: detect item_type
+      if (typeSrc) {
+        const t = rawRow[typeSrc] || '';
+        if (/sealed|box|pack|bundle|tin|etb/i.test(t))  card['item_type'] = 'sealed';
+        else if (/lot/i.test(t))                          card['item_type'] = 'lot';
+        else                                               card['item_type'] = 'card';
+      }
+
+      // Price: strip currency symbols
+      if (card['Price']) card['Price'] = String(card['Price']).replace(/[^0-9.]/g, '');
+    }
+
+    // Seller: always override with logged-in seller handle
     if (currentRole === 'seller' && currentSeller) {
       card['Seller'] = currentSeller;
     }
+
     return card;
   });
 
