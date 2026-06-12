@@ -6695,7 +6695,7 @@ function deleteShow(showId) {
   showToast(`Show deleted`);
 }
 
-function publishSelectedToShow(showId) {
+async function publishSelectedToShow(showId) {
   const show = shows[showId];
   if (!show) return;
 
@@ -6704,11 +6704,17 @@ function publishSelectedToShow(showId) {
     return;
   }
 
-  // Publish ALL cards belonging to authorized sellers — no checkbox selection needed
+  showToast('Loading seller inventory…');
+
+  // Fetch every authorized seller's inventory from DB so the admin has
+  // their cards in memory — without this, inventory[] is empty for admin.
+  const handles = [...show.sellers];
+  await Promise.all(handles.map(h => fetchSellerInventoryFromDB(h)));
+
+  // Mark matching cards as belonging to this show
   let added = 0;
-  let skipped = 0;
   inventory.forEach(card => {
-    if (!show.sellers.has(card.Seller)) { skipped++; return; }
+    if (!show.sellers.has(card.Seller)) return;
     if (!card._shows) card._shows = new Set();
     if (!card._shows.has(showId)) { card._shows.add(showId); added++; }
   });
