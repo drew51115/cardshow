@@ -12,6 +12,7 @@
 <meta property="og:image"       content="https://getcardshow.com/og-show.png">
 <meta name="twitter:card"       content="summary_large_image">
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Instrument+Serif:ital@0;1&family=DM+Mono:wght@400;500&family=Barlow+Condensed:wght@700;800;900&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 
@@ -820,6 +821,70 @@ function expandPayload(payload) {
   };
 }
 
+// ── Supabase client (read-only, public anon key) ──
+const _sb = (typeof supabase !== 'undefined')
+  ? supabase.createClient(
+      'https://qtnqawqlmttogwnjieky.supabase.co',
+      'sb_publishable_R8Yok9YAfb_wfhR5nmwpmg_1FWaCdqU'
+    )
+  : null;
+
+// Fetch all show inventory from Supabase and re-render if more cards are available.
+// Called after decoding the hash so the page renders immediately, then upgrades with full data.
+async function fetchInventoryFromDB(showId) {
+  if (!_sb || !showId) return;
+  try {
+    const { data, error } = await _sb
+      .from('show_inventory')
+      .select(`
+        inventory (
+          id, card_title, player, year, card_set, card_number, parallel,
+          grader, grade, condition, price, status,
+          item_type, quantity, product_type, language, edition,
+          sellers ( handle )
+        )
+      `)
+      .eq('show_id', showId);
+
+    if (error || !data || !data.length) return;
+
+    const dbCards = data
+      .map(row => row.inventory)
+      .filter(Boolean)
+      .filter(c => c.status !== 'Sold')
+      .map(c => ({
+        Seller:             c.sellers?.handle || '',
+        'Card Title':       c.card_title || '',
+        Player:             c.player || '',
+        Year:               c.year || null,
+        'Set ':             c.card_set || '',
+        Number:             c.card_number || '',
+        'Parallel/Variant': c.parallel || '',
+        Grader:             c.grader || null,
+        Grade:              c.grade || null,
+        Condition:          c.condition || null,
+        Price:              c.price || 0,
+        Status:             'Available',
+        item_type:          c.item_type || 'card',
+        quantity:           c.quantity || 1,
+        product_type:       c.product_type || '',
+        language:           c.language || '',
+        edition:            c.edition || '',
+      }));
+
+    if (!dbCards.length) return;
+
+    // Update inventory and totalCards from DB (authoritative source)
+    inventory = dbCards;
+    if (showMeta) showMeta.totalCards = dbCards.length;
+
+    // Re-render with full card set
+    renderPage();
+  } catch(e) {
+    console.warn('fetchInventoryFromDB error:', e.message);
+  }
+}
+
 // ── ENTRY POINT ──
 (function init() {
   // Debug: show what the page actually received — visible on screen during load
@@ -837,7 +902,11 @@ function expandPayload(payload) {
 
   // 1. Try hash fragment — primary path for all shared links
   hashData = window.location.hash.slice(1); // re-read in case it loaded late
-  if (hashData && decodeAndRender(hashData)) return;
+  if (hashData && decodeAndRender(hashData)) {
+    // Always fetch from DB to get the full card set — hash may have 0 or only preview cards
+    if (showMeta) fetchInventoryFromDB(showMeta.id);
+    return;
+  }
 
   // 2. Try localStorage (same-browser fallback)
   if (showId) {
