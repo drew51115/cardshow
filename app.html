@@ -6971,16 +6971,55 @@ function openBuyerShowPicker() {
   document.getElementById('buyerAccessCode').value = '';
 }
 
-function joinShowByCode() {
+async function joinShowByCode() {
   const code = document.getElementById('buyerAccessCode').value.trim().toUpperCase();
   const errEl = document.getElementById('buyerCodeError');
   if (!code) { errEl.textContent = 'Enter an access code.'; return; }
-  const show = Object.values(shows).find(s => s.accessCode === code);
+
+  // Check in-memory shows first (demo + already-loaded real shows)
+  let show = Object.values(shows).find(s => s.accessCode === code);
+
+  // If not found in memory, look up in Supabase
+  if (!show && typeof db !== 'undefined') {
+    errEl.textContent = 'Looking up show…';
+    try {
+      const { data: showRow } = await db
+        .from('shows').select('*').eq('access_code', code).maybeSingle();
+      if (showRow) {
+        // Load sellers for this show
+        const { data: ssRows } = await db
+          .from('show_sellers')
+          .select('table_number, sellers(handle)')
+          .eq('show_id', showRow.id);
+
+        const sellersSet = new Set((ssRows || []).map(r => r.sellers?.handle).filter(Boolean));
+        const tables = {};
+        (ssRows || []).forEach(r => {
+          if (r.table_number && r.sellers?.handle) tables[r.sellers.handle] = r.table_number;
+        });
+
+        shows[showRow.id] = {
+          id:          showRow.id,
+          name:        showRow.name,
+          date:        showRow.date        || '',
+          location:    showRow.location    || '',
+          status:      showRow.status      || 'upcoming',
+          accessCode:  showRow.access_code || '',
+          publishedAt: showRow.published_at || null,
+          sellers:     sellersSet,
+          tables,
+        };
+        show = shows[showRow.id];
+      }
+    } catch(e) { console.warn('joinShowByCode DB lookup failed:', e.message); }
+  }
+
   if (!show) { errEl.textContent = 'Code not found. Check with your show organizer.'; return; }
+  errEl.textContent = '';
   joinShow(show.id);
 }
 
-function joinShow(showId) {
+async function joinShow(showId) {
   buyerShowId  = showId;
   activeShowId = showId;
   document.getElementById('buyerShowPicker').classList.remove('open');
@@ -6988,9 +7027,65 @@ function joinShow(showId) {
 
   const show = shows[showId];
   renderBuyerShowHeader(show);
+  filterBuyer(); // immediate render (may show 0 while DB loads)
+
+  // Always try to load from Supabase — if this is a demo show, the query returns
+  // nothing and inventory[] is unchanged. For real shows, cards are loaded from DB.
+  if (typeof db !== 'undefined') {
+    await loadBuyerInventoryFromDB(showId, show);
+  }
   renderShowSelectorBuyer();
   filterBuyer();
+
   showToast(`Browsing "${show.name}"`);
+}
+
+// Fetch published inventory for a show from show_inventory junction table.
+// Queries show_inventory (only populated for real shows) so demo shows return
+// nothing and leave inventory[] untouched.
+async function loadBuyerInventoryFromDB(showId, show) {
+  if (typeof db === 'undefined') return;
+  try {
+    const { data, error } = await db
+      .from('show_inventory')
+      .select(`
+        inventory (
+          id, card_title, player, year, card_set, card_number, parallel,
+          grader, grade, condition, price, status, location,
+          item_type, quantity, product_type, language, edition,
+          sellers ( handle )
+        )
+      `)
+      .eq('show_id', showId);
+
+    if (error) { console.error('loadBuyerInventoryFromDB failed:', error.message); return; }
+    if (!data || !data.length) return; // no published rows — demo show or unpublished
+
+    const dbCards = data
+      .map(row => row.inventory)
+      .filter(Boolean)
+      .filter(c => c.status !== 'Sold');
+
+    if (!dbCards.length) return;
+
+    // Collect seller handles to remove stale in-memory entries first
+    const handleSet = new Set(dbCards.map(c => c.sellers?.handle).filter(Boolean));
+    const keep = inventory.filter(c => !handleSet.has(c.Seller));
+    inventory.length = 0;
+    keep.forEach(c => inventory.push(c));
+
+    dbCards.forEach(c => {
+      const card = dbRowToCard(c);
+      card.Seller = c.sellers?.handle || '';
+      if (!card._shows) card._shows = new Set();
+      card._shows.add(showId);
+      inventory.push(card);
+    });
+
+    console.log(`Loaded ${dbCards.length} published cards for buyer show ${showId}`);
+  } catch(e) {
+    console.warn('loadBuyerInventoryFromDB error:', e.message);
+  }
 }
 
 function skipBuyerShowPicker() {
