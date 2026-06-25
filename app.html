@@ -6252,7 +6252,7 @@ function deleteShow(showId) {
   showToast(`Show deleted`);
 }
 
-function publishSelectedToShow(showId) {
+async function publishSelectedToShow(showId) {
   const show = shows[showId];
   if (!show) return;
 
@@ -6261,13 +6261,11 @@ function publishSelectedToShow(showId) {
     return;
   }
 
-  // Publish ALL cards belonging to authorized sellers — no checkbox selection needed
-  let added = 0;
-  let skipped = 0;
+  // Mark in-memory cards for seller sessions that have inventory loaded
   inventory.forEach(card => {
-    if (!show.sellers.has(card.Seller)) { skipped++; return; }
+    if (!show.sellers.has(card.Seller)) return;
     if (!card._shows) card._shows = new Set();
-    if (!card._shows.has(showId)) { card._shows.add(showId); added++; }
+    card._shows.add(showId);
   });
 
   show.publishedAt = new Date().toISOString();
@@ -6277,12 +6275,12 @@ function publishSelectedToShow(showId) {
   buildQRPanel();
   if (currentRole === 'admin') populateAdminFilterOptions();
 
-  // Persist published state and show_inventory rows to Supabase
   upsertShowToDB(show);
-  publishShowInventoryToDB(showId);
+  // publishShowInventoryToDB now queries DB directly — works for admin with empty inventory[]
+  const publishedCount = await publishShowInventoryToDB(showId);
 
   const sellerCount = show.sellers.size;
-  showToast(`✓ ${added} cards published · ${sellerCount} seller${sellerCount !== 1 ? 's' : ''} · "${show.name}"`);
+  showToast(`✓ ${publishedCount} cards published · ${sellerCount} seller${sellerCount !== 1 ? 's' : ''} · "${show.name}"`);
 }
 
 // ── Seller: Render available shows ──
@@ -6486,46 +6484,45 @@ function renderShowSelectorBuyer() {
 let _saqShowId    = null;
 let _saqTab       = 'marketing';
 
-function openShowAccessQr(showId) {
+async function openShowAccessQr(showId) {
   const show = shows[showId];
   if (!show) return;
   _saqShowId = showId;
   _saqTab = 'marketing';
 
-  // Switch to marketing tab
   switchSaqTab('marketing');
 
-  // Populate show details
-  const url      = buildShowPageUrl(showId);
+  const meta = [show.date, show.location].filter(Boolean).join(' · ');
   const sellersSet = (show.sellers instanceof Set) ? show.sellers : new Set(show.sellers || []);
-  const cardCnt  = inventory.filter(r => sellersSet.has(r.Seller) && r.Status !== 'Sold').length;
-  const sellCnt  = sellersSet.size;
-  const meta     = [show.date, show.location].filter(Boolean).join(' · ');
+  const sellCnt = sellersSet.size;
 
-  // Marketing tab
+  // Populate static fields and open overlay immediately
   document.getElementById('saqTitle').textContent    = show.name.toUpperCase();
   document.getElementById('saqMktName').textContent  = show.name.toUpperCase();
   document.getElementById('saqMktMeta').textContent  = meta || 'Card Show';
   document.getElementById('saqMktCode').textContent  = show.accessCode;
-  document.getElementById('saqMktCardCount').textContent   = cardCnt.toLocaleString();
+  document.getElementById('saqMktCardCount').textContent   = '…';
   document.getElementById('saqMktSellerCount').textContent = sellCnt.toLocaleString();
-  document.getElementById('saqMktUrl').textContent   = url;
-
-  // Signage tab
   document.getElementById('saqSgnName').textContent  = show.name.toUpperCase();
   document.getElementById('saqSgnMeta').textContent  = meta || 'Card Show';
   document.getElementById('saqSgnCode').textContent  = show.accessCode;
-  document.getElementById('saqSgnCardCount').textContent   = cardCnt.toLocaleString();
+  document.getElementById('saqSgnCardCount').textContent   = '…';
   document.getElementById('saqSgnSellerCount').textContent = sellCnt.toLocaleString();
-
-  // Render QR codes
-  setTimeout(() => {
-    renderQR('saqCanvas',        show.accessCode, 200, url);
-    renderQR('saqCanvasSignage', show.accessCode, 200, url);
-  }, 80);
 
   document.getElementById('showAccessQrOverlay').classList.add('open');
   document.body.style.overflow = 'hidden';
+
+  // Fetch live inventory from DB — admin sessions have no in-memory seller inventory
+  const result = await buildShowPageUrlFromDB(showId);
+  const url     = result?.url || '';
+  const cardCnt = result?.totalCards || 0;
+
+  document.getElementById('saqMktCardCount').textContent = cardCnt.toLocaleString();
+  document.getElementById('saqMktUrl').textContent       = url;
+  document.getElementById('saqSgnCardCount').textContent = cardCnt.toLocaleString();
+
+  renderQR('saqCanvas',        show.accessCode, 200, url);
+  renderQR('saqCanvasSignage', show.accessCode, 200, url);
 }
 
 function switchSaqTab(tab) {
@@ -7669,21 +7666,119 @@ async function updateTableNumberInDB(showId, handle, tableNum) {
 }
 
 // ── Publish: write card IDs to show_inventory ──
+// Queries Supabase directly for all authorized sellers' cards — does not rely on
+// in-memory inventory[] so admin sessions (which never load seller inventory) work correctly.
 async function publishShowInventoryToDB(showId) {
-  if (typeof db === 'undefined') return;
+  if (typeof db === 'undefined') return 0;
+  const show = shows[showId];
+  if (!show) return 0;
   try {
-    const cards = inventory.filter(r =>
-      r._shows && r._shows.has(showId) && r._dbId
-    );
-    if (!cards.length) return;
+    const handles = [...(show.sellers instanceof Set ? show.sellers : new Set(show.sellers || []))];
+    if (!handles.length) return 0;
 
-    const rows = cards.map(c => ({ show_id: showId, card_id: c._dbId }));
-    const { error } = await db
-      .from('show_inventory')
-      .upsert(rows, { onConflict: 'show_id,card_id' });
-    if (error) console.error('publishShowInventoryToDB failed:', error.message);
-    else console.log(`Published ${rows.length} cards to show_inventory for ${showId}`);
-  } catch(e) { console.warn('publishShowInventoryToDB error:', e.message); }
+    // Resolve handles → UUIDs
+    const { data: sellerRows } = await db.from('sellers').select('id').in('handle', handles);
+    if (!sellerRows || !sellerRows.length) return 0;
+    const sellerIds = sellerRows.map(r => r.id);
+
+    // Fetch all non-sold card IDs for those sellers
+    const { data: cards, error: cardErr } = await db
+      .from('inventory').select('id')
+      .in('seller_id', sellerIds)
+      .neq('status', 'Sold');
+    if (cardErr) { console.error('publishShowInventoryToDB fetch failed:', cardErr.message); return 0; }
+    if (!cards || !cards.length) { console.log('No cards to publish for show', showId); return 0; }
+
+    const rows = cards.map(c => ({ show_id: showId, card_id: c.id }));
+    const { error } = await db.from('show_inventory').upsert(rows, { onConflict: 'show_id,card_id' });
+    if (error) { console.error('publishShowInventoryToDB upsert failed:', error.message); return 0; }
+    console.log(`Published ${rows.length} cards to show_inventory for ${showId}`);
+    return rows.length;
+  } catch(e) { console.warn('publishShowInventoryToDB error:', e.message); return 0; }
+}
+
+// ── Build show page URL by fetching inventory from Supabase ──
+// Used by openShowAccessQr so admin sessions get the full card set, not just what's in memory.
+async function buildShowPageUrlFromDB(showId) {
+  const s = shows[showId];
+  if (!s) return null;
+  const prodOrigin = 'https://getcardshow.com';
+  const origin = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+    ? window.location.origin : prodOrigin;
+
+  const sellersSet = (s.sellers instanceof Set) ? s.sellers : new Set(s.sellers || []);
+  const sellersArr = [...sellersSet];
+
+  let dbCards = [];
+  if (typeof db !== 'undefined' && sellersArr.length) {
+    try {
+      const { data: sellerRows } = await db.from('sellers').select('id, handle').in('handle', sellersArr);
+      if (sellerRows && sellerRows.length) {
+        const sellerIds = sellerRows.map(r => r.id);
+        const handleById = Object.fromEntries(sellerRows.map(r => [r.id, r.handle]));
+        const { data: invRows } = await db.from('inventory')
+          .select('id, card_title, player, year, card_set, card_number, parallel, grader, grade, condition, price, status, seller_id, item_type, quantity, product_type, language, edition')
+          .in('seller_id', sellerIds)
+          .neq('status', 'Sold');
+        if (invRows) {
+          dbCards = invRows.map(row => ({
+            ...dbRowToCard(row),
+            Seller: handleById[row.seller_id] || '',
+          }));
+        }
+      }
+    } catch(e) {
+      console.warn('buildShowPageUrlFromDB fetch error:', e.message);
+      dbCards = inventory.filter(r => sellersSet.has(r.Seller) && r.Status !== 'Sold');
+    }
+  } else {
+    dbCards = inventory.filter(r => sellersSet.has(r.Seller) && r.Status !== 'Sold');
+  }
+
+  dbCards.sort((a, b) => Number(b.Price || 0) - Number(a.Price || 0));
+  const preview = [];
+  const seen = new Set();
+  for (const r of dbCards) {
+    if (!seen.has(r.Seller) && preview.length < 50) { preview.push(r); seen.add(r.Seller); }
+  }
+  for (const r of dbCards) {
+    if (!preview.includes(r) && preview.length < 50) preview.push(r);
+  }
+
+  function compact(r) {
+    const c = {};
+    if (r.Seller)              c.s  = r.Seller;
+    if (r['Card Title'])       c.t  = r['Card Title'];
+    if (r.Player)              c.p  = r.Player;
+    if (r.Year)                c.y  = r.Year;
+    const set = r['Set '] || r.Set;
+    if (set)                   c.st = set;
+    if (r['Parallel/Variant']) c.v  = r['Parallel/Variant'];
+    if (r.Grade)               c.g  = r.Grade;
+    if (r.Grader)              c.gr = r.Grader;
+    if (r.Condition)           c.c  = r.Condition;
+    c.pr = r.Price || 0;
+    if (r.item_type && r.item_type !== 'card') c.it = r.item_type;
+    if (r.Number)              c.n  = r.Number;
+    return c;
+  }
+
+  const payload = {
+    m: { id: s.id, n: s.name, d: s.date||'', l: s.location||'', st: s.status||'upcoming',
+         tb: s.tables||{}, sl: sellersArr, tc: dbCards.length },
+    c: preview.map(compact),
+  };
+
+  try {
+    const json   = JSON.stringify(payload);
+    const bytes  = new TextEncoder().encode(json);
+    const binary = Array.from(bytes).map(b => String.fromCharCode(b)).join('');
+    const encoded = btoa(binary).replace(/=+$/, '');
+    return { url: `${origin}/show.html#${encoded}`, totalCards: dbCards.length };
+  } catch(e) {
+    console.error('buildShowPageUrlFromDB encode failed:', e);
+    return null;
+  }
 }
 
 // ── Load all shows from DB on admin login ──
