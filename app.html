@@ -7054,18 +7054,21 @@ async function openShowAccessQr(showId) {
   document.getElementById('showAccessQrOverlay').classList.add('open');
   document.body.style.overflow = 'hidden';
 
-  // Fetch live inventory from DB — admin sessions have no in-memory seller inventory,
-  // and the previous metadata-only QR URL caused show.html to display 0 cards.
-  const result = await buildShowPageUrlFromDB(showId);
-  const url     = result?.url || '';
-  const cardCnt = result?.totalCards || 0;
+  // QR code uses a short metadata-only URL so it stays within QR data limits.
+  // show.html fetches full inventory from Supabase after loading that URL.
+  const qrUrl = buildShowQrUrl(showId) || `https://getcardshow.com/show.html`;
 
-  document.getElementById('saqMktCardCount').textContent = cardCnt.toLocaleString();
-  document.getElementById('saqMktUrl').textContent       = url;
-  document.getElementById('saqSgnCardCount').textContent = cardCnt.toLocaleString();
+  renderQR('saqCanvas',        show.accessCode, 200, qrUrl);
+  renderQR('saqCanvasSignage', show.accessCode, 200, qrUrl);
 
-  renderQR('saqCanvas',        show.accessCode, 200, url);
-  renderQR('saqCanvasSignage', show.accessCode, 200, url);
+  // Fetch card count from DB in parallel — doesn't block QR rendering
+  buildShowPageUrlFromDB(showId).then(result => {
+    const cardCnt = result?.totalCards || 0;
+    document.getElementById('saqMktCardCount').textContent = cardCnt.toLocaleString();
+    document.getElementById('saqMktUrl').textContent       = result?.url || qrUrl;
+    document.getElementById('saqSgnCardCount').textContent = cardCnt.toLocaleString();
+  });
+>>>>>>> origin/main
 }
 
 function switchSaqTab(tab) {
