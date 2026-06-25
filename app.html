@@ -4470,6 +4470,20 @@ function gradeBadge(grade, grader) {
 
 function getSet(row) { return row['Set '] || row['Set'] || ''; }
 
+// When Player is blank (common for TCG/Pokémon), extract a name from Card Title.
+// Strips trailing rarity/grade suffixes like "Amazing Rare", "Holo Rare", "EX", "GX", etc.
+function playerDisplay(r) {
+  if (r.Player && r.Player.trim()) return r.Player.trim();
+  const title = (r['Card Title'] || '').trim();
+  if (!title) return 'Unknown';
+  // Remove common TCG rarity/grade suffixes from the end
+  const cleaned = title
+    .replace(/\s+(Amazing Rare|Holo Rare|Rare Holo|Secret Rare|Full Art|Rainbow Rare|Gold Rare|Hyper Rare|Illustration Rare|Special Illustration Rare|SIR|Ultra Rare|Double Rare|Radiant Rare|Shiny Rare|Reverse Holo|Promo|Legend|EX|GX|V|VMAX|VSTAR|ex|Tera|Graded|PSA|BGS|SGC|\d+)[\s/]*(.*?)$/i, '')
+    .trim();
+  // Take at most the first 3 words as the character name
+  return cleaned.split(/\s+/).slice(0, 3).join(' ') || title.split(/\s+/).slice(0, 3).join(' ');
+}
+
 // ── FILE UPLOAD ──
 function handleFileUpload(input) {
   const file = input.files[0];
@@ -4939,7 +4953,7 @@ function renderBuyerGrid(rows) {
         <span class="card-item-year">${r.Year || '—'} · ${getSet(r) || '—'}</span>
         ${gradeBadge(r.Grade, r.Grader)}
       </div>
-      <div class="card-item-player">${r.Player || 'Unknown'}</div>
+      <div class="card-item-player">${playerDisplay(r)}</div>
       <div class="card-item-title">${r['Card Title'] || ''}</div>
       <div style="display:flex;gap:0.3rem;flex-wrap:wrap;margin-bottom:0.4rem;overflow:hidden;min-width:0">
         ${r['Parallel/Variant'] ? `<span class="badge badge-show">${(r['Parallel/Variant']).slice(0,30)}</span>` : ''}
@@ -5107,7 +5121,7 @@ async function openCardModal(idx) {
   const phone       = getProfile(sellerHandle).whatsapp;
 
   // Header
-  document.getElementById('modalPlayer').textContent = r.Player || 'Unknown';
+  document.getElementById('modalPlayer').textContent = playerDisplay(r);
   document.getElementById('modalTitle').textContent  = r['Card Title'] || '';
 
   // Price
