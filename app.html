@@ -3836,6 +3836,7 @@ function enterAsBuyer() {
 let shows = {};          // { showId: { id, name, date, location, status, accessCode, sellers: Set } }
 let activeShowId = null; // currently selected show for admin/seller context
 let buyerShowId  = null; // show the buyer is viewing
+let showCardCounts = {}; // { showId: number } — published card counts from show_inventory table
 
 // Derived: cards published to a show = inventory where card._shows has showId
 // Each card has: card._shows = Set of showIds it's been added to
@@ -5951,7 +5952,7 @@ function loginAsAdmin() {
   populateAdminFilterOptions();
 
   // Load real shows + seller handles from Supabase, then render
-  Promise.all([loadShowsFromDB(), refreshSellerHandlesCache()]).then(([loaded]) => {
+  Promise.all([loadShowsFromDB(), refreshSellerHandlesCache(), refreshShowCardCounts()]).then(([loaded]) => {
     if (loaded) {
       renderAdminShowsList(); if(typeof renderAdminShowsDashboard==="function" && _adminTab==="shows") renderAdminShowsDashboard();
       showToast(`Shows loaded from database`);
@@ -6834,6 +6835,8 @@ async function publishSelectedToShow(showId) {
   upsertShowToDB(show);
   // publishShowInventoryToDB now queries DB directly — no need to pre-load inventory[]
   const publishedCount = await publishShowInventoryToDB(showId);
+  showCardCounts[showId] = publishedCount;
+  if (typeof renderAdminShowsDashboard === 'function' && _adminTab === 'shows') renderAdminShowsDashboard();
 
   const sellerCount = show.sellers.size;
   showToast(`✓ ${publishedCount} cards published · ${sellerCount} seller${sellerCount !== 1 ? 's' : ''} · "${show.name}"`);
@@ -8096,9 +8099,7 @@ function renderAdminShowsDashboard() {
   el.innerHTML = list.map(s => {
     const isActive     = s.id === activeShowId;
     const isExpanded   = expanded.has(s.id);
-    const cardCount    = inventory.filter(r =>
-      s.sellers.has(r.Seller) && r.Status !== 'Sold'
-    ).length;
+    const cardCount    = showCardCounts[s.id] || 0;
     const sellerArr    = [...s.sellers].sort();
     const tables       = s.tables || {};
     const assignedCnt  = sellerArr.filter(h => tables[h]).length;
@@ -8804,6 +8805,17 @@ async function refreshSellerHandlesCache() {
   if (!error && data) {
     _allSellerHandles = data.map(r => r.handle).filter(Boolean);
   }
+}
+
+async function refreshShowCardCounts() {
+  if (typeof db === 'undefined') return;
+  const { data, error } = await db.from('show_inventory').select('show_id');
+  if (error) { console.warn('refreshShowCardCounts:', error.message); return; }
+  const counts = {};
+  (data || []).forEach(row => {
+    counts[row.show_id] = (counts[row.show_id] || 0) + 1;
+  });
+  showCardCounts = counts;
 }
 function loadDemoInventory() {
   if (_demoInventoryLoaded) return;
