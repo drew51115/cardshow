@@ -1351,6 +1351,16 @@ const SHOW    = (params.get('show') || '').trim();
 
 function getSet(r) { return r['Set '] || r['Set'] || ''; }
 
+function playerDisplay(r) {
+  if (r.Player && r.Player.trim()) return r.Player.trim();
+  const title = (r['Card Title'] || '').trim();
+  if (!title) return 'Unknown';
+  const cleaned = title
+    .replace(/\s+(Amazing Rare|Holo Rare|Rare Holo|Secret Rare|Full Art|Rainbow Rare|Gold Rare|Hyper Rare|Illustration Rare|Special Illustration Rare|SIR|Ultra Rare|Double Rare|Radiant Rare|Shiny Rare|Reverse Holo|Promo|Legend|EX|GX|V|VMAX|VSTAR|ex|Tera|Graded|PSA|BGS|SGC|\d+)[\s/]*(.*?)$/i, '')
+    .trim();
+  return cleaned.split(/\s+/).slice(0, 3).join(' ') || title.split(/\s+/).slice(0, 3).join(' ');
+}
+
 function detectSport(r) {
   const title  = (r['Card Title'] || '').toLowerCase();
   const player = (r.Player || '').toLowerCase();
@@ -1626,7 +1636,7 @@ function renderGrid() {
     <div class="card-item ${isOnHold ? 'card-on-hold' : ''}" onclick="openModal(${i})">
       <div class="sport-strip ${strip}"></div>
       <div class="card-sport">${sport}</div>
-      <div class="card-player">${r.Player || 'Unknown'}</div>
+      <div class="card-player">${playerDisplay(r)}</div>
       ${meta ? `<div class="card-meta">${meta}</div>` : ''}
       <div class="card-title">${(r['Card Title']||'').slice(0,60)}${(r['Card Title']||'').length>60?'…':''}</div>
       <div class="badge-row">
@@ -1683,7 +1693,7 @@ async function openModal(idx) {
   const grader   = r.Grader || (isGraded ? 'PSA' : null);
   const phone    = SELLER_WHATSAPP[SELLER];
 
-  document.getElementById('mPlayer').textContent  = r.Player || 'Unknown';
+  document.getElementById('mPlayer').textContent  = playerDisplay(r);
   document.getElementById('mTitle').textContent   = r['Card Title'] || '';
   document.getElementById('mPrice').textContent   = '$'+Number(r.Price||0).toLocaleString();
   document.getElementById('mGradeBadge').innerHTML = gradeBadge(r.Grade, r.Grader);
