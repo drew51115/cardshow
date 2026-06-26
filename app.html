@@ -9082,29 +9082,50 @@ async function upsertCardsToDB(cards) {
 }
 
 // Always show the login page on fresh navigation — clear any lingering Supabase session.
-db.auth.signOut().catch(() => {});
+// Deep-link: ?code=XXXX → skip login, enter buyer mode, join show directly.
+// Awaits signOut so the Supabase client is in a clean anon state before querying.
+(async function initPage() {
+  await db.auth.signOut().catch(() => {});
 
-// Deep-link: ?code=XXXX → auto-enter buyer mode and join that show directly.
-// Used by Entrance Signage QR codes so buyers bypass the login/picker screens.
-(function checkDeepLink() {
   const params = new URLSearchParams(window.location.search);
   const code = params.get('code');
-  if (!code) return;
-  // Remove the param from the URL bar without triggering a reload
-  const clean = window.location.pathname;
-  window.history.replaceState({}, '', clean);
-  // Wait for DOM to be ready, then auto-enter buyer and join
-  function go() {
-    enterAsBuyer();
-    // Pre-fill the access code input and trigger join
-    const input = document.getElementById('buyerAccessCode');
-    if (input) input.value = code.toUpperCase();
-    joinShowByCode();
+  if (!code) return; // normal login page — nothing more to do
+
+  window.history.replaceState({}, '', window.location.pathname);
+
+  enterAsBuyer(); // sets role, hides nav, opens show picker
+
+  // Look up show by access code — check memory first, then Supabase
+  const upperCode = code.toUpperCase();
+  let show = Object.values(shows).find(s => s.accessCode === upperCode);
+
+  if (!show && typeof db !== 'undefined') {
+    try {
+      const { data: showRow } = await db
+        .from('shows').select('*').eq('access_code', upperCode).maybeSingle();
+      if (showRow) {
+        const { data: ssRows } = await db
+          .from('show_sellers').select('table_number, sellers(handle)').eq('show_id', showRow.id);
+        const sellersSet = new Set((ssRows || []).map(r => r.sellers?.handle).filter(Boolean));
+        const tables = {};
+        (ssRows || []).forEach(r => {
+          if (r.table_number && r.sellers?.handle) tables[r.sellers.handle] = r.table_number;
+        });
+        shows[showRow.id] = {
+          id: showRow.id, name: showRow.name, date: showRow.date || '',
+          location: showRow.location || '', status: showRow.status || 'upcoming',
+          accessCode: showRow.access_code || '', publishedAt: showRow.published_at || null,
+          sellers: sellersSet, tables,
+        };
+        show = shows[showRow.id];
+      }
+    } catch(e) { console.warn('Deep-link show lookup failed:', e.message); }
   }
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', go);
+
+  if (show) {
+    joinShow(show.id);
   } else {
-    go();
+    showToast('Show not found — check the access code', 'var(--danger)');
   }
 })();
 
