@@ -8458,15 +8458,34 @@ async function addShowSellerToDB(showId, handle) {
   if (typeof db === 'undefined') return;
   try {
     // Look up seller UUID by handle
-    const { data: seller } = await db
+    const { data: seller, error: lookupErr } = await db
       .from('sellers').select('id').eq('handle', handle).maybeSingle();
-    if (!seller) { console.warn('addShowSellerToDB: seller not found:', handle); return; }
+    if (lookupErr) {
+      showToast(`Could not save @${handle} — DB error`, 'var(--danger)');
+      console.error('addShowSellerToDB lookup failed:', lookupErr.message);
+      return;
+    }
+    if (!seller) {
+      showToast(`@${handle} is not a registered seller — they must sign up first`, 'var(--danger)');
+      // Roll back the in-memory add so the UI matches DB state
+      const show = shows[showId];
+      if (show && show.sellers instanceof Set) {
+        show.sellers.delete(handle);
+        if (typeof renderAdminShowsDashboard === 'function' && _adminTab === 'shows') renderAdminShowsDashboard();
+      }
+      return;
+    }
 
     const { error } = await db
       .from('show_sellers')
       .upsert({ show_id: showId, seller_id: seller.id }, { onConflict: 'show_id,seller_id' });
-    if (error) console.error('addShowSellerToDB failed:', error.message);
-  } catch(e) { console.warn('addShowSellerToDB error:', e.message); }
+    if (error) {
+      showToast(`Failed to save @${handle} to show`, 'var(--danger)');
+      console.error('addShowSellerToDB upsert failed:', error.message);
+    }
+  } catch(e) {
+    console.warn('addShowSellerToDB error:', e.message);
+  }
 }
 
 // ── Sync show_sellers: remove a seller from a show ──
@@ -8475,14 +8494,17 @@ async function removeShowSellerFromDB(showId, handle) {
   try {
     const { data: seller } = await db
       .from('sellers').select('id').eq('handle', handle).maybeSingle();
-    if (!seller) return;
+    if (!seller) return; // not registered — nothing to delete in DB
 
     const { error } = await db
       .from('show_sellers')
       .delete()
       .eq('show_id', showId)
       .eq('seller_id', seller.id);
-    if (error) console.error('removeShowSellerFromDB failed:', error.message);
+    if (error) {
+      showToast(`Failed to remove @${handle} from show`, 'var(--danger)');
+      console.error('removeShowSellerFromDB failed:', error.message);
+    }
   } catch(e) { console.warn('removeShowSellerFromDB error:', e.message); }
 }
 
@@ -8631,17 +8653,27 @@ async function loadShowsFromDB() {
     if (showErr) { console.warn('loadShowsFromDB: shows fetch failed:', showErr.message); return false; }
     if (!showRows || !showRows.length) return false;
 
-    // Fetch show_sellers with seller handle joined
+    // Fetch show_sellers — two separate queries avoids FK join resolution issues
     const { data: ssRows, error: ssErr } = await db
       .from('show_sellers')
-      .select('show_id, table_number, sellers(handle)');
+      .select('show_id, seller_id, table_number');
     if (ssErr) console.warn('loadShowsFromDB: show_sellers fetch failed:', ssErr.message);
+
+    // Fetch all seller id→handle mappings needed for the shows we loaded
+    const sellerIds = [...new Set((ssRows || []).map(r => r.seller_id).filter(Boolean))];
+    let sellerIdToHandle = {};
+    if (sellerIds.length) {
+      const { data: sellerRows, error: sellerErr } = await db
+        .from('sellers').select('id, handle').in('id', sellerIds);
+      if (sellerErr) console.warn('loadShowsFromDB: sellers fetch failed:', sellerErr.message);
+      (sellerRows || []).forEach(r => { sellerIdToHandle[r.id] = r.handle; });
+    }
 
     // Build sellers Set and tables map per show
     const sellersByShow = {};
     const tablesByShow  = {};
     (ssRows || []).forEach(row => {
-      const handle = row.sellers?.handle;
+      const handle = sellerIdToHandle[row.seller_id];
       if (!handle) return;
       if (!sellersByShow[row.show_id]) sellersByShow[row.show_id] = new Set();
       sellersByShow[row.show_id].add(handle);
