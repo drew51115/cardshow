@@ -7003,18 +7003,6 @@ async function joinShowByCode() {
       const { data: showRow } = await db
         .from('shows').select('*').eq('access_code', code).maybeSingle();
       if (showRow) {
-        // Load sellers for this show
-        const { data: ssRows } = await db
-          .from('show_sellers')
-          .select('table_number, sellers(handle)')
-          .eq('show_id', showRow.id);
-
-        const sellersSet = new Set((ssRows || []).map(r => r.sellers?.handle).filter(Boolean));
-        const tables = {};
-        (ssRows || []).forEach(r => {
-          if (r.table_number && r.sellers?.handle) tables[r.sellers.handle] = r.table_number;
-        });
-
         shows[showRow.id] = {
           id:          showRow.id,
           name:        showRow.name,
@@ -7023,9 +7011,10 @@ async function joinShowByCode() {
           status:      showRow.status      || 'upcoming',
           accessCode:  showRow.access_code || '',
           publishedAt: showRow.published_at || null,
-          sellers:     sellersSet,
-          tables,
+          sellers:     new Set(),
+          tables:      {},
         };
+        await loadShowSellersAndTables(showRow.id);
         show = shows[showRow.id];
       }
     } catch(e) { console.warn('joinShowByCode DB lookup failed:', e.message); }
@@ -7057,43 +7046,81 @@ async function joinShow(showId) {
   showToast(`Browsing "${show.name}"`);
 }
 
+// Shared helper: fetch sellers + table numbers for a show using two explicit
+// queries instead of FK join syntax (join silently returns null on stale schema).
+// Mutates shows[showId].sellers and shows[showId].tables in place.
+async function loadShowSellersAndTables(showId) {
+  if (typeof db === 'undefined') return;
+  try {
+    const { data: ssRows, error: ssErr } = await db
+      .from('show_sellers').select('seller_id, table_number').eq('show_id', showId);
+    if (ssErr) { console.warn('loadShowSellersAndTables: show_sellers failed:', ssErr.message); return; }
+    if (!ssRows || !ssRows.length) return;
+
+    const sellerIds = ssRows.map(r => r.seller_id).filter(Boolean);
+    const { data: sellerRows } = await db.from('sellers').select('id, handle').in('id', sellerIds);
+    const idToHandle = {};
+    (sellerRows || []).forEach(r => { idToHandle[r.id] = r.handle; });
+
+    const sellersSet = new Set();
+    const tables = {};
+    ssRows.forEach(r => {
+      const h = idToHandle[r.seller_id];
+      if (!h) return;
+      sellersSet.add(h);
+      if (r.table_number) tables[h] = r.table_number;
+    });
+
+    const show = shows[showId];
+    if (show) {
+      show.sellers = sellersSet;
+      show.tables  = tables;
+    }
+  } catch(e) { console.warn('loadShowSellersAndTables error:', e.message); }
+}
+
 // Fetch published inventory for a show from show_inventory junction table.
 // Queries show_inventory (only populated for real shows) so demo shows return
 // nothing and leave inventory[] untouched.
 async function loadBuyerInventoryFromDB(showId, show) {
   if (typeof db === 'undefined') return;
   try {
+    // Fetch inventory rows (seller_id included so we can map handles without join)
     const { data, error } = await db
       .from('show_inventory')
       .select(`
         inventory (
-          id, card_title, player, year, card_set, card_number, parallel,
+          id, seller_id, card_title, player, year, card_set, card_number, parallel,
           grader, grade, condition, price, status, location,
-          item_type, quantity, product_type, language, edition,
-          sellers ( handle )
+          item_type, quantity, product_type, language, edition
         )
       `)
       .eq('show_id', showId);
 
     if (error) { console.error('loadBuyerInventoryFromDB failed:', error.message); return; }
-    if (!data || !data.length) return; // no published rows — demo show or unpublished
+    if (!data || !data.length) return;
 
-    const dbCards = data
-      .map(row => row.inventory)
-      .filter(Boolean)
-      .filter(c => c.status !== 'Sold');
-
+    const dbCards = data.map(row => row.inventory).filter(Boolean).filter(c => c.status !== 'Sold');
     if (!dbCards.length) return;
 
-    // Collect seller handles to remove stale in-memory entries first
-    const handleSet = new Set(dbCards.map(c => c.sellers?.handle).filter(Boolean));
+    // Resolve seller_id → handle via explicit query
+    const sellerIds = [...new Set(dbCards.map(c => c.seller_id).filter(Boolean))];
+    const { data: sellerRows } = await db.from('sellers').select('id, handle').in('id', sellerIds);
+    const idToHandle = {};
+    (sellerRows || []).forEach(r => { idToHandle[r.id] = r.handle; });
+
+    // Load sellers + tables into shows[showId] so table badges render correctly
+    await loadShowSellersAndTables(showId);
+
+    // Replace stale in-memory cards for these sellers
+    const handleSet = new Set(Object.values(idToHandle));
     const keep = inventory.filter(c => !handleSet.has(c.Seller));
     inventory.length = 0;
     keep.forEach(c => inventory.push(c));
 
     dbCards.forEach(c => {
       const card = dbRowToCard(c);
-      card.Seller = c.sellers?.handle || '';
+      card.Seller = idToHandle[c.seller_id] || '';
       if (!card._shows) card._shows = new Set();
       card._shows.add(showId);
       inventory.push(card);
@@ -9136,19 +9163,13 @@ async function upsertCardsToDB(cards) {
       const { data: showRow } = await db
         .from('shows').select('*').eq('access_code', upperCode).maybeSingle();
       if (showRow) {
-        const { data: ssRows } = await db
-          .from('show_sellers').select('table_number, sellers(handle)').eq('show_id', showRow.id);
-        const sellersSet = new Set((ssRows || []).map(r => r.sellers?.handle).filter(Boolean));
-        const tables = {};
-        (ssRows || []).forEach(r => {
-          if (r.table_number && r.sellers?.handle) tables[r.sellers.handle] = r.table_number;
-        });
         shows[showRow.id] = {
           id: showRow.id, name: showRow.name, date: showRow.date || '',
           location: showRow.location || '', status: showRow.status || 'upcoming',
           accessCode: showRow.access_code || '', publishedAt: showRow.published_at || null,
-          sellers: sellersSet, tables,
+          sellers: new Set(), tables: {},
         };
+        await loadShowSellersAndTables(showRow.id);
         show = shows[showRow.id];
       }
     } catch(e) { console.warn('Deep-link show lookup failed:', e.message); }
