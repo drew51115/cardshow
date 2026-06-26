@@ -6302,7 +6302,7 @@ function closeShowModal() {
   editingShowId = null;
 }
 
-function saveShow() {
+async function saveShow() {
   const name     = document.getElementById('smName').value.trim();
   const date     = document.getElementById('smDate').value.trim();
   const location = document.getElementById('smLocation').value.trim();
@@ -6318,13 +6318,14 @@ function saveShow() {
   );
   if (codeConflict) { showToast('Access code already in use', 'var(--danger)'); return; }
 
-  // Preserve existing sellers — seller management is done via the
-  // Sellers & Tables panel in the admin dashboard, not the modal chips.
-  // Only seed from chips if this is a brand-new show with no sellers yet.
+  const isNew = !editingShowId;
+
+  // For new shows, collect any sellers selected in the chip UI.
+  // For edits, preserve the existing authorized sellers (managed via dashboard panel).
   const existingShow = editingShowId ? shows[editingShowId] : null;
   let sellers;
   if (existingShow && existingShow.sellers && existingShow.sellers.size > 0) {
-    sellers = existingShow.sellers; // preserve existing Set
+    sellers = existingShow.sellers;
   } else {
     const selectedChips = document.querySelectorAll('#smSellerList .seller-chip.selected');
     sellers = new Set([...selectedChips].map(c => c.textContent.replace(/^[✓\s+]+/, '').trim()).filter(Boolean));
@@ -6340,10 +6341,19 @@ function saveShow() {
   renderSellerShowsList();
   if (currentRole === 'admin') populateAdminFilterOptions();
 
-  // Persist to Supabase
-  upsertShowToDB(shows[id]);
+  // Await show row first so FK constraint is satisfied before writing show_sellers
+  const showSaved = await upsertShowToDB(shows[id]);
+  if (!showSaved) {
+    showToast(`Show "${name}" saved locally — DB sync failed`, 'var(--danger)');
+    return;
+  }
 
-  showToast(`Show "${name}" ${editingShowId ? 'updated' : 'created'}`);
+  // Write chip-selected sellers to show_sellers for new shows
+  if (isNew && sellers.size) {
+    await Promise.all([...sellers].map(h => addShowSellerToDB(id, h)));
+  }
+
+  showToast(`Show "${name}" ${isNew ? 'created' : 'updated'}`);
 }
 
 // ── Admin: Render shows list ──
@@ -8461,13 +8471,20 @@ function showToDbRow(show) {
 
 // ── Upsert a show to the shows table ──
 async function upsertShowToDB(show) {
-  if (typeof db === 'undefined') return;
+  if (typeof db === 'undefined') return true; // no DB — treat as success
   try {
     const { error } = await db
       .from('shows')
       .upsert(showToDbRow(show), { onConflict: 'id' });
-    if (error) console.error('upsertShowToDB failed:', error.message);
-  } catch(e) { console.warn('upsertShowToDB error:', e.message); }
+    if (error) {
+      console.error('upsertShowToDB failed:', error.message);
+      return false;
+    }
+    return true;
+  } catch(e) {
+    console.warn('upsertShowToDB error:', e.message);
+    return false;
+  }
 }
 
 // ── Delete a show from the DB ──
@@ -8505,10 +8522,11 @@ async function addShowSellerToDB(showId, handle) {
 
     const { error } = await db
       .from('show_sellers')
-      .upsert({ show_id: showId, seller_id: seller.id }, { onConflict: 'show_id,seller_id' });
-    if (error) {
+      .insert({ show_id: showId, seller_id: seller.id });
+    // 23505 = unique_violation — seller already in show, ignore
+    if (error && error.code !== '23505') {
       showToast(`Failed to save @${handle} to show`, 'var(--danger)');
-      console.error('addShowSellerToDB upsert failed:', error.message);
+      console.error('addShowSellerToDB insert failed:', error.message, error.code);
     }
   } catch(e) {
     console.warn('addShowSellerToDB error:', e.message);
