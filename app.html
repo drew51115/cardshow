@@ -7166,18 +7166,19 @@ async function openShowAccessQr(showId) {
   document.getElementById('showAccessQrOverlay').classList.add('open');
   document.body.style.overflow = 'hidden';
 
-  // QR code uses a short metadata-only URL so it stays within QR data limits.
-  // show.html fetches full inventory from Supabase after loading that URL.
-  const qrUrl = buildShowQrUrl(showId) || `https://getcardshow.com/show.html`;
+  // Marketing QR → show.html (static preview page, fits within QR data limits)
+  // Entrance Signage QR → app.html?code=... (buyer deep-link, auto-joins show)
+  const mktQrUrl = buildShowQrUrl(showId) || `https://getcardshow.com/show.html`;
+  const sgnQrUrl = `https://getcardshow.com/app.html?code=${encodeURIComponent(show.accessCode)}`;
 
-  renderQR('saqCanvas',        show.accessCode, 200, qrUrl);
-  renderQR('saqCanvasSignage', show.accessCode, 200, qrUrl);
+  renderQR('saqCanvas',        show.accessCode, 200, mktQrUrl);
+  renderQR('saqCanvasSignage', show.accessCode, 200, sgnQrUrl);
 
   // Fetch card count from DB in parallel — doesn't block QR rendering
   buildShowPageUrlFromDB(showId).then(result => {
     const cardCnt = result?.totalCards || 0;
     document.getElementById('saqMktCardCount').textContent = cardCnt.toLocaleString();
-    document.getElementById('saqMktUrl').textContent       = result?.url || qrUrl;
+    document.getElementById('saqMktUrl').textContent       = result?.url || mktQrUrl;
     document.getElementById('saqSgnCardCount').textContent = cardCnt.toLocaleString();
   });
 }
@@ -9082,6 +9083,30 @@ async function upsertCardsToDB(cards) {
 
 // Always show the login page on fresh navigation — clear any lingering Supabase session.
 db.auth.signOut().catch(() => {});
+
+// Deep-link: ?code=XXXX → auto-enter buyer mode and join that show directly.
+// Used by Entrance Signage QR codes so buyers bypass the login/picker screens.
+(function checkDeepLink() {
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get('code');
+  if (!code) return;
+  // Remove the param from the URL bar without triggering a reload
+  const clean = window.location.pathname;
+  window.history.replaceState({}, '', clean);
+  // Wait for DOM to be ready, then auto-enter buyer and join
+  function go() {
+    enterAsBuyer();
+    // Pre-fill the access code input and trigger join
+    const input = document.getElementById('buyerAccessCode');
+    if (input) input.value = code.toUpperCase();
+    joinShowByCode();
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', go);
+  } else {
+    go();
+  }
+})();
 
 </script>
 
