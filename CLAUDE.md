@@ -18,7 +18,8 @@ seller-browse.html                → Buyer-facing seller storefront (QR scan de
 _redirects                        → Netlify routing rules
 netlify.toml                      → Disables pretty URLs (critical for show.html hash routing); functions = "netlify/functions"
 netlify/functions/psa-lookup.js   → Serverless: POST {cert, grader} → normalized card object (PSA + CGC APIs)
-.env.example                      → Placeholder env vars for PSA_API_TOKEN, CGC_API_TOKEN, TCGAPIS_KEY
+netlify/functions/vision-scan.js  → Serverless: POST {image, mediaType} → normalized card object via Claude vision (Sprint 2)
+.env.example                      → Placeholder env vars for PSA_API_TOKEN, CGC_API_TOKEN, TCGAPIS_KEY, ANTHROPIC_API_KEY
 CLAUDE.md                         → This file
 ```
 
@@ -75,6 +76,12 @@ Required for sealed product / lot support:
 ALTER TABLE inventory
   ADD COLUMN IF NOT EXISTS item_type    text DEFAULT 'card',
   ADD COLUMN IF NOT EXISTS product_type text;
+```
+
+Required for Sprint 2 vision scan usage tracking:
+```sql
+ALTER TABLE sellers ADD COLUMN IF NOT EXISTS scan_count          integer    DEFAULT 0;
+ALTER TABLE sellers ADD COLUMN IF NOT EXISTS scan_count_reset_at timestamptz DEFAULT now();
 ```
 
 ## Key Data Structures (in-memory runtime cache)
@@ -175,9 +182,9 @@ Fonts: Bebas Neue (headlines), DM Sans (body), DM Mono (labels/badges), Barlow C
 19. **QR codes use metadata-only URL** — `buildShowQrUrl()` encodes only show metadata + seller list (no card data). Full hash URLs with 50 cards exceed the QR data limit (~2–3KB) and cause silent rendering failure. The share link still uses the full `buildShowPageUrl()`.
 20. **item_type on inventory cards** — values are `'card'` (default), `'sealed'`, `'lot'`. `product_type` stores the specific sealed format (e.g. 'Blaster Box'). Both fields are passed through `cardToDbRow`/`dbRowToCard` and require the DB migration above to persist.
 
-## Cert Scanner — Sprint 1 Architecture (Shipped)
+## Cert Scanner — Sprint 1 + 2 Architecture (Shipped)
 
-### Scan Cascade
+### Scan Cascade (full, Sprint 1 + 2)
 ```
 openCertScanner()
   ├─ BarcodeDetector API available? (Chrome/Android)
@@ -189,7 +196,7 @@ openCertScanner()
             └─ ZXing.BrowserMultiFormatReader.decodeFromVideoDevice(null, video, cb)
                  └─ handleBarcodeDetected(raw)
 
-  [15-second timeout, starts AFTER ZXing loads] → "Take Photo" + "Retry" buttons shown
+  [3-second timeout] → photo mode UI (aim guide switches from barcode strip to card outline)
 
 handleBarcodeDetected(raw)
   └─ parseCertBarcode(raw) → { cert, grader }   (PSA 8-9 digits, CGC 10 digits, SGC 7 digits)
@@ -197,10 +204,47 @@ handleBarcodeDetected(raw)
             └─ POST /.netlify/functions/psa-lookup { cert, grader }
                  ├─ 429 rate limit → retry 3× with 1s/2s/4s backoff; show Retry button on client
                  └─ fillFormFromScan(card) → buildCardTitle(card) + pre-fills form with .scan-filled highlight
+
+scanTakePhoto()  [Sprint 2]
+  └─ capture video frame → canvas → JPEG 85% → max 1024px → base64
+       └─ _callVisionScan(base64, mediaType)
+            └─ POST /.netlify/functions/vision-scan { image, mediaType }
+                 ├─ success → fillFormFromVision(card, result)
+                 │    ├─ confidence color coding (green/amber/red left border)
+                 │    ├─ _showVisionConfirmBanner() — "📷 Auto-detected · review & confirm"
+                 │    └─ analytics toast ("✓ Card identified — N fields auto-filled")
+                 ├─ low_confidence → toast + "Try Again" / "Search by name" fallback buttons
+                 └─ network error → retry up to 2× then fall through to manual entry
 ```
 
+### Sprint 2 Vision Function (vision-scan.js)
+- **Model:** claude-sonnet-4-6
+- **Timeout:** 10 seconds (AbortController)
+- **Two-prompt strategy:** sports prompt first; if sport is Pokemon/TCG, re-calls with TCG-specific prompt
+- **Prompt A (sports):** extracts player, year, set, cardNumber, parallel, grader, grade, certNumber, sport, itemType, productType + confidence per field
+- **Prompt B (TCG/Pokemon):** additionally extracts hp, rarity; finer-grained set/expansion detection
+- **Confidence levels:** `high` (text clearly readable) / `medium` (inferred) / `low` (uncertain)
+- **All-low guard:** if every confidence value is "low", returns `success: false, error: "low_confidence"` so client falls through to TCDB text search (Sprint 3 stub)
+- **BGS slabs:** handled naturally — Claude reads the BGS label and returns `grader: "BGS"` + grade. This is the Sprint 4 BGS solution moved forward.
+
+### Confidence Color Coding (app.html CSS)
+| Level  | Visual |
+|--------|--------|
+| `high`   | Green left border `rgba(22,163,74,0.7)` |
+| `medium` | Amber left border `rgba(245,158,11,0.7)` |
+| `low`    | Red left border `rgba(239,68,68,0.7)` + red-tinted background |
+
+Border removed automatically after 60 seconds or on `clearVisionData()`.
+
+### Scan Count Free Tier (sellers table)
+- `scan_count` — cumulative vision scans this month
+- `scan_count_reset_at` — timestamp of last monthly reset
+- **Lazy reset:** on seller login, if current month ≠ `scan_count_reset_at` month, resets to 0 in DB. No cron needed.
+- **Free limit:** 25 vision scans/month. At limit, Take Photo button disabled with "25 free scans used this month" message. Barcode scan (Sprint 1) is never limited.
+- **DB migration required** (run in Supabase SQL editor — see below)
+
 ### buildCardTitle(card) — Sport-aware title generation
-Called from `fillFormFromScan`. Generates Card Title field from normalised scan fields:
+Called from `fillFormFromScan` (barcode) and `fillFormFromVision` (vision). Generates Card Title field from normalised scan fields:
 - **Sports:** `{year} {set} {player} {parallel}` → `"2024 Bowman Chrome Dylan Crews Fuchsia Refractor"`
 - **Pokemon:** `{year} Pokemon {set} {name} #{cardNum} {rarity}` → `"2023 Pokemon Scarlet & Violet 151 Charizard ex #006/165 SIR"`
 - **MTG:** `{year} Magic The Gathering {set} {name} {foil}` → `"2024 Magic The Gathering Bloomburrow Ral, Crackling Wit Foil"`
@@ -209,6 +253,7 @@ Called from `fillFormFromScan`. Generates Card Title field from normalised scan 
 
 ### Netlify Functions
 - **`psa-lookup.js`** — POST `{ cert, grader }` → `{ player, cardSet, year, cardNum, parallel, grade, grader, certNum, sport, rawTitle }`. Routes PSA/SGC to PSA API, CGC to CGC API. Retries 3× on 429. Requires `PSA_API_TOKEN` and `CGC_API_TOKEN` env vars set in Netlify dashboard.
+- **`vision-scan.js`** — POST `{ image, mediaType }` → `{ success, card, isTCG, promptVariant, rawResponse }`. Calls Claude claude-sonnet-4-6 via Anthropic API. Two-prompt strategy (sports then TCG). 10s timeout. Requires `ANTHROPIC_API_KEY` in Netlify dashboard.
 
 ### Environment Variables (set in Netlify dashboard)
 | Var | Purpose |
@@ -218,30 +263,39 @@ Called from `fillFormFromScan`. Generates Card Title field from normalised scan 
 | `PSA_API_TOKEN` | PSA PublicAPI Bearer token for cert lookups |
 | `CGC_API_TOKEN` | CGC API Bearer token for card cert lookups |
 | `TCGAPIS_KEY` | Reserved for Sprint 3 TCG price lookups |
+| `ANTHROPIC_API_KEY` | Claude API key for vision-scan.js (Sprint 2) |
 
 ### Credential Injection (no build step workaround)
 Supabase URL and anon key are **not** hardcoded in tracked files. `netlify.toml` has a `command` that runs `sed` to replace `SUPABASE_URL_PLACEHOLDER` / `SUPABASE_ANON_KEY_PLACEHOLDER` in all three HTML files at deploy time. `SECRETS_SCAN_OMIT_KEYS = "SUPABASE_URL,SUPABASE_ANON_KEY"` prevents Netlify's secrets scanner from blocking the build on the injected values (they are intentionally public publishable keys).
 
 ### Key Scanner Functions (app.html)
-- `openCertScanner()` / `closeCertScanner()` — open/close overlay, start/stop camera; resets Retry button on open
-- `startScannerCamera()` — branches on BarcodeDetector availability; native path owns getUserMedia, ZXing path delegates entirely to ZXing
+- `openCertScanner()` / `closeCertScanner()` — open/close overlay; resets vision state on open
+- `_enterBarcodeScanMode()` / `_enterPhotoMode()` — UI state toggles between barcode aim guide and card aim guide
+- `startScannerCamera()` — branches on BarcodeDetector availability; 3-second timeout → photo mode
 - `startNativeScan()` — BarcodeDetector polling every 250ms
-- `startZXingScan()` — loads @zxing/library@0.20.0 UMD from CDN (jsdelivr → unpkg fallback), uses `decodeFromVideoDevice(null, video, cb)`
+- `startZXingScan()` — loads @zxing/library@0.20.0 UMD from CDN (jsdelivr → unpkg fallback)
 - `stopScannerCamera()` — clears interval/timeout, resets ZXing reader, stops all MediaStream tracks
 - `parseCertBarcode(raw)` — digit-length heuristic: PSA 8-9 digits, CGC 10 digits, SGC 7 digits; URL pattern fallback
 - `lookupCert(cert, grader)` — POST to psa-lookup; on 429 shows Retry button wired to re-call lookupCert
 - `buildCardTitle(card)` — sport-aware title builder (Sports vs TCG game detection)
-- `fillFormFromScan(card, cert, grader)` — calls buildCardTitle, populates all Add Card fields, applies `.scan-filled` highlight for 3s
+- `fillFormFromScan(card, cert, grader)` — barcode result: calls buildCardTitle, populates Add Card fields, `.scan-filled` highlight
+- `fillFormFromVision(card, result)` — vision result: maps fields with confidence color coding, shows confirm banner, analytics toast
+- `_applyVisionConfidence(el, level)` — applies vision-high/medium/low CSS class; auto-removes after 60s
+- `_showVisionConfirmBanner(filledFields)` — injects banner above form with legend and "Clear scan data" link
+- `clearVisionData()` — removes banner and clears all vision-filled form fields
+- `scanTakePhoto()` — captures canvas frame, checks free tier limit, dispatches to `_callVisionScan`
+- `scanVisionRetry()` — resends last captured image on retry
+- `scanFallbackToSearch()` — closes scanner, focuses Player input for TCDB text search (Sprint 3 stub)
 - `lookupManualCert()` — manual cert # + grader dropdown fallback
-- `scanTakePhoto()` — Sprint 2 stub; shows toast, closes scanner
+- `_loadScanCount(handle)` — loads scan_count from DB on login; lazy monthly reset
+- `_incrementScanCount()` — increments in-memory counter + persists to DB after each successful vision scan
 
 ### Known Constraints
 - PSA API free tier has very low rate limits (~10 req/hr). Upgrade PSA API account tier if 429s occur frequently at shows.
 - ZXing CDN load adds ~1-2s delay on first open (library is ~400KB). Cached on subsequent opens within the session.
 - `@zxing/browser` ships ESM only — no UMD bundle. Must use `@zxing/library` for CDN UMD loading.
-
-### Sprint 2 Plan
-Replace `scanTakePhoto()` stub: capture canvas frame from video element → POST to a new `netlify/functions/vision-lookup.js` → call Claude Vision API → parse card details → fill form.
+- Vision API adds ~1-3s latency per scan. Showing the loading overlay keeps UX responsive.
+- Claude vision is good at reading PSA/CGC/BGS labels and raw card fronts; accuracy drops for small text, glare, or very dark backgrounds.
 
 ## Backlog Priority
 
@@ -269,13 +323,14 @@ Replace `scanTakePhoto()` stub: capture canvas frame from video element → POST
 - TCG detection expanded — 100+ Pokémon names, rarity keyword regex (Radiant, Reverse Holo, SIR, etc.), MTG/One Piece/Yu-Gi-Oh keywords in both app.html and show.html
 - **Sprint 1 cert barcode scanner** — camera overlay with BarcodeDetector (Chrome/Android) + ZXing fallback (iOS Safari); PSA + CGC API lookup via Netlify function; 429 retry with backoff + client Retry button; sport-aware Card Title generation via `buildCardTitle()`
 - Netlify secrets scanner fix — Supabase credentials removed from tracked files; injected at build time via `sed` in netlify.toml; `SECRETS_SCAN_OMIT_KEYS` prevents false positives on publishable keys
+- **Sprint 2 vision scan** — `scanTakePhoto()` captures canvas frame → JPEG 85% max 1024px → POST to `vision-scan.js` → Claude claude-sonnet-4-6 vision API → two-prompt strategy (sports / TCG) → confidence color coding (green/amber/red) → confirm banner → analytics toast. BGS slabs handled via label reading. Free tier: 25 scans/month with lazy monthly reset. Scan count persisted to `sellers.scan_count`. Retry logic: 2 failures → auto-fall-through to manual entry.
 
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`
 - **eBay comp lookup at card entry** (urgent, medium complexity) — #1 pain point from seller feedback
 
 ### Tier 2 — First show retrospective
-- **Sprint 2 vision scan** — replace `scanTakePhoto()` stub with canvas capture → Claude Vision API → auto-fill (see Sprint 2 Plan above)
+- ~~**Sprint 2 vision scan**~~ — shipped (see Shipped section above)
 - Card Ladder API integration (high complexity) — partnership outreach needed, no public API
 - Quick mark-sold button (low complexity)
 - Price refresh before show (medium complexity)
