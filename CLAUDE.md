@@ -23,8 +23,8 @@ CLAUDE.md                         → This file
 ```
 
 ## Supabase Configuration
-- **Project URL:** https://qtnqawqlmttogwnjieky.supabase.co
-- **Anon key:** sb_publishable_R8Yok9YAfb_wfhR5nmwpmg_1FWaCdqU
+- **Project URL:** set in app.html / show.html / seller-browse.html (Supabase project `qtnqawqlmttogwnjieky`)
+- **Anon key:** publishable key hardcoded in HTML files — intentionally public per Supabase security model (RLS governs access)
 - **Client:** Loaded via CDN in `<head>` of app.html and seller-browse.html
 
 ## Database Schema
