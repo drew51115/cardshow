@@ -8222,12 +8222,48 @@ async function lookupCert(cert, grader) {
   }
 }
 
+// Build a clean card title from normalised scan fields.
+// Sports:  "{year} {set} {player} {parallel}"          e.g. "2024 Bowman Chrome Dylan Crews Fuchsia Refractor"
+// TCG:     "{year} {game} {set} {name} #{num} {rarity}" e.g. "2023 Pokemon Scarlet & Violet 151 Charizard ex #006/165 SIR"
+function buildCardTitle(card) {
+  const year     = (card.year     || '').trim();
+  const name     = (card.player   || '').trim(); // card/player name
+  const set      = (card.cardSet  || '').trim();
+  const parallel = (card.parallel || '').trim();
+  const cardNum  = (card.cardNum  || '').trim();
+  const sport    = (card.sport    || '').trim();
+  const raw      = (card.rawTitle || '').toLowerCase();
+  const setLower = set.toLowerCase();
+
+  if (sport === 'TCG') {
+    // Determine game label; skip if set name already leads with it
+    let game = '';
+    if (/pokemon/.test(raw) || /pokemon/.test(setLower)) {
+      game = setLower.startsWith('pokemon') ? '' : 'Pokemon';
+    } else if (/magic|mtg/.test(raw) || /magic|mtg/.test(setLower)) {
+      game = /^magic|^mtg/.test(setLower) ? '' : 'Magic The Gathering';
+    } else if (/one piece/.test(raw) || /one.piece/.test(setLower)) {
+      game = /^one piece/.test(setLower) ? '' : 'One Piece Card Game';
+    } else if (/yu.gi.oh/.test(raw) || /yu.gi.oh/.test(setLower)) {
+      game = /^yu.gi.oh/.test(setLower) ? '' : 'Yu-Gi-Oh!';
+    }
+
+    const parts = [year, game, set, name];
+    if (cardNum) parts.push(`#${cardNum}`);
+    if (parallel) parts.push(parallel);
+    return parts.filter(Boolean).join(' ');
+  }
+
+  // Sports: year · set · player · parallel
+  return [year, set, name, parallel].filter(Boolean).join(' ');
+}
+
 function fillFormFromScan(card, cert, grader) {
   // Switch to card mode
   acSetType('card');
 
   const fills = {
-    ac_title:   card.rawTitle || card.player || '',
+    ac_title:   buildCardTitle(card),
     ac_player:  card.player   || '',
     ac_year:    card.year     || '',
     ac_set:     card.cardSet  || '',
