@@ -3214,6 +3214,9 @@
 
       <!-- Timeout action buttons (hidden until timeout or detect) -->
       <div id="scannerActions" style="display:none;flex-direction:column;gap:0.5rem">
+        <button id="scanRetryBtn" style="display:none;padding:0.7rem;border-radius:8px;border:none;background:#f5c842;color:#07080c;font-family:'Barlow Condensed',sans-serif;font-size:1rem;letter-spacing:0.06em;font-weight:700;cursor:pointer">
+          ↺ Retry Lookup
+        </button>
         <button id="scanPhotoBtn" onclick="scanTakePhoto()"
           style="padding:0.7rem;border-radius:8px;border:none;background:var(--gold);color:var(--black);font-family:'Barlow Condensed',sans-serif;font-size:1rem;letter-spacing:0.06em;font-weight:700;cursor:pointer">
           📷 Take Photo Instead
@@ -7997,6 +8000,7 @@ function openCertScanner() {
   const overlay = document.getElementById('certScannerOverlay');
   overlay.style.display = 'flex';
   document.getElementById('scannerActions').style.display = 'none';
+  document.getElementById('scanRetryBtn').style.display = 'none';
   document.getElementById('scanBadge').textContent = 'Scanning…';
   document.getElementById('scannerStatusText').textContent = 'Point camera at the barcode on the slab';
   document.getElementById('scanCertInput').value = '';
@@ -8192,7 +8196,17 @@ async function lookupCert(cert, grader) {
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      setScanStatus(`Lookup failed: ${err.error || res.status}`, true);
+      if (res.status === 429) {
+        setScanStatus('PSA rate limit — tap Retry in a few seconds', true);
+        // Show a Retry button alongside the existing actions
+        const retryBtn = document.getElementById('scanRetryBtn');
+        if (retryBtn) {
+          retryBtn.style.display = 'block';
+          retryBtn.onclick = () => { retryBtn.style.display = 'none'; lookupCert(cert, grader); };
+        }
+      } else {
+        setScanStatus(err.error || `Lookup failed (${res.status})`, true);
+      }
       document.getElementById('scannerActions').style.display = 'flex';
       return;
     }

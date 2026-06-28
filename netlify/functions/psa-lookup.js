@@ -47,18 +47,26 @@ async function lookupPSA(cert, grader) {
   }
 
   const url = `https://api.psacard.com/publicapi/cert/GetByCertNumber/${encodeURIComponent(cert)}`;
-  const res = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: 'application/json',
-    },
-  });
 
+  // Retry up to 3 times on 429 with exponential backoff (1s, 2s, 4s)
+  let lastRes;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt - 1)));
+    lastRes = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    });
+    if (lastRes.status !== 429) break;
+  }
+
+  const res = lastRes;
   if (!res.ok) {
     const text = await res.text();
+    const friendly = res.status === 429
+      ? 'PSA rate limit reached — wait a moment and try again'
+      : `PSA API error ${res.status}`;
     return {
       statusCode: res.status,
-      body: JSON.stringify({ error: `PSA API error ${res.status}`, detail: text }),
+      body: JSON.stringify({ error: friendly, detail: text }),
     };
   }
 
