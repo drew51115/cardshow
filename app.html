@@ -8071,19 +8071,27 @@ function startNativeScan() {
 }
 
 // ── ZXing-js fallback (iOS Safari, Firefox) ──────────────────────────────────
-// ZXing owns the camera entirely via decodeFromVideoDevice — avoids stream
-// conflicts that occur when we pre-attach getUserMedia to the video element.
+// Uses @zxing/library (UMD build) — @zxing/browser ships ESM only and has no
+// reliable CDN UMD bundle. ZXing owns the camera via decodeFromVideoDevice to
+// avoid stream conflicts from pre-attaching getUserMedia ourselves.
 async function startZXingScan() {
   setScanStatus('Loading scanner…', false);
   if (!_zxingReader) {
-    try {
-      await loadScript('https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/umd/index.min.js');
-      _zxingReader = new ZXingBrowser.BrowserMultiFormatReader();
-    } catch (err) {
+    // jsdelivr primary, unpkg fallback
+    const cdnUrls = [
+      'https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js',
+      'https://unpkg.com/@zxing/library@0.20.0/umd/index.min.js',
+    ];
+    let loaded = false;
+    for (const url of cdnUrls) {
+      try { await loadScript(url); loaded = true; break; } catch {}
+    }
+    if (!loaded || typeof ZXing === 'undefined') {
       setScanStatus('Barcode library failed to load — use manual entry', true);
       document.getElementById('scannerActions').style.display = 'flex';
       return;
     }
+    _zxingReader = new ZXing.BrowserMultiFormatReader();
   }
 
   const video = document.getElementById('scannerVideo');
@@ -8097,8 +8105,8 @@ async function startZXingScan() {
   }, 15000);
 
   try {
-    // undefined deviceId = browser picks rear/environment camera
-    await _zxingReader.decodeFromVideoDevice(undefined, video, (result, err) => {
+    // null deviceId = browser picks rear/environment camera
+    await _zxingReader.decodeFromVideoDevice(null, video, (result, err) => {
       if (result) handleBarcodeDetected(result.getText());
     });
   } catch (err) {
