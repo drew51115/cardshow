@@ -8011,30 +8011,30 @@ function closeCertScanner() {
 async function startScannerCamera() {
   stopScannerCamera(); // clean up any prior stream
 
-  try {
-    _scanStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
-    });
-    const video = document.getElementById('scannerVideo');
-    video.srcObject = _scanStream;
-    await video.play();
-  } catch (err) {
-    setScanStatus('Camera access denied — use manual entry below', true);
-    document.getElementById('scannerActions').style.display = 'flex';
-    return;
-  }
-
-  // 3-second timeout: if no barcode detected, surface the Take Photo button
-  _scanTimeout = setTimeout(() => {
-    setScanStatus('No barcode detected — take a photo or enter manually', false);
-    document.getElementById('scannerActions').style.display = 'flex';
-    document.getElementById('scanBadge').textContent = 'Tap photo or enter cert below';
-  }, 3000);
-
-  // Prefer native BarcodeDetector; fall back to ZXing
+  // Native BarcodeDetector path (Chrome, Android): own the stream ourselves
   if (typeof BarcodeDetector !== 'undefined') {
+    try {
+      _scanStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+      });
+      const video = document.getElementById('scannerVideo');
+      video.srcObject = _scanStream;
+      await video.play();
+    } catch (err) {
+      setScanStatus('Camera access denied — use manual entry below', true);
+      document.getElementById('scannerActions').style.display = 'flex';
+      return;
+    }
+
+    _scanTimeout = setTimeout(() => {
+      setScanStatus('No barcode detected — hold still or enter manually', false);
+      document.getElementById('scannerActions').style.display = 'flex';
+      document.getElementById('scanBadge').textContent = 'Tap photo or enter cert below';
+    }, 15000);
+
     startNativeScan();
   } else {
+    // ZXing path (iOS Safari, Firefox): let ZXing own the camera lifecycle
     startZXingScan();
   }
 }
@@ -8044,6 +8044,7 @@ function stopScannerCamera() {
   clearTimeout(_scanTimeout);
   _scanInterval = null;
   _scanTimeout  = null;
+  if (_zxingReader) { try { _zxingReader.reset(); } catch {} }
   if (_scanStream) {
     _scanStream.getTracks().forEach(t => t.stop());
     _scanStream = null;
@@ -8070,25 +8071,40 @@ function startNativeScan() {
 }
 
 // ── ZXing-js fallback (iOS Safari, Firefox) ──────────────────────────────────
+// ZXing owns the camera entirely via decodeFromVideoDevice — avoids stream
+// conflicts that occur when we pre-attach getUserMedia to the video element.
 async function startZXingScan() {
+  setScanStatus('Loading scanner…', false);
   if (!_zxingReader) {
     try {
-      // Load ZXing from CDN
       await loadScript('https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/umd/index.min.js');
       _zxingReader = new ZXingBrowser.BrowserMultiFormatReader();
     } catch (err) {
       setScanStatus('Barcode library failed to load — use manual entry', true);
+      document.getElementById('scannerActions').style.display = 'flex';
       return;
     }
   }
 
   const video = document.getElementById('scannerVideo');
+  setScanStatus('Point camera at the barcode on the slab', false);
+
+  // Start timeout only after ZXing is loaded and camera is active
+  _scanTimeout = setTimeout(() => {
+    setScanStatus('No barcode detected — hold still or enter manually', false);
+    document.getElementById('scannerActions').style.display = 'flex';
+    document.getElementById('scanBadge').textContent = 'Tap photo or enter cert below';
+  }, 15000);
+
   try {
-    _zxingReader.decodeFromStream(_scanStream, video, (result, err) => {
+    // undefined deviceId = browser picks rear/environment camera
+    await _zxingReader.decodeFromVideoDevice(undefined, video, (result, err) => {
       if (result) handleBarcodeDetected(result.getText());
     });
   } catch (err) {
-    setScanStatus('Scan unavailable — use manual entry below', true);
+    clearTimeout(_scanTimeout);
+    setScanStatus('Camera access denied — use manual entry below', true);
+    document.getElementById('scannerActions').style.display = 'flex';
   }
 }
 
