@@ -2016,6 +2016,19 @@
     to   { opacity:1; transform: translateY(0); }
   }
 
+  @keyframes scanAnim {
+    0%   { top: 35%; opacity: 0.4; }
+    50%  { top: 65%; opacity: 1;   }
+    100% { top: 35%; opacity: 0.4; }
+  }
+
+  /* Auto-fill highlight — yellow fade for scanned fields */
+  .scan-filled {
+    border-color: var(--gold) !important;
+    background: rgba(245,200,66,0.08) !important;
+    transition: background 1.5s ease, border-color 1.5s ease;
+  }
+
 
   /* ── ADD CARD ── */
   .btn-add-card-result {
@@ -3019,7 +3032,7 @@
           <div id="ac_results"></div>
         </div>
 
-        <!-- Divider -->
+        <!-- Divider with Scan button -->
         <div style="display:flex;align-items:center;gap:0.6rem;margin:0.1rem 0">
           <div style="flex:1;height:1px;background:var(--border)"></div>
           <div style="font-size:0.62rem;color:var(--muted);font-family:'DM Mono',monospace;letter-spacing:0.1em" id="ac_divider_label">CARD DETAILS</div>
@@ -3027,7 +3040,16 @@
         </div>
 
         <div>
-          <div class="section-label" style="margin-bottom:0.3rem" id="ac_title_label">Card Title *</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.3rem">
+            <div class="section-label" style="margin:0" id="ac_title_label">Card Title *</div>
+            <button id="ac_scan_btn" onclick="openCertScanner()"
+              title="Scan PSA/CGC barcode to auto-fill"
+              style="display:flex;align-items:center;gap:0.3rem;padding:0.22rem 0.55rem;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--gold);font-size:0.7rem;font-family:'DM Mono',monospace;letter-spacing:0.06em;cursor:pointer;transition:all 0.15s"
+              onmouseover="this.style.borderColor='var(--gold)'" onmouseout="this.style.borderColor='var(--border)'">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+              SCAN CERT
+            </button>
+          </div>
           <input class="show-input" id="ac_title" placeholder="e.g. 2025-26 Topps Chrome Cooper Flagg RC Auto" style="margin:0">
         </div>
 
@@ -3159,6 +3181,69 @@
     </div>
   </div>
 
+
+  <!-- ═══════ CERT SCANNER OVERLAY ═══════ -->
+  <div class="modal-overlay" id="certScannerOverlay" style="display:none;z-index:9500"
+       onclick="if(event.target===this)closeCertScanner()">
+    <div style="background:var(--card);border-radius:16px;padding:1.25rem;width:min(400px,94vw);position:relative">
+
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
+        <div>
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:1.2rem;letter-spacing:0.06em;color:var(--text)">SCAN CERT BARCODE</div>
+          <div style="font-size:0.72rem;color:var(--muted);font-family:'DM Mono',monospace" id="scannerStatusText">Point camera at the barcode on the slab</div>
+        </div>
+        <button class="modal-close" onclick="closeCertScanner()" style="position:static">✕</button>
+      </div>
+
+      <!-- Camera viewfinder -->
+      <div style="position:relative;border-radius:10px;overflow:hidden;background:#000;aspect-ratio:4/3;margin-bottom:0.9rem">
+        <video id="scannerVideo" autoplay playsinline muted
+               style="width:100%;height:100%;object-fit:cover"></video>
+        <!-- Aim guide -->
+        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none">
+          <div style="width:70%;height:22%;border:2px solid rgba(245,200,66,0.7);border-radius:6px;box-shadow:0 0 0 9999px rgba(0,0,0,0.35)"></div>
+        </div>
+        <!-- Scanning line animation -->
+        <div id="scanLine" style="position:absolute;left:15%;right:15%;height:2px;background:linear-gradient(90deg,transparent,var(--gold),transparent);border-radius:1px;animation:scanAnim 2s ease-in-out infinite;top:50%"></div>
+        <!-- Status badge -->
+        <div id="scanBadge" style="position:absolute;bottom:0.6rem;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.7);color:var(--gold);font-family:'DM Mono',monospace;font-size:0.65rem;padding:0.2rem 0.65rem;border-radius:20px;white-space:nowrap">
+          Scanning…
+        </div>
+      </div>
+
+      <!-- Timeout action buttons (hidden until timeout or detect) -->
+      <div id="scannerActions" style="display:none;flex-direction:column;gap:0.5rem">
+        <button id="scanPhotoBtn" onclick="scanTakePhoto()"
+          style="padding:0.7rem;border-radius:8px;border:none;background:var(--gold);color:var(--black);font-family:'Barlow Condensed',sans-serif;font-size:1rem;letter-spacing:0.06em;font-weight:700;cursor:pointer">
+          📷 Take Photo Instead
+        </button>
+        <button onclick="closeCertScanner()"
+          style="padding:0.55rem;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:0.8rem;cursor:pointer">
+          Cancel
+        </button>
+      </div>
+
+      <!-- Manual cert entry fallback -->
+      <div style="margin-top:0.75rem;padding-top:0.75rem;border-top:1px solid var(--border)">
+        <div style="font-size:0.65rem;color:var(--muted);font-family:'DM Mono',monospace;letter-spacing:0.08em;margin-bottom:0.4rem">OR ENTER CERT NUMBER MANUALLY</div>
+        <div style="display:flex;gap:0.5rem">
+          <select id="scanGraderSelect" style="padding:0.45rem 0.5rem;border-radius:7px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:0.8rem;font-family:'DM Sans',sans-serif">
+            <option value="PSA">PSA</option>
+            <option value="CGC">CGC</option>
+            <option value="SGC">SGC</option>
+          </select>
+          <input id="scanCertInput" placeholder="Cert #" type="text" inputmode="numeric"
+            style="flex:1;padding:0.45rem 0.6rem;border-radius:7px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:0.85rem;font-family:'DM Mono',monospace"
+            onkeydown="if(event.key==='Enter')lookupManualCert()">
+          <button onclick="lookupManualCert()"
+            style="padding:0.45rem 0.8rem;border-radius:7px;border:none;background:var(--gold);color:var(--black);font-weight:700;font-size:0.8rem;cursor:pointer">
+            Look up
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
 
   <!-- ═══════ CARD EDIT MODAL (position:absolute inside view-seller) ═══════ -->
   <div class="card-edit-overlay" id="cardEditOverlay" onclick="if(event.target===this)closeCEM()">
@@ -7879,6 +7964,261 @@ function acToggle() {
   if (_acItemType !== 'card') return;
   const graded = !!document.getElementById('ac_grader').value;
   document.getElementById('ac_cond_row').style.display = graded ? 'none' : 'block';
+}
+
+// ── CERT SCANNER ─────────────────────────────────────────────────────────────
+// Sprint 1: BarcodeDetector API (Chrome/Android) → ZXing-js fallback (iOS Safari)
+// 3-second timeout → "Take Photo" button (Sprint 2 vision AI stub)
+
+let _scanStream    = null;  // active MediaStream
+let _scanInterval  = null;  // polling interval handle
+let _scanTimeout   = null;  // 3-second no-detect timeout
+let _zxingReader   = null;  // ZXing reader instance (loaded lazily)
+
+function openCertScanner() {
+  const overlay = document.getElementById('certScannerOverlay');
+  overlay.style.display = 'flex';
+  document.getElementById('scannerActions').style.display = 'none';
+  document.getElementById('scanBadge').textContent = 'Scanning…';
+  document.getElementById('scannerStatusText').textContent = 'Point camera at the barcode on the slab';
+  document.getElementById('scanCertInput').value = '';
+  startScannerCamera();
+}
+
+function closeCertScanner() {
+  stopScannerCamera();
+  document.getElementById('certScannerOverlay').style.display = 'none';
+}
+
+async function startScannerCamera() {
+  stopScannerCamera(); // clean up any prior stream
+
+  try {
+    _scanStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+    });
+    const video = document.getElementById('scannerVideo');
+    video.srcObject = _scanStream;
+    await video.play();
+  } catch (err) {
+    setScanStatus('Camera access denied — use manual entry below', true);
+    document.getElementById('scannerActions').style.display = 'flex';
+    return;
+  }
+
+  // 3-second timeout: if no barcode detected, surface the Take Photo button
+  _scanTimeout = setTimeout(() => {
+    setScanStatus('No barcode detected — take a photo or enter manually', false);
+    document.getElementById('scannerActions').style.display = 'flex';
+    document.getElementById('scanBadge').textContent = 'Tap photo or enter cert below';
+  }, 3000);
+
+  // Prefer native BarcodeDetector; fall back to ZXing
+  if (typeof BarcodeDetector !== 'undefined') {
+    startNativeScan();
+  } else {
+    startZXingScan();
+  }
+}
+
+function stopScannerCamera() {
+  clearInterval(_scanInterval);
+  clearTimeout(_scanTimeout);
+  _scanInterval = null;
+  _scanTimeout  = null;
+  if (_scanStream) {
+    _scanStream.getTracks().forEach(t => t.stop());
+    _scanStream = null;
+  }
+  const video = document.getElementById('scannerVideo');
+  if (video) { video.srcObject = null; }
+}
+
+// ── Native BarcodeDetector (Chrome, Android WebView) ────────────────────────
+function startNativeScan() {
+  const detector = new BarcodeDetector({ formats: ['code_128', 'code_39', 'qr_code', 'pdf417', 'ean_13', 'ean_8'] });
+  const video = document.getElementById('scannerVideo');
+
+  _scanInterval = setInterval(async () => {
+    if (!video.videoWidth) return;
+    try {
+      const codes = await detector.detect(video);
+      if (codes.length) {
+        const raw = codes[0].rawValue;
+        handleBarcodeDetected(raw);
+      }
+    } catch { /* detector not ready yet */ }
+  }, 250);
+}
+
+// ── ZXing-js fallback (iOS Safari, Firefox) ──────────────────────────────────
+async function startZXingScan() {
+  if (!_zxingReader) {
+    try {
+      // Load ZXing from CDN
+      await loadScript('https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/umd/index.min.js');
+      _zxingReader = new ZXingBrowser.BrowserMultiFormatReader();
+    } catch (err) {
+      setScanStatus('Barcode library failed to load — use manual entry', true);
+      return;
+    }
+  }
+
+  const video = document.getElementById('scannerVideo');
+  try {
+    _zxingReader.decodeFromStream(_scanStream, video, (result, err) => {
+      if (result) handleBarcodeDetected(result.getText());
+    });
+  } catch (err) {
+    setScanStatus('Scan unavailable — use manual entry below', true);
+  }
+}
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+
+// ── Barcode → cert extraction ─────────────────────────────────────────────────
+function handleBarcodeDetected(raw) {
+  clearTimeout(_scanTimeout);
+  clearInterval(_scanInterval);
+  if (_zxingReader) { try { _zxingReader.reset(); } catch {} }
+  stopScannerCamera();
+
+  const { cert, grader } = parseCertBarcode(raw);
+  if (!cert) {
+    setScanStatus(`Couldn't parse barcode: ${raw}`, true);
+    document.getElementById('scannerActions').style.display = 'flex';
+    startScannerCamera(); // retry
+    return;
+  }
+
+  setScanStatus(`Detected ${grader} cert #${cert} — looking up…`, false);
+  document.getElementById('scanBadge').textContent = `${grader} #${cert}`;
+  lookupCert(cert, grader);
+}
+
+function parseCertBarcode(raw) {
+  // PSA: numeric, 8-9 digits
+  const psaMatch = raw.match(/^(\d{8,9})$/);
+  if (psaMatch) return { cert: psaMatch[1], grader: 'PSA' };
+
+  // CGC: 10-digit numeric, sometimes prefixed with "CGC"
+  const cgcMatch = raw.match(/(?:CGC[- ]?)?(\d{10})/i);
+  if (cgcMatch) return { cert: cgcMatch[1], grader: 'CGC' };
+
+  // SGC: 7-digit numeric
+  const sgcMatch = raw.match(/^(\d{7})$/);
+  if (sgcMatch) return { cert: sgcMatch[1], grader: 'SGC' };
+
+  // URL-embedded cert (e.g. QR codes on slabs)
+  const urlMatch = raw.match(/[?&/](?:cert|id|num)[=\/](\d{7,10})/i);
+  if (urlMatch) {
+    const cert = urlMatch[1];
+    const grader = raw.toLowerCase().includes('cgc') ? 'CGC'
+                 : raw.toLowerCase().includes('sgc') ? 'SGC' : 'PSA';
+    return { cert, grader };
+  }
+
+  return { cert: null, grader: null };
+}
+
+// ── Manual cert entry ────────────────────────────────────────────────────────
+function lookupManualCert() {
+  const cert   = document.getElementById('scanCertInput').value.trim();
+  const grader = document.getElementById('scanGraderSelect').value;
+  if (!cert) { showToast('Enter a cert number', 'var(--danger)'); return; }
+  setScanStatus(`Looking up ${grader} cert #${cert}…`, false);
+  lookupCert(cert, grader);
+}
+
+// ── API call → form fill ─────────────────────────────────────────────────────
+async function lookupCert(cert, grader) {
+  try {
+    const res = await fetch('/.netlify/functions/psa-lookup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cert, grader }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      setScanStatus(`Lookup failed: ${err.error || res.status}`, true);
+      document.getElementById('scannerActions').style.display = 'flex';
+      return;
+    }
+
+    const card = await res.json();
+    fillFormFromScan(card, cert, grader);
+    closeCertScanner();
+    showToast(`✓ ${grader} #${cert} auto-filled — review and save`);
+
+  } catch (err) {
+    setScanStatus(`Network error: ${err.message}`, true);
+    document.getElementById('scannerActions').style.display = 'flex';
+  }
+}
+
+function fillFormFromScan(card, cert, grader) {
+  // Switch to card mode
+  acSetType('card');
+
+  const fills = {
+    ac_title:   card.rawTitle || card.player || '',
+    ac_player:  card.player   || '',
+    ac_year:    card.year     || '',
+    ac_set:     card.cardSet  || '',
+    ac_number:  card.cardNum  || '',
+    ac_parallel: card.parallel || '',
+    ac_cert:    card.certNum  || cert,
+  };
+
+  Object.entries(fills).forEach(([id, val]) => {
+    const el = document.getElementById(id);
+    if (!el || !val) return;
+    el.value = val;
+    el.classList.add('scan-filled');
+    setTimeout(() => el.classList.remove('scan-filled'), 3000);
+  });
+
+  // Set grader + grade
+  if (grader) {
+    const graderEl = document.getElementById('ac_grader');
+    if (graderEl) {
+      graderEl.value = grader;
+      acToggle();
+    }
+  }
+  if (card.grade != null) {
+    const gradeEl = document.getElementById('ac_grade');
+    if (gradeEl) {
+      gradeEl.value = card.grade;
+      gradeEl.classList.add('scan-filled');
+      setTimeout(() => gradeEl.classList.remove('scan-filled'), 3000);
+    }
+  }
+}
+
+// ── Sprint 2 stub: vision AI ─────────────────────────────────────────────────
+function scanTakePhoto() {
+  // Sprint 2: capture frame from video, send to vision AI function for card recognition
+  showToast('📷 Photo capture coming in Sprint 2', 'var(--muted)');
+  closeCertScanner();
+}
+
+function setScanStatus(msg, isError) {
+  const el = document.getElementById('scannerStatusText');
+  if (el) {
+    el.textContent = msg;
+    el.style.color = isError ? 'var(--danger, #f87171)' : 'var(--muted)';
+  }
 }
 
 // Search the local CARD_DB with debounce

@@ -1,5 +1,6 @@
 [build]
   publish = "."
+  functions = "netlify/functions"
 
 # Disable pretty URLs globally — prevents Netlify from redirecting
 # show.html → /show which strips the URL hash fragment containing

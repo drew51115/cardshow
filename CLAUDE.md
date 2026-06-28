@@ -11,13 +11,15 @@ CardShow is a sports card show inventory platform connecting buyers, sellers, an
 
 ## File Structure
 ```
-index.html          → Landing/marketing page (formerly landing.html)
-app.html            → Main platform — seller/admin/buyer views (formerly index.html)
-show.html           → Public show page (URL hash-encoded inventory)
-seller-browse.html  → Buyer-facing seller storefront (QR scan destination)
-_redirects          → Netlify routing rules
-netlify.toml        → Disables pretty URLs (critical for show.html hash routing)
-CLAUDE.md           → This file
+index.html                        → Landing/marketing page (formerly landing.html)
+app.html                          → Main platform — seller/admin/buyer views (formerly index.html)
+show.html                         → Public show page (URL hash-encoded inventory)
+seller-browse.html                → Buyer-facing seller storefront (QR scan destination)
+_redirects                        → Netlify routing rules
+netlify.toml                      → Disables pretty URLs (critical for show.html hash routing); functions = "netlify/functions"
+netlify/functions/psa-lookup.js   → Serverless: POST {cert, grader} → normalized card object (PSA + CGC APIs)
+.env.example                      → Placeholder env vars for PSA_API_TOKEN, CGC_API_TOKEN, TCGAPIS_KEY
+CLAUDE.md                         → This file
 ```
 
 ## Supabase Configuration
@@ -172,6 +174,51 @@ Fonts: Bebas Neue (headlines), DM Sans (body), DM Mono (labels/badges), Barlow C
 18. **Admin sidebar seller dropdown uses DB cache** — `renderAdminShowsList()` reads `_allSellerHandles` (populated by `refreshSellerHandlesCache()` on login) rather than in-memory `inventory[]`. This ensures renamed/updated seller handles appear correctly. Falls back to inventory[] if cache is empty.
 19. **QR codes use metadata-only URL** — `buildShowQrUrl()` encodes only show metadata + seller list (no card data). Full hash URLs with 50 cards exceed the QR data limit (~2–3KB) and cause silent rendering failure. The share link still uses the full `buildShowPageUrl()`.
 20. **item_type on inventory cards** — values are `'card'` (default), `'sealed'`, `'lot'`. `product_type` stores the specific sealed format (e.g. 'Blaster Box'). Both fields are passed through `cardToDbRow`/`dbRowToCard` and require the DB migration above to persist.
+
+## Cert Scanner — Sprint 1 Architecture
+
+### Scan Cascade
+```
+openCertScanner()
+  └─ getUserMedia (rear camera)
+       ├─ BarcodeDetector API (Chrome/Android, 250ms polling)
+       │    └─ handleBarcodeDetected(raw)
+       └─ ZXing-js fallback via CDN (iOS Safari, Firefox)
+            └─ handleBarcodeDetected(raw)
+  
+  [3-second timeout] → "Take Photo" button shown
+       └─ scanTakePhoto() → Sprint 2 stub (vision AI)
+
+handleBarcodeDetected(raw)
+  └─ parseCertBarcode(raw) → { cert, grader }   (PSA 8-9 digits, CGC 10 digits, SGC 7 digits)
+       └─ lookupCert(cert, grader)
+            └─ POST /.netlify/functions/psa-lookup { cert, grader }
+                 └─ fillFormFromScan(card) → pre-fills Add Card form with .scan-filled highlight
+```
+
+### Netlify Functions
+- **`psa-lookup.js`** — POST `{ cert, grader }` → `{ player, cardSet, year, cardNum, parallel, grade, grader, certNum, sport, rawTitle }`. Routes PSA/SGC to PSA API, CGC to CGC API. Requires `PSA_API_TOKEN` and `CGC_API_TOKEN` env vars set in Netlify dashboard.
+
+### Environment Variables (set in Netlify dashboard)
+| Var | Purpose |
+|-----|---------|
+| `PSA_API_TOKEN` | PSA PublicAPI Bearer token for cert lookups |
+| `CGC_API_TOKEN` | CGC API Bearer token for card cert lookups |
+| `TCGAPIS_KEY` | Reserved for Sprint 3 TCG price lookups |
+
+### Key Scanner Functions (app.html)
+- `openCertScanner()` / `closeCertScanner()` — open/close overlay, start/stop camera
+- `startScannerCamera()` — requests getUserMedia, sets 3-second timeout, delegates to native or ZXing
+- `startNativeScan()` — BarcodeDetector polling every 250ms
+- `startZXingScan()` — loads ZXing from CDN lazily, starts stream decode
+- `parseCertBarcode(raw)` — extracts cert + grader from barcode string (digit length heuristic + URL pattern)
+- `lookupCert(cert, grader)` — calls psa-lookup function, fills form on success
+- `fillFormFromScan(card)` — populates Add Card fields, applies `.scan-filled` yellow highlight for 3s
+- `lookupManualCert()` — manual cert + grader entry fallback
+- `scanTakePhoto()` — Sprint 2 stub; shows toast, closes scanner
+
+### Sprint 2 Plan
+Replace `scanTakePhoto()` stub: capture canvas frame from video element → POST to a new `netlify/functions/vision-lookup.js` → call Claude Vision API → parse card details → fill form.
 
 ## Backlog Priority
 
