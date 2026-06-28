@@ -5,6 +5,11 @@
   publish = "."
   functions = "netlify/functions"
 
+[build.environment]
+  # Supabase anon/publishable keys are intentionally public — safe to appear in
+  # built HTML files. Tell Netlify's secrets scanner to skip these two keys.
+  SECRETS_SCAN_OMIT_KEYS = "SUPABASE_URL,SUPABASE_ANON_KEY"
+
 # Disable pretty URLs globally — prevents Netlify from redirecting
 # show.html → /show which strips the URL hash fragment containing
 # the show inventory payload.
