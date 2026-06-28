@@ -3039,17 +3039,18 @@
           <div style="flex:1;height:1px;background:var(--border)"></div>
         </div>
 
+        <!-- Scan cert button — dedicated row, hardcoded colors for iOS Safari compat -->
+        <div id="ac_scan_row">
+          <button onclick="openCertScanner()"
+            style="width:100%;display:flex;align-items:center;justify-content:center;gap:0.5rem;padding:0.6rem 1rem;border-radius:8px;border:1.5px solid #f5c842;background:#1a1e2e;color:#f5c842;font-size:0.82rem;font-family:'DM Mono',monospace;font-weight:600;letter-spacing:0.08em;cursor:pointer">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#f5c842" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            SCAN CERT BARCODE
+          </button>
+          <div style="font-size:0.62rem;color:#5a6585;font-family:'DM Mono',monospace;text-align:center;margin-top:0.3rem">PSA · CGC · SGC — auto-fills form fields</div>
+        </div>
+
         <div>
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.3rem">
-            <div class="section-label" style="margin:0" id="ac_title_label">Card Title *</div>
-            <button id="ac_scan_btn" onclick="openCertScanner()"
-              title="Scan PSA/CGC barcode to auto-fill"
-              style="display:flex;align-items:center;gap:0.3rem;padding:0.22rem 0.55rem;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--gold);font-size:0.7rem;font-family:'DM Mono',monospace;letter-spacing:0.06em;cursor:pointer;transition:all 0.15s"
-              onmouseover="this.style.borderColor='var(--gold)'" onmouseout="this.style.borderColor='var(--border)'">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-              SCAN CERT
-            </button>
-          </div>
+          <div class="section-label" style="margin-bottom:0.3rem" id="ac_title_label">Card Title *</div>
           <input class="show-input" id="ac_title" placeholder="e.g. 2025-26 Topps Chrome Cooper Flagg RC Auto" style="margin:0">
         </div>
 
@@ -7938,6 +7939,7 @@ function acSetType(type) {
 
   // Show/hide rows
   _acShow('ac_search_row', isCard);
+  _acShow('ac_scan_row',   isCard);
   _acShow('ac_player_row', isCard);
   _acShow('ac_year_only_row', !isCard);
   _acShow('ac_number_col', isCard);
@@ -7953,8 +7955,24 @@ function acSetType(type) {
 
 function _acShow(id, show) {
   const el = document.getElementById(id);
-  if (el) el.style.display = show ? '' : 'none';
+  if (!el) return;
+  if (!show) { el.style.display = 'none'; return; }
+  // Restore display value from data attribute if saved, else use inline or block
+  el.style.display = el.dataset.displayVal || el.getAttribute('data-display') || '';
 }
+
+// One-time: persist each ac_ element's intended display value so _acShow can restore it
+(function initAcDisplayVals() {
+  ['ac_search_row','ac_scan_row','ac_player_row','ac_year_only_row',
+   'ac_number_col','ac_parallel_row','ac_product_type_row',
+   'ac_grading_row','ac_cond_row','ac_sealed_cond_row','ac_lot_desc_row']
+    .forEach(id => {
+      const el = document.getElementById(id);
+      if (el && !el.dataset.displayVal) {
+        el.dataset.displayVal = el.style.display || 'block';
+      }
+    });
+})()
 
 function closeAddCard() {
   document.getElementById('addCardOverlay').classList.remove('open');
