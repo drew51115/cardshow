@@ -824,8 +824,8 @@ function expandPayload(payload) {
 // ── Supabase client (read-only, public anon key) ──
 const _sb = (typeof supabase !== 'undefined')
   ? supabase.createClient(
-      'https://qtnqawqlmttogwnjieky.supabase.co',
-      'sb_publishable_R8Yok9YAfb_wfhR5nmwpmg_1FWaCdqU'
+      'SUPABASE_URL_PLACEHOLDER',
+      'SUPABASE_ANON_KEY_PLACEHOLDER'
     )
   : null;
 
