@@ -8475,7 +8475,6 @@ function fillFormFromScan(card, cert, grader) {
   _acProgressDone(); // complete the progress bar if showing
 
   const fills = {
-    ac_title:   buildCardTitle(card),
     ac_player:  card.player   || '',
     ac_year:    card.year     || '',
     ac_set:     card.cardSet  || '',
@@ -8491,6 +8490,28 @@ function fillFormFromScan(card, cert, grader) {
     el.classList.add('scan-filled');
     setTimeout(() => el.classList.remove('scan-filled'), 3000);
   });
+
+  // Always set the card title after individual fields are populated so
+  // buildCardTitle can use whatever the PSA API returned, and so the
+  // title is never silently skipped by the !val guard above.
+  const titleEl = document.getElementById('ac_title');
+  if (titleEl) {
+    const synth = buildCardTitle({
+      player:   card.player   || '',
+      year:     card.year     || '',
+      cardSet:  card.cardSet  || '',
+      parallel: card.parallel || '',
+      cardNum:  card.cardNum  || '',
+      sport:    card.sport    || '',
+      rawTitle: card.rawTitle || '',
+    });
+    const titleVal = synth || card.rawTitle || '';
+    if (titleVal) {
+      titleEl.value = titleVal;
+      titleEl.classList.add('scan-filled');
+      setTimeout(() => titleEl.classList.remove('scan-filled'), 3000);
+    }
+  }
 
   // Set grader + grade
   if (grader) {
