@@ -2034,7 +2034,74 @@
   .vision-medium { border-left: 3px solid rgba(245,158,11,0.7) !important; }
   .vision-low    { border-left: 3px solid rgba(239,68,68,0.7)  !important; background: rgba(239,68,68,0.06) !important; }
 
+  /* DB-fill highlight — green fade for Trading Card API / local db selections */
+  .db-filled { border-left: 3px solid rgba(22,163,74,0.6) !important; background: rgba(22,163,74,0.05) !important; }
+
   @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Scan modal progress bar ── */
+  #acScanProgress {
+    position:absolute;top:0;left:0;right:0;height:3px;
+    background:var(--surface);border-radius:16px 16px 0 0;overflow:hidden;
+    opacity:0;transition:opacity 0.2s;
+  }
+  #acScanProgress.active { opacity:1; }
+  #acScanProgressFill {
+    height:100%;width:0%;background:var(--gold);
+    transition:width 0.4s ease,opacity 0.3s;
+    border-radius:16px;
+  }
+
+  /* ── Live search dropdown ── */
+  .ac-results-wrap {
+    border:1px solid var(--border);border-radius:8px;
+    background:var(--surface);overflow:hidden;margin-top:0.3rem;
+    box-shadow:0 4px 16px rgba(0,0,0,0.4);
+  }
+  .btn-add-card-result {
+    display:block;width:100%;text-align:left;padding:0.55rem 0.75rem;
+    border:none;background:transparent;cursor:pointer;
+    border-bottom:1px solid var(--border);
+    transition:background 0.1s;
+  }
+  .btn-add-card-result:last-child { border-bottom:none; }
+  .btn-add-card-result:hover,.btn-add-card-result.ac-focused { background:var(--card); }
+  .acr-header { display:flex;align-items:baseline;justify-content:space-between;gap:0.5rem;margin-bottom:0.15rem; }
+  .acr-player { font-size:0.8rem;font-weight:500;color:var(--text);font-family:'DM Sans',sans-serif; }
+  .acr-year   { font-size:0.68rem;color:var(--muted);font-family:'DM Mono',monospace; }
+  .acr-sport  { font-size:0.65rem;color:var(--muted);font-family:'DM Mono',monospace;white-space:nowrap; }
+  .acr-meta   { font-size:0.68rem;color:var(--muted);font-family:'DM Sans',sans-serif; }
+  .ac-empty   { padding:0.65rem 0.75rem;font-size:0.75rem;color:var(--muted);font-family:'DM Sans',sans-serif; }
+  .ac-spinner-inline { padding:0.65rem 0.75rem;font-size:0.72rem;color:var(--muted);font-family:'DM Mono',monospace; }
+
+  /* ── Scan usage bar in sidebar ── */
+  .scan-usage-bar {
+    margin-top:0.75rem;padding:0.6rem 0.75rem;
+    background:var(--surface);border:1px solid var(--border);
+    border-radius:8px;display:none;
+  }
+  .scan-usage-bar.visible { display:block; }
+  .scan-usage-track {
+    height:4px;background:rgba(255,255,255,0.07);border-radius:2px;
+    margin:0.35rem 0;overflow:hidden;
+  }
+  .scan-usage-fill {
+    height:100%;background:var(--gold);border-radius:2px;
+    transition:width 0.4s ease;
+  }
+  .scan-usage-fill.warning { background:rgba(245,158,11,0.9); }
+
+  /* ── Scan history chips ── */
+  .scan-history-chip {
+    display:block;width:100%;text-align:left;
+    padding:0.35rem 0.6rem;border-radius:6px;border:1px solid var(--border);
+    background:var(--surface);color:var(--muted);
+    font-size:0.68rem;font-family:'DM Mono',monospace;
+    cursor:pointer;transition:background 0.15s,color 0.15s;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    margin-bottom:0.3rem;
+  }
+  .scan-history-chip:hover { background:var(--card);color:var(--text); }
 
 
   /* ── ADD CARD ── */
@@ -2689,6 +2756,24 @@
         </div>
       </div>
 
+      <!-- Sprint 3: scan usage indicator (seller only, shown when scan_count > 0) -->
+      <div class="scan-usage-bar" id="scanUsageBar">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:0.68rem;font-family:'DM Mono',monospace;color:var(--muted)" id="scanUsageLabel">📷 Vision scans</span>
+          <span style="font-size:0.68rem;font-family:'DM Mono',monospace" id="scanUsageCount">0 / 25</span>
+        </div>
+        <div class="scan-usage-track">
+          <div class="scan-usage-fill" id="scanUsageFill" style="width:0%"></div>
+        </div>
+        <a href="/pricing" style="font-size:0.62rem;color:var(--gold);text-decoration:none">Upgrade for unlimited →</a>
+      </div>
+
+      <!-- Sprint 3: scan history chips (session only, clears on sign out) -->
+      <div id="scanHistorySection" style="display:none;margin-top:0.6rem">
+        <div class="section-label" style="margin-bottom:0.4rem">Recently Scanned</div>
+        <div id="scanHistoryList"></div>
+      </div>
+
       <div class="stats-row">
         <div class="stat-box">
           <div class="val" id="statTotal">0</div>
@@ -3001,7 +3086,10 @@
 
   <!-- ═══════ ADD CARD MODAL (position:absolute inside view-seller) ═══════ -->
   <div class="card-edit-overlay" id="addCardOverlay" onclick="if(event.target===this)closeAddCard()">
-    <div class="card-edit-modal">
+    <div class="card-edit-modal" style="position:relative">
+
+      <!-- Sprint 3: slim progress bar at top of modal -->
+      <div id="acScanProgress"><div id="acScanProgressFill"></div></div>
 
       <div class="modal-header">
         <div>
@@ -3032,11 +3120,16 @@
         <!-- Search (card only) -->
         <div id="ac_search_row">
           <div class="section-label" style="margin-bottom:0.3rem">Search Card</div>
-          <input class="show-input" id="ac_search"
-            placeholder="e.g. Cooper Flagg 2025, Luka Doncic RC Silver…"
-            style="margin:0" autocomplete="off"
-            oninput="acSearch(this.value)">
+          <div style="position:relative">
+            <input class="show-input" id="ac_search"
+              placeholder="e.g. Cooper Flagg 2025, Luka Doncic RC Silver…"
+              style="margin:0;padding-right:2rem" autocomplete="off"
+              oninput="acSearch(this.value)"
+              onkeydown="acKeyNav(event)">
+            <div id="ac_search_spinner" style="display:none;position:absolute;right:0.6rem;top:50%;transform:translateY(-50%);width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--gold);border-radius:50%;animation:spin 0.7s linear infinite"></div>
+          </div>
           <div id="ac_results"></div>
+          <div id="ac_debug_note" style="display:none;font-size:0.62rem;color:var(--muted);font-family:'DM Mono',monospace;margin-top:0.25rem">Using local card database — Trading Card API key not yet configured</div>
         </div>
 
         <!-- Divider with Scan button -->
@@ -6032,9 +6125,16 @@ function loginAsSeller(handle) {
           if (needsReset) {
             _currentScanCount = 0;
             db.from('sellers').update({ scan_count: 0, scan_count_reset_at: now.toISOString() }).eq('handle', handle);
+            const monthName = now.toLocaleString('default', { month: 'long', year: 'numeric' });
+            showToast(`Vision scans reset for ${monthName} — 25 available`);
           } else {
             _currentScanCount = data.scan_count || 0;
+            if (_currentScanCount >= 20) {
+              const remaining = VISION_FREE_LIMIT - _currentScanCount;
+              if (remaining > 0) showToast(`${remaining} vision scan${remaining === 1 ? '' : 's'} remaining this month`, 'var(--gold)');
+            }
           }
+          _renderScanUsageBar();
         }
       });
   }
@@ -6169,6 +6269,13 @@ async function signOut() {
   document.getElementById('authError').textContent      = '';
   // Reset to sign-in mode
   if (authMode !== 'signin') toggleAuthMode();
+
+  // Clear scan history and usage bar
+  _scanHistory = [];
+  _currentScanCount = 0;
+  _renderScanHistory();
+  const usageBar = document.getElementById('scanUsageBar');
+  if (usageBar) usageBar.classList.remove('visible');
 }
 
 // Returns inventory scoped to current seller, or all if admin
@@ -8047,16 +8154,20 @@ let _zxingReader         = null;  // ZXing reader instance (loaded lazily)
 let _visionRetryCount    = 0;     // consecutive vision API failures
 let _visionCapturedImage = null;  // base64 image for retry
 let _visionCapturedType  = 'image/jpeg';
+let _visionAbortCtrl     = null;  // AbortController for in-flight vision call
 let _currentScanCount    = 0;     // in-memory scan usage counter (loaded on login)
 const VISION_FREE_LIMIT  = 25;    // free tier: 25 vision scans per month
+let _scanHistory         = [];    // session-only scan history (last 5)
 
 function openCertScanner() {
   // Reset vision retry state each time the overlay opens
   _visionRetryCount    = 0;
   _visionCapturedImage = null;
+  if (_visionAbortCtrl) { _visionAbortCtrl.abort(); _visionAbortCtrl = null; }
 
   const overlay = document.getElementById('certScannerOverlay');
   overlay.style.display = 'flex';
+  overlay.dataset.state  = 'scanning';
   document.getElementById('scannerActions').style.display = 'none';
   document.getElementById('scanRetryBtn').style.display = 'none';
   document.getElementById('scanBadge').textContent = 'Scanning…';
@@ -8069,6 +8180,8 @@ function openCertScanner() {
 }
 
 function _enterBarcodeScanMode() {
+  const overlay = document.getElementById('certScannerOverlay');
+  if (overlay) overlay.dataset.state = 'scanning';
   const title = document.getElementById('scannerTitle');
   if (title) title.textContent = 'SCAN CERT BARCODE';
   const aimBarcode = document.getElementById('scanAimGuide');
@@ -8080,10 +8193,12 @@ function _enterBarcodeScanMode() {
   if (aimPhoto)   aimPhoto.style.display   = 'none';
   if (scanLine)   scanLine.style.display   = 'block';
   if (helper)     helper.style.display     = 'none';
-  if (photoBtn)   photoBtn.textContent     = '📷 Take Photo Instead';
+  if (photoBtn)   { photoBtn.textContent = '📷 Take Photo Instead'; photoBtn.disabled = false; photoBtn.style.opacity = ''; }
 }
 
 function _enterPhotoMode() {
+  const overlay = document.getElementById('certScannerOverlay');
+  if (overlay) overlay.dataset.state = 'photo';
   const title = document.getElementById('scannerTitle');
   if (title) title.textContent = 'IDENTIFY CARD';
   const aimBarcode = document.getElementById('scanAimGuide');
@@ -8095,11 +8210,13 @@ function _enterPhotoMode() {
   if (aimPhoto)   { aimPhoto.style.display = 'flex'; }
   if (scanLine)   scanLine.style.display   = 'none';
   if (helper)     helper.style.display     = 'block';
-  if (photoBtn)   photoBtn.textContent     = '📷 Take Photo';
+  if (photoBtn)   { photoBtn.textContent = '📷 Take Photo'; photoBtn.disabled = false; photoBtn.style.opacity = ''; }
   setScanStatus('Point at the card front — fill in the details automatically', false);
 }
 
 function closeCertScanner() {
+  // Abort any in-flight vision API call
+  if (_visionAbortCtrl) { _visionAbortCtrl.abort(); _visionAbortCtrl = null; }
   stopScannerCamera();
   document.getElementById('certScannerOverlay').style.display = 'none';
 }
@@ -8280,6 +8397,7 @@ function lookupManualCert() {
 
 // ── API call → form fill ─────────────────────────────────────────────────────
 async function lookupCert(cert, grader) {
+  _acProgressStart(); // animate modal progress bar during API call
   try {
     const res = await fetch('/.netlify/functions/psa-lookup', {
       method: 'POST',
@@ -8354,6 +8472,7 @@ function buildCardTitle(card) {
 function fillFormFromScan(card, cert, grader) {
   // Switch to card mode
   acSetType('card');
+  _acProgressDone(); // complete the progress bar if showing
 
   const fills = {
     ac_title:   buildCardTitle(card),
@@ -8389,6 +8508,20 @@ function fillFormFromScan(card, cert, grader) {
       setTimeout(() => gradeEl.classList.remove('scan-filled'), 3000);
     }
   }
+
+  // Add to scan history
+  _addScanHistory({
+    player:     card.player    || '',
+    year:       card.year      || '',
+    grader:     grader         || null,
+    grade:      card.grade     || null,
+    cardSet:    card.cardSet   || '',
+    parallel:   card.parallel  || '',
+    cardNumber: card.cardNum   || '',
+    certNumber: cert           || null,
+    itemType:   'card',
+    sport:      card.sport     || '',
+  });
 }
 
 // ── Sprint 2: Vision AI card identification ───────────────────────────────────
@@ -8443,25 +8576,40 @@ function scanVisionRetry() {
 }
 
 async function _callVisionScan(base64, mediaType) {
-  // Show loading overlay, keep camera feed live
+  // Set processing state
+  const overlay = document.getElementById('certScannerOverlay');
+  if (overlay) overlay.dataset.state = 'processing';
+
   const loadingEl  = document.getElementById('visionLoadingOverlay');
   const fallbackEl = document.getElementById('scanVisionFallback');
   if (loadingEl)  { loadingEl.style.display  = 'flex'; }
   if (fallbackEl) { fallbackEl.style.display = 'none'; }
   setScanStatus('Identifying card…', false);
+  _acProgressStart();
+
+  _visionAbortCtrl = new AbortController();
 
   let result;
   try {
     const res = await fetch('/.netlify/functions/vision-scan', {
       method: 'POST',
+      signal: _visionAbortCtrl.signal,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ image: base64, mediaType }),
     });
     result = await res.json();
   } catch (err) {
+    if (err.name === 'AbortError') {
+      _acProgressDone();
+      if (loadingEl) loadingEl.style.display = 'none';
+      showToast('Scan cancelled', 'var(--muted)');
+      return;
+    }
     result = { success: false, error: 'api_error', message: err.message };
   }
 
+  _visionAbortCtrl = null;
+  _acProgressDone();
   if (loadingEl) { loadingEl.style.display = 'none'; }
 
   if (!result.success) {
@@ -8483,6 +8631,22 @@ async function _callVisionScan(base64, mediaType) {
   closeCertScanner();
   fillFormFromVision(card, result);
   _incrementScanCount();
+
+  // Add to scan history
+  _addScanHistory({
+    player:  card.player  || '',
+    year:    card.year    || '',
+    grader:  card.grader  || null,
+    grade:   card.grade   || null,
+    cardSet: card.cardSet || '',
+    parallel: card.parallel || '',
+    cardNumber: card.cardNumber || '',
+    certNumber: card.certNumber || null,
+    condition: card.condition || null,
+    itemType: card.itemType || 'card',
+    productType: card.productType || null,
+    sport: card.sport || '',
+  });
 }
 
 function _handleVisionFailure(result) {
@@ -8517,10 +8681,11 @@ function _handleVisionFailure(result) {
 
 function scanFallbackToSearch() {
   closeCertScanner();
-  const playerInput = document.getElementById('ac_player');
-  if (playerInput) {
-    playerInput.focus();
-    // Sprint 3 stub: triggers TCDB autocomplete
+  // Focus the live search input — Sprint 3 live search activates on first keystroke
+  const searchInput = document.getElementById('ac_search');
+  if (searchInput) {
+    searchInput.focus();
+    showToast('Type the card name to search our database', 'var(--muted)');
   }
 }
 
@@ -8733,6 +8898,111 @@ function _incrementScanCount() {
   db.from('sellers')
     .update({ scan_count: _currentScanCount })
     .eq('handle', currentSeller);
+  _renderScanUsageBar();
+}
+
+// ── Progress bar (Add Card modal top) ────────────────────────────────────────
+let _acProgressTimer = null;
+
+function _acProgressStart() {
+  const bar  = document.getElementById('acScanProgress');
+  const fill = document.getElementById('acScanProgressFill');
+  if (!bar || !fill) return;
+  bar.classList.add('active');
+  fill.style.transition = 'none';
+  fill.style.width = '0%';
+  requestAnimationFrame(() => {
+    fill.style.transition = 'width 8s cubic-bezier(0.1,0.5,0.5,1)';
+    fill.style.width = '70%';
+  });
+}
+
+function _acProgressDone() {
+  const bar  = document.getElementById('acScanProgress');
+  const fill = document.getElementById('acScanProgressFill');
+  if (!bar || !fill) return;
+  fill.style.transition = 'width 0.2s ease';
+  fill.style.width = '100%';
+  clearTimeout(_acProgressTimer);
+  _acProgressTimer = setTimeout(() => {
+    bar.classList.remove('active');
+    fill.style.width = '0%';
+  }, 400);
+}
+
+// ── Scan usage sidebar bar ────────────────────────────────────────────────────
+function _renderScanUsageBar() {
+  if (currentRole !== 'seller') return;
+  const barEl   = document.getElementById('scanUsageBar');
+  const fillEl  = document.getElementById('scanUsageFill');
+  const countEl = document.getElementById('scanUsageCount');
+  const labelEl = document.getElementById('scanUsageLabel');
+  if (!barEl) return;
+
+  barEl.classList.add('visible');
+  const pct    = Math.min(100, Math.round((_currentScanCount / VISION_FREE_LIMIT) * 100));
+  const isWarn = _currentScanCount >= 20;
+  if (fillEl)  { fillEl.style.width = pct + '%'; fillEl.classList.toggle('warning', isWarn); }
+  if (countEl) {
+    countEl.textContent = `${_currentScanCount} / ${VISION_FREE_LIMIT} this month`;
+    countEl.style.color = isWarn ? 'rgba(245,158,11,0.9)' : 'var(--text)';
+    countEl.style.fontWeight = '600';
+  }
+  if (labelEl) labelEl.style.color = isWarn ? 'rgba(245,158,11,0.7)' : 'var(--muted)';
+}
+
+// ── Scan history ──────────────────────────────────────────────────────────────
+function _addScanHistory(cardData) {
+  _scanHistory.unshift(cardData);
+  if (_scanHistory.length > 5) _scanHistory.length = 5;
+  _renderScanHistory();
+}
+
+function _renderScanHistory() {
+  const section = document.getElementById('scanHistorySection');
+  const list    = document.getElementById('scanHistoryList');
+  if (!section || !list) return;
+
+  if (!_scanHistory.length) { section.style.display = 'none'; return; }
+  section.style.display = 'block';
+
+  list.innerHTML = _scanHistory.map((c, i) => {
+    const gradeStr = c.grader && c.grade != null ? ` ${c.grader} ${c.grade}` : (c.grader ? ` ${c.grader}` : ' Raw');
+    const label    = [c.year, c.player || c.cardSet, gradeStr.trim()].filter(Boolean).join(' ');
+    const truncated = label.length > 36 ? label.slice(0, 34) + '…' : label;
+    return `<button class="scan-history-chip" onclick="_reopenFromHistory(${i})" title="${_escHtml(label)}">${_escHtml(truncated)}</button>`;
+  }).join('');
+}
+
+function _reopenFromHistory(idx) {
+  const c = _scanHistory[idx];
+  if (!c) return;
+  openAddCard();
+  // Pre-fill the form with the historical scan's data
+  setTimeout(() => {
+    acSetType(c.itemType === 'sealed' ? 'sealed' : 'card');
+    const fills = {
+      ac_player:  c.player     || '',
+      ac_year:    c.year       || '',
+      ac_set:     c.cardSet    || '',
+      ac_number:  c.cardNumber || '',
+      ac_parallel: c.parallel  || '',
+      ac_cert:    c.certNumber || '',
+    };
+    Object.entries(fills).forEach(([id, val]) => {
+      const el = document.getElementById(id);
+      if (el && val) { el.value = val; el.classList.add('scan-filled'); setTimeout(() => el.classList.remove('scan-filled'), 2000); }
+    });
+    if (c.grader) { const g = document.getElementById('ac_grader'); if (g) { g.value = c.grader; acToggle(); } }
+    if (c.grade != null) { const g = document.getElementById('ac_grade'); if (g) g.value = c.grade; }
+    // Rebuild title
+    const titleEl = document.getElementById('ac_title');
+    if (titleEl) {
+      const synth = buildCardTitle({ player: c.player, year: c.year, cardSet: c.cardSet, parallel: c.parallel, cardNum: c.cardNumber, sport: c.sport, rawTitle: '' });
+      if (synth) titleEl.value = synth;
+    }
+    showToast('Re-opened from scan history — update price and save');
+  }, 50);
 }
 
 function setScanStatus(msg, isError) {
@@ -8743,66 +9013,171 @@ function setScanStatus(msg, isError) {
   }
 }
 
-// Search the local CARD_DB with debounce
+// ── Sprint 3: Live card database search (Trading Card API + local CARD_DB fallback) ──
+
+let _acFocusIdx = -1;  // keyboard nav index in results dropdown
+
 function acSearch(q) {
   clearTimeout(_acTimer);
-  const resultsEl = document.getElementById('ac_results');
-  if (!q || q.length < 2) { resultsEl.innerHTML = ''; return; }
+  const resultsEl  = document.getElementById('ac_results');
+  const spinnerEl  = document.getElementById('ac_search_spinner');
+  _acFocusIdx = -1;
 
-  resultsEl.innerHTML = `<div class="ac-results-wrap"><div class="ac-spinner">Searching…</div></div>`;
-  _acTimer = setTimeout(() => _acDoSearch(q), 200);
-}
-
-function _acDoSearch(q) {
-  const resultsEl = document.getElementById('ac_results');
-  const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
-
-  // Score each card by how many terms match
-  const scored = CARD_DB.map(card => {
-    const haystack = [card.title, card.player, card.year, card.set, card.parallel]
-      .join(' ').toLowerCase();
-    const hits = terms.filter(t => haystack.includes(t)).length;
-    return { card, hits };
-  }).filter(r => r.hits > 0)
-    .sort((a, b) => b.hits - a.hits || 0)
-    .slice(0, 8);
-
-  if (!scored.length) {
-    resultsEl.innerHTML = `<div class="ac-results-wrap"><div class="ac-empty">No matches — fill in details below manually.</div></div>`;
+  if (!q || q.length < 3) {
+    resultsEl.innerHTML = '';
+    if (spinnerEl) spinnerEl.style.display = 'none';
     return;
   }
 
-  // Store results on a module-level var — onclick passes index only
-  window._acResults = scored.map(r => r.card);
+  if (spinnerEl) spinnerEl.style.display = 'block';
+  _acTimer = setTimeout(() => _acDoSearch(q), 250);
+}
 
-  const rows = window._acResults.map((card, i) => {
-    const icon = SPORT_ICON[card.sport] || '🃏';
-    const meta = [card.year, card.set, card.parallel].filter(Boolean).join(' · ');
-    return `<button class="btn-add-card-result" onclick="acSelect(${i})">
-      <div class="acr-title">${icon} ${card.title}</div>
-      <div class="acr-meta">${meta}</div>
+async function _acDoSearch(q) {
+  const resultsEl = document.getElementById('ac_results');
+  const spinnerEl = document.getElementById('ac_search_spinner');
+
+  let useStub = false;
+  let cards   = [];
+
+  try {
+    const res  = await fetch('/.netlify/functions/trading-card-lookup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: q }),
+    });
+    const data = await res.json();
+
+    if (data.stub) {
+      useStub = true;
+    } else {
+      // Normalize API results to the same shape as CARD_DB entries
+      cards = (data.results || []).map(r => ({
+        title:   [r.year, r.cardSet, r.player, r.parallel].filter(Boolean).join(' '),
+        player:  r.player,
+        year:    r.year,
+        set:     r.cardSet,
+        number:  r.cardNumber || '',
+        parallel: r.parallel || '',
+        sport:   r.sport || '',
+      }));
+    }
+  } catch {
+    useStub = true;
+  }
+
+  if (useStub) {
+    // Silent fallback to local CARD_DB
+    const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
+    const scored = CARD_DB.map(card => {
+      const haystack = [card.title, card.player, card.year, card.set, card.parallel]
+        .join(' ').toLowerCase();
+      const hits = terms.filter(t => haystack.includes(t)).length;
+      return { card, hits };
+    }).filter(r => r.hits > 0)
+      .sort((a, b) => b.hits - a.hits)
+      .slice(0, 8);
+    cards = scored.map(r => r.card);
+
+    // Show debug note only when window.CARDSHOW_DEBUG is set
+    const debugEl = document.getElementById('ac_debug_note');
+    if (debugEl && window.CARDSHOW_DEBUG) debugEl.style.display = 'block';
+  } else {
+    const debugEl = document.getElementById('ac_debug_note');
+    if (debugEl) debugEl.style.display = 'none';
+  }
+
+  if (spinnerEl) spinnerEl.style.display = 'none';
+
+  if (!cards.length) {
+    window._acResults = [];
+    resultsEl.innerHTML = `<div class="ac-results-wrap"><div class="ac-empty">No matches found — enter details manually</div></div>`;
+    return;
+  }
+
+  window._acResults = cards;
+
+  const rows = cards.map((card, i) => {
+    const icon   = SPORT_ICON[card.sport] || '🃏';
+    const sport  = card.sport ? `${icon} ${card.sport}` : '';
+    const numStr = card.number ? ` · #${card.number}` : '';
+    const meta   = [card.set, card.parallel].filter(Boolean).join(' · ') + numStr;
+    return `<button class="btn-add-card-result" data-idx="${i}" onclick="acSelect(${i})">
+      <div class="acr-header">
+        <span class="acr-player">${_escHtml(card.player)}</span>
+        <span class="acr-year">${_escHtml(card.year)}</span>
+        <span class="acr-sport">${_escHtml(sport)}</span>
+      </div>
+      <div class="acr-meta">${_escHtml(meta)}</div>
     </button>`;
   }).join('');
 
   resultsEl.innerHTML = `<div class="ac-results-wrap">${rows}</div>`;
 }
 
-async function acSelect(idx) {
+function acKeyNav(e) {
+  const btns = document.querySelectorAll('#ac_results .btn-add-card-result');
+  if (!btns.length) return;
+
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    _acFocusIdx = Math.min(_acFocusIdx + 1, btns.length - 1);
+    _acUpdateFocus(btns);
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    _acFocusIdx = Math.max(_acFocusIdx - 1, 0);
+    _acUpdateFocus(btns);
+  } else if (e.key === 'Enter' && _acFocusIdx >= 0) {
+    e.preventDefault();
+    acSelect(_acFocusIdx);
+  } else if (e.key === 'Escape') {
+    document.getElementById('ac_results').innerHTML = '';
+    _acFocusIdx = -1;
+  }
+}
+
+function _acUpdateFocus(btns) {
+  btns.forEach((b, i) => b.classList.toggle('ac-focused', i === _acFocusIdx));
+  if (_acFocusIdx >= 0) btns[_acFocusIdx].scrollIntoView({ block: 'nearest' });
+}
+
+function _escHtml(str) {
+  return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function acSelect(idx) {
   const card = (window._acResults || [])[idx];
   if (!card) return;
 
-  // Fill fields
-  document.getElementById('ac_title').value    = card.title;
-  document.getElementById('ac_player').value   = card.player;
-  document.getElementById('ac_year').value     = card.year;
-  document.getElementById('ac_set').value      = card.set;
-  document.getElementById('ac_number').value   = card.number   || '';
-  document.getElementById('ac_parallel').value = card.parallel || '';
-  document.getElementById('ac_search').value   = card.title;
+  // Populate form fields
+  const fills = {
+    ac_title:   card.title   || [card.year, card.set, card.player, card.parallel].filter(Boolean).join(' '),
+    ac_player:  card.player  || '',
+    ac_year:    card.year    || '',
+    ac_set:     card.set     || '',
+    ac_number:  card.number  || '',
+    ac_parallel: card.parallel || '',
+  };
 
-  // Clear results
+  Object.entries(fills).forEach(([id, val]) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.value = val;
+    if (val) {
+      el.classList.add('db-filled');
+      setTimeout(() => el.classList.remove('db-filled'), 8000);
+    }
+  });
+
+  document.getElementById('ac_search').value   = card.player || card.title || '';
   document.getElementById('ac_results').innerHTML = '';
+  _acFocusIdx = -1;
 
+  showToast('Card details filled in — add grade and price');
+
+  // Focus price input
+  const priceEl = document.getElementById('ac_price');
+  if (priceEl) setTimeout(() => priceEl.focus(), 80);
 }
 
 function saveAddCard() {

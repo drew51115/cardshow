@@ -18,8 +18,9 @@ seller-browse.html                → Buyer-facing seller storefront (QR scan de
 _redirects                        → Netlify routing rules
 netlify.toml                      → Disables pretty URLs (critical for show.html hash routing); functions = "netlify/functions"
 netlify/functions/psa-lookup.js   → Serverless: POST {cert, grader} → normalized card object (PSA + CGC APIs)
-netlify/functions/vision-scan.js  → Serverless: POST {image, mediaType} → normalized card object via Claude vision (Sprint 2)
-.env.example                      → Placeholder env vars for PSA_API_TOKEN, CGC_API_TOKEN, TCGAPIS_KEY, ANTHROPIC_API_KEY
+netlify/functions/vision-scan.js         → Serverless: POST {image, mediaType} → normalized card object via Claude vision (Sprint 2)
+netlify/functions/trading-card-lookup.js → Serverless: POST {query, sport?} → card search results from Trading Card API (Sprint 3)
+.env.example                             → Placeholder env vars for all keys
 CLAUDE.md                         → This file
 ```
 
@@ -265,6 +266,7 @@ Called from `fillFormFromScan` (barcode) and `fillFormFromVision` (vision). Gene
 | `CGC_API_TOKEN` | CGC API Bearer token for card cert lookups |
 | `TCGAPIS_KEY` | Reserved for Sprint 3 TCG price lookups |
 | `ANTHROPIC_API_KEY` | Claude API key for vision-scan.js (Sprint 2) |
+| `TRADING_CARD_API_KEY` | Trading Card API key for live card DB autocomplete (Sprint 3) — add in Netlify dashboard → Site settings → Environment variables once approved at tradingcardapi.com/early-access |
 
 ### Credential Injection (no build step workaround)
 Supabase URL and anon key are **not** hardcoded in tracked files. `netlify.toml` has a `command` that runs `sed` to replace `SUPABASE_URL_PLACEHOLDER` / `SUPABASE_ANON_KEY_PLACEHOLDER` in all three HTML files at deploy time. `SECRETS_SCAN_OMIT_KEYS = "SUPABASE_URL,SUPABASE_ANON_KEY"` prevents Netlify's secrets scanner from blocking the build on the injected values (they are intentionally public publishable keys).
@@ -298,6 +300,93 @@ Supabase URL and anon key are **not** hardcoded in tracked files. `netlify.toml`
 - Vision API adds ~1-3s latency per scan. Showing the loading overlay keeps UX responsive.
 - Claude vision is good at reading PSA/CGC/BGS labels and raw card fronts; accuracy drops for small text, glare, or very dark backgrounds.
 
+## Sprint 3 — Live Card Database Autocomplete + Full Cascade Wiring
+
+### Full Three-Stage Cascade (Sprints 1 + 2 + 3)
+```
+[Camera button tapped on Add Card modal]
+        ↓
+Open scanner overlay (data-state="scanning")
+        ↓
+Barcode scan — BarcodeDetector or ZXing (3-second timeout)
+        ↓
+Barcode found?
+  YES → POST /psa-lookup → fillFormFromScan() → progress bar → confirm toast → DONE
+  NO  → _enterPhotoMode() (data-state="photo") — camera stays live
+        ↓
+Seller taps "Take Photo"
+        ↓
+Canvas capture → JPEG 85% / max 1024px → data-state="processing"
+Progress bar animates → POST /vision-scan (AbortController 10s)
+        ↓
+Vision result?
+  HIGH confidence (3+ fields) → fillFormFromVision() → confirm banner → analytics toast → DONE
+  MEDIUM/LOW → pre-fill + highlight low-confidence fields + show "Search by name" CTA
+  ALL LOW / failure → _handleVisionFailure() → up to 2 retries → fall through
+        ↓
+"Search by name" tapped OR 2 vision failures
+        ↓
+closeCertScanner() → focus #ac_search input → toast: "Type the card name to search"
+        ↓
+acSearch() → debounced 250ms → POST /trading-card-lookup
+  stub: true → silent fallback to local CARD_DB
+  stub: false → live Trading Card API results (up to 8)
+        ↓
+Seller selects result → acSelect() → db-filled green borders → toast → focus price → DONE
+```
+
+### Overlay State Machine
+`data-state` on `#certScannerOverlay`:
+- `scanning` — barcode scan active, barcode aim guide visible, scan line animating
+- `photo`    — card aim guide visible, "Take Photo" button active, camera live
+- `processing` — vision loading overlay shown, AbortController active
+
+Cancel at each state:
+- `scanning`: closes overlay, no fields populated
+- `photo`: X button re-enters scanning (restarts camera)
+- `processing`: AbortController.abort() fires, toast "Scan cancelled", overlay closes
+
+### Trading Card Lookup Function (trading-card-lookup.js)
+- **Endpoint:** POST `{ query, sport? }` → `{ stub: bool, results: [...] }`
+- **Stub mode:** when `TRADING_CARD_API_KEY` is unset, returns `{ stub: true, results: [] }` and logs a warning. Client silently falls back to local CARD_DB. All UI works — sellers just get 60-card local list instead of 3M+.
+- **Live mode:** `GET https://api.tradingcardapi.com/v1/cards?filter[name]=...&page[limit]=8` with `Authorization: Bearer` and `Accept: application/vnd.api+json`. 5-second timeout.
+- **To activate:** add `TRADING_CARD_API_KEY` in Netlify dashboard → Site settings → Environment variables (apply at tradingcardapi.com/early-access).
+- Returns normalized objects: `{ id, player, year, cardSet, cardNumber, sport, parallel, imageUrl }`
+
+### Live Autocomplete (app.html)
+- **Trigger:** 3+ characters in `#ac_search`, 250ms debounce
+- **Spinner:** right-side inline spinner in search input while fetching
+- **Dropdown:** up to 8 results — player name + year + sport header row, set + card # meta row
+- **Keyboard nav:** ArrowUp/Down to move focus, Enter to select, Escape to close
+- **On select:** fills player, year, set, card #, parallel with green `db-filled` border (8s); focuses price input; toast "Card details filled in — add grade and price"
+- **No results:** "No matches found — enter details manually" item
+- **Debug note:** `window.CARDSHOW_DEBUG = true` reveals "Using local card database" note under the input
+
+### Scan Count Sidebar UI
+- `#scanUsageBar` shown when `currentRole === 'seller'` and scan_count loads
+- Gold progress bar fills proportionally to 25-scan limit
+- Turns amber when count ≥ 20 (warning state)
+- "Upgrade for unlimited →" links to `/pricing` stub
+- On monthly reset: toast "Vision scans reset for [Month Year] — 25 available"
+- Approaching limit: toast on login "N vision scans remaining this month"
+
+### Scan History (session-only)
+- `_scanHistory[]` — last 5 scanned cards, stored in memory, cleared on `signOut()`
+- Rendered as chips below scan usage bar: `#scanHistorySection` / `#scanHistoryList`
+- Each chip shows `year player grader grade` truncated to 36 chars
+- Clicking a chip calls `_reopenFromHistory(idx)` — opens Add Card and pre-fills all fields from the stored scan data
+- Useful when seller has two copies of the same card to add
+
+### New Functions (app.html)
+- `acSearch(q)` — upgraded: 3+ char trigger, 250ms debounce, calls live function, falls back to CARD_DB
+- `_acDoSearch(q)` — async: POSTs to trading-card-lookup, normalizes results, renders dropdown
+- `acKeyNav(e)` — arrow key + enter + escape navigation for dropdown
+- `acSelect(idx)` — fills form fields with `db-filled` green borders, focuses price
+- `_acProgressStart()` / `_acProgressDone()` — animates slim gold progress bar at modal top
+- `_renderScanUsageBar()` — updates sidebar scan count UI
+- `_addScanHistory(cardData)` / `_renderScanHistory()` — manage session scan history chips
+- `_reopenFromHistory(idx)` — re-opens Add Card pre-filled from a history entry
+
 ## Backlog Priority
 
 ### Shipped ✅
@@ -325,13 +414,15 @@ Supabase URL and anon key are **not** hardcoded in tracked files. `netlify.toml`
 - **Sprint 1 cert barcode scanner** — camera overlay with BarcodeDetector (Chrome/Android) + ZXing fallback (iOS Safari); PSA + CGC API lookup via Netlify function; 429 retry with backoff + client Retry button; sport-aware Card Title generation via `buildCardTitle()`
 - Netlify secrets scanner fix — Supabase credentials removed from tracked files; injected at build time via `sed` in netlify.toml; `SECRETS_SCAN_OMIT_KEYS` prevents false positives on publishable keys
 - **Sprint 2 vision scan** — `scanTakePhoto()` captures canvas frame → JPEG 85% max 1024px → POST to `vision-scan.js` → Claude claude-sonnet-4-6 vision API → two-prompt strategy (sports / TCG) → confidence color coding (green/amber/red) → confirm banner → analytics toast. BGS slabs handled via label reading. Free tier: 25 scans/month with lazy monthly reset. Scan count persisted to `sellers.scan_count`. Retry logic: 2 failures → auto-fall-through to manual entry.
+- **Sprint 3 live card DB autocomplete + cascade wiring** — `trading-card-lookup.js` Netlify function calls Trading Card API (stub/fallback to local CARD_DB when key not set). Upgraded `acSearch()` with 3+ char trigger, 250ms debounce, inline spinner, 8-result dropdown with keyboard nav. Overlay state machine (`scanning → photo → processing`) with AbortController cancel support. Slim gold progress bar in Add Card modal header. Scan usage sidebar bar with amber warning at 20/25. Session scan history chips (last 5) with re-open. Monthly reset toast. Full three-stage cascade wired end-to-end.
 
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`
 - **eBay comp lookup at card entry** (urgent, medium complexity) — #1 pain point from seller feedback
 
 ### Tier 2 — First show retrospective
-- ~~**Sprint 2 vision scan**~~ — shipped (see Shipped section above)
+- ~~**Sprint 2 vision scan**~~ — shipped
+- ~~**Sprint 3 live card DB autocomplete**~~ — shipped (see Shipped section above)
 - Card Ladder API integration (high complexity) — partnership outreach needed, no public API
 - Quick mark-sold button (low complexity)
 - Price refresh before show (medium complexity)
