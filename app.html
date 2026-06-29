@@ -3334,8 +3334,8 @@
           Point at the card front — fill in the details automatically
         </div>
         <button id="scanPhotoBtn" onclick="scanTakePhoto()"
-          style="padding:0.7rem;border-radius:8px;border:none;background:var(--gold);color:var(--black);font-family:'Barlow Condensed',sans-serif;font-size:1rem;letter-spacing:0.06em;font-weight:700;cursor:pointer">
-          📷 Take Photo Instead
+          style="width:100%;padding:0.9rem 1rem;border-radius:10px;border:none;background:var(--gold);color:var(--black);font-family:'Barlow Condensed',sans-serif;font-size:1.35rem;letter-spacing:0.08em;font-weight:700;cursor:pointer;box-shadow:0 0 16px rgba(245,200,66,0.35)">
+          📷 Take Photo
         </button>
         <!-- vision retry / search fallback (shown on low confidence) -->
         <div id="scanVisionFallback" style="display:none;display:none;flex-direction:column;gap:0.4rem">
@@ -8191,7 +8191,7 @@ function _enterBarcodeScanMode() {
   if (aimPhoto)   aimPhoto.style.display   = 'none';
   if (scanLine)   scanLine.style.display   = 'block';
   if (helper)     helper.style.display     = 'none';
-  if (photoBtn)   { photoBtn.textContent = '📷 Take Photo Instead'; photoBtn.disabled = false; photoBtn.style.opacity = ''; }
+  if (photoBtn)   { photoBtn.textContent = '📷 Take Photo'; photoBtn.disabled = false; photoBtn.style.opacity = ''; }
 }
 
 function _enterPhotoMode() {
