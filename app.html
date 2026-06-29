@@ -8705,10 +8705,9 @@ function _showScanLimitUI() {
 function fillFormFromVision(card, result) {
   const conf = card.confidence || {};
 
-  // Field map: visionKey → formId
+  // Field map: visionKey → formId (cardTitle excluded — always synthesized via buildCardTitle)
   const fieldMap = [
     ['player',     'ac_player'],
-    ['cardTitle',  'ac_title'],
     ['year',       'ac_year'],
     ['cardSet',    'ac_set'],
     ['cardNumber', 'ac_number'],
@@ -8761,22 +8760,23 @@ function fillFormFromVision(card, result) {
     }
   }
 
-  // Build card title from vision data if not directly returned
-  if (!card.cardTitle && card.player) {
+  // Always synthesize card title from structured fields using the standard naming convention
+  if (card.player) {
     const titleInput = document.getElementById('ac_title');
-    if (titleInput && !titleInput.value) {
+    if (titleInput) {
       const synth = buildCardTitle({
-        player:  card.player,
-        year:    card.year,
-        cardSet: card.cardSet,
+        player:   card.player,
+        year:     card.year,
+        cardSet:  card.cardSet,
         parallel: card.parallel,
-        cardNum: card.cardNumber,
-        sport:   card.sport,
+        cardNum:  card.cardNumber,
+        sport:    card.sport,
         rawTitle: '',
       });
       if (synth) {
         titleInput.value = synth;
         _applyVisionConfidence(titleInput, 'medium');
+        filledFields.push({ label: 'cardTitle', level: 'medium' });
       }
     }
   }
