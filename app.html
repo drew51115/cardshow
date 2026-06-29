@@ -2074,22 +2074,6 @@
   .ac-empty   { padding:0.65rem 0.75rem;font-size:0.75rem;color:var(--muted);font-family:'DM Sans',sans-serif; }
   .ac-spinner-inline { padding:0.65rem 0.75rem;font-size:0.72rem;color:var(--muted);font-family:'DM Mono',monospace; }
 
-  /* ── Scan usage bar in sidebar ── */
-  .scan-usage-bar {
-    margin-top:0.75rem;padding:0.6rem 0.75rem;
-    background:var(--surface);border:1px solid var(--border);
-    border-radius:8px;display:none;
-  }
-  .scan-usage-bar.visible { display:block; }
-  .scan-usage-track {
-    height:4px;background:rgba(255,255,255,0.07);border-radius:2px;
-    margin:0.35rem 0;overflow:hidden;
-  }
-  .scan-usage-fill {
-    height:100%;background:var(--gold);border-radius:2px;
-    transition:width 0.4s ease;
-  }
-  .scan-usage-fill.warning { background:rgba(245,158,11,0.9); }
 
   /* ── Scan history chips ── */
   .scan-history-chip {
@@ -2756,17 +2740,6 @@
         </div>
       </div>
 
-      <!-- Sprint 3: scan usage indicator (seller only, shown when scan_count > 0) -->
-      <div class="scan-usage-bar" id="scanUsageBar">
-        <div style="display:flex;align-items:center;justify-content:space-between">
-          <span style="font-size:0.68rem;font-family:'DM Mono',monospace;color:var(--muted)" id="scanUsageLabel">📷 Vision scans</span>
-          <span style="font-size:0.68rem;font-family:'DM Mono',monospace" id="scanUsageCount">0 / 25</span>
-        </div>
-        <div class="scan-usage-track">
-          <div class="scan-usage-fill" id="scanUsageFill" style="width:0%"></div>
-        </div>
-        <a href="/pricing" style="font-size:0.62rem;color:var(--gold);text-decoration:none">Upgrade for unlimited →</a>
-      </div>
 
       <!-- Sprint 3: scan history chips (session only, clears on sign out) -->
       <div id="scanHistorySection" style="display:none;margin-top:0.6rem">
@@ -6102,10 +6075,10 @@ function loginAsSeller(handle) {
   // Load shows from Supabase so seller can see which shows they're authorized for
   loadShowsFromDB().then(() => renderSellerShowsList());
 
-  // Load seller profile from Supabase (display name, WhatsApp, Instagram, scan_count)
+  // Load seller profile from Supabase (display name, WhatsApp, Instagram)
   if (typeof db !== 'undefined') {
     db.from('sellers')
-      .select('display_name, whatsapp, instagram, scan_count, scan_count_reset_at')
+      .select('display_name, whatsapp, instagram')
       .eq('handle', handle)
       .maybeSingle()
       .then(({ data }) => {
@@ -6115,26 +6088,6 @@ function loginAsSeller(handle) {
           if (data.whatsapp)     sellerProfiles[handle].whatsapp    = data.whatsapp;
           if (data.instagram)    sellerProfiles[handle].instagram   = data.instagram;
           updateProfileUI(handle);
-
-          // Lazy monthly reset for scan counter
-          const now     = new Date();
-          const resetAt = data.scan_count_reset_at ? new Date(data.scan_count_reset_at) : null;
-          const needsReset = !resetAt
-            || now.getFullYear() !== resetAt.getFullYear()
-            || now.getMonth()    !== resetAt.getMonth();
-          if (needsReset) {
-            _currentScanCount = 0;
-            db.from('sellers').update({ scan_count: 0, scan_count_reset_at: now.toISOString() }).eq('handle', handle);
-            const monthName = now.toLocaleString('default', { month: 'long', year: 'numeric' });
-            showToast(`Vision scans reset for ${monthName} — 25 available`);
-          } else {
-            _currentScanCount = data.scan_count || 0;
-            if (_currentScanCount >= 20) {
-              const remaining = VISION_FREE_LIMIT - _currentScanCount;
-              if (remaining > 0) showToast(`${remaining} vision scan${remaining === 1 ? '' : 's'} remaining this month`, 'var(--gold)');
-            }
-          }
-          _renderScanUsageBar();
         }
       });
   }
@@ -6270,12 +6223,9 @@ async function signOut() {
   // Reset to sign-in mode
   if (authMode !== 'signin') toggleAuthMode();
 
-  // Clear scan history and usage bar
+  // Clear scan history
   _scanHistory = [];
-  _currentScanCount = 0;
   _renderScanHistory();
-  const usageBar = document.getElementById('scanUsageBar');
-  if (usageBar) usageBar.classList.remove('visible');
 }
 
 // Returns inventory scoped to current seller, or all if admin
@@ -8155,8 +8105,6 @@ let _visionRetryCount    = 0;     // consecutive vision API failures
 let _visionCapturedImage = null;  // base64 image for retry
 let _visionCapturedType  = 'image/jpeg';
 let _visionAbortCtrl     = null;  // AbortController for in-flight vision call
-let _currentScanCount    = 0;     // in-memory scan usage counter (loaded on login)
-const VISION_FREE_LIMIT  = 25;    // free tier: 25 vision scans per month
 let _scanHistory         = [];    // session-only scan history (last 5)
 
 function openCertScanner() {
@@ -8547,12 +8495,6 @@ function fillFormFromScan(card, cert, grader) {
 // ── Sprint 2: Vision AI card identification ───────────────────────────────────
 
 function scanTakePhoto() {
-  // Check free tier limit
-  if (_currentScanCount >= VISION_FREE_LIMIT && currentRole === 'seller') {
-    _showScanLimitUI();
-    return;
-  }
-
   const video = document.getElementById('scannerVideo');
   if (!video || !video.videoWidth) {
     showToast('Camera not ready — wait a moment and try again', 'var(--danger)');
@@ -8650,7 +8592,6 @@ async function _callVisionScan(base64, mediaType) {
 
   closeCertScanner();
   fillFormFromVision(card, result);
-  _incrementScanCount();
 
   // Add to scan history
   _addScanHistory({
@@ -8709,17 +8650,6 @@ function scanFallbackToSearch() {
   }
 }
 
-function _showScanLimitUI() {
-  const photoBtn = document.getElementById('scanPhotoBtn');
-  if (photoBtn) {
-    photoBtn.disabled = true;
-    photoBtn.style.opacity = '0.45';
-    photoBtn.textContent = '25 free scans used this month';
-  }
-  setScanStatus('Upgrade for unlimited vision scans', false);
-  // In-overlay CTA — just toast for now; full pricing page is /pricing stub
-  showToast('25 free scans used this month — upgrade for unlimited', 'var(--gold)');
-}
 
 // ── Vision form fill with confidence color coding ────────────────────────────
 function fillFormFromVision(card, result) {
@@ -8886,40 +8816,6 @@ function clearVisionData() {
   }
 }
 
-// ── Scan count tracking ───────────────────────────────────────────────────────
-async function _loadScanCount(handle) {
-  if (typeof db === 'undefined') return;
-  const { data } = await db.from('sellers')
-    .select('scan_count, scan_count_reset_at')
-    .eq('handle', handle)
-    .maybeSingle();
-  if (!data) return;
-
-  // Lazy monthly reset
-  const now        = new Date();
-  const resetAt    = data.scan_count_reset_at ? new Date(data.scan_count_reset_at) : null;
-  const needsReset = !resetAt
-    || now.getFullYear() !== resetAt.getFullYear()
-    || now.getMonth()    !== resetAt.getMonth();
-
-  if (needsReset) {
-    _currentScanCount = 0;
-    db.from('sellers')
-      .update({ scan_count: 0, scan_count_reset_at: now.toISOString() })
-      .eq('handle', handle);
-  } else {
-    _currentScanCount = data.scan_count || 0;
-  }
-}
-
-function _incrementScanCount() {
-  if (!currentSeller || typeof db === 'undefined') return;
-  _currentScanCount++;
-  db.from('sellers')
-    .update({ scan_count: _currentScanCount })
-    .eq('handle', currentSeller);
-  _renderScanUsageBar();
-}
 
 // ── Progress bar (Add Card modal top) ────────────────────────────────────────
 let _acProgressTimer = null;
@@ -8950,26 +8846,6 @@ function _acProgressDone() {
   }, 400);
 }
 
-// ── Scan usage sidebar bar ────────────────────────────────────────────────────
-function _renderScanUsageBar() {
-  if (currentRole !== 'seller') return;
-  const barEl   = document.getElementById('scanUsageBar');
-  const fillEl  = document.getElementById('scanUsageFill');
-  const countEl = document.getElementById('scanUsageCount');
-  const labelEl = document.getElementById('scanUsageLabel');
-  if (!barEl) return;
-
-  barEl.classList.add('visible');
-  const pct    = Math.min(100, Math.round((_currentScanCount / VISION_FREE_LIMIT) * 100));
-  const isWarn = _currentScanCount >= 20;
-  if (fillEl)  { fillEl.style.width = pct + '%'; fillEl.classList.toggle('warning', isWarn); }
-  if (countEl) {
-    countEl.textContent = `${_currentScanCount} / ${VISION_FREE_LIMIT} this month`;
-    countEl.style.color = isWarn ? 'rgba(245,158,11,0.9)' : 'var(--text)';
-    countEl.style.fontWeight = '600';
-  }
-  if (labelEl) labelEl.style.color = isWarn ? 'rgba(245,158,11,0.7)' : 'var(--muted)';
-}
 
 // ── Scan history ──────────────────────────────────────────────────────────────
 function _addScanHistory(cardData) {
