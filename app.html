@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
 <title>CardShow — Unified Inventory Platform</title>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,500;0,9..40,700;1,9..40,300&display=swap" rel="stylesheet">
 
@@ -2628,6 +2628,11 @@
   @media (max-width: 479px) {
     .nav-profile-label { display: none; }
     .nav-profile-btn { padding: 0.32rem 0.4rem; }
+  }
+
+  /* Prevent iOS Safari auto-zoom on input focus (triggered when font-size < 16px) */
+  @media screen and (max-width: 768px) {
+    input, select, textarea { font-size: 16px !important; }
   }
 
 </style>
@@ -10295,6 +10300,7 @@ async function upsertCardsToDB(cards) {
 // Deep-link: ?code=XXXX → skip login, enter buyer mode, join show directly.
 // Awaits signOut so the Supabase client is in a clean anon state before querying.
 (async function initPage() {
+  window.scrollTo(0, 0); // ensure page starts at top on mobile
   await db.auth.signOut().catch(() => {});
 
   const params = new URLSearchParams(window.location.search);
