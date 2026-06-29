@@ -3144,9 +3144,9 @@
           <button onclick="openCertScanner()"
             style="width:100%;display:flex;align-items:center;justify-content:center;gap:0.5rem;padding:0.6rem 1rem;border-radius:8px;border:1.5px solid #f5c842;background:#1a1e2e;color:#f5c842;font-size:0.82rem;font-family:'DM Mono',monospace;font-weight:600;letter-spacing:0.08em;cursor:pointer">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#f5c842" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-            SCAN CERT BARCODE
+            SCAN CARD
           </button>
-          <div style="font-size:0.62rem;color:#5a6585;font-family:'DM Mono',monospace;text-align:center;margin-top:0.3rem">PSA · CGC · SGC — auto-fills form fields</div>
+          <div style="font-size:0.62rem;color:#5a6585;font-family:'DM Mono',monospace;text-align:center;margin-top:0.3rem">Photo · barcode · PSA · CGC · SGC</div>
         </div>
 
         <div>
@@ -3205,7 +3205,7 @@
           </select>
         </div>
 
-        <div id="ac_grading_row" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.55rem">
+        <div id="ac_grading_row" style="display:grid;grid-template-columns:1fr 1fr 1.6fr;gap:0.55rem">
           <div>
             <div class="section-label" style="margin-bottom:0.3rem">Grader</div>
             <select class="show-input" id="ac_grader" style="margin:0" onchange="acToggle()">
@@ -3290,7 +3290,7 @@
 
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
         <div>
-          <div style="font-family:'Bebas Neue',sans-serif;font-size:1.2rem;letter-spacing:0.06em;color:var(--text)" id="scannerTitle">SCAN CERT BARCODE</div>
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:1.2rem;letter-spacing:0.06em;color:var(--text)" id="scannerTitle">SCAN CARD</div>
           <div style="font-size:0.72rem;color:var(--muted);font-family:'DM Mono',monospace" id="scannerStatusText">Point camera at the barcode on the slab</div>
         </div>
         <button class="modal-close" onclick="closeCertScanner()" style="position:static">✕</button>
@@ -8167,15 +8167,13 @@ function openCertScanner() {
 
   const overlay = document.getElementById('certScannerOverlay');
   overlay.style.display = 'flex';
-  overlay.dataset.state  = 'scanning';
   document.getElementById('scannerActions').style.display = 'none';
   document.getElementById('scanRetryBtn').style.display = 'none';
-  document.getElementById('scanBadge').textContent = 'Scanning…';
-  document.getElementById('scannerStatusText').textContent = 'Point camera at the barcode on the slab';
+  document.getElementById('scanBadge').textContent = 'Ready';
   document.getElementById('scanCertInput').value = '';
 
-  // Reset to barcode UI state
-  _enterBarcodeScanMode();
+  // Go straight to photo capture — skip the barcode scanning phase
+  _enterPhotoMode();
   startScannerCamera();
 }
 
@@ -8183,7 +8181,7 @@ function _enterBarcodeScanMode() {
   const overlay = document.getElementById('certScannerOverlay');
   if (overlay) overlay.dataset.state = 'scanning';
   const title = document.getElementById('scannerTitle');
-  if (title) title.textContent = 'SCAN CERT BARCODE';
+  if (title) title.textContent = 'SCAN CARD';
   const aimBarcode = document.getElementById('scanAimGuide');
   const aimPhoto   = document.getElementById('photoAimGuide');
   const scanLine   = document.getElementById('scanLine');
