@@ -8491,21 +8491,21 @@ function fillFormFromScan(card, cert, grader) {
     setTimeout(() => el.classList.remove('scan-filled'), 3000);
   });
 
-  // Always set the card title after individual fields are populated so
-  // buildCardTitle can use whatever the PSA API returned, and so the
-  // title is never silently skipped by the !val guard above.
+  // Build title from the DOM values that were just populated — this is
+  // the most reliable source since the forEach already resolved all
+  // field-name fallbacks from the PSA/CGC response.
   const titleEl = document.getElementById('ac_title');
   if (titleEl) {
-    const synth = buildCardTitle({
-      player:   card.player   || '',
-      year:     card.year     || '',
-      cardSet:  card.cardSet  || '',
-      parallel: card.parallel || '',
-      cardNum:  card.cardNum  || '',
+    const year     = (document.getElementById('ac_year')    ?.value || '').trim();
+    const set      = (document.getElementById('ac_set')     ?.value || '').trim();
+    const player   = (document.getElementById('ac_player')  ?.value || '').trim();
+    const parallel = (document.getElementById('ac_parallel')?.value || '').trim();
+    const cardNum  = (document.getElementById('ac_number')  ?.value || '').trim();
+    const titleVal = buildCardTitle({
+      player, year, cardSet: set, parallel, cardNum,
       sport:    card.sport    || '',
       rawTitle: card.rawTitle || '',
-    });
-    const titleVal = synth || card.rawTitle || '';
+    }) || card.rawTitle || '';
     if (titleVal) {
       titleEl.value = titleVal;
       titleEl.classList.add('scan-filled');
