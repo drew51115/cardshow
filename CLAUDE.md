@@ -50,6 +50,7 @@ admins        — id (uuid PRIMARY KEY REFERENCES auth.users) — admin identity
 - ✅ seller-browse.html — fetches live inventory from Supabase on QR scan
 - ✅ Phase 2 email auth — Supabase email + password auth
 - ✅ Sold tracking columns — sold_price, payment_method, sale_notes, sold_time on inventory table (requires DB migration below)
+- ✅ Vision scan count — scan_count + scan_count_reset_at on sellers table; lazy monthly reset on login; incremented per successful vision scan (requires DB migration below)
 
 ## Auth Status — Phase 2 Deployed
 - **Current:** Supabase email + password auth via `supabase.auth.signUp()` / `signInWithPassword()`
