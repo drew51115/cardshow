@@ -51,7 +51,6 @@ admins        — id (uuid PRIMARY KEY REFERENCES auth.users) — admin identity
 - ✅ seller-browse.html — fetches live inventory from Supabase on QR scan
 - ✅ Phase 2 email auth — Supabase email + password auth
 - ✅ Sold tracking columns — sold_price, payment_method, sale_notes, sold_time on inventory table (requires DB migration below)
-- ✅ Vision scan count — scan_count + scan_count_reset_at on sellers table; lazy monthly reset on login; incremented per successful vision scan (requires DB migration below)
 
 ## Auth Status — Phase 2 Deployed
 - **Current:** Supabase email + password auth via `supabase.auth.signUp()` / `signInWithPassword()`
@@ -78,12 +77,6 @@ Required for sealed product / lot support:
 ALTER TABLE inventory
   ADD COLUMN IF NOT EXISTS item_type    text DEFAULT 'card',
   ADD COLUMN IF NOT EXISTS product_type text;
-```
-
-Required for Sprint 2 vision scan usage tracking:
-```sql
-ALTER TABLE sellers ADD COLUMN IF NOT EXISTS scan_count          integer    DEFAULT 0;
-ALTER TABLE sellers ADD COLUMN IF NOT EXISTS scan_count_reset_at timestamptz DEFAULT now();
 ```
 
 ## Key Data Structures (in-memory runtime cache)
@@ -189,29 +182,30 @@ Fonts: Bebas Neue (headlines), DM Sans (body), DM Mono (labels/badges), Barlow C
 ### Scan Cascade (full, Sprint 1 + 2)
 ```
 openCertScanner()
-  ├─ BarcodeDetector API available? (Chrome/Android)
-  │    └─ getUserMedia → video.srcObject → startNativeScan() (250ms polling)
-  │         └─ handleBarcodeDetected(raw)
-  └─ No BarcodeDetector? (iOS Safari, Firefox)
-       └─ startZXingScan()
-            └─ lazy-load @zxing/library@0.20.0 from jsdelivr (unpkg fallback)
-            └─ ZXing.BrowserMultiFormatReader.decodeFromVideoDevice(null, video, cb)
-                 └─ handleBarcodeDetected(raw)
-
-  [3-second timeout] → photo mode UI (aim guide switches from barcode strip to card outline)
+  └─ _enterPhotoMode() immediately — skips barcode phase, goes straight to photo capture
+  └─ startScannerCamera()
+       ├─ BarcodeDetector API available? (Chrome/Android)
+       │    └─ getUserMedia → video.srcObject → startNativeScan() (250ms polling)
+       │         └─ handleBarcodeDetected(raw)
+       └─ No BarcodeDetector? (iOS Safari, Firefox)
+            └─ startZXingScan()
+                 └─ lazy-load @zxing/library@0.20.0 from jsdelivr (unpkg fallback)
+                 └─ ZXing.BrowserMultiFormatReader.decodeFromVideoDevice(null, video, cb)
+                      └─ handleBarcodeDetected(raw)
 
 handleBarcodeDetected(raw)
   └─ parseCertBarcode(raw) → { cert, grader }   (PSA 8-9 digits, CGC 10 digits, SGC 7 digits)
        └─ lookupCert(cert, grader)
             └─ POST /.netlify/functions/psa-lookup { cert, grader }
                  ├─ 429 rate limit → retry 3× with 1s/2s/4s backoff; show Retry button on client
-                 └─ fillFormFromScan(card) → buildCardTitle(card) + pre-fills form with .scan-filled highlight
+                 └─ fillFormFromScan(card) → reads DOM after fills → buildCardTitle() → .scan-filled highlight
 
-scanTakePhoto()  [Sprint 2]
+Seller taps "📷 Take Photo"
   └─ capture video frame → canvas → JPEG 85% → max 1024px → base64
        └─ _callVisionScan(base64, mediaType)
             └─ POST /.netlify/functions/vision-scan { image, mediaType }
                  ├─ success → fillFormFromVision(card, result)
+                 │    ├─ cardTitle NOT in fieldMap — always synthesized via buildCardTitle()
                  │    ├─ confidence color coding (green/amber/red left border)
                  │    ├─ _showVisionConfirmBanner() — "📷 Auto-detected · review & confirm"
                  │    └─ analytics toast ("✓ Card identified — N fields auto-filled")
@@ -238,15 +232,8 @@ scanTakePhoto()  [Sprint 2]
 
 Border removed automatically after 60 seconds or on `clearVisionData()`.
 
-### Scan Count Free Tier (sellers table)
-- `scan_count` — cumulative vision scans this month
-- `scan_count_reset_at` — timestamp of last monthly reset
-- **Lazy reset:** on seller login, if current month ≠ `scan_count_reset_at` month, resets to 0 in DB. No cron needed.
-- **Free limit:** 25 vision scans/month. At limit, Take Photo button disabled with "25 free scans used this month" message. Barcode scan (Sprint 1) is never limited.
-- **DB migration required** (run in Supabase SQL editor — see below)
-
 ### buildCardTitle(card) — Sport-aware title generation
-Called from `fillFormFromScan` (barcode) and `fillFormFromVision` (vision). Generates Card Title field from normalised scan fields:
+Called from `fillFormFromScan` (barcode) and `fillFormFromVision` (vision). Generates Card Title field from normalised scan fields. **Uses `String(val ?? '').trim()` for all fields** — Claude vision API returns `year` as an integer; calling `.trim()` on a number throws a TypeError that silently aborts title generation.
 - **Sports:** `{year} {set} {player} {parallel}` → `"2024 Bowman Chrome Dylan Crews Fuchsia Refractor"`
 - **Pokemon:** `{year} Pokemon {set} {name} #{cardNum} {rarity}` → `"2023 Pokemon Scarlet & Violet 151 Charizard ex #006/165 SIR"`
 - **MTG:** `{year} Magic The Gathering {set} {name} {foil}` → `"2024 Magic The Gathering Bloomburrow Ral, Crackling Wit Foil"`
@@ -272,26 +259,24 @@ Called from `fillFormFromScan` (barcode) and `fillFormFromVision` (vision). Gene
 Supabase URL and anon key are **not** hardcoded in tracked files. `netlify.toml` has a `command` that runs `sed` to replace `SUPABASE_URL_PLACEHOLDER` / `SUPABASE_ANON_KEY_PLACEHOLDER` in all three HTML files at deploy time. `SECRETS_SCAN_OMIT_KEYS = "SUPABASE_URL,SUPABASE_ANON_KEY"` prevents Netlify's secrets scanner from blocking the build on the injected values (they are intentionally public publishable keys).
 
 ### Key Scanner Functions (app.html)
-- `openCertScanner()` / `closeCertScanner()` — open/close overlay; resets vision state on open
+- `openCertScanner()` / `closeCertScanner()` — open/close overlay; goes straight to photo mode (`_enterPhotoMode()`) on open
 - `_enterBarcodeScanMode()` / `_enterPhotoMode()` — UI state toggles between barcode aim guide and card aim guide
-- `startScannerCamera()` — branches on BarcodeDetector availability; 3-second timeout → photo mode
+- `startScannerCamera()` — branches on BarcodeDetector availability; starts camera for photo capture
 - `startNativeScan()` — BarcodeDetector polling every 250ms
 - `startZXingScan()` — loads @zxing/library@0.20.0 UMD from CDN (jsdelivr → unpkg fallback)
 - `stopScannerCamera()` — clears interval/timeout, resets ZXing reader, stops all MediaStream tracks
 - `parseCertBarcode(raw)` — digit-length heuristic: PSA 8-9 digits, CGC 10 digits, SGC 7 digits; URL pattern fallback
 - `lookupCert(cert, grader)` — POST to psa-lookup; on 429 shows Retry button wired to re-call lookupCert
-- `buildCardTitle(card)` — sport-aware title builder (Sports vs TCG game detection)
-- `fillFormFromScan(card, cert, grader)` — barcode result: calls buildCardTitle, populates Add Card fields, `.scan-filled` highlight
-- `fillFormFromVision(card, result)` — vision result: maps fields with confidence color coding, shows confirm banner, analytics toast
+- `buildCardTitle(card)` — sport-aware title builder; uses `String(val ?? '')` to handle integer `year` from vision API
+- `fillFormFromScan(card, cert, grader)` — barcode result: populates Add Card fields via forEach, then reads DOM values into `buildCardTitle()` for title; `.scan-filled` highlight
+- `fillFormFromVision(card, result)` — vision result: `cardTitle` excluded from fieldMap; title always synthesized via `buildCardTitle()`; confidence color coding, confirm banner, analytics toast
 - `_applyVisionConfidence(el, level)` — applies vision-high/medium/low CSS class; auto-removes after 60s
 - `_showVisionConfirmBanner(filledFields)` — injects banner above form with legend and "Clear scan data" link
 - `clearVisionData()` — removes banner and clears all vision-filled form fields
-- `scanTakePhoto()` — captures canvas frame, checks free tier limit, dispatches to `_callVisionScan`
+- `scanTakePhoto()` — captures canvas frame, dispatches to `_callVisionScan` (no scan limit check)
 - `scanVisionRetry()` — resends last captured image on retry
 - `scanFallbackToSearch()` — closes scanner, focuses Player input for TCDB text search (Sprint 3 stub)
 - `lookupManualCert()` — manual cert # + grader dropdown fallback
-- `_loadScanCount(handle)` — loads scan_count from DB on login; lazy monthly reset
-- `_incrementScanCount()` — increments in-memory counter + persists to DB after each successful vision scan
 
 ### Known Constraints
 - PSA API free tier has very low rate limits (~10 req/hr). Upgrade PSA API account tier if 429s occur frequently at shows.
@@ -304,17 +289,15 @@ Supabase URL and anon key are **not** hardcoded in tracked files. `netlify.toml`
 
 ### Full Three-Stage Cascade (Sprints 1 + 2 + 3)
 ```
-[Camera button tapped on Add Card modal]
+["SCAN CARD" button tapped on Add Card modal]
         ↓
-Open scanner overlay (data-state="scanning")
+Open scanner overlay → _enterPhotoMode() immediately (data-state="photo")
+Camera starts live — barcode detection runs in background
         ↓
-Barcode scan — BarcodeDetector or ZXing (3-second timeout)
-        ↓
-Barcode found?
-  YES → POST /psa-lookup → fillFormFromScan() → progress bar → confirm toast → DONE
-  NO  → _enterPhotoMode() (data-state="photo") — camera stays live
-        ↓
-Seller taps "Take Photo"
+Barcode found (background)?
+  YES → POST /psa-lookup → fillFormFromScan() → DOM-read title → confirm toast → DONE
+
+Seller taps "📷 Take Photo"
         ↓
 Canvas capture → JPEG 85% / max 1024px → data-state="processing"
 Progress bar animates → POST /vision-scan (AbortController 10s)
@@ -337,13 +320,11 @@ Seller selects result → acSelect() → db-filled green borders → toast → f
 
 ### Overlay State Machine
 `data-state` on `#certScannerOverlay`:
-- `scanning` — barcode scan active, barcode aim guide visible, scan line animating
-- `photo`    — card aim guide visible, "Take Photo" button active, camera live
+- `photo`    — card aim guide visible, "📷 Take Photo" button active, camera live (default on open)
 - `processing` — vision loading overlay shown, AbortController active
 
 Cancel at each state:
-- `scanning`: closes overlay, no fields populated
-- `photo`: X button re-enters scanning (restarts camera)
+- `photo`: X button closes overlay
 - `processing`: AbortController.abort() fires, toast "Scan cancelled", overlay closes
 
 ### Trading Card Lookup Function (trading-card-lookup.js)
@@ -362,14 +343,6 @@ Cancel at each state:
 - **No results:** "No matches found — enter details manually" item
 - **Debug note:** `window.CARDSHOW_DEBUG = true` reveals "Using local card database" note under the input
 
-### Scan Count Sidebar UI
-- `#scanUsageBar` shown when `currentRole === 'seller'` and scan_count loads
-- Gold progress bar fills proportionally to 25-scan limit
-- Turns amber when count ≥ 20 (warning state)
-- "Upgrade for unlimited →" links to `/pricing` stub
-- On monthly reset: toast "Vision scans reset for [Month Year] — 25 available"
-- Approaching limit: toast on login "N vision scans remaining this month"
-
 ### Scan History (session-only)
 - `_scanHistory[]` — last 5 scanned cards, stored in memory, cleared on `signOut()`
 - Rendered as chips below scan usage bar: `#scanHistorySection` / `#scanHistoryList`
@@ -383,7 +356,6 @@ Cancel at each state:
 - `acKeyNav(e)` — arrow key + enter + escape navigation for dropdown
 - `acSelect(idx)` — fills form fields with `db-filled` green borders, focuses price
 - `_acProgressStart()` / `_acProgressDone()` — animates slim gold progress bar at modal top
-- `_renderScanUsageBar()` — updates sidebar scan count UI
 - `_addScanHistory(cardData)` / `_renderScanHistory()` — manage session scan history chips
 - `_reopenFromHistory(idx)` — re-opens Add Card pre-filled from a history entry
 
@@ -413,8 +385,13 @@ Cancel at each state:
 - TCG detection expanded — 100+ Pokémon names, rarity keyword regex (Radiant, Reverse Holo, SIR, etc.), MTG/One Piece/Yu-Gi-Oh keywords in both app.html and show.html
 - **Sprint 1 cert barcode scanner** — camera overlay with BarcodeDetector (Chrome/Android) + ZXing fallback (iOS Safari); PSA + CGC API lookup via Netlify function; 429 retry with backoff + client Retry button; sport-aware Card Title generation via `buildCardTitle()`
 - Netlify secrets scanner fix — Supabase credentials removed from tracked files; injected at build time via `sed` in netlify.toml; `SECRETS_SCAN_OMIT_KEYS` prevents false positives on publishable keys
-- **Sprint 2 vision scan** — `scanTakePhoto()` captures canvas frame → JPEG 85% max 1024px → POST to `vision-scan.js` → Claude claude-sonnet-4-6 vision API → two-prompt strategy (sports / TCG) → confidence color coding (green/amber/red) → confirm banner → analytics toast. BGS slabs handled via label reading. Free tier: 25 scans/month with lazy monthly reset. Scan count persisted to `sellers.scan_count`. Retry logic: 2 failures → auto-fall-through to manual entry.
-- **Sprint 3 live card DB autocomplete + cascade wiring** — `trading-card-lookup.js` Netlify function calls Trading Card API (stub/fallback to local CARD_DB when key not set). Upgraded `acSearch()` with 3+ char trigger, 250ms debounce, inline spinner, 8-result dropdown with keyboard nav. Overlay state machine (`scanning → photo → processing`) with AbortController cancel support. Slim gold progress bar in Add Card modal header. Scan usage sidebar bar with amber warning at 20/25. Session scan history chips (last 5) with re-open. Monthly reset toast. Full three-stage cascade wired end-to-end.
+- **Sprint 2 vision scan** — `scanTakePhoto()` captures canvas frame → JPEG 85% max 1024px → POST to `vision-scan.js` → Claude claude-sonnet-4-6 vision API → two-prompt strategy (sports / TCG) → confidence color coding (green/amber/red) → confirm banner → analytics toast. BGS slabs handled via label reading. No scan limit — unlimited vision scans. Retry logic: 2 failures → auto-fall-through to manual entry.
+- **Sprint 3 live card DB autocomplete + cascade wiring** — `trading-card-lookup.js` Netlify function calls Trading Card API (stub/fallback to local CARD_DB when key not set). Upgraded `acSearch()` with 3+ char trigger, 250ms debounce, inline spinner, 8-result dropdown with keyboard nav. Overlay state machine (`photo → processing`) with AbortController cancel support. Slim gold progress bar in Add Card modal header. Session scan history chips (last 5) with re-open. Full cascade wired end-to-end.
+- **Scanner UX overhaul** — button renamed "SCAN CARD"; opens directly to photo capture (skips barcode phase); "📷 Take Photo" button full-width, larger, gold with glow; Cert # column widened (grid 1fr 1fr 1.6fr).
+- **buildCardTitle integer fix** — `String(val ?? '')` wrapping all fields prevents TypeError when Claude vision returns `year` as an integer; was silently aborting title generation.
+- **fillFormFromVision title fix** — `cardTitle` removed from fieldMap; title always synthesized via `buildCardTitle()` from structured fields.
+- **fillFormFromScan title fix** — title built from DOM values after form fields are populated, not directly from card object (immune to PSA API field name variations).
+- **Mobile viewport/zoom fix** — `maximum-scale=1.0` in viewport meta; `@media (max-width:768px)` forces `font-size:16px` on all inputs/selects/textareas to prevent iOS Safari auto-zoom on focus; `window.scrollTo(0,0)` in `initPage()` ensures page starts at top.
 
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`
