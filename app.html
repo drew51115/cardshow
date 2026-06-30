@@ -2732,7 +2732,7 @@
 
     <aside class="sidebar sidebar-open" id="mainSidebar">
 
-      <div>
+      <div id="sellerUploadSection">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem">
           <div class="section-label" style="margin-bottom:0">Upload Inventory</div>
           <button class="btn btn-primary" style="font-size:0.72rem;padding:0.3rem 0.8rem;gap:0.3rem" onclick="openAddCard()">+ Add Card</button>
@@ -2752,7 +2752,7 @@
         <div id="scanHistoryList"></div>
       </div>
 
-      <div class="stats-row">
+      <div class="stats-row" id="sellerStatsRow">
         <div class="stat-box">
           <div class="val" id="statTotal">0</div>
           <div class="lbl">Available</div>
@@ -6031,7 +6031,7 @@ function loginAsSeller(handle) {
   const partnerLink = document.getElementById('partnershipLink');
   if (partnerLink) partnerLink.style.display = 'none';
 
-  // Hide admin-only panels + filter bar
+  // Hide admin-only panels + filter bar; restore seller-only sidebar modules
   document.getElementById('adminTabBar').style.display           = 'none';
   document.getElementById('adminShowsPanel').style.display       = 'none';
   document.getElementById('activeShowBadge').style.display       = 'none';
@@ -6039,6 +6039,8 @@ function loginAsSeller(handle) {
   document.getElementById('adminFilterBar').classList.remove('visible');
   document.getElementById('sellerQrPanel').classList.add('visible');
   document.getElementById('sellerShowsPanel').style.display      = 'block';
+  document.getElementById('sellerUploadSection').style.display   = '';
+  document.getElementById('sellerStatsRow').style.display        = '';
 
   // Show Select All for seller, hide admin-only buttons
   const selectAllBtn = document.getElementById('selectAllBtn');
@@ -6131,11 +6133,13 @@ function loginAsAdmin() {
 
   showNavUser('Show Admin', 'Administrator', 'admin');
 
-  // Show admin-only UI elements
-  document.getElementById('adminTabBar').style.display    = 'block';
-  document.getElementById('adminShowsPanel').style.display = 'block';
+  // Show admin-only UI elements; hide seller-only sidebar modules
+  document.getElementById('adminTabBar').style.display          = 'block';
+  document.getElementById('adminShowsPanel').style.display      = 'block';
   document.getElementById('sellerQrPanel').classList.remove('visible');
-  document.getElementById('sellerShowsPanel').style.display = 'none';
+  document.getElementById('sellerShowsPanel').style.display     = 'none';
+  document.getElementById('sellerUploadSection').style.display  = 'none';
+  document.getElementById('sellerStatsRow').style.display       = 'none';
 
   // Clear any demo/sample data — admin sees only real DB inventory
   inventory.length = 0;
@@ -6202,11 +6206,13 @@ async function signOut() {
   const soHandle = document.getElementById('profileSignOutHandle');
   if (soHandle) soHandle.textContent = '';
 
-  document.getElementById('adminTabBar').style.display  = 'none';
+  document.getElementById('adminTabBar').style.display          = 'none';
   document.getElementById('adminFilterBar').classList.remove('visible');
   document.getElementById('sellerQrPanel').classList.remove('visible');
-  document.getElementById('adminShowsPanel').style.display  = 'none';
-  document.getElementById('sellerShowsPanel').style.display = 'none';
+  document.getElementById('adminShowsPanel').style.display      = 'none';
+  document.getElementById('sellerShowsPanel').style.display     = 'none';
+  document.getElementById('sellerUploadSection').style.display  = '';
+  document.getElementById('sellerStatsRow').style.display       = '';
 
   // Reset inventory panel visibility for next login
   const inv = document.getElementById('adminInventoryPanel');
