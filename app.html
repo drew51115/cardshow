@@ -6970,19 +6970,50 @@ function addSellerByHandle(showId) {
 function addSellerToShow(showId, handle) {
   const show = shows[showId];
   if (!show) return;
-  // Normalise to Set if somehow stored as array
   if (!(show.sellers instanceof Set)) show.sellers = new Set(show.sellers || []);
   if (show.sellers.has(handle)) {
     showToast(`@${handle} already authorized`, 'var(--muted)');
     return;
   }
   show.sellers.add(handle);
-  renderAdminShowsList(); if(typeof renderAdminShowsDashboard==="function" && _adminTab==="shows") renderAdminShowsDashboard();
+
+  // Surgical DOM update — no full re-render needed
+  const grid = document.getElementById(`asc-sellers-${showId}`);
+  if (grid) {
+    // Remove "no sellers" placeholder if present
+    const placeholder = grid.querySelector('[style*="grid-column"]');
+    if (placeholder) placeholder.remove();
+    const av = handle.split('_').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+    const row = document.createElement('div');
+    row.className = 'asc-seller-row';
+    row.id = `asc-row-${showId}-${handle}`;
+    row.innerHTML = `
+      <div class="asc-seller-avatar">${av}</div>
+      <div class="asc-seller-handle" title="@${handle}">@${handle}</div>
+      <input class="asc-table-input" value="" placeholder="Table #"
+        title="Assign table number for @${handle}"
+        onchange="ascSetTable('${showId}','${handle}',this)"
+        onclick="event.stopPropagation()">
+      <button class="asc-remove-btn"
+        onclick="event.stopPropagation();removeSellerFromShow('${showId}','${handle}')"
+        title="Remove @${handle}">✕</button>`;
+    grid.appendChild(row);
+    // Remove seller from dropdown so they can't be added twice
+    const drop = document.getElementById(`asc-drop-${showId}`);
+    if (drop) {
+      const opt = [...drop.options].find(o => o.value === handle);
+      if (opt) opt.remove();
+      if ([...drop.options].filter(o => o.value).length === 0) {
+        drop.options[0].text = 'All registered sellers added';
+      }
+    }
+  }
+
+  updateAscHeader(showId);
   renderSellerShowsList();
 
   // Persist to Supabase
   addShowSellerToDB(showId, handle);
-
   showToast(`✓ @${handle} added to "${show.name}"`);
 }
 
@@ -6991,12 +7022,37 @@ function removeSellerFromShow(showId, handle) {
   if (!show) return;
   if (!(show.sellers instanceof Set)) show.sellers = new Set(show.sellers || []);
   show.sellers.delete(handle);
-  renderAdminShowsList(); if(typeof renderAdminShowsDashboard==="function" && _adminTab==="shows") renderAdminShowsDashboard();
+
+  // Surgical DOM update — remove seller row directly
+  const row = document.getElementById(`asc-row-${showId}-${handle}`);
+  if (row) row.remove();
+
+  const grid = document.getElementById(`asc-sellers-${showId}`);
+  if (grid && !grid.querySelector('.asc-seller-row')) {
+    grid.innerHTML = `<div style="grid-column:1/-1;font-size:0.78rem;color:var(--muted);font-family:'DM Mono',monospace;padding:0.5rem 0">No sellers authorized yet — add sellers below.</div>`;
+  }
+
+  // Add seller back to dropdown in sorted order
+  const drop = document.getElementById(`asc-drop-${showId}`);
+  if (drop) {
+    if (drop.options[0] && drop.options[0].text === 'All registered sellers added') {
+      drop.options[0].text = '+ Add seller…';
+    }
+    const opt = document.createElement('option');
+    opt.value = handle;
+    opt.text = handle;
+    let inserted = false;
+    for (let i = 1; i < drop.options.length; i++) {
+      if (drop.options[i].value > handle) { drop.insertBefore(opt, drop.options[i]); inserted = true; break; }
+    }
+    if (!inserted) drop.appendChild(opt);
+  }
+
+  updateAscHeader(showId);
   renderSellerShowsList();
 
   // Persist to Supabase
   removeShowSellerFromDB(showId, handle);
-
   showToast(`@${handle} removed from "${show.name}"`);
 }
 
@@ -9290,12 +9346,14 @@ function renderAdminShowsDashboard() {
         ? `<span style="color:#4ade80">✓ All tables set</span>`
         : `<span style="color:var(--gold)">${needsTable} need table #</span>`;
 
-    // Sellers dropdown
-    const known      = [...new Set(inventory.map(r => r.Seller).filter(Boolean))].sort();
-    const unauth     = known.filter(h => !s.sellers.has(h));
-    const dropOpts   = unauth.length
-      ? `<option value="">+ Add from inventory…</option>` + unauth.map(h => `<option value="${h}">${h}</option>`).join('')
-      : `<option value="">All inventory sellers added</option>`;
+    // Sellers dropdown — use DB handle cache so admin can add any registered seller
+    const known    = _allSellerHandles.length
+      ? _allSellerHandles
+      : [...new Set(inventory.map(r => r.Seller).filter(Boolean))].sort();
+    const unauth   = known.filter(h => !s.sellers.has(h));
+    const dropOpts = unauth.length
+      ? `<option value="">+ Add seller…</option>` + unauth.map(h => `<option value="${h}">${h}</option>`).join('')
+      : `<option value="">All registered sellers added</option>`;
 
     return `
     <div class="admin-show-card ${isActive ? 'is-active' : ''} ${isExpanded ? 'asc-expanded' : ''}"
@@ -9647,12 +9705,13 @@ async function addShowSellerToDB(showId, handle) {
     }
     if (!seller) {
       showToast(`@${handle} is not a registered seller — they must sign up first`, 'var(--danger)');
-      // Roll back the in-memory add so the UI matches DB state
+      // Roll back the in-memory add and undo the DOM change
       const show = shows[showId];
       if (show && show.sellers instanceof Set) {
         show.sellers.delete(handle);
-        if (typeof renderAdminShowsList === 'function') renderAdminShowsList();
-        if (typeof renderAdminShowsDashboard === 'function' && _adminTab === 'shows') renderAdminShowsDashboard();
+        const row = document.getElementById(`asc-row-${showId}-${handle}`);
+        if (row) row.remove();
+        updateAscHeader(showId);
       }
       return;
     }
