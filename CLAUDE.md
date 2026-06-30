@@ -21,6 +21,9 @@ netlify/functions/psa-lookup.js   → Serverless: POST {cert, grader} → normal
 netlify/functions/vision-scan.js         → Serverless: POST {image, mediaType} → normalized card object via Claude vision (Sprint 2)
 netlify/functions/trading-card-lookup.js → Serverless: POST {query, sport?} → card search results from Trading Card API (Sprint 3)
 .env.example                             → Placeholder env vars for all keys
+downloads/                               → Static file downloads served by Netlify
+downloads/CardShow_Inventory_Template.xlsx → Pre-filled inventory template (13 example rows); linked from landing page and footer
+downloads/.gitkeep                       → Tracks empty directory in git
 CLAUDE.md                         → This file
 ```
 
