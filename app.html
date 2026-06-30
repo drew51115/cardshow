@@ -6518,24 +6518,23 @@ async function saveShow() {
 
   const isNew = !editingShowId;
 
-  // For new shows, collect any sellers selected in the chip UI.
-  // For edits, preserve the existing authorized sellers (managed via dashboard panel).
+  // Always read sellers from chip UI — source of truth for both create and edit
+  const selectedChips = document.querySelectorAll('#smSellerList .seller-chip.selected');
+  const newSellers = new Set([...selectedChips].map(c => c.textContent.replace(/^[✓+\s]+/, '').trim()).filter(Boolean));
+
+  // Diff against existing sellers so we know what to add/remove in DB
   const existingShow = editingShowId ? shows[editingShowId] : null;
-  let sellers;
-  if (existingShow && existingShow.sellers && existingShow.sellers.size > 0) {
-    sellers = existingShow.sellers;
-  } else {
-    const selectedChips = document.querySelectorAll('#smSellerList .seller-chip.selected');
-    sellers = new Set([...selectedChips].map(c => c.textContent.replace(/^[✓\s+]+/, '').trim()).filter(Boolean));
-  }
+  const oldSellers = (existingShow && existingShow.sellers instanceof Set) ? existingShow.sellers : new Set();
+  const toAdd    = [...newSellers].filter(h => !oldSellers.has(h));
+  const toRemove = [...oldSellers].filter(h => !newSellers.has(h));
 
   const id = editingShowId || genShowId();
-  shows[id] = { id, name, date, location, status, accessCode: code, sellers,
+  shows[id] = { id, name, date, location, status, accessCode: code, sellers: newSellers,
                 tables: (shows[id] && shows[id].tables) || {},
                 publishedAt: (shows[id] && shows[id].publishedAt) || null };
 
   closeShowModal();
-  renderAdminShowsList(); if(typeof renderAdminShowsDashboard==="function" && _adminTab==="shows") renderAdminShowsDashboard();
+  if (typeof renderAdminShowsDashboard === 'function' && _adminTab === 'shows') renderAdminShowsDashboard();
   renderSellerShowsList();
   if (currentRole === 'admin') populateAdminFilterOptions();
 
@@ -6546,10 +6545,18 @@ async function saveShow() {
     return;
   }
 
-  // Write chip-selected sellers to show_sellers for new shows
-  if (isNew && sellers.size) {
-    await Promise.all([...sellers].map(h => addShowSellerToDB(id, h)));
+  // Persist seller changes to DB
+  if (isNew) {
+    if (newSellers.size) await Promise.all([...newSellers].map(h => addShowSellerToDB(id, h)));
+  } else {
+    await Promise.all([
+      ...toAdd.map(h => addShowSellerToDB(id, h)),
+      ...toRemove.map(h => removeShowSellerFromDB(id, h)),
+    ]);
   }
+
+  // Refresh stat chips to reflect any seller changes
+  updateAscHeader(id);
 
   showToast(`Show "${name}" ${isNew ? 'created' : 'updated'}`);
 }
