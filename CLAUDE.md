@@ -140,7 +140,8 @@ Fonts: Bebas Neue (headlines), DM Sans (body), DM Mono (labels/badges), Barlow C
 
 ### Core UI Functions (app.html)
 - `renderAdminShowsDashboard()` — Shows tab full render
-- `switchAdminTab('shows'|'inventory')` — admin tab switcher
+- `switchAdminTab('shows'|'inventory')` — admin tab switcher (admin only; Report tab hidden from admin bar)
+- `switchSellerTab('inventory'|'report')` — seller tab switcher; toggles table-wrap vs adminReportPanel
 - `switchView(v)` — switches active view panel; safe to call from async code (guards `event?.target`)
 - `publishSelectedToShow(showId)` — publish all authorized seller cards
 - `buildShowPageUrl(showId)` — generates full hash-encoded show page URL (up to 50 cards)
@@ -177,6 +178,8 @@ Fonts: Bebas Neue (headlines), DM Sans (body), DM Mono (labels/badges), Barlow C
 19. **QR codes use metadata-only URL** — `buildShowQrUrl()` encodes only show metadata + seller list (no card data). Full hash URLs with 50 cards exceed the QR data limit (~2–3KB) and cause silent rendering failure. The share link still uses the full `buildShowPageUrl()`.
 20. **item_type on inventory cards** — values are `'card'` (default), `'sealed'`, `'lot'`. `product_type` stores the specific sealed format (e.g. 'Blaster Box'). Both fields are passed through `cardToDbRow`/`dbRowToCard` and require the DB migration above to persist.
 21. **Seller-only sidebar visibility** — `#sellerUploadSection` (wraps the Upload Inventory drop zone + "+ Add Card" button) and `#sellerStatsRow` (the `.stats-row` stat chips) are hidden via `style.display='none'` in `loginAsAdmin()` and restored via `style.display=''` in both `loginAsSeller()` and `signOut()`. The admin sidebar shows only `#adminShowsPanel` (Quick Actions) and `#sellerQrPanel` is already correctly toggled via `.visible` class. This was a targeted display-toggle fix — the Shows dashboard, asc-header/asc-stats, and action bars in the main content area were not changed.
+22. **Seller tab bar vs admin tab bar** — `#sellerTabBar` (My Inventory / Report) is shown only for sellers; `#adminTabBar` (Shows / All Inventory) is shown only for admins. `adminTabReport` is permanently hidden from the admin tab bar — sellers use `switchSellerTab('report')` for their dedicated Report tab. `loginAsSeller()` shows `#sellerTabBar` and defaults to inventory tab; `loginAsAdmin()` and `signOut()` hide it.
+23. **Report show filter populates after DB load** — `populateReportShowSelector()` is called inside the `loadShowsFromDB().then()` callback in `loginAsSeller()` so the dropdown reflects the seller's authorized shows from Supabase, not just in-memory state at login time.
 
 ## Cert Scanner — Sprint 1 + 2 Architecture (Shipped)
 
@@ -360,6 +363,17 @@ Cancel at each state:
 - `_addScanHistory(cardData)` / `_renderScanHistory()` — manage session scan history chips
 - `_reopenFromHistory(idx)` — re-opens Add Card pre-filled from a history entry
 
+### Seller Report Tab (app.html)
+- **`#sellerTabBar`** — tab bar shown only for sellers (`📋 My Inventory` / `📊 Report`); hidden for admin and on sign-out
+- **`switchSellerTab(tab)`** — `'inventory'`: shows `.table-wrap`, hides `#adminReportPanel`; `'report'`: hides `.table-wrap`, shows `#adminReportPanel`, calls `populateReportShowSelector()` + `updateReport()`
+- **`#rptShowFilter`** — dropdown scoped to seller's authorized shows (populated by `populateReportShowSelector()`); default "All shows (lifetime)"; updates report on change
+- **`populateReportShowSelector()`** — reads `shows{}` filtered to `currentSeller`, sorted by date; idempotent (skips if options unchanged); called from `switchSellerTab('report')` and after `loadShowsFromDB()` in `loginAsSeller()`
+- **`updateReport()`** — now reads `rptShowFilter` value and scopes sold cards to that show's `_shows` Set (or all-time when blank); also renders best/worst delta cards and top 5 by revenue
+- **Best sale / Most discounted** — two new stat cards in `.report-grid-2col`; show card title + delta vs. ask price for the highest-gain and highest-discount sold card in scope
+- **Top 5 by revenue** — `#rptTopCardsSection` / `#rptTopCards`; sorted descending by `SoldPrice`; rendered between payment breakdown and transaction log
+- **`exportReportCSV()`** — downloads filtered sold cards as CSV; filename includes show name (or "all-time") and date; columns: Card Title, Player, Year, Set, Grade, Grader, Ask Price, Sold Price, Delta, Payment Method, Sale Time, Notes
+- **`adminTabReport`** is permanently hidden from the admin tab bar — admins access All Inventory only; sellers use `sellerTabBar` for their own report
+
 ## Backlog Priority
 
 ### Shipped ✅
@@ -393,6 +407,11 @@ Cancel at each state:
 - **fillFormFromVision title fix** — `cardTitle` removed from fieldMap; title always synthesized via `buildCardTitle()` from structured fields.
 - **fillFormFromScan title fix** — title built from DOM values after form fields are populated, not directly from card object (immune to PSA API field name variations).
 - **Mobile viewport/zoom fix** — `maximum-scale=1.0` in viewport meta; `@media (max-width:768px)` forces `font-size:16px` on all inputs/selects/textareas to prevent iOS Safari auto-zoom on focus; `window.scrollTo(0,0)` in `initPage()` ensures page starts at top.
+- **Take Photo / Look Up button contrast fix** — both buttons styled with `background:#1a1f2e; color:var(--gold); border:solid var(--gold)` so gold copy is readable on dark background.
+- **Admin show seller/card counts** — `updateAscHeader(showId)` now updates all three stat chips (Cards, Sellers, Tables) using `showCardCounts[showId]` for card count (not `inventory[]` which is empty for admins). `addSellerToShow`/`removeSellerFromShow` use surgical DOM updates (no full re-render) to preserve expanded state and call `updateAscHeader()` after each change.
+- **renderAdminShowsList() is dead code** — targets `#adminShowsList` which does not exist; all real renders go through `renderAdminShowsDashboard()` targeting `#adminShowsGrid`. Do not call or rely on `renderAdminShowsList()`.
+- **saveShow() reads chips for edits** — always reads `#smSellerList .seller-chip.selected` as source of truth; diffs against existing sellers; applies add/remove to DB. Previously ignored chip UI for existing shows.
+- **Seller Report tab** — `#sellerTabBar` with `switchSellerTab()`; show-scoped filter, Best sale / Most discounted stat cards, Top 5 by revenue, CSV export via `exportReportCSV()`.
 
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`
