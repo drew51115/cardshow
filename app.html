@@ -7044,6 +7044,7 @@ async function publishSelectedToShow(showId) {
   // publishShowInventoryToDB now queries DB directly — no need to pre-load inventory[]
   const publishedCount = await publishShowInventoryToDB(showId);
   showCardCounts[showId] = publishedCount;
+  renderAdminShowsList();
   if (typeof renderAdminShowsDashboard === 'function' && _adminTab === 'shows') renderAdminShowsDashboard();
 
   const sellerCount = show.sellers.size;
