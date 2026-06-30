@@ -2876,6 +2876,14 @@
 
       <!-- Seller / Admin Inventory view -->
       <div id="adminInventoryPanel">
+        <!-- Seller tab bar — hidden for admin, shown for seller -->
+        <div id="sellerTabBar" style="display:none;margin-bottom:0.65rem">
+          <div style="display:flex;gap:0;background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden;width:fit-content">
+            <button class="admin-tab active" id="sellerTabInventory" onclick="switchSellerTab('inventory')">📋 My Inventory</button>
+            <button class="admin-tab" id="sellerTabReport" onclick="switchSellerTab('report')">📊 Report</button>
+          </div>
+        </div>
+
         <div class="toolbar">
           <h2 id="inventoryTitle">Inventory</h2>
           <input type="text" class="search-input" id="sellerSearchInput" placeholder="Search cards…" oninput="applyInventoryFilters()">
@@ -2952,6 +2960,12 @@
       </div>
       <!-- ── Show Report Panel ── -->
       <div id="adminReportPanel" style="display:none; padding: 0.25rem 0 0.5rem;">
+        <div id="reportShowSelector" style="display:flex;align-items:center;gap:0.6rem;margin-bottom:1rem;flex-wrap:wrap">
+          <select id="rptShowFilter" class="filter-select" onchange="updateReport()" style="max-width:280px">
+            <option value="">All shows (lifetime)</option>
+          </select>
+          <button class="btn btn-ghost" onclick="exportReportCSV()" style="font-size:0.78rem;padding:0.35rem 0.8rem">↓ Export CSV</button>
+        </div>
         <div class="report-grid-2col">
           <div class="report-stat-card">
             <div class="report-stat-label">Revenue</div>
@@ -2972,6 +2986,22 @@
             <div class="report-stat-label">Sell-through</div>
             <div class="report-stat-val" id="rptSellThru">0%</div>
             <div class="report-stat-sub" id="rptSellThruSub">—</div>
+          </div>
+          <div class="report-stat-card">
+            <div class="report-stat-label">Best sale</div>
+            <div class="report-stat-val rsv-green" id="rptBestVal">—</div>
+            <div class="report-stat-sub" id="rptBestSub">—</div>
+          </div>
+          <div class="report-stat-card">
+            <div class="report-stat-label">Most discounted</div>
+            <div class="report-stat-val" id="rptWorstVal">—</div>
+            <div class="report-stat-sub" id="rptWorstSub">—</div>
+          </div>
+        </div>
+        <div class="report-stat-card" id="rptTopCardsSection" style="margin-bottom:12px">
+          <div class="report-stat-label">Top 5 cards by revenue</div>
+          <div id="rptTopCards">
+            <div style="color:var(--muted);font-size:13px;padding:12px 0">No sales yet</div>
           </div>
         </div>
         <div class="report-stat-card" style="margin-bottom:12px">
@@ -5766,8 +5796,34 @@ function closeSellDrawer() {
   sdSelectedPayment = null;
 }
 
+function populateReportShowSelector() {
+  const sel = document.getElementById('rptShowFilter');
+  if (!sel) return;
+  const handle = currentSeller;
+  const myShows = Object.values(shows).filter(s =>
+    s.sellers instanceof Set ? s.sellers.has(handle) : false
+  ).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  // Rebuild only if shows have changed
+  const existing = [...sel.options].slice(1).map(o => o.value).join(',');
+  const incoming = myShows.map(s => s.id).join(',');
+  if (existing === incoming) return;
+  while (sel.options.length > 1) sel.remove(1);
+  myShows.forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s.id;
+    opt.text  = s.name + (s.date ? ' · ' + s.date : '');
+    sel.appendChild(opt);
+  });
+}
+
 function updateReport() {
-  const scoped    = getSellerInventory();
+  populateReportShowSelector();
+  const showId    = (document.getElementById('rptShowFilter') || {}).value || '';
+  const all       = getSellerInventory();
+  // Filter by show if one is selected — use _shows Set membership
+  const scoped    = showId
+    ? all.filter(r => r._shows instanceof Set && r._shows.has(showId))
+    : all;
   const soldCards = scoped.filter(r => r.Status === 'Sold');
   const total     = scoped.length;
   const revenue   = soldCards.reduce((s, r) => s + (Number(r.SoldPrice) || 0), 0);
@@ -5820,6 +5876,58 @@ function updateReport() {
     }).join('');
   }
 
+  // ── Best / worst delta callouts ──
+  if (!soldCards.length) {
+    el('rptBestVal').textContent  = '—'; el('rptBestVal').style.color = '';
+    el('rptBestSub').textContent  = '—';
+    el('rptWorstVal').textContent = '—'; el('rptWorstVal').style.color = '';
+    el('rptWorstSub').textContent = '—';
+  } else {
+    const deltas = soldCards.map(r => ({
+      card: r, delta: (Number(r.SoldPrice) || 0) - (Number(r.Price) || 0)
+    }));
+    const best  = deltas.reduce((a, b) => b.delta > a.delta ? b : a);
+    const worst = deltas.reduce((a, b) => b.delta < a.delta ? b : a);
+    const cardLabel = r => (r.Player || r['Card Title'] || 'Unknown').slice(0, 24);
+    if (best.delta === 0 && worst.delta === 0) {
+      el('rptBestVal').textContent  = 'At ask'; el('rptBestVal').style.color = 'var(--muted)';
+      el('rptBestSub').textContent  = cardLabel(best.card);
+      el('rptWorstVal').textContent = 'At ask'; el('rptWorstVal').style.color = 'var(--muted)';
+      el('rptWorstSub').textContent = cardLabel(worst.card);
+    } else {
+      el('rptBestVal').textContent  = (best.delta >= 0 ? '+' : '') + '$' + Math.abs(best.delta).toLocaleString() + ' vs ask';
+      el('rptBestVal').style.color  = best.delta >= 0 ? '#4ade80' : '#f87171';
+      el('rptBestSub').textContent  = cardLabel(best.card);
+      el('rptWorstVal').textContent = (worst.delta >= 0 ? '+' : '-') + '$' + Math.abs(worst.delta).toLocaleString() + ' vs ask';
+      el('rptWorstVal').style.color = worst.delta >= 0 ? '#4ade80' : '#f59e0b';
+      el('rptWorstSub').textContent = cardLabel(worst.card);
+    }
+  }
+
+  // ── Top 5 cards by revenue ──
+  const topEl = el('rptTopCards');
+  if (!soldCards.length) {
+    topEl.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:12px 0">No sales yet</div>';
+  } else {
+    const top5 = [...soldCards].sort((a, b) => (Number(b.SoldPrice) || 0) - (Number(a.SoldPrice) || 0)).slice(0, 5);
+    topEl.innerHTML = top5.map((r, i) => {
+      const delta    = (Number(r.SoldPrice) || 0) - (Number(r.Price) || 0);
+      const name     = (r.Player || r['Card Title'] || 'Unknown').slice(0, 32);
+      const grade    = r.Grade ? ` · ${r.Grader || ''} ${r.Grade}`.trim() : '';
+      const deltaTxt = (delta >= 0 ? '+' : '-') + '$' + Math.abs(delta).toLocaleString();
+      const deltaClr = delta >= 0 ? '#4ade80' : '#f59e0b';
+      return `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid rgba(30,38,64,.5)">
+        <span style="font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);min-width:14px">${i+1}</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${name}${grade}</div>
+        </div>
+        <span style="font-family:'DM Mono',monospace;font-size:12px;color:#4ade80;font-weight:600;white-space:nowrap">$${Number(r.SoldPrice).toLocaleString()}</span>
+        <span style="font-family:'DM Mono',monospace;font-size:10px;color:${deltaClr};white-space:nowrap">${deltaTxt}</span>
+      </div>`;
+    }).join('');
+  }
+
+  // ── Transaction log ──
   const tbody = el('rptTxBody');
   if (!soldCards.length) {
     tbody.innerHTML = '<tr><td colspan="6" style="padding:16px 8px;color:var(--muted);font-size:12px">No sales yet</td></tr>';
@@ -5839,6 +5947,33 @@ function updateReport() {
       </tr>`;
     }).join('');
   }
+}
+
+function exportReportCSV() {
+  const showId   = (document.getElementById('rptShowFilter') || {}).value || '';
+  const showName = showId && shows[showId] ? shows[showId].name.replace(/[^a-z0-9]/gi, '-').toLowerCase() : 'all-time';
+  const all      = getSellerInventory();
+  const soldCards = showId
+    ? all.filter(r => r.Status === 'Sold' && r._shows instanceof Set && r._shows.has(showId))
+    : all.filter(r => r.Status === 'Sold');
+  const header = ['Card Title','Player','Year','Set','Grade','Grader','Ask Price','Sold Price','Delta','Payment Method','Sale Time','Notes'];
+  const rows   = soldCards.map(r => {
+    const delta = (Number(r.SoldPrice) || 0) - (Number(r.Price) || 0);
+    return [
+      r['Card Title'] || '', r.Player || '', r.Year || '', r['Set '] || r.Set || '',
+      r.Grade || '', r.Grader || '',
+      Number(r.Price || 0).toFixed(2), Number(r.SoldPrice || 0).toFixed(2),
+      delta.toFixed(2), r.PaymentMethod || '', r.SoldTime || '', r.SaleNotes || ''
+    ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',');
+  });
+  const csv  = [header.join(','), ...rows].join('\n');
+  const date = new Date().toISOString().slice(0, 10);
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = `cardshow-report-${showName}-${date}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 function syncBuyerView() {
@@ -6047,8 +6182,14 @@ function loginAsSeller(handle) {
   const backToShows  = document.getElementById('backToShowsBtn');
   if (selectAllBtn) selectAllBtn.style.display = '';
   if (backToShows)  backToShows.style.display  = 'none';
+  // adminTabReport is admin-only — sellers use sellerTabBar instead
   const reportTabBtn = document.getElementById('adminTabReport');
-  if (reportTabBtn) reportTabBtn.style.display = '';
+  if (reportTabBtn) reportTabBtn.style.display = 'none';
+
+  // Show seller tab bar and default to inventory tab
+  const sellerTabBar = document.getElementById('sellerTabBar');
+  if (sellerTabBar) sellerTabBar.style.display = 'block';
+  switchSellerTab('inventory');
 
   // Ensure inventory panel is visible (not hidden by a prior admin session)
   const invPanel = document.getElementById('adminInventoryPanel');
@@ -6080,7 +6221,7 @@ function loginAsSeller(handle) {
   });
 
   // Load shows from Supabase so seller can see which shows they're authorized for
-  loadShowsFromDB().then(() => renderSellerShowsList());
+  loadShowsFromDB().then(() => { renderSellerShowsList(); populateReportShowSelector(); });
 
   // Load seller profile from Supabase (display name, WhatsApp, Instagram)
   if (typeof db !== 'undefined') {
@@ -6140,6 +6281,8 @@ function loginAsAdmin() {
   document.getElementById('sellerShowsPanel').style.display     = 'none';
   document.getElementById('sellerUploadSection').style.display  = 'none';
   document.getElementById('sellerStatsRow').style.display       = 'none';
+  const sellerTabBarAdm = document.getElementById('sellerTabBar');
+  if (sellerTabBarAdm) sellerTabBarAdm.style.display = 'none';
 
   // Clear any demo/sample data — admin sees only real DB inventory
   inventory.length = 0;
@@ -6213,6 +6356,8 @@ async function signOut() {
   document.getElementById('sellerShowsPanel').style.display     = 'none';
   document.getElementById('sellerUploadSection').style.display  = '';
   document.getElementById('sellerStatsRow').style.display       = '';
+  const sellerTabBarSO = document.getElementById('sellerTabBar');
+  if (sellerTabBarSO) { sellerTabBarSO.style.display = 'none'; switchSellerTab('inventory'); }
 
   // Reset inventory panel visibility for next login
   const inv = document.getElementById('adminInventoryPanel');
@@ -9267,6 +9412,31 @@ function selectAll() {
   const anyUnchecked = [...boxes].some(b => !b.checked);
   boxes.forEach(b => { b.checked = anyUnchecked; });
   updateBulkDeleteVisibility();
+}
+
+// ── SELLER TAB SYSTEM ──
+function switchSellerTab(tab) {
+  const invBtn    = document.getElementById('sellerTabInventory');
+  const rptBtn    = document.getElementById('sellerTabReport');
+  const invPanel  = document.getElementById('adminInventoryPanel');
+  const rptPanel  = document.getElementById('adminReportPanel');
+  const tableWrap = invPanel ? invPanel.querySelector('.table-wrap') : null;
+  const filterBar = document.getElementById('adminFilterBar');
+
+  [invBtn, rptBtn].forEach(b => b && b.classList.remove('active'));
+
+  if (tab === 'report') {
+    rptBtn && rptBtn.classList.add('active');
+    if (tableWrap) tableWrap.style.display = 'none';
+    if (rptPanel)  rptPanel.style.display  = 'block';
+    if (filterBar) filterBar.classList.remove('visible');
+    populateReportShowSelector();
+    updateReport();
+  } else {
+    invBtn && invBtn.classList.add('active');
+    if (tableWrap) tableWrap.style.display = '';
+    if (rptPanel)  rptPanel.style.display  = 'none';
+  }
 }
 
 // ── ADMIN TAB SYSTEM ──
