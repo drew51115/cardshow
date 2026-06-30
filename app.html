@@ -6572,7 +6572,7 @@ function renderAdminShowsList() {
   el.innerHTML = list.map(s => {
     const isActive   = s.id === activeShowId;
     const dotClass   = s.status === 'active' ? 'active' : s.status === 'past' ? 'past' : 'upcoming';
-    const cardCount  = inventory.filter(r => s.sellers.has(r.Seller) && r.Status !== 'Sold').length;
+    const cardCount  = showCardCounts[s.id] || 0;
     const sellerArr  = [...s.sellers].sort();
     const wasOpen    = openPanels.has(s.id);
     const tables     = s.tables || {};
@@ -6700,7 +6700,7 @@ function renderAdminShowsList() {
   // Update active show badge
   if (activeShowId && shows[activeShowId]) {
     const s   = shows[activeShowId];
-    const cnt = inventory.filter(r => s.sellers.has(r.Seller) && r.Status !== 'Sold').length;
+    const cnt = showCardCounts[activeShowId] || 0;
     document.getElementById('activeShowBadge').style.display = 'flex';
     document.getElementById('badgeShowName').textContent     = s.name;
     document.getElementById('badgeCardCount').textContent    = `${cnt} cards`;
@@ -9454,16 +9454,13 @@ function updateAscHeader(showId) {
   const assignedCnt = sellerArr.filter(h => tables[h]).length;
   const needsTable  = sellerArr.length - assignedCnt;
 
-  // Card count = all available cards from authorized sellers
-  // (whether published yet or not — reflects what Publish will activate)
-  const cardCount = inventory.filter(r =>
-    s.sellers.has(r.Seller) && r.Status !== 'Sold'
-  ).length;
+  const cardCount = showCardCounts[showId] || 0;
 
   const card = document.getElementById('asc-' + showId);
   if (!card) return;
   const statsEls = card.querySelectorAll('.asc-stat-val');
   if (statsEls[0]) statsEls[0].textContent = cardCount;
+  if (statsEls[1]) statsEls[1].textContent = sellerArr.length;
   if (statsEls[2]) statsEls[2].textContent = assignedCnt;
 
   // Update setup signal text in meta line
@@ -9653,6 +9650,7 @@ async function addShowSellerToDB(showId, handle) {
       const show = shows[showId];
       if (show && show.sellers instanceof Set) {
         show.sellers.delete(handle);
+        if (typeof renderAdminShowsList === 'function') renderAdminShowsList();
         if (typeof renderAdminShowsDashboard === 'function' && _adminTab === 'shows') renderAdminShowsDashboard();
       }
       return;
