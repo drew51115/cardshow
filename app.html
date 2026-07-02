@@ -4788,7 +4788,8 @@ function handleFileUpload(input) {
     if (!window.XLSX) {
       const script = document.createElement('script');
       script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-      script.onload = () => readXLSX(file);
+      script.onload  = () => readXLSX(file);
+      script.onerror = () => showToast('Could not load XLSX library — try saving as CSV and re-uploading', 'var(--danger)');
       document.head.appendChild(script);
     } else {
       readXLSX(file);
@@ -4816,35 +4817,39 @@ function handleShopifyUpload(input) {
 function readXLSX(file) {
   const reader = new FileReader();
   reader.onload = e => {
-    const wb = XLSX.read(e.target.result, { type: 'array' });
-    const ws = wb.Sheets[wb.SheetNames[0]];
+    try {
+      const wb = XLSX.read(e.target.result, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
 
-    // Get raw rows to find the real header row.
-    // Templates (like ours) have title/instruction rows before the actual headers.
-    const rawRows = XLSX.utils.sheet_to_json(ws, { header: 1 });
-    const KNOWN_COLS = ['card title','player','year','set','price','grade','grader','title','name'];
-    let headerRowIdx = 0;
-    for (let i = 0; i < Math.min(rawRows.length, 10); i++) {
-      const cells = (rawRows[i] || []).map(v => String(v || '').toLowerCase().trim());
-      if (KNOWN_COLS.some(col => cells.includes(col))) { headerRowIdx = i; break; }
+      // Scan the first 10 rows to find the real header row.
+      // Some templates (including ours) have title/instruction rows before the headers.
+      const rawRows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+      const KNOWN_COLS = ['card title','player','year','set','price','grade','grader','title','name'];
+      let headerRowIdx = 0;
+      for (let i = 0; i < Math.min(rawRows.length, 10); i++) {
+        const cells = (rawRows[i] || []).map(v => String(v || '').toLowerCase().trim());
+        if (KNOWN_COLS.some(col => cells.includes(col))) { headerRowIdx = i; break; }
+      }
+
+      // Parse with the real header row as the starting point
+      const rows = XLSX.utils.sheet_to_json(ws, { range: headerRowIdx });
+
+      // Skip any description/hint row immediately after the headers.
+      // These rows have a non-numeric Year value (e.g. "4-digit year e.g. 2024").
+      const filtered = rows.filter(row => {
+        const year = String(row['Year'] || row['year'] || '').trim();
+        if (year && !/^\d{4}(-\d{2})?$/.test(year) && isNaN(Number(year))) return false;
+        return true;
+      });
+
+      if (!filtered.length) { showToast('No data rows found in this file', 'var(--danger)'); return; }
+      openMapper(filtered);
+    } catch (err) {
+      console.error('XLSX parse error:', err);
+      showToast('Could not read XLSX file — try saving as CSV and re-uploading', 'var(--danger)');
     }
-
-    // Parse with the real header row
-    const rows = XLSX.utils.sheet_to_json(ws, { range: headerRowIdx });
-
-    // Skip a description/hint row immediately after headers (non-numeric Year or very long Card Title)
-    const filtered = rows.filter(row => {
-      const year  = String(row['Year'] || row['year'] || '').trim();
-      const title = String(row['Card Title'] || row['card title'] || '').trim();
-      // Description rows have very long text or a year that is obviously not a 4-digit number
-      if (title.length > 80) return false;
-      if (year && !/^\d{4}(-\d{2})?$/.test(year) && isNaN(Number(year))) return false;
-      return true;
-    });
-
-    if (!filtered.length) { showToast('File appears empty', 'var(--danger)'); return; }
-    openMapper(filtered);
   };
+  reader.onerror = () => showToast('Could not read file', 'var(--danger)');
   reader.readAsArrayBuffer(file);
 }
 
