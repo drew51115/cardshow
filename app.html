@@ -4874,9 +4874,9 @@ function cancelCompCheck() {
 
 // Progress bar shown during comp check — fixed height so table doesn't jump.
 function showCompCheckProgress(current, total, cardName, estDisplay) {
-  let bar = document.getElementById('compCheckProgressBar');
-  if (!bar) {
-    const wrap = document.createElement('div');
+  let wrap = document.getElementById('compCheckProgressWrap');
+  if (!wrap) {
+    wrap = document.createElement('div');
     wrap.id = 'compCheckProgressWrap';
     wrap.style.cssText = 'margin-bottom:0.75rem;';
     wrap.innerHTML = `
@@ -4894,7 +4894,6 @@ function showCompCheckProgress(current, total, cardName, estDisplay) {
       </div>`;
     const tableWrap = document.querySelector('.table-wrap');
     if (tableWrap) tableWrap.insertBefore(wrap, tableWrap.firstChild);
-    bar = wrap;
   }
 
   const fill = document.getElementById('compCheckProgressFill');
