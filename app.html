@@ -3385,6 +3385,55 @@
     </div>
   </div>
 
+  <!-- ═══════ COMP RESULTS MODAL ═══════ -->
+  <div class="card-edit-overlay" id="compResultsOverlay" onclick="if(event.target===this)closeCompResults()">
+    <div class="card-edit-modal" style="max-width:600px">
+      <div class="modal-header">
+        <div>
+          <div style="font-family:'DM Mono',monospace;font-size:0.65rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);margin-bottom:0.3rem">Comp Check Results</div>
+          <h3 id="compResultsTitle" style="font-family:'Bebas Neue',sans-serif;font-size:1.5rem;letter-spacing:0.04em;color:var(--text);margin:0"></h3>
+          <div id="compResultsSubtitle" style="font-size:0.78rem;color:var(--muted);margin-top:0.2rem"></div>
+        </div>
+        <button onclick="closeCompResults()" style="background:none;border:none;color:var(--muted);font-size:1.3rem;cursor:pointer;padding:0;line-height:1">✕</button>
+      </div>
+
+      <!-- Tab bar: Out of Range / All Results -->
+      <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin:0.75rem 1.4rem 0">
+        <button id="compTabFlagged" onclick="switchCompTab('flagged')"
+          style="font-family:'DM Sans',sans-serif;font-size:0.8rem;font-weight:600;
+            padding:0.5rem 1rem;border:none;border-bottom:2px solid var(--gold);
+            background:none;color:var(--text);cursor:pointer">
+          ⚠ Out of Range
+        </button>
+        <button id="compTabAll" onclick="switchCompTab('all')"
+          style="font-family:'DM Sans',sans-serif;font-size:0.8rem;font-weight:600;
+            padding:0.5rem 1rem;border:none;border-bottom:2px solid transparent;
+            background:none;color:var(--muted);cursor:pointer">
+          All Results
+        </button>
+      </div>
+
+      <!-- Card rows -->
+      <div id="compResultsList" style="padding:0.75rem 1.4rem;display:flex;flex-direction:column;gap:0.5rem;max-height:55vh;overflow-y:auto"></div>
+
+      <!-- Footer actions -->
+      <div class="modal-actions" style="border-top:1px solid var(--border);padding-top:0.85rem;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem">
+        <button onclick="acceptAllCompPrices()" id="compAcceptAllBtn"
+          style="background:var(--gold);color:var(--black);border:none;border-radius:7px;
+            padding:0.55rem 1.2rem;font-family:'DM Sans',sans-serif;font-size:0.82rem;
+            font-weight:700;cursor:pointer">
+          ✓ Accept all suggested prices
+        </button>
+        <button onclick="closeCompResults()"
+          style="background:none;border:1px solid var(--border);color:var(--muted);
+            border-radius:7px;padding:0.55rem 1rem;font-family:'DM Sans',sans-serif;
+            font-size:0.82rem;cursor:pointer">
+          Done
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- ═══════ CARD EDIT MODAL (position:absolute inside view-seller) ═══════ -->
   <div class="card-edit-overlay" id="cardEditOverlay" onclick="if(event.target===this)closeCEM()">
     <div class="card-edit-modal">
@@ -4912,31 +4961,210 @@ function hideCompCheckProgress() {
   if (wrap) wrap.remove();
 }
 
-// Renders a summary modal/toast after comp check completes.
+// ── COMP RESULTS MODAL ──
+
+// Module state
+let _compResults   = [];   // full results array from last run
+let _compRangePct  = 20;   // threshold used for flagging
+let _compActiveTab = 'flagged'; // 'flagged' | 'all'
+
 function showCompCheckSummary(results, rangePct) {
   if (!results.length) {
     showToast('No comp prices found — check card names and try again', 'var(--muted)');
     return;
   }
 
-  const flagged = results.filter(r => {
-    if (!r.compPrice || !r.card?.Price) return false;
-    const ask  = Number(r.card.Price);
-    const comp = Number(r.compPrice);
-    const diff = Math.abs(ask - comp) / comp * 100;
-    return diff > rangePct;
-  });
+  _compResults  = results;
+  _compRangePct = rangePct;
 
-  const lines = results.slice(0, 5).map(r =>
-    `${(r.card?.Player || r.card?.['Card Title'] || '?').slice(0,28)}: $${Number(r.compPrice).toFixed(2)}`
-  ).join('\n');
+  const flaggedCount = results.filter(r => _isOutOfRange(r, rangePct)).length;
 
-  const msg = flagged.length
-    ? `Comp check: ${results.length} prices found, ${flagged.length} outside ${rangePct}% range`
-    : `Comp check: ${results.length} prices found — all within ${rangePct}% of ask`;
+  // Title and subtitle
+  document.getElementById('compResultsTitle').textContent =
+    flaggedCount ? `${flaggedCount} card${flaggedCount !== 1 ? 's' : ''} outside ${rangePct}% range` : 'All prices in range';
+  document.getElementById('compResultsSubtitle').textContent =
+    `${results.length} comp price${results.length !== 1 ? 's' : ''} found · ${rangePct}% variance threshold`;
 
-  showToast(msg);
-  console.log('Comp check results:', results);
+  // Show flagged tab by default if there are flagged cards, else all
+  _compActiveTab = flaggedCount ? 'flagged' : 'all';
+  _renderCompTab();
+
+  // Show/hide Accept All button — only relevant on flagged tab with flagged cards
+  const acceptBtn = document.getElementById('compAcceptAllBtn');
+  if (acceptBtn) acceptBtn.style.display = flaggedCount ? '' : 'none';
+
+  document.getElementById('compResultsOverlay').classList.add('open');
+}
+
+function closeCompResults() {
+  document.getElementById('compResultsOverlay').classList.remove('open');
+}
+
+function switchCompTab(tab) {
+  _compActiveTab = tab;
+  const flaggedBtn = document.getElementById('compTabFlagged');
+  const allBtn     = document.getElementById('compTabAll');
+  const gold = 'var(--gold)', none = 'transparent', active = 'var(--text)', muted = 'var(--muted)';
+  if (flaggedBtn) {
+    flaggedBtn.style.borderBottomColor = tab === 'flagged' ? gold : none;
+    flaggedBtn.style.color = tab === 'flagged' ? active : muted;
+  }
+  if (allBtn) {
+    allBtn.style.borderBottomColor = tab === 'all' ? gold : none;
+    allBtn.style.color = tab === 'all' ? active : muted;
+  }
+  const acceptBtn = document.getElementById('compAcceptAllBtn');
+  if (acceptBtn) {
+    const flaggedCount = _compResults.filter(r => _isOutOfRange(r, _compRangePct)).length;
+    acceptBtn.style.display = (tab === 'flagged' && flaggedCount) ? '' : 'none';
+  }
+  _renderCompTab();
+}
+
+function _isOutOfRange(r, rangePct) {
+  if (!r.compPrice || !r.card?.Price) return false;
+  const diff = Math.abs(Number(r.card.Price) - Number(r.compPrice)) / Number(r.compPrice) * 100;
+  return diff > rangePct;
+}
+
+function _renderCompTab() {
+  const list = document.getElementById('compResultsList');
+  if (!list) return;
+
+  const rows = _compActiveTab === 'flagged'
+    ? _compResults.filter(r => _isOutOfRange(r, _compRangePct))
+    : _compResults;
+
+  if (!rows.length) {
+    list.innerHTML = `<div style="color:var(--muted);font-size:0.82rem;padding:1rem 0;text-align:center">
+      ${_compActiveTab === 'flagged' ? '✓ All comped cards are within range' : 'No results'}
+    </div>`;
+    return;
+  }
+
+  list.innerHTML = rows.map((r, i) => {
+    const card     = r.card;
+    const ask      = Number(card.Price) || 0;
+    const comp     = Number(r.compPrice);
+    const delta    = comp - ask;
+    const pct      = ask > 0 ? ((delta / ask) * 100).toFixed(0) : '—';
+    const label    = (card.Player || card['Card Title'] || 'Unknown').slice(0, 40);
+    const sub      = [card.Year, card['Set '] || card.Set, card.Grade ? `${card.Grader || ''} ${card.Grade}`.trim() : '']
+                       .filter(Boolean).join(' · ');
+    const deltaColor = delta > 0 ? '#4ade80' : delta < 0 ? '#f87171' : 'var(--muted)';
+    const deltaSign  = delta > 0 ? '+' : '';
+    const outOfRange = _isOutOfRange(r, _compRangePct);
+    const globalIdx  = _compResults.indexOf(r);
+
+    return `<div style="background:var(--surface);border:1px solid ${outOfRange ? 'rgba(245,200,66,0.25)' : 'var(--border)'};
+        border-radius:10px;padding:0.75rem 0.9rem;display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap">
+      <!-- Card info -->
+      <div style="flex:1;min-width:140px">
+        <div style="font-size:0.84rem;font-weight:600;color:var(--text);line-height:1.3">${label}</div>
+        <div style="font-size:0.72rem;color:var(--muted);margin-top:0.15rem">${sub}</div>
+        ${r.fromCache ? '<div style="font-size:0.65rem;color:var(--muted);font-family:\'DM Mono\',monospace;margin-top:0.2rem">cached</div>' : ''}
+      </div>
+      <!-- Price columns -->
+      <div style="display:flex;gap:1rem;align-items:center;flex-shrink:0">
+        <div style="text-align:center">
+          <div style="font-size:0.6rem;font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);margin-bottom:0.1rem">Ask</div>
+          <div style="font-size:0.9rem;font-weight:700;color:var(--text)">$${ask.toFixed(2)}</div>
+        </div>
+        <div style="text-align:center">
+          <div style="font-size:0.6rem;font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);margin-bottom:0.1rem">Comp</div>
+          <div style="font-size:0.9rem;font-weight:700;color:var(--gold)">$${comp.toFixed(2)}</div>
+        </div>
+        <div style="text-align:center">
+          <div style="font-size:0.6rem;font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);margin-bottom:0.1rem">Δ</div>
+          <div style="font-size:0.82rem;font-weight:600;color:${deltaColor}">${deltaSign}${pct}%</div>
+        </div>
+      </div>
+      <!-- Actions -->
+      <div style="display:flex;gap:0.4rem;align-items:center;flex-shrink:0">
+        <button onclick="acceptCompPrice(${globalIdx})"
+          style="font-size:0.72rem;padding:0.3rem 0.65rem;border-radius:6px;
+            border:1px solid rgba(74,222,128,0.4);background:rgba(74,222,128,0.08);
+            color:#4ade80;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:600;
+            white-space:nowrap">
+          ✓ Use $${comp.toFixed(2)}
+        </button>
+        <div style="display:flex;align-items:center;gap:0.3rem">
+          <span style="font-size:0.72rem;color:var(--muted)">$</span>
+          <input type="number" min="0" step="0.01" value="${ask.toFixed(2)}"
+            id="compPriceInput_${globalIdx}"
+            style="width:72px;padding:0.28rem 0.4rem;border-radius:6px;
+              border:1px solid var(--border);background:var(--card);
+              color:var(--text);font-size:0.78rem;font-family:'DM Mono',monospace"
+            onkeydown="if(event.key==='Enter')setCompCustomPrice(${globalIdx})">
+          <button onclick="setCompCustomPrice(${globalIdx})"
+            style="font-size:0.72rem;padding:0.3rem 0.55rem;border-radius:6px;
+              border:1px solid var(--border);background:var(--surface);
+              color:var(--muted);cursor:pointer;font-family:'DM Sans',sans-serif">
+            Set
+          </button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// Accept the comp price for a single card (by index in _compResults)
+function acceptCompPrice(idx) {
+  const r = _compResults[idx];
+  if (!r) return;
+  _applyCompPrice(r.card, r.compPrice);
+  // Mark visually as accepted
+  const row = document.getElementById('compResultsList')?.children[
+    (_compActiveTab === 'flagged'
+      ? _compResults.filter(x => _isOutOfRange(x, _compRangePct))
+      : _compResults).indexOf(r)
+  ];
+  if (row) {
+    row.style.opacity = '0.45';
+    row.style.pointerEvents = 'none';
+  }
+  showToast(`✓ Price updated to $${Number(r.compPrice).toFixed(2)}`);
+}
+
+// Set a custom price typed into the input field
+function setCompCustomPrice(idx) {
+  const r     = _compResults[idx];
+  const input = document.getElementById(`compPriceInput_${idx}`);
+  if (!r || !input) return;
+  const val = parseFloat(input.value);
+  if (isNaN(val) || val < 0) { showToast('Enter a valid price', 'var(--danger)'); return; }
+  _applyCompPrice(r.card, val);
+  const row = document.getElementById('compResultsList')?.children[
+    (_compActiveTab === 'flagged'
+      ? _compResults.filter(x => _isOutOfRange(x, _compRangePct))
+      : _compResults).indexOf(r)
+  ];
+  if (row) {
+    row.style.opacity = '0.45';
+    row.style.pointerEvents = 'none';
+  }
+  showToast(`✓ Price updated to $${val.toFixed(2)}`);
+}
+
+// Accept comp price for every flagged card at once
+function acceptAllCompPrices() {
+  const flagged = _compResults.filter(r => _isOutOfRange(r, _compRangePct));
+  if (!flagged.length) return;
+  flagged.forEach(r => _applyCompPrice(r.card, r.compPrice));
+  showToast(`✓ ${flagged.length} prices updated to comp`);
+  // Re-render to show all as accepted
+  _compResults = _compResults.map(r => ({ ...r })); // shallow copy to re-trigger render
+  _renderCompTab();
+  document.getElementById('compAcceptAllBtn').style.display = 'none';
+}
+
+// Write the new price to the card in memory and persist to DB
+function _applyCompPrice(card, newPrice) {
+  card.Price = Number(newPrice);
+  updateCardInDB(card);
+  renderSellerTable(getSellerInventory());
+  updateStats();
+  updateReport();
 }
 
 // Main comp-check entry point. Called with the cards to check.
