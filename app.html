@@ -2890,7 +2890,7 @@
           <h2 id="inventoryTitle">Inventory</h2>
           <input type="text" class="search-input" id="sellerSearchInput" placeholder="Search cards…" oninput="applyInventoryFilters()">
           <button class="btn btn-ghost" id="selectAllBtn" onclick="selectAll()" style="display:none">Select All</button>
-          <button class="btn btn-ghost" id="compCheckBtn" onclick="runCompCheck(getSellerInventory().filter(c=>c.Status!=='Sold'))" style="display:none;font-size:0.8rem" title="Look up market prices for your available inventory">💲 Check Comps</button>
+          <button class="btn btn-ghost" id="compCheckBtn" onclick="runCompCheck(getCompCheckCards())" style="display:none;font-size:0.8rem" title="Look up market prices for selected cards (or all available if none selected)">💲 Check Comps</button>
           <button class="btn-bulk-delete" id="bulkDeleteBtn" onclick="confirmBulkDelete()">🗑 Delete Selected</button>
           <button class="btn btn-ghost" id="backToShowsBtn" style="display:none;font-size:0.8rem" onclick="switchAdminTab('shows')">← Shows</button>
         </div>
@@ -10705,6 +10705,18 @@ function updateBulkDeleteVisibility() {
   const bulkBtn = document.getElementById('bulkDeleteBtn');
   if (!bulkBtn) return;
   bulkBtn.classList.toggle('visible', checked.length > 0);
+}
+
+// Returns cards to run comps on: checked cards when any are selected,
+// otherwise all non-sold cards in the seller's inventory.
+function getCompCheckCards() {
+  const checked = document.querySelectorAll('.card-check:checked');
+  if (checked.length > 0) {
+    return [...checked]
+      .map(cb => inventory[parseInt(cb.dataset.idx)])
+      .filter(c => c && c.Status !== 'Sold');
+  }
+  return getSellerInventory().filter(c => c.Status !== 'Sold');
 }
 
 function cemToggle() {
