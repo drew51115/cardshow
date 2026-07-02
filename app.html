@@ -53,6 +53,8 @@
     background: rgba(10,10,10,0.95);
     backdrop-filter: blur(12px);
     overflow: hidden;
+    box-sizing: border-box;
+    max-width: 100vw;
   }
 
   .logo {
@@ -98,8 +100,9 @@
     align-items: center;
     gap: 0.6rem;
     margin-left: auto;
-    flex-shrink: 0;
+    flex-shrink: 1;
     min-width: 0;
+    overflow: hidden;
   }
 
   .nav-partnership-link {
@@ -2393,6 +2396,9 @@
 
   /* ── Small tablet / large phone 480–599px ── */
   @media (max-width: 599px) and (min-width: 480px) {
+    body.role-admin .seller-layout { grid-template-columns: 1fr; }
+    body.role-admin .main-content  { padding: 0.75rem; }
+
     #adminTabBar { margin-bottom: 0.55rem; }
     .admin-tab { padding: 0.38rem 0.75rem; font-size: 0.74rem; }
 
@@ -2430,6 +2436,10 @@
 
   /* ── Mobile < 480px ── */
   @media (max-width: 479px) {
+    /* Admin main content fills full width when sidebar is hidden */
+    body.role-admin .seller-layout { grid-template-columns: 1fr; }
+    body.role-admin .main-content  { padding: 0.5rem; }
+
     #adminTabBar { margin-bottom: 0.5rem; }
     .admin-tab { padding: 0.35rem 0.65rem; font-size: 0.72rem; }
 
@@ -2491,6 +2501,32 @@
     /* Admin tab bar full width on xs */
     #adminTabBar > div { width: 100%; }
     .admin-tab { flex: 1; text-align: center; }
+
+    /* ── Mobile nav: collapse name/role, keep avatar + sign-out ── */
+    .nav-user-name,
+    .nav-user-role   { display: none; }
+    .nav-tabs        { gap: 0; }
+    .nav-tab         { padding: 0.35rem 0.6rem; font-size: 0.72rem; }
+    nav              { gap: 0.45rem; padding: 0 0.75rem; }
+    .nav-user        { gap: 0.3rem; }
+    .btn-signout     { padding: 0.22rem 0.45rem; font-size: 0.64rem; }
+    .nav-partnership-link { display: none; }
+
+    /* ── Hide admin sidebar Quick Actions on mobile — duplicates main content ── */
+    body.role-admin #mainSidebar { display: none !important; }
+    body.role-admin .sidebar-toggle { display: none !important; }
+  }
+
+  @media (max-width: 599px) {
+    /* Collapse nav name/role on small phones and small tablets */
+    .nav-user-name,
+    .nav-user-role    { display: none; }
+    nav               { gap: 0.5rem; padding: 0 0.9rem; }
+    .nav-partnership-link { display: none; }
+
+    /* Hide admin sidebar on small tablets — Quick Actions duplicate main content */
+    body.role-admin #mainSidebar { display: none !important; }
+    body.role-admin .sidebar-toggle { display: none !important; }
   }
 
 
@@ -6822,6 +6858,8 @@ function loginAsAdmin() {
   _demoInventoryLoaded = false;
 
   switchView('seller');
+  initSidebarState();
+  window.scrollTo(0, 0);
   updateStats();
   populateAdminFilterOptions();
 
