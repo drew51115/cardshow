@@ -5332,7 +5332,7 @@ function cardFingerprint(r) {
     (r['Card Title'] || '').trim().toLowerCase(),
     String(r.Year || '').trim(),
     (r['Set '] || r['Set'] || '').trim().toLowerCase(),
-    (r.Number || '').trim().toLowerCase(),
+    String(r.Number || '').trim().toLowerCase(),
     (r['Parallel/Variant'] || '').trim().toLowerCase(),
     (r.Grader || '').trim().toUpperCase(),
   ].join('||');
