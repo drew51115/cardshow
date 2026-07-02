@@ -8,6 +8,8 @@
 
 <!-- Supabase client -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- XLSX library — preloaded so XLSX uploads don't depend on a per-click CDN fetch -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
 <script>
   const { createClient } = supabase;
   const db = createClient(
@@ -4785,12 +4787,16 @@ function handleFileUpload(input) {
     };
     reader.readAsText(file);
   } else if (ext === 'xlsx') {
+    showToast('Reading XLSX file…', 'var(--muted)');
+    // XLSX is preloaded in <head>. If it somehow hasn't parsed yet, wait a tick.
     if (!window.XLSX) {
-      const script = document.createElement('script');
-      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-      script.onload  = () => readXLSX(file);
-      script.onerror = () => showToast('Could not load XLSX library — try saving as CSV and re-uploading', 'var(--danger)');
-      document.head.appendChild(script);
+      setTimeout(() => {
+        if (!window.XLSX) {
+          showToast('XLSX library not available — try saving as CSV and re-uploading', 'var(--danger)');
+        } else {
+          readXLSX(file);
+        }
+      }, 500);
     } else {
       readXLSX(file);
     }
