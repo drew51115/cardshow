@@ -9711,7 +9711,8 @@ function setScanStatus(msg, isError) {
 
 // ── Sprint 3: Live card database search (Trading Card API + local CARD_DB fallback) ──
 
-let _acFocusIdx = -1;  // keyboard nav index in results dropdown
+let _acFocusIdx = -1;   // keyboard nav index in results dropdown
+let _acCacheHit  = null; // set by _acDoSearch when response is fromCache; read by renderer
 
 function acSearch(q) {
   clearTimeout(_acTimer);
@@ -9757,6 +9758,11 @@ async function _acDoSearch(q) {
         parallel: r.parallel || '',
         sport:   r.sport || '',
       }));
+      if (window.CARDSHOW_DEBUG && data.fromCache) {
+        _acCacheHit = { source: data.source || 'tradingcardapi' };
+      } else {
+        _acCacheHit = null;
+      }
     }
   } catch {
     useStub = true;
@@ -9809,6 +9815,15 @@ async function _acDoSearch(q) {
   }).join('');
 
   resultsEl.innerHTML = `<div class="ac-results-wrap">${rows}</div>`;
+
+  if (window.CARDSHOW_DEBUG && window._acCacheHit) {
+    const note = document.createElement('div');
+    note.textContent = `⚡ from cache · ${window._acCacheHit.source}`;
+    note.style.cssText = 'font-size:9px;color:var(--muted);text-align:right;' +
+      'padding:3px 10px;border-top:1px solid var(--border);font-family:var(--font-mono)';
+    resultsEl.querySelector('.ac-results-wrap').appendChild(note);
+    window._acCacheHit = null;
+  }
 }
 
 function acKeyNav(e) {

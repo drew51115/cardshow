@@ -19,7 +19,8 @@ _redirects                        → Netlify routing rules
 netlify.toml                      → Disables pretty URLs (critical for show.html hash routing); functions = "netlify/functions"
 netlify/functions/psa-lookup.js   → Serverless: POST {cert, grader} → normalized card object (PSA + CGC APIs)
 netlify/functions/vision-scan.js         → Serverless: POST {image, mediaType} → normalized card object via Claude vision (Sprint 2)
-netlify/functions/trading-card-lookup.js → Serverless: POST {query, sport?} → card search results from Trading Card API (Sprint 3)
+netlify/functions/trading-card-lookup.js → Serverless: POST {query, sport?} → card search results from Trading Card API (Sprint 3); write-through cache via card_search_cache table (7-day TTL)
+netlify/functions/invalidate-search-cache.js → Serverless: POST {query} → deletes matching rows from card_search_cache; protected by x-invalidate-secret header
 .env.example                             → Placeholder env vars for all keys
 downloads/                               → Static file downloads served by Netlify
 downloads/CardShow_Inventory_Template.xlsx → Pre-filled inventory template (13 example rows); linked from landing page and footer
@@ -265,6 +266,7 @@ Called from `fillFormFromScan` (barcode) and `fillFormFromVision` (vision). Gene
 | `TCGAPIS_KEY` | Reserved for Sprint 3 TCG price lookups |
 | `ANTHROPIC_API_KEY` | Claude API key for vision-scan.js (Sprint 2) |
 | `TRADING_CARD_API_KEY` | Trading Card API key for live card DB autocomplete (Sprint 3) — add in Netlify dashboard → Site settings → Environment variables once approved at tradingcardapi.com/early-access |
+| `CACHE_INVALIDATE_SECRET` | Random secret protecting `/.netlify/functions/invalidate-search-cache` — set to output of `openssl rand -hex 24`; pass as `x-invalidate-secret` request header |
 
 ### Credential Injection (no build step workaround)
 Supabase URL and anon key are **not** hardcoded in tracked files. `netlify.toml` has a `command` that runs `sed` to replace `SUPABASE_URL_PLACEHOLDER` / `SUPABASE_ANON_KEY_PLACEHOLDER` in all three HTML files at deploy time. `SECRETS_SCAN_OMIT_KEYS = "SUPABASE_URL,SUPABASE_ANON_KEY"` prevents Netlify's secrets scanner from blocking the build on the injected values (they are intentionally public publishable keys).
@@ -339,11 +341,20 @@ Cancel at each state:
 - `processing`: AbortController.abort() fires, toast "Scan cancelled", overlay closes
 
 ### Trading Card Lookup Function (trading-card-lookup.js)
-- **Endpoint:** POST `{ query, sport? }` → `{ stub: bool, results: [...] }`
+- **Endpoint:** POST `{ query, sport? }` → `{ stub: bool, results: [...], fromCache?: bool, source?: string }`
 - **Stub mode:** when `TRADING_CARD_API_KEY` is unset, returns `{ stub: true, results: [] }` and logs a warning. Client silently falls back to local CARD_DB. All UI works — sellers just get 60-card local list instead of 3M+.
 - **Live mode:** `GET https://api.tradingcardapi.com/v1/cards?filter[name]=...&page[limit]=8` with `Authorization: Bearer` and `Accept: application/vnd.api+json`. 5-second timeout.
 - **To activate:** add `TRADING_CARD_API_KEY` in Netlify dashboard → Site settings → Environment variables (apply at tradingcardapi.com/early-access).
 - Returns normalized objects: `{ id, player, year, cardSet, cardNumber, sport, parallel, imageUrl }`
+- **Cache:** results written to `card_search_cache` (Supabase) after successful API call; read on next identical query within 7 days. Requires `SUPABASE_SERVICE_KEY`. Cache write is non-blocking — failure never breaks the response.
+
+### Card Search Cache (card_search_cache table)
+- **TTL:** 7 days, keyed by `query_key` = `"tradingcardapi:{normalized_query}"` (lowercased, whitespace-collapsed)
+- **Schema:** `query_key text PK, results jsonb, source text, fetched_at timestamptz`
+- **Cache hit response:** adds `fromCache: true, source: "tradingcardapi"` to the JSON response
+- **Invalidation:** `/.netlify/functions/invalidate-search-cache` — POST `{ query }` with `x-invalidate-secret` header; deletes all rows with `query_key ILIKE %{normalized}%`; protected by `CACHE_INVALIDATE_SECRET` env var
+- **Debug:** `window.CARDSHOW_DEBUG = true` shows `⚡ from cache · tradingcardapi` note at bottom of dropdown on cache hits
+- **`buildQueryKey(rawQuery, source)`** — normalises to lowercase + collapsed whitespace, prefixes source
 
 ### Live Autocomplete (app.html)
 - **Trigger:** 3+ characters in `#ac_search`, 250ms debounce
@@ -352,7 +363,7 @@ Cancel at each state:
 - **Keyboard nav:** ArrowUp/Down to move focus, Enter to select, Escape to close
 - **On select:** fills player, year, set, card #, parallel with green `db-filled` border (8s); focuses price input; toast "Card details filled in — add grade and price"
 - **No results:** "No matches found — enter details manually" item
-- **Debug note:** `window.CARDSHOW_DEBUG = true` reveals "Using local card database" note under the input
+- **Debug note:** `window.CARDSHOW_DEBUG = true` reveals "Using local card database" note under the input (stub mode) or "⚡ from cache" note at dropdown bottom (cache hit)
 
 ### Scan History (session-only)
 - `_scanHistory[]` — last 5 scanned cards, stored in memory, cleared on `signOut()`
