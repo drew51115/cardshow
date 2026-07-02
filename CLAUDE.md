@@ -183,6 +183,10 @@ Fonts: Bebas Neue (headlines), DM Sans (body), DM Mono (labels/badges), Barlow C
 21. **Seller-only sidebar visibility** — `#sellerUploadSection` (wraps the Upload Inventory drop zone + "+ Add Card" button) and `#sellerStatsRow` (the `.stats-row` stat chips) are hidden via `style.display='none'` in `loginAsAdmin()` and restored via `style.display=''` in both `loginAsSeller()` and `signOut()`. The admin sidebar shows only `#adminShowsPanel` (Quick Actions) and `#sellerQrPanel` is already correctly toggled via `.visible` class. This was a targeted display-toggle fix — the Shows dashboard, asc-header/asc-stats, and action bars in the main content area were not changed.
 22. **Seller tab bar vs admin tab bar** — `#sellerTabBar` (My Inventory / Report) is shown only for sellers; `#adminTabBar` (Shows / All Inventory) is shown only for admins. `adminTabReport` is permanently hidden from the admin tab bar — sellers use `switchSellerTab('report')` for their dedicated Report tab. `loginAsSeller()` shows `#sellerTabBar` and defaults to inventory tab; `loginAsAdmin()` and `signOut()` hide it.
 23. **Report show filter populates after DB load** — `populateReportShowSelector()` is called inside the `loadShowsFromDB().then()` callback in `loginAsSeller()` so the dropdown reflects the seller's authorized shows from Supabase, not just in-memory state at login time.
+24. **`initSidebarState()` must be called on login** — Defined in app.html; adds `sidebar-open` on desktop (>768px) and removes it on mobile. Called from both `loginAsSeller()` and `loginAsAdmin()`. Sidebar HTML starts without `sidebar-open` class; desktop CSS shows sidebar unconditionally so the class only matters on mobile.
+25. **Admin sidebar hidden on mobile** — `body.role-admin #mainSidebar { display: none !important }` in `≤599px` media query. Quick Actions (Create New Show, Back to Shows) are redundant with main content on mobile. Admin grid uses `grid-template-columns: 1fr` on mobile so main content fills full width.
+26. **FAB (`#fabAddCard`) is seller-only** — Shown via `style.display=''` in `loginAsSeller()`, hidden in `loginAsAdmin()` and `signOut()`. Only visible at `≤767px` via CSS. Black background + gold border + gold "+" text for maximum contrast against dark UI.
+27. **Comp search includes parallel** — `comp-lookup.js` search query: `[player, year, cardSet, parallel].filter(Boolean).join(' ')`. Cache fingerprint: `player|year|cardSet|cardNumber|parallel|grade|grader`. Both changes ensure autos/variants get correct prices instead of base card prices.
 
 ## Cert Scanner — Sprint 1 + 2 Architecture (Shipped)
 
@@ -401,7 +405,7 @@ Cancel at each state:
 - 6s timeout, graceful stub on any error
 
 ### price_cache Table (Supabase)
-- **TTL:** 24 hours, keyed by `card_fingerprint` (`player|year|set|grade|grader` lowercased)
+- **TTL:** 24 hours, keyed by `card_fingerprint` (`player|year|set|cardNumber|parallel|grade|grader` lowercased)
 - Cache hits return `{ fromCache: true }` — no API call, no delay needed
 - Requires `SUPABASE_SERVICE_KEY` (service role) in Netlify env vars
 - Table must exist: run `SELECT to_regclass('public.price_cache');` in Supabase SQL editor; if null, run the CREATE TABLE SQL from the comp-check sprint output
@@ -418,6 +422,10 @@ Cancel at each state:
 - Progress bar: slim 3px gold bar + `"Checking comps… 14 of 47 cards · Player Name…"` (card name truncated to 32 chars)
 - **Cancel:** `window._compCheckCancelled` flag; `cancelCompCheck()` sets it; checked at top of each loop iteration; shows partial summary if any results collected
 - Cache hits skip the 1200ms delay (no API call made)
+
+### Comp Check — Selection Scoping
+- **`getCompCheckCards()`** — returns checked cards when any checkboxes are checked; falls back to all non-sold inventory when nothing is checked. The "💲 Check Comps" button calls this instead of always using all available cards.
+- Checkbox selection now serves three purposes: show inventory inclusion, bulk delete, and comp check scoping.
 
 ### Cancelled Infrastructure (do not build)
 - `netlify/functions/sync-pricecharting.mjs` — cancelled; API-only approach used instead
@@ -461,6 +469,14 @@ Cancel at each state:
 - **renderAdminShowsList() is dead code** — targets `#adminShowsList` which does not exist; all real renders go through `renderAdminShowsDashboard()` targeting `#adminShowsGrid`. Do not call or rely on `renderAdminShowsList()`.
 - **saveShow() reads chips for edits** — always reads `#smSellerList .seller-chip.selected` as source of truth; diffs against existing sellers; applies add/remove to DB. Previously ignored chip UI for existing shows.
 - **Seller Report tab** — `#sellerTabBar` with `switchSellerTab()`; show-scoped filter, Best sale / Most discounted stat cards, Top 5 by revenue, CSV export via `exportReportCSV()`.
+- **XLSX self-hosting** — SheetJS v0.18.5 (`xlsx.full.min.js`) copied to repo root and loaded via `<script src="/xlsx.full.min.js" defer>`. CDN dependency eliminated. `readXLSX()` wraps parse in try/catch; `handleFileUpload()` shows immediate toast and 500ms fallback check.
+- **XLSX import `cardFingerprint` fix** — `r.Number` from SheetJS is a JS number; wrapped with `String()` before `.trim()` to prevent TypeError aborting import.
+- **Comp check parallel/cardNumber in search query** — `comp-lookup.js` PriceCharting search now appends `card.parallel` to the query string so autos/variants match the correct product. Cache fingerprint expanded to include `cardNumber` and `parallel` so different variants of the same player/year/set are cached independently.
+- **Comp pricing staged acceptance** — `_pendingCompChanges` Map stores price decisions; `_stageCompPrice()` stages without DB write; `commitCompPrices()` applies all to DB; "Reprice all out-of-range" button stages all flagged cards at once; gold "Apply N price changes" commit button appears when changes are staged.
+- **Mobile seller layout** — `initSidebarState()` now collapses sidebar on ≤768px (removes `sidebar-open`); called in `loginAsSeller()` and `loginAsAdmin()`. `window.scrollTo(0,0)` added to both login functions. Toast `max-width: calc(100vw - 3rem)` prevents overflow on narrow screens.
+- **Mobile Add Card FAB** — `#fabAddCard` fixed bottom-right circle (56px, `≤767px` only). Black `#07080c` background, gold border, gold "+" text — high contrast against dark UI. Shown only for sellers; hidden for admin and on sign-out. Toast raised to `bottom: 5.5rem` on mobile to avoid FAB collision.
+- **Admin mobile UX** — On `≤599px`: nav name/role hidden, only avatar + sign-out visible; partnership link hidden; gap/padding tightened. Admin sidebar (`#adminShowsPanel` Quick Actions) hidden on mobile — it duplicated the Create New Show CTA in main content. Admin grid collapses to `1fr` so main content fills full width.
+- **Add Card type toggle selected state** — Selected tab now `background: var(--card); color: var(--gold); border-bottom: 2px solid var(--gold)`. `acSetType()` applies same styles dynamically. Replaced gold-fill + black-text with gold-on-dark, consistent with all other gold accents in the UI.
 
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`
