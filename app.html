@@ -3425,7 +3425,7 @@
             style="background:none;border:1px solid rgba(245,200,66,0.5);color:var(--gold);
               border-radius:7px;padding:0.55rem 1.2rem;font-family:'DM Sans',sans-serif;
               font-size:0.82rem;font-weight:700;cursor:pointer">
-            Stage all out-of-range
+            Reprice all out-of-range
           </button>
           <button onclick="commitCompPrices()" id="compCommitBtn"
             style="display:none;background:var(--gold);color:var(--black);border:none;
@@ -5144,7 +5144,7 @@ function _renderCompTab() {
           <span style="font-size:0.72rem;color:var(--muted)">$</span>
           <input type="number" min="0" step="0.01" value="${ask.toFixed(2)}"
             id="compPriceInput_${globalIdx}"
-            style="width:72px;padding:0.28rem 0.4rem;border-radius:6px;
+            style="width:96px;padding:0.28rem 0.4rem;border-radius:6px;
               border:1px solid var(--border);background:var(--card);
               color:var(--text);font-size:0.78rem;font-family:'DM Mono',monospace"
             onkeydown="if(event.key==='Enter')setCompCustomPrice(${globalIdx})">
