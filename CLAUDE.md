@@ -377,6 +377,52 @@ Cancel at each state:
 - **`exportReportCSV()`** — downloads filtered sold cards as CSV; filename includes show name (or "all-time") and date; columns: Card Title, Player, Year, Set, Grade, Grader, Ask Price, Sold Price, Delta, Payment Method, Sale Time, Notes
 - **`adminTabReport`** is permanently hidden from the admin tab bar — admins access All Inventory only; sellers use `sellerTabBar` for their own report
 
+## Comp Pricing — PriceCharting + TCG API Integration
+
+### Architecture
+- `netlify/functions/comp-lookup.js` — POST `{ cards: [...] }` → `{ results: [...] }`
+- Cards processed **sequentially** (for...of, never Promise.all) to respect PriceCharting's 1 req/s limit
+- Sport routing: `TCG_SPORTS` list → TCG API; everything else → PriceCharting
+
+### PriceCharting API — Two-Step Pattern
+1. **Search:** `GET sportscardspro.com/api/products?t=TOKEN&q=<player year set>` → get `product.id`
+2. **Price:** `GET sportscardspro.com/api/product?t=TOKEN&id=<id>` → get grade-tiered price
+- Prices returned in **pennies** — always divide by 100
+- Grade tiers: PSA 10 → `psa-10-price`, PSA 9 → `psa-9-price`, any graded → `graded-price`, raw → `loose-price`
+- `PRICECHARTING_TOKEN` must be set in Netlify — degrades to `{ stub: true }` without it
+
+### Rate Limiting
+- `waitForPCRateLimit()` in comp-lookup.js enforces **1100ms minimum gap** between PriceCharting calls (server-side defence-in-depth; resets on cold start)
+- **Primary guard is client-side**: `runCompCheck()` in app.html waits **1200ms between cards** for non-cached results — this is the real throttle since each card requires 2 API calls and Netlify functions are stateless
+
+### TCG API
+- `GET api.tcgapi.dev/v1/cards?q=...` with `Authorization: Bearer TCG_API_KEY`
+- Returns `{ compPrice, lowPrice, highPrice, source: 'tcgapi', cardName, setName }`
+- 6s timeout, graceful stub on any error
+
+### price_cache Table (Supabase)
+- **TTL:** 24 hours, keyed by `card_fingerprint` (`player|year|set|grade|grader` lowercased)
+- Cache hits return `{ fromCache: true }` — no API call, no delay needed
+- Requires `SUPABASE_SERVICE_KEY` (service role) in Netlify env vars
+- Table must exist: run `SELECT to_regclass('public.price_cache');` in Supabase SQL editor; if null, run the CREATE TABLE SQL from the comp-check sprint output
+
+### Sport Detection (`detectCardSport(card)` — app.html)
+- Separate from `detectSport()` (UI badges) — this routes API selection only
+- Checks `card.Sport` first; falls back to keyword scan of title/set/player
+- TCG keywords: pokemon, mtg, magic, yu-gi-oh, lorcana, one piece, dragon ball, digimon, scarlet, violet, base set, evolving skies, prismatic, obsidian, etc.
+- Default for unrecognized: `'Baseball'` (routes to PriceCharting)
+
+### runCompCheck(cards) — app.html
+- Sequential card-by-card loop with progress bar + cancel button
+- Shows time estimate at start: `~Ns` or `~N min` (1.2s/card conservative estimate)
+- Progress bar: slim 3px gold bar + `"Checking comps… 14 of 47 cards · Player Name…"` (card name truncated to 32 chars)
+- **Cancel:** `window._compCheckCancelled` flag; `cancelCompCheck()` sets it; checked at top of each loop iteration; shows partial summary if any results collected
+- Cache hits skip the 1200ms delay (no API call made)
+
+### Cancelled Infrastructure (do not build)
+- `netlify/functions/sync-pricecharting.mjs` — cancelled; API-only approach used instead
+- `pricecharting_prices` Supabase table — not needed; only `price_cache` is used
+
 ## Backlog Priority
 
 ### Shipped ✅
@@ -418,7 +464,7 @@ Cancel at each state:
 
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`
-- **eBay comp lookup at card entry** (urgent, medium complexity) — #1 pain point from seller feedback
+- ~~**eBay comp lookup at card entry**~~ — replaced by PriceCharting + TCG API comp check (see Comp Pricing section)
 
 ### Tier 2 — First show retrospective
 - ~~**Sprint 2 vision scan**~~ — shipped

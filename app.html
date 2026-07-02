@@ -4839,6 +4839,189 @@ function validateAndNormalizeCard(r) {
   return r;
 }
 
+// ── COMP CHECK ──
+
+// Routes comp lookup to the right API based on card type.
+// Separate from detectSport() which is used for UI badges — this is
+// specifically for routing to PriceCharting (sports) vs TCG API (TCG).
+function detectCardSport(card) {
+  const sport = card.Sport || card.sport || '';
+  if (sport) return sport;
+
+  const text = [card['Card Title'], card['Set '], card.Set,
+                card.Player, card['Parallel/Variant']]
+    .filter(Boolean).join(' ').toLowerCase();
+
+  const TCG_KEYWORDS = ['pokemon','charizard','pikachu','mewtwo',
+    'umbreon','eevee','lugia','rayquaza','mtg','magic','yu-gi-oh',
+    'yugioh','lorcana','one piece','dragon ball','digimon',
+    'scarlet','violet','base set','jungle','fossil','temporal',
+    'evolving skies','lost origin','prismatic','obsidian'];
+
+  if (TCG_KEYWORDS.some(kw => text.includes(kw))) return 'Pokemon';
+  return 'Baseball';
+}
+
+// Cancellation flag — set to true by cancelCompCheck(), checked each loop iteration.
+window._compCheckCancelled = false;
+
+function cancelCompCheck() {
+  window._compCheckCancelled = true;
+  const btn = document.getElementById('compCancelBtn');
+  if (btn) btn.textContent = 'Cancelling…';
+}
+
+// Progress bar shown during comp check — fixed height so table doesn't jump.
+function showCompCheckProgress(current, total, cardName, estDisplay) {
+  let bar = document.getElementById('compCheckProgressBar');
+  if (!bar) {
+    const wrap = document.createElement('div');
+    wrap.id = 'compCheckProgressWrap';
+    wrap.style.cssText = 'margin-bottom:0.75rem;';
+    wrap.innerHTML = `
+      <div style="height:3px;background:var(--border);border-radius:2px;overflow:hidden;margin-bottom:0.45rem">
+        <div id="compCheckProgressFill" style="height:100%;background:var(--gold);width:0%;transition:width 0.3s ease"></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap">
+        <span id="compCheckProgressText" style="font-size:0.78rem;color:var(--muted);font-family:'DM Mono',monospace"></span>
+        <button id="compCancelBtn" onclick="cancelCompCheck()"
+          style="font-size:0.72rem;padding:0.2rem 0.55rem;border-radius:5px;
+            border:1px solid var(--border);background:transparent;
+            color:var(--muted);cursor:pointer;font-family:'DM Sans',sans-serif">
+          Cancel
+        </button>
+      </div>`;
+    const tableWrap = document.querySelector('.table-wrap');
+    if (tableWrap) tableWrap.insertBefore(wrap, tableWrap.firstChild);
+    bar = wrap;
+  }
+
+  const fill = document.getElementById('compCheckProgressFill');
+  const txt  = document.getElementById('compCheckProgressText');
+  const pct  = total > 0 ? Math.round((current / total) * 100) : 0;
+  if (fill) fill.style.width = pct + '%';
+
+  let label = `Checking comps… ${current} of ${total} cards`;
+  if (current === 0 && estDisplay) label = `Checking comps for ${total} cards (est. ${estDisplay})…`;
+  else if (cardName) label += ` · ${cardName.slice(0, 32)}${cardName.length > 32 ? '…' : ''}`;
+  if (txt) txt.textContent = label;
+}
+
+function hideCompCheckProgress() {
+  const wrap = document.getElementById('compCheckProgressWrap');
+  if (wrap) wrap.remove();
+}
+
+// Renders a summary modal/toast after comp check completes.
+function showCompCheckSummary(results, rangePct) {
+  if (!results.length) {
+    showToast('No comp prices found — check card names and try again', 'var(--muted)');
+    return;
+  }
+
+  const flagged = results.filter(r => {
+    if (!r.compPrice || !r.card?.Price) return false;
+    const ask  = Number(r.card.Price);
+    const comp = Number(r.compPrice);
+    const diff = Math.abs(ask - comp) / comp * 100;
+    return diff > rangePct;
+  });
+
+  const lines = results.slice(0, 5).map(r =>
+    `${(r.card?.Player || r.card?.['Card Title'] || '?').slice(0,28)}: $${Number(r.compPrice).toFixed(2)}`
+  ).join('\n');
+
+  const msg = flagged.length
+    ? `Comp check: ${results.length} prices found, ${flagged.length} outside ${rangePct}% range`
+    : `Comp check: ${results.length} prices found — all within ${rangePct}% of ask`;
+
+  showToast(msg);
+  console.log('Comp check results:', results);
+}
+
+// Main comp-check entry point. Called with the cards to check.
+// Sends one card at a time to comp-lookup.js, with client-side
+// 1200ms delay between non-cached cards to respect the 1 req/s limit.
+async function runCompCheck(cards) {
+  if (!cards || !cards.length) return;
+
+  const rangePct = window._sellerCompRange || 20;
+  const results  = [];
+  let processed  = 0;
+  window._compCheckCancelled = false;
+
+  // Estimate time conservatively (1.2s/card, assuming no cache hits)
+  const estSeconds = Math.ceil(cards.length * 1.2);
+  const estDisplay = estSeconds > 60
+    ? `~${Math.ceil(estSeconds / 60)} min`
+    : `~${estSeconds}s`;
+
+  showCompCheckProgress(0, cards.length, null, estDisplay);
+
+  let cacheHits = 0;
+
+  for (const card of cards) {
+    if (window._compCheckCancelled) {
+      window._compCheckCancelled = false;
+      hideCompCheckProgress();
+      showToast(
+        `Comp check cancelled — ${processed} of ${cards.length} cards checked`,
+        'var(--muted)'
+      );
+      if (results.length) showCompCheckSummary(results, rangePct);
+      return;
+    }
+
+    const name = card.Player || card['Card Title'] || '';
+    showCompCheckProgress(processed, cards.length, name);
+
+    if (!name) { processed++; continue; }
+
+    let fromCache = false;
+    try {
+      const res = await fetch('/.netlify/functions/comp-lookup', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cards: [{
+          id:         card._dbId || cardFingerprint(card),
+          player:     card.Player          || card['Card Title'] || '',
+          year:       card.Year            || null,
+          cardSet:    card['Set ']         || card.Set || '',
+          cardNumber: card['Card #']       || card.Number || '',
+          grade:      card.Grade           || null,
+          grader:     card.Grader          || null,
+          parallel:   card['Parallel/Variant'] || '',
+          sport:      detectCardSport(card),
+        }] }),
+      });
+
+      if (res.ok) {
+        const data   = await res.json();
+        const result = data.results?.[0];
+        if (result && !result.stub && result.compPrice) {
+          results.push({ card, ...result });
+          fromCache = !!result.fromCache;
+          if (fromCache) cacheHits++;
+        }
+      }
+    } catch (err) {
+      console.warn('Comp lookup failed for:', name, err.message);
+    }
+
+    processed++;
+    showCompCheckProgress(processed, cards.length, name);
+
+    // CLIENT-SIDE RATE LIMIT: wait 1200ms between non-cached cards.
+    // Cache hits skip API calls entirely so no delay is needed.
+    if (processed < cards.length && !fromCache) {
+      await new Promise(r => setTimeout(r, 1200));
+    }
+  }
+
+  hideCompCheckProgress();
+  showCompCheckSummary(results, rangePct);
+}
+
 // ── DEDUPLICATION ──
 // Fingerprint uniquely identifies a card: seller + title + year + set + number + parallel + grader
 function cardFingerprint(r) {
