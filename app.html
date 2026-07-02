@@ -3418,12 +3418,20 @@
 
       <!-- Footer actions -->
       <div class="modal-actions" style="border-top:1px solid var(--border);padding-top:0.85rem;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem">
-        <button onclick="acceptAllCompPrices()" id="compAcceptAllBtn"
-          style="background:var(--gold);color:var(--black);border:none;border-radius:7px;
-            padding:0.55rem 1.2rem;font-family:'DM Sans',sans-serif;font-size:0.82rem;
-            font-weight:700;cursor:pointer">
-          ✓ Accept all suggested prices
-        </button>
+        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center">
+          <button onclick="stageAllCompPrices()" id="compAcceptAllBtn"
+            style="background:none;border:1px solid rgba(245,200,66,0.5);color:var(--gold);
+              border-radius:7px;padding:0.55rem 1.2rem;font-family:'DM Sans',sans-serif;
+              font-size:0.82rem;font-weight:700;cursor:pointer">
+            Stage all out-of-range
+          </button>
+          <button onclick="commitCompPrices()" id="compCommitBtn"
+            style="display:none;background:var(--gold);color:var(--black);border:none;
+              border-radius:7px;padding:0.55rem 1.2rem;font-family:'DM Sans',sans-serif;
+              font-size:0.82rem;font-weight:700;cursor:pointer">
+            Apply 0 price changes
+          </button>
+        </div>
         <button onclick="closeCompResults()"
           style="background:none;border:1px solid var(--border);color:var(--muted);
             border-radius:7px;padding:0.55rem 1rem;font-family:'DM Sans',sans-serif;
@@ -4964,9 +4972,10 @@ function hideCompCheckProgress() {
 // ── COMP RESULTS MODAL ──
 
 // Module state
-let _compResults   = [];   // full results array from last run
-let _compRangePct  = 20;   // threshold used for flagging
-let _compActiveTab = 'flagged'; // 'flagged' | 'all'
+let _compResults        = [];   // full results array from last run
+let _compRangePct       = 20;   // threshold used for flagging
+let _compActiveTab      = 'flagged'; // 'flagged' | 'all'
+let _pendingCompChanges = new Map(); // cardFingerprint → newPrice (staged, not yet written)
 
 function showCompCheckSummary(results, rangePct) {
   if (!results.length) {
@@ -4974,8 +4983,9 @@ function showCompCheckSummary(results, rangePct) {
     return;
   }
 
-  _compResults  = results;
-  _compRangePct = rangePct;
+  _compResults        = results;
+  _compRangePct       = rangePct;
+  _pendingCompChanges = new Map(); // reset staged changes on each new run
 
   const flaggedCount = results.filter(r => _isOutOfRange(r, rangePct)).length;
 
@@ -4989,9 +4999,11 @@ function showCompCheckSummary(results, rangePct) {
   _compActiveTab = flaggedCount ? 'flagged' : 'all';
   _renderCompTab();
 
-  // Show/hide Accept All button — only relevant on flagged tab with flagged cards
+  // Show/hide Stage All button — only relevant when there are flagged cards
   const acceptBtn = document.getElementById('compAcceptAllBtn');
   if (acceptBtn) acceptBtn.style.display = flaggedCount ? '' : 'none';
+  const commitBtn = document.getElementById('compCommitBtn');
+  if (commitBtn) commitBtn.style.display = 'none';
 
   document.getElementById('compResultsOverlay').classList.add('open');
 }
@@ -5015,8 +5027,8 @@ function switchCompTab(tab) {
   }
   const acceptBtn = document.getElementById('compAcceptAllBtn');
   if (acceptBtn) {
-    const flaggedCount = _compResults.filter(r => _isOutOfRange(r, _compRangePct)).length;
-    acceptBtn.style.display = (tab === 'flagged' && flaggedCount) ? '' : 'none';
+    const unstagedFlagged = _compResults.filter(r => _isOutOfRange(r, _compRangePct) && !_pendingCompChanges.has(_cardKey(r.card))).length;
+    acceptBtn.style.display = (tab === 'flagged' && unstagedFlagged) ? '' : 'none';
   }
   _renderCompTab();
 }
@@ -5055,14 +5067,19 @@ function _renderCompTab() {
     const deltaSign  = delta > 0 ? '+' : '';
     const outOfRange = _isOutOfRange(r, _compRangePct);
     const globalIdx  = _compResults.indexOf(r);
+    const key        = _cardKey(r.card);
+    const pending    = _pendingCompChanges.get(key);
+    const isStaged   = !!pending;
+    const stagedPrice = isStaged ? pending.newPrice : null;
 
-    return `<div style="background:var(--surface);border:1px solid ${outOfRange ? 'rgba(245,200,66,0.25)' : 'var(--border)'};
-        border-radius:10px;padding:0.75rem 0.9rem;display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap">
+    return `<div style="background:var(--surface);border:1px solid ${isStaged ? 'rgba(74,222,128,0.3)' : outOfRange ? 'rgba(245,200,66,0.25)' : 'var(--border)'};
+        border-radius:10px;padding:0.75rem 0.9rem;display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;
+        opacity:${isStaged ? '0.6' : '1'}">
       <!-- Card info -->
       <div style="flex:1;min-width:140px">
         <div style="font-size:0.84rem;font-weight:600;color:var(--text);line-height:1.3">${label}</div>
         <div style="font-size:0.72rem;color:var(--muted);margin-top:0.15rem">${sub}</div>
-        ${r.fromCache ? '<div style="font-size:0.65rem;color:var(--muted);font-family:\'DM Mono\',monospace;margin-top:0.2rem">cached</div>' : ''}
+        ${isStaged ? `<div style="font-size:0.65rem;color:#4ade80;font-family:'DM Mono',monospace;margin-top:0.2rem">staged → $${stagedPrice.toFixed(2)}</div>` : r.fromCache ? '<div style="font-size:0.65rem;color:var(--muted);font-family:\'DM Mono\',monospace;margin-top:0.2rem">cached</div>' : ''}
       </div>
       <!-- Price columns -->
       <div style="display:flex;gap:1rem;align-items:center;flex-shrink:0">
@@ -5080,6 +5097,7 @@ function _renderCompTab() {
         </div>
       </div>
       <!-- Actions -->
+      ${isStaged ? `<div style="font-size:0.72rem;color:#4ade80;font-weight:600;white-space:nowrap">✓ Staged</div>` : `
       <div style="display:flex;gap:0.4rem;align-items:center;flex-shrink:0">
         <button onclick="acceptCompPrice(${globalIdx})"
           style="font-size:0.72rem;padding:0.3rem 0.65rem;border-radius:6px;
@@ -5103,68 +5121,87 @@ function _renderCompTab() {
             Set
           </button>
         </div>
-      </div>
+      </div>`}
     </div>`;
   }).join('');
 }
 
-// Accept the comp price for a single card (by index in _compResults)
+// Stage the comp price for a single card (by index in _compResults)
 function acceptCompPrice(idx) {
   const r = _compResults[idx];
   if (!r) return;
-  _applyCompPrice(r.card, r.compPrice);
-  // Mark visually as accepted
-  const row = document.getElementById('compResultsList')?.children[
-    (_compActiveTab === 'flagged'
-      ? _compResults.filter(x => _isOutOfRange(x, _compRangePct))
-      : _compResults).indexOf(r)
-  ];
-  if (row) {
-    row.style.opacity = '0.45';
-    row.style.pointerEvents = 'none';
-  }
-  showToast(`✓ Price updated to $${Number(r.compPrice).toFixed(2)}`);
+  _stageCompPrice(r.card, r.compPrice);
+  _renderCompTab();
+  showToast(`Staged $${Number(r.compPrice).toFixed(2)} — hit "Apply" to save`);
 }
 
-// Set a custom price typed into the input field
+// Stage a custom price typed into the input field
 function setCompCustomPrice(idx) {
   const r     = _compResults[idx];
   const input = document.getElementById(`compPriceInput_${idx}`);
   if (!r || !input) return;
   const val = parseFloat(input.value);
   if (isNaN(val) || val < 0) { showToast('Enter a valid price', 'var(--danger)'); return; }
-  _applyCompPrice(r.card, val);
-  const row = document.getElementById('compResultsList')?.children[
-    (_compActiveTab === 'flagged'
-      ? _compResults.filter(x => _isOutOfRange(x, _compRangePct))
-      : _compResults).indexOf(r)
-  ];
-  if (row) {
-    row.style.opacity = '0.45';
-    row.style.pointerEvents = 'none';
-  }
-  showToast(`✓ Price updated to $${val.toFixed(2)}`);
-}
-
-// Accept comp price for every flagged card at once
-function acceptAllCompPrices() {
-  const flagged = _compResults.filter(r => _isOutOfRange(r, _compRangePct));
-  if (!flagged.length) return;
-  flagged.forEach(r => _applyCompPrice(r.card, r.compPrice));
-  showToast(`✓ ${flagged.length} prices updated to comp`);
-  // Re-render to show all as accepted
-  _compResults = _compResults.map(r => ({ ...r })); // shallow copy to re-trigger render
+  _stageCompPrice(r.card, val);
   _renderCompTab();
-  document.getElementById('compAcceptAllBtn').style.display = 'none';
+  showToast(`Staged $${val.toFixed(2)} — hit "Apply" to save`);
 }
 
-// Write the new price to the card in memory and persist to DB
-function _applyCompPrice(card, newPrice) {
-  card.Price = Number(newPrice);
-  updateCardInDB(card);
+// Stage comp price for every out-of-range card at once
+function stageAllCompPrices() {
+  const unstaged = _compResults.filter(r => _isOutOfRange(r, _compRangePct) && !_pendingCompChanges.has(_cardKey(r.card)));
+  if (!unstaged.length) return;
+  unstaged.forEach(r => _pendingCompChanges.set(_cardKey(r.card), { card: r.card, newPrice: Number(r.compPrice) }));
+  _updateCompCommitBtn();
+  document.getElementById('compAcceptAllBtn').style.display = 'none';
+  _renderCompTab();
+  showToast(`${unstaged.length} price${unstaged.length !== 1 ? 's' : ''} staged — hit "Apply" to save`);
+}
+
+// Stable key for a card within the comp modal (uses _dbId if present)
+function _cardKey(card) {
+  return card._dbId || [card.Player, card.Year, card['Set '] || card.Set, card.Grade].join('|');
+}
+
+// Update the "Apply N price changes" commit button label/visibility
+function _updateCompCommitBtn() {
+  const btn = document.getElementById('compCommitBtn');
+  if (!btn) return;
+  const n = _pendingCompChanges.size;
+  if (n === 0) {
+    btn.style.display = 'none';
+  } else {
+    btn.style.display = '';
+    btn.textContent = `Apply ${n} price change${n !== 1 ? 's' : ''}`;
+  }
+}
+
+// Stage a price change (no DB write yet)
+function _stageCompPrice(card, newPrice) {
+  _pendingCompChanges.set(_cardKey(card), { card, newPrice: Number(newPrice) });
+  _updateCompCommitBtn();
+  // Hide "Stage all" if all flagged are now staged
+  const acceptBtn = document.getElementById('compAcceptAllBtn');
+  if (acceptBtn) {
+    const unstagedFlagged = _compResults.filter(r => _isOutOfRange(r, _compRangePct) && !_pendingCompChanges.has(_cardKey(r.card))).length;
+    acceptBtn.style.display = unstagedFlagged ? '' : 'none';
+  }
+}
+
+// Write all staged price changes to cards in memory and persist to DB
+function commitCompPrices() {
+  if (!_pendingCompChanges.size) return;
+  const n = _pendingCompChanges.size;
+  _pendingCompChanges.forEach(({ card, newPrice }) => {
+    card.Price = newPrice;
+    updateCardInDB(card);
+  });
+  _pendingCompChanges = new Map();
   renderSellerTable(getSellerInventory());
   updateStats();
   updateReport();
+  closeCompResults();
+  showToast(`✓ ${n} price${n !== 1 ? 's' : ''} updated`);
 }
 
 // Main comp-check entry point. Called with the cards to check.
@@ -10769,7 +10806,7 @@ function dbRowToCard(row) {
     'Cert #':        row.cert_number   || null,
     Condition:       row.condition     || null,
     Price:           row.price         || 0,
-    Status:          row.status        || 'Available',
+    Status:          (() => { const s = row.status || 'Available'; return (s.toLowerCase() === 'active' || s.toLowerCase() === 'available') ? 'Available' : s; })(),
     Location:        row.location      || null,
     item_type:       row.item_type     || 'card',
     product_type:    row.product_type  || null,
