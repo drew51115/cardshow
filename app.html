@@ -2888,6 +2888,7 @@
           <h2 id="inventoryTitle">Inventory</h2>
           <input type="text" class="search-input" id="sellerSearchInput" placeholder="Search cards…" oninput="applyInventoryFilters()">
           <button class="btn btn-ghost" id="selectAllBtn" onclick="selectAll()" style="display:none">Select All</button>
+          <button class="btn btn-ghost" id="compCheckBtn" onclick="runCompCheck(getSellerInventory().filter(c=>c.Status!=='Sold'))" style="display:none;font-size:0.8rem" title="Look up market prices for your available inventory">💲 Check Comps</button>
           <button class="btn-bulk-delete" id="bulkDeleteBtn" onclick="confirmBulkDelete()">🗑 Delete Selected</button>
           <button class="btn btn-ghost" id="backToShowsBtn" style="display:none;font-size:0.8rem" onclick="switchAdminTab('shows')">← Shows</button>
         </div>
@@ -6359,6 +6360,8 @@ function loginAsSeller(handle) {
   document.getElementById('sellerShowsPanel').style.display      = 'block';
   document.getElementById('sellerUploadSection').style.display   = '';
   document.getElementById('sellerStatsRow').style.display        = '';
+  const compBtn = document.getElementById('compCheckBtn');
+  if (compBtn) compBtn.style.display = '';
 
   // Show Select All for seller, hide admin-only buttons
   const selectAllBtn = document.getElementById('selectAllBtn');
@@ -6464,6 +6467,8 @@ function loginAsAdmin() {
   document.getElementById('sellerShowsPanel').style.display     = 'none';
   document.getElementById('sellerUploadSection').style.display  = 'none';
   document.getElementById('sellerStatsRow').style.display       = 'none';
+  const compBtnAdm = document.getElementById('compCheckBtn');
+  if (compBtnAdm) compBtnAdm.style.display = 'none';
   const sellerTabBarAdm = document.getElementById('sellerTabBar');
   if (sellerTabBarAdm) sellerTabBarAdm.style.display = 'none';
 
@@ -6539,6 +6544,8 @@ async function signOut() {
   document.getElementById('sellerShowsPanel').style.display     = 'none';
   document.getElementById('sellerUploadSection').style.display  = '';
   document.getElementById('sellerStatsRow').style.display       = '';
+  const compBtnSO = document.getElementById('compCheckBtn');
+  if (compBtnSO) compBtnSO.style.display = 'none';
   const sellerTabBarSO = document.getElementById('sellerTabBar');
   if (sellerTabBarSO) { sellerTabBarSO.style.display = 'none'; switchSellerTab('inventory'); }
 
