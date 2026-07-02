@@ -10369,9 +10369,11 @@ function confirmDeleteCard() {
   if (!card) return;
   const label = card.Player || card['Card Title'] || 'this card';
   if (!confirm(`Delete "${label}"? This cannot be undone.`)) return;
+  // Capture idx BEFORE closeCEM() nulls _cemIdx
+  const idx = _cemIdx;
   closeCEM();
   deleteCardFromDB(card);
-  inventory.splice(_cemIdx, 1);
+  inventory.splice(idx, 1);
   renderSellerTable(getSellerInventory());
   updateStats();
   updateReport();
