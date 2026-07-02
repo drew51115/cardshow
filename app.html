@@ -4818,9 +4818,32 @@ function readXLSX(file) {
   reader.onload = e => {
     const wb = XLSX.read(e.target.result, { type: 'array' });
     const ws = wb.Sheets[wb.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(ws);
-    if (!rows.length) { showToast('File appears empty', 'var(--danger)'); return; }
-    openMapper(rows);
+
+    // Get raw rows to find the real header row.
+    // Templates (like ours) have title/instruction rows before the actual headers.
+    const rawRows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+    const KNOWN_COLS = ['card title','player','year','set','price','grade','grader','title','name'];
+    let headerRowIdx = 0;
+    for (let i = 0; i < Math.min(rawRows.length, 10); i++) {
+      const cells = (rawRows[i] || []).map(v => String(v || '').toLowerCase().trim());
+      if (KNOWN_COLS.some(col => cells.includes(col))) { headerRowIdx = i; break; }
+    }
+
+    // Parse with the real header row
+    const rows = XLSX.utils.sheet_to_json(ws, { range: headerRowIdx });
+
+    // Skip a description/hint row immediately after headers (non-numeric Year or very long Card Title)
+    const filtered = rows.filter(row => {
+      const year  = String(row['Year'] || row['year'] || '').trim();
+      const title = String(row['Card Title'] || row['card title'] || '').trim();
+      // Description rows have very long text or a year that is obviously not a 4-digit number
+      if (title.length > 80) return false;
+      if (year && !/^\d{4}(-\d{2})?$/.test(year) && isNaN(Number(year))) return false;
+      return true;
+    });
+
+    if (!filtered.length) { showToast('File appears empty', 'var(--danger)'); return; }
+    openMapper(filtered);
   };
   reader.readAsArrayBuffer(file);
 }
@@ -4979,7 +5002,7 @@ let _pendingCompChanges = new Map(); // cardFingerprint → newPrice (staged, no
 
 function showCompCheckSummary(results, rangePct) {
   if (!results.length) {
-    showToast('No comp prices found — check card names and try again', 'var(--muted)');
+    showToast('No comp prices returned — verify PRICECHARTING_TOKEN / TCG_API_KEY are set in Netlify env vars', 'var(--muted)');
     return;
   }
 
@@ -5208,7 +5231,10 @@ function commitCompPrices() {
 // Sends one card at a time to comp-lookup.js, with client-side
 // 1200ms delay between non-cached cards to respect the 1 req/s limit.
 async function runCompCheck(cards) {
-  if (!cards || !cards.length) return;
+  if (!cards || !cards.length) {
+    showToast('No available cards to check — add cards to your inventory first', 'var(--muted)');
+    return;
+  }
 
   const rangePct = window._sellerCompRange || 20;
   const results  = [];
