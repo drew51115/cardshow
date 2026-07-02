@@ -32,7 +32,7 @@ const TCG_SPORTS = [
 // ── CACHE HELPERS ──
 
 function buildFingerprint(card) {
-  return [card.player, card.year, card.cardSet, card.grade, card.grader]
+  return [card.player, card.year, card.cardSet, card.cardNumber, card.parallel, card.grade, card.grader]
     .map(v => String(v || '').toLowerCase().trim())
     .join('|');
 }
@@ -104,7 +104,7 @@ async function lookupPriceCharting(card) {
 
   try {
     // STEP 1 — search by name to get product ID
-    const query = [card.player, card.year, card.cardSet]
+    const query = [card.player, card.year, card.cardSet, card.parallel]
       .filter(Boolean)
       .join(' ');
 
