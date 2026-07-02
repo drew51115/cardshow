@@ -403,6 +403,7 @@
     border-radius: 10px;
     font-weight: 600;
     font-size: 0.85rem;
+    max-width: calc(100vw - 3rem);
     transform: translateY(100px);
     opacity: 0;
     transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -6689,6 +6690,8 @@ function loginAsSeller(handle) {
   _demoInventoryLoaded = false;
 
   switchView('seller');
+  initSidebarState();
+  window.scrollTo(0, 0);
   renderSellerTable(getSellerInventory());
   updateStats();
   renderSellerShowsList();
@@ -6805,10 +6808,14 @@ function toggleSidebar() {
 
 // Auto-open sidebar on desktop, collapse on mobile
 function initSidebarState() {
-  const sidebar = document.getElementById('mainSidebar');
+  const sidebar  = document.getElementById('mainSidebar');
+  const toggle   = document.getElementById('sidebarToggle');
   if (!sidebar) return;
   if (window.innerWidth > 768) {
     sidebar.classList.add('sidebar-open');
+  } else {
+    sidebar.classList.remove('sidebar-open');
+    if (toggle) toggle.classList.remove('open');
   }
 }
 
