@@ -74,10 +74,20 @@ async function writeSearchCache(queryKey, results, source) {
 }
 
 // ── PRICECHARTING NAME PARSER ──
-// PriceCharting returns product names like:
-//   "2024 Bowman Chrome Paul Skenes Gold Refractor Auto"
-// with a separate console-name field for the set (e.g. "Bowman Chrome").
-// We extract year, use console-name as set, and derive player from the remainder.
+// PriceCharting names follow two common patterns:
+//   A) "Baseball Cards 2026 Topps Chrome Aaron Judge Gold Refractor"
+//      console-name: "Topps Chrome"
+//   B) "Aaron Judge 2026 Topps Chrome Gold Refractor"
+//      console-name: "Topps Chrome"
+//
+// Strategy:
+//   1. Strip leading sport-category prefix ("Baseball Cards", "Football Cards", etc.)
+//   2. Split on year — text before year is player (pattern B), text after is set+variant
+//   3. If nothing before year, player is after the console-name set name
+//   4. Use console-name as cardSet; strip it from parallel remnant
+
+// Sport category prefixes PriceCharting prepends to some product names
+const SPORT_PREFIX_RE = /^(baseball|football|basketball|hockey|soccer|golf|tennis|boxing|mma|wrestling|racing|sports?)\s+cards?\s*/i;
 
 const PARALLEL_TERMS = [
   'refractor', 'prizm', 'auto', 'autograph', 'rookie', 'rc',
@@ -90,34 +100,57 @@ const PARALLEL_TERMS = [
 const PARALLEL_RE = new RegExp(`\\b(${PARALLEL_TERMS.join('|')})\\b`, 'gi');
 
 function parsePCProduct(product) {
-  const fullName   = product.name        || '';
-  const consoleName = product['console-name'] || '';
+  const rawName     = (product.name             || '').trim();
+  const consoleName = (product['console-name']  || '').trim();
+
+  // Strip leading sport-category prefix before parsing
+  const fullName = rawName.replace(SPORT_PREFIX_RE, '').trim();
 
   // Year: first 4-digit year-like number
   const yearMatch = fullName.match(/\b(19|20)\d{2}\b/);
   const year      = yearMatch ? yearMatch[0] : '';
 
-  // Set: use console-name when available
-  const cardSet = consoleName;
+  // cardSet from console-name, also strip its sport prefix
+  const cardSet = consoleName.replace(SPORT_PREFIX_RE, '').trim();
 
-  // Player: remove year, set, and parallel/variant terms from name
-  let remaining = fullName;
-  if (year)     remaining = remaining.replace(year, '');
-  if (cardSet)  remaining = remaining.replace(new RegExp(cardSet.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'), '');
+  let player  = '';
+  let parallel = null;
 
-  // Extract parallel terms before stripping (they're the parallel field)
-  const parallelMatches = remaining.match(PARALLEL_RE) || [];
-  const parallel = [...new Set(parallelMatches.map(t => t.trim()))].join(' ') || null;
+  if (year) {
+    const yearIdx  = fullName.indexOf(year);
+    const beforeYear = fullName.slice(0, yearIdx).trim();
+    const afterYear  = fullName.slice(yearIdx + year.length).trim();
 
-  // Player = remainder after removing parallels, cleaned up
-  const player = remaining
-    .replace(PARALLEL_RE, '')
-    .replace(/\s+/g, ' ')
-    .trim();
+    if (beforeYear) {
+      // Pattern B: player name precedes the year
+      player = beforeYear;
+      // Parallel = after-year content minus the set name
+      const afterSet = cardSet
+        ? afterYear.replace(new RegExp(cardSet.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'), '').trim()
+        : afterYear;
+      const pMatches = afterSet.match(PARALLEL_RE) || [];
+      parallel = [...new Set(pMatches.map(t => t.trim()))].join(' ') || null;
+    } else {
+      // Pattern A (after sport prefix stripped): year comes first
+      // Player is after the set name in the after-year portion
+      let afterSet = cardSet
+        ? afterYear.replace(new RegExp(cardSet.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'), '').trim()
+        : afterYear;
+      // Strip parallel/variant words — what remains is the player
+      const pMatches = afterSet.match(PARALLEL_RE) || [];
+      parallel = [...new Set(pMatches.map(t => t.trim()))].join(' ') || null;
+      player   = afterSet.replace(PARALLEL_RE, '').replace(/\s+/g, ' ').trim();
+    }
+  } else {
+    // No year found — best effort: strip parallels, use remainder as player
+    const pMatches = fullName.match(PARALLEL_RE) || [];
+    parallel = [...new Set(pMatches.map(t => t.trim()))].join(' ') || null;
+    player   = fullName.replace(PARALLEL_RE, '').replace(/\s+/g, ' ').trim();
+  }
 
   return {
     id:         String(product.id),
-    player:     player || fullName,   // fall back to full name if parse fails
+    player:     player || rawName,   // absolute fallback: raw product name
     year,
     cardSet,
     cardNumber: null,
