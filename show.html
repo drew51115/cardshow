@@ -358,21 +358,28 @@ nav {
    SELLER ROSTER
 ══════════════════════════════════════ */
 .seller-roster {
-  display: flex; flex-wrap: wrap; gap: 0.6rem;
+  display: flex; flex-direction: column; gap: 0;
+  border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
 }
-.seller-chip {
-  display: flex; align-items: center;
-  background: var(--card); border: 1px solid var(--border);
-  border-radius: 50px; padding: 0.35rem 0.35rem;
-  transition: all 0.15s;
+.seller-row {
+  display: flex; align-items: center; gap: 0.9rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--card);
 }
-.seller-chip:hover { border-color: rgba(245,200,66,0.3); }
-.seller-avatar {
-  width: 32px; height: 32px; border-radius: 50%;
-  background: var(--gold); color: var(--black);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 0.65rem; font-weight: 800; flex-shrink: 0;
-  font-family: 'DM Sans', sans-serif;
+.seller-row:last-child { border-bottom: none; }
+.seller-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--gold); flex-shrink: 0;
+}
+.seller-row-name {
+  font-family: 'DM Sans', sans-serif; font-weight: 600;
+  font-size: 0.9rem; color: var(--text); flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.seller-row-handle {
+  font-family: 'DM Mono', monospace; font-size: 0.72rem;
+  color: var(--muted); flex-shrink: 0;
 }
 
 /* ══════════════════════════════════════
@@ -467,69 +474,6 @@ footer {
 .footer-tag {
   font-family: 'DM Mono', monospace; font-size: 0.65rem;
   color: rgba(245,200,66,0.2); letter-spacing: 0.1em;
-}
-
-/* ══════════════════════════════════════
-   SELLER CHIP TOOLTIP
-══════════════════════════════════════ */
-.seller-chip {
-  position: relative;
-}
-.seller-chip .seller-tooltip {
-  display: none;
-  position: absolute;
-  bottom: calc(100% + 10px);
-  left: 50%;
-  transform: translateX(-50%);
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 0.6rem 0.85rem;
-  min-width: 140px;
-  max-width: 200px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
-  z-index: 100;
-  pointer-events: none;
-  white-space: nowrap;
-}
-.seller-chip .seller-tooltip::after {
-  content: '';
-  position: absolute;
-  top: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  border: 6px solid transparent;
-  border-top-color: var(--border);
-}
-.seller-chip .seller-tooltip::before {
-  content: '';
-  position: absolute;
-  top: calc(100% - 1px);
-  left: 50%;
-  transform: translateX(-50%);
-  border: 6px solid transparent;
-  border-top-color: var(--card);
-  z-index: 1;
-}
-.seller-chip:hover .seller-tooltip,
-.seller-chip.tooltip-open .seller-tooltip {
-  display: block;
-}
-.seller-tooltip-name {
-  font-family: 'DM Sans', sans-serif;
-  font-weight: 600;
-  font-size: 0.85rem;
-  color: var(--text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.seller-tooltip-handle {
-  font-family: 'DM Mono', monospace;
-  font-size: 0.7rem;
-  color: var(--muted);
-  margin-top: 0.15rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 /* ══════════════════════════════════════
@@ -1353,17 +1297,14 @@ function renderSellerRoster() {
   }
 
   document.getElementById('sellerRoster').innerHTML = sellers.map((handle) => {
-    const initials    = handle.split('_').map(w => w[0]).join('').toUpperCase().slice(0, 2);
     const profile     = sellerProfiles[handle] || {};
     const displayName = profile.displayName || handle.replace(/_/g, ' ');
-    const handleLine  = profile.displayName ? `@${handle}` : '';
+    const showHandle  = !!profile.displayName;
     return `
-    <div class="seller-chip" onclick="this.classList.toggle('tooltip-open')">
-      <div class="seller-avatar">${initials}</div>
-      <div class="seller-tooltip">
-        <div class="seller-tooltip-name">${displayName}</div>
-        ${handleLine ? `<div class="seller-tooltip-handle">${handleLine}</div>` : ''}
-      </div>
+    <div class="seller-row">
+      <div class="seller-dot"></div>
+      <div class="seller-row-name">${displayName}</div>
+      ${showHandle ? `<div class="seller-row-handle">@${handle}</div>` : ''}
     </div>`;
   }).join('');
   // At-show info notice — guard against duplicate injection on second renderPage() call
