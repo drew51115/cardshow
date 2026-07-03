@@ -876,7 +876,16 @@ async function fetchInventoryFromDB(showId) {
 
     // Update inventory and totalCards from DB (authoritative source)
     inventory = dbCards;
-    if (showMeta) showMeta.totalCards = dbCards.length;
+    if (showMeta) {
+      showMeta.totalCards = dbCards.length;
+      // Derive seller list from actual DB cards — this is always authoritative.
+      // showMeta.sellers comes from the URL hash which is a snapshot encoded at
+      // share-link time; it goes stale whenever sellers are added/removed after
+      // the link was generated. Rebuilding from card data fixes the seller
+      // filter dropdown and seller roster without requiring a new share link.
+      const dbSellers = [...new Set(dbCards.map(c => c.Seller).filter(Boolean))];
+      if (dbSellers.length > 0) showMeta.sellers = dbSellers;
+    }
 
     // Re-render with full card set
     renderPage();
