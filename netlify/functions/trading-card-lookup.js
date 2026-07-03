@@ -122,27 +122,29 @@ function parsePCProduct(product) {
     const afterYear  = fullName.slice(yearIdx + year.length).trim();
 
     if (beforeYear) {
-      // Pattern B: player name precedes the year
+      // Pattern B: "Aaron Judge 2026 Topps Chrome Gold Refractor"
+      // Player is everything before the year
       player = beforeYear;
-      // Parallel = after-year content minus the set name
       const afterSet = cardSet
         ? afterYear.replace(new RegExp(cardSet.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'), '').trim()
         : afterYear;
       const pMatches = afterSet.match(PARALLEL_RE) || [];
       parallel = [...new Set(pMatches.map(t => t.trim()))].join(' ') || null;
-    } else {
-      // Pattern A (after sport prefix stripped): year comes first
-      // Player is after the set name in the after-year portion
-      let afterSet = cardSet
-        ? afterYear.replace(new RegExp(cardSet.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'), '').trim()
-        : afterYear;
-      // Strip parallel/variant words — what remains is the player
+    } else if (cardSet) {
+      // Pattern A with known set: "2026 Topps Chrome Aaron Judge Gold Refractor"
+      // Player is after the set name, minus parallel terms
+      const afterSet = afterYear
+        .replace(new RegExp(cardSet.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'), '')
+        .trim();
       const pMatches = afterSet.match(PARALLEL_RE) || [];
       parallel = [...new Set(pMatches.map(t => t.trim()))].join(' ') || null;
       player   = afterSet.replace(PARALLEL_RE, '').replace(/\s+/g, ' ').trim();
     }
+    // If year-first and no usable cardSet (e.g. consoleName was "Baseball Cards"),
+    // we can't reliably separate player from set — leave player empty,
+    // rawTitle (sport-prefix-stripped) will be used as display fallback.
   } else {
-    // No year found — best effort: strip parallels, use remainder as player
+    // No year — strip parallels, use remainder
     const pMatches = fullName.match(PARALLEL_RE) || [];
     parallel = [...new Set(pMatches.map(t => t.trim()))].join(' ') || null;
     player   = fullName.replace(PARALLEL_RE, '').replace(/\s+/g, ' ').trim();
@@ -150,14 +152,14 @@ function parsePCProduct(product) {
 
   return {
     id:         String(product.id),
-    player:     player || rawName,   // absolute fallback: raw product name
+    player,                // may be empty for ambiguous set-level results
     year,
     cardSet,
     cardNumber: null,
     sport:      null,
     parallel,
     imageUrl:   null,
-    rawTitle:   fullName,
+    rawTitle:   fullName,  // sport-prefix-stripped full name; client uses as display fallback
   };
 }
 

@@ -9750,9 +9750,13 @@ async function _acDoSearch(q) {
     } else {
       // Normalize API results to the same shape as CARD_DB entries
       cards = (data.results || []).map(r => ({
-        title:   [r.year, r.cardSet, r.player, r.parallel].filter(Boolean).join(' '),
-        player:  r.player,
-        year:    r.year,
+        // Use rawTitle (sport-prefix-stripped full name) as display fallback
+        // when PriceCharting returns set-level results with no extractable player
+        title:   r.player
+          ? [r.year, r.cardSet, r.player, r.parallel].filter(Boolean).join(' ')
+          : (r.rawTitle || [r.year, r.cardSet, r.parallel].filter(Boolean).join(' ')),
+        player:  r.player || r.rawTitle || '',
+        year:    r.player ? (r.year || '') : '',  // suppress year when showing rawTitle as player
         set:     r.cardSet,
         number:  r.cardNumber || '',
         parallel: r.parallel || '',
