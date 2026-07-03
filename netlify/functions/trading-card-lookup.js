@@ -4,12 +4,13 @@
 //
 // Routing (in priority order):
 //   1. TRADING_CARD_API_KEY set → Trading Card API (all sports + TCG, 3M+ cards)
-//   2. Query looks like Pokémon + POKEMON_TCG_API_KEY set → Pokémon TCG API (pokemontcg.io)
-//   3. Non-TCG sport + PRICECHARTING_TOKEN set → PriceCharting search fallback
-//   4. Anything else → stub (local CARD_DB fallback in client)
+//   2. No TRADING_CARD_API_KEY → Pokémon TCG API + PriceCharting run in PARALLEL,
+//      results merged (Pokémon first). Eliminates fragile keyword detection —
+//      pokemontcg.io returns [] for sports queries; PriceCharting returns [] for TCG.
+//   3. Neither API available → stub (local CARD_DB fallback in client)
 //
 // Results cached in card_search_cache (Supabase) for 7 days.
-// Cache key prefix: "tradingcardapi:", "pokemontcg:", or "pricecharting:"
+// Cache key prefix: "tradingcardapi:" or "auto:" (parallel mode)
 // Cache writes are non-blocking — a write failure never breaks the response.
 
 const { createClient } = require('@supabase/supabase-js');
@@ -20,30 +21,12 @@ const PC_API_BASE      = 'https://www.sportscardspro.com/api/products';
 const TIMEOUT_MS       = 5000;
 const CACHE_TTL_DAYS   = 7;
 
-// Sports that route to Trading Card API (not PriceCharting) when TRADING_CARD_API_KEY is set
+// Sports that use Trading Card API exclusively when TRADING_CARD_API_KEY is set
 const TCG_SPORTS = new Set([
   'Pokemon', 'MTG', 'Magic', 'Yu-Gi-Oh',
   'Lorcana', 'One Piece', 'Dragon Ball',
   'Digimon', 'Flesh and Blood',
 ]);
-
-// Keywords that indicate a Pokémon query when no sport field is sent
-const POKEMON_KEYWORDS = [
-  'pokemon', 'charizard', 'pikachu', 'mewtwo', 'eevee', 'gengar', 'snorlax',
-  'blastoise', 'venusaur', 'rayquaza', 'lugia', 'ho-oh', 'umbreon', 'espeon',
-  'vaporeon', 'jolteon', 'flareon', 'sylveon', 'glaceon', 'leafeon',
-  'scarlet', 'violet', 'obsidian', 'paldea', 'temporal', 'prismatic',
-  'evolving skies', 'brilliant stars', 'silver tempest', 'crown zenith',
-  'paldean fates', 'paradox rift', 'twilight masquerade',
-  'ex ', ' ex', ' vmax', ' vstar', ' gx', ' v ', ' v$',
-  'holo rare', 'ultra rare', 'secret rare', 'rainbow rare',
-];
-const POKEMON_RE = new RegExp(POKEMON_KEYWORDS.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'i');
-
-function looksLikePokemon(query, sport) {
-  if (sport === 'Pokemon') return true;
-  return POKEMON_RE.test(query);
-}
 
 // ── CACHE HELPERS ──
 
@@ -281,20 +264,18 @@ exports.handler = async (event) => {
     };
   }
 
-  const tcgApiKey  = process.env.TRADING_CARD_API_KEY;
-  const pokemonKey = process.env.POKEMON_TCG_API_KEY;
-  const isPokemon  = looksLikePokemon(query.trim(), sport);
-  const isTCG      = TCG_SPORTS.has(sport);
+  const tcgApiKey = process.env.TRADING_CARD_API_KEY;
+  const q         = query.trim();
 
   // ── 1. Trading Card API (covers everything when key is set) ──
   if (tcgApiKey) {
-    const queryKey = buildQueryKey(query.trim(), 'tradingcardapi');
+    const queryKey = buildQueryKey(q, 'tradingcardapi');
     const cached   = await readSearchCache(queryKey);
     if (cached) {
       return respond({ stub: false, results: cached.results, fromCache: true, source: cached.source });
     }
 
-    const params = new URLSearchParams({ 'filter[name]': query.trim(), 'page[limit]': '8' });
+    const params = new URLSearchParams({ 'filter[name]': q, 'page[limit]': '8' });
     if (sport) params.set('filter[sport]', sport);
 
     const controller = new AbortController();
@@ -336,44 +317,36 @@ exports.handler = async (event) => {
     }
   }
 
-  // ── 2. Pokémon TCG API (pokemontcg.io) — for Pokémon queries ──
-  if (isPokemon) {
-    const queryKey = buildQueryKey(query.trim(), 'pokemontcg');
-    const cached   = await readSearchCache(queryKey);
-    if (cached) {
-      return respond({ stub: false, results: cached.results, fromCache: true, source: cached.source });
-    }
-
-    const results = await lookupPokemonTCG(query.trim());
-    if (results && results.length > 0) {
-      writeSearchCache(queryKey, results, 'pokemontcg').catch(() => {});
-      return respond({ stub: false, results, fromCache: false, source: 'pokemontcg' });
-    }
-    if (results !== null) {
-      // API responded but no matches
-      return respond({ stub: false, results: [], source: 'pokemontcg' });
-    }
-    // null = API unavailable → fall through to stub
-    console.warn('[trading-card-lookup] Pokémon TCG API unavailable — returning stub');
-    return respond({ stub: true, results: [] });
+  // ── 2. Parallel mode: Pokémon TCG API + PriceCharting run simultaneously ──
+  // No keyword detection — pokemontcg.io returns [] for sports queries and
+  // PriceCharting returns [] for TCG queries, so merging is safe and correct.
+  const queryKey = buildQueryKey(q, 'auto');
+  const cached   = await readSearchCache(queryKey);
+  if (cached) {
+    return respond({ stub: false, results: cached.results, fromCache: true, source: cached.source });
   }
 
-  // ── 3. PriceCharting fallback (non-TCG sports cards) ──
-  if (!isTCG) {
-    const queryKey = buildQueryKey(query.trim(), 'pricecharting');
-    const cached   = await readSearchCache(queryKey);
-    if (cached) {
-      return respond({ stub: false, results: cached.results, fromCache: true, source: cached.source });
-    }
+  const [pokemonResults, pcResults] = await Promise.all([
+    lookupPokemonTCG(q),
+    lookupPriceCharting(q),
+  ]);
 
-    const results = await lookupPriceCharting(query.trim());
-    if (results) {
-      writeSearchCache(queryKey, results, 'pricecharting').catch(() => {});
-      return respond({ stub: false, results, fromCache: false, source: 'pricecharting' });
-    }
+  // Merge: Pokémon results first, then sports cards, dedupe by id, cap at 8
+  const seen    = new Set();
+  const results = [...(pokemonResults || []), ...(pcResults || [])]
+    .filter(r => {
+      if (seen.has(r.id)) return false;
+      seen.add(r.id);
+      return true;
+    })
+    .slice(0, 8);
+
+  if (results.length > 0) {
+    writeSearchCache(queryKey, results, 'auto').catch(() => {});
+    return respond({ stub: false, results, fromCache: false, source: 'auto' });
   }
 
-  // ── 4. Stub — TCG sports without any key, or all APIs failed ──
+  // Both APIs returned nothing — stub so client falls back to local CARD_DB
   return respond({ stub: true, results: [] });
 };
 
