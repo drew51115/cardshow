@@ -2,27 +2,48 @@
 // POST { query: string, sport: string|null }
 // Returns normalized card results for autocomplete.
 //
-// Routing:
-//   TRADING_CARD_API_KEY set → Trading Card API (all sports, 3M+ cards)
-//   No TRADING_CARD_API_KEY, PRICECHARTING_TOKEN set, non-TCG sport → PriceCharting search fallback
-//   TCG sport (Pokemon, MTG, etc.) without TRADING_CARD_API_KEY → stub (local CARD_DB fallback)
+// Routing (in priority order):
+//   1. TRADING_CARD_API_KEY set → Trading Card API (all sports + TCG, 3M+ cards)
+//   2. Query looks like Pokémon + POKEMON_TCG_API_KEY set → Pokémon TCG API (pokemontcg.io)
+//   3. Non-TCG sport + PRICECHARTING_TOKEN set → PriceCharting search fallback
+//   4. Anything else → stub (local CARD_DB fallback in client)
 //
 // Results cached in card_search_cache (Supabase) for 7 days.
-// Cache key prefix: "tradingcardapi:" or "pricecharting:" depending on source.
+// Cache key prefix: "tradingcardapi:", "pokemontcg:", or "pricecharting:"
 // Cache writes are non-blocking — a write failure never breaks the response.
 
 const { createClient } = require('@supabase/supabase-js');
 
-const TCG_API_BASE   = 'https://api.tradingcardapi.com/v1/cards';
-const PC_API_BASE    = 'https://www.sportscardspro.com/api/products';
-const TIMEOUT_MS     = 5000;
-const CACHE_TTL_DAYS = 7;
+const TCG_API_BASE     = 'https://api.tradingcardapi.com/v1/cards';
+const POKEMON_API_BASE = 'https://api.pokemontcg.io/v2/cards';
+const PC_API_BASE      = 'https://www.sportscardspro.com/api/products';
+const TIMEOUT_MS       = 5000;
+const CACHE_TTL_DAYS   = 7;
 
+// Sports that route to Trading Card API (not PriceCharting) when TRADING_CARD_API_KEY is set
 const TCG_SPORTS = new Set([
   'Pokemon', 'MTG', 'Magic', 'Yu-Gi-Oh',
   'Lorcana', 'One Piece', 'Dragon Ball',
   'Digimon', 'Flesh and Blood',
 ]);
+
+// Keywords that indicate a Pokémon query when no sport field is sent
+const POKEMON_KEYWORDS = [
+  'pokemon', 'charizard', 'pikachu', 'mewtwo', 'eevee', 'gengar', 'snorlax',
+  'blastoise', 'venusaur', 'rayquaza', 'lugia', 'ho-oh', 'umbreon', 'espeon',
+  'vaporeon', 'jolteon', 'flareon', 'sylveon', 'glaceon', 'leafeon',
+  'scarlet', 'violet', 'obsidian', 'paldea', 'temporal', 'prismatic',
+  'evolving skies', 'brilliant stars', 'silver tempest', 'crown zenith',
+  'paldean fates', 'paradox rift', 'twilight masquerade',
+  'ex ', ' ex', ' vmax', ' vstar', ' gx', ' v ', ' v$',
+  'holo rare', 'ultra rare', 'secret rare', 'rainbow rare',
+];
+const POKEMON_RE = new RegExp(POKEMON_KEYWORDS.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'i');
+
+function looksLikePokemon(query, sport) {
+  if (sport === 'Pokemon') return true;
+  return POKEMON_RE.test(query);
+}
 
 // ── CACHE HELPERS ──
 
@@ -73,20 +94,71 @@ async function writeSearchCache(queryKey, results, source) {
   }
 }
 
+// ── POKÉMON TCG API LOOKUP ──
+// pokemontcg.io — returns fully structured card data including set, number, rarity, image
+
+async function lookupPokemonTCG(query) {
+  const apiKey = process.env.POKEMON_TCG_API_KEY;
+  // API works without a key (rate-limited); key raises the limit
+  const headers = { 'Content-Type': 'application/json' };
+  if (apiKey) headers['X-Api-Key'] = apiKey;
+
+  // Build a pokemontcg.io query — search by card name
+  // The API uses Lucene-style queries: name:"charizard*" finds all Charizard cards
+  const nameQuery = `name:"${query.trim().replace(/"/g, '')}*"`;
+  const params = new URLSearchParams({
+    q:        nameQuery,
+    pageSize: '8',
+    orderBy:  '-set.releaseDate', // newest sets first
+    select:   'id,name,set,number,rarity,images,supertype,subtypes',
+  });
+
+  const controller = new AbortController();
+  const timeoutId  = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+  try {
+    const res = await fetch(`${POKEMON_API_BASE}?${params.toString()}`, {
+      signal: controller.signal,
+      headers,
+    });
+    clearTimeout(timeoutId);
+
+    if (!res.ok) {
+      console.warn('[trading-card-lookup] Pokémon TCG API error:', res.status);
+      return null;
+    }
+
+    const data  = await res.json();
+    const cards = Array.isArray(data?.data) ? data.data : [];
+    if (!cards.length) return [];
+
+    return cards.map(c => ({
+      id:         c.id,
+      player:     c.name || '',
+      year:       c.set?.releaseDate ? c.set.releaseDate.slice(0, 4) : '',
+      cardSet:    c.set?.name || '',
+      cardNumber: c.number || null,
+      sport:      'Pokemon',
+      parallel:   [
+        ...(c.subtypes || []),
+        c.rarity ? c.rarity : null,
+      ].filter(Boolean).join(' · ') || null,
+      imageUrl:   c.images?.small || c.images?.large || null,
+      rawTitle:   null,
+    }));
+
+  } catch (err) {
+    clearTimeout(timeoutId);
+    console.warn('[trading-card-lookup] Pokémon TCG error:', err.message);
+    return null;
+  }
+}
+
 // ── PRICECHARTING NAME PARSER ──
 // PriceCharting names follow two common patterns:
-//   A) "Baseball Cards 2026 Topps Chrome Aaron Judge Gold Refractor"
-//      console-name: "Topps Chrome"
-//   B) "Aaron Judge 2026 Topps Chrome Gold Refractor"
-//      console-name: "Topps Chrome"
-//
-// Strategy:
-//   1. Strip leading sport-category prefix ("Baseball Cards", "Football Cards", etc.)
-//   2. Split on year — text before year is player (pattern B), text after is set+variant
-//   3. If nothing before year, player is after the console-name set name
-//   4. Use console-name as cardSet; strip it from parallel remnant
+//   A) "Baseball Cards 2026 Topps Chrome Aaron Judge Gold Refractor"  (console-name: "Topps Chrome")
+//   B) "Aaron Judge 2026 Topps Chrome Gold Refractor"                  (console-name: "Topps Chrome")
 
-// Sport category prefixes PriceCharting prepends to some product names
 const SPORT_PREFIX_RE = /^(baseball|football|basketball|hockey|soccer|golf|tennis|boxing|mma|wrestling|racing|sports?)\s+cards?\s*/i;
 
 const PARALLEL_TERMS = [
@@ -100,66 +172,57 @@ const PARALLEL_TERMS = [
 const PARALLEL_RE = new RegExp(`\\b(${PARALLEL_TERMS.join('|')})\\b`, 'gi');
 
 function parsePCProduct(product) {
-  const rawName     = (product.name             || '').trim();
-  const consoleName = (product['console-name']  || '').trim();
+  const rawName     = (product.name            || '').trim();
+  const consoleName = (product['console-name'] || '').trim();
 
-  // Strip leading sport-category prefix before parsing
   const fullName = rawName.replace(SPORT_PREFIX_RE, '').trim();
+  const cardSet  = consoleName.replace(SPORT_PREFIX_RE, '').trim();
 
-  // Year: first 4-digit year-like number
   const yearMatch = fullName.match(/\b(19|20)\d{2}\b/);
   const year      = yearMatch ? yearMatch[0] : '';
-
-  // cardSet from console-name, also strip its sport prefix
-  const cardSet = consoleName.replace(SPORT_PREFIX_RE, '').trim();
 
   let player  = '';
   let parallel = null;
 
   if (year) {
-    const yearIdx  = fullName.indexOf(year);
+    const yearIdx    = fullName.indexOf(year);
     const beforeYear = fullName.slice(0, yearIdx).trim();
     const afterYear  = fullName.slice(yearIdx + year.length).trim();
 
     if (beforeYear) {
-      // Pattern B: "Aaron Judge 2026 Topps Chrome Gold Refractor"
-      // Player is everything before the year
+      // Player precedes the year
       player = beforeYear;
       const afterSet = cardSet
         ? afterYear.replace(new RegExp(cardSet.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'), '').trim()
         : afterYear;
-      const pMatches = afterSet.match(PARALLEL_RE) || [];
-      parallel = [...new Set(pMatches.map(t => t.trim()))].join(' ') || null;
+      const m = afterSet.match(PARALLEL_RE) || [];
+      parallel = [...new Set(m.map(t => t.trim()))].join(' ') || null;
     } else if (cardSet) {
-      // Pattern A with known set: "2026 Topps Chrome Aaron Judge Gold Refractor"
-      // Player is after the set name, minus parallel terms
+      // Year first; player is after the known set name
       const afterSet = afterYear
         .replace(new RegExp(cardSet.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'), '')
         .trim();
-      const pMatches = afterSet.match(PARALLEL_RE) || [];
-      parallel = [...new Set(pMatches.map(t => t.trim()))].join(' ') || null;
+      const m = afterSet.match(PARALLEL_RE) || [];
+      parallel = [...new Set(m.map(t => t.trim()))].join(' ') || null;
       player   = afterSet.replace(PARALLEL_RE, '').replace(/\s+/g, ' ').trim();
     }
-    // If year-first and no usable cardSet (e.g. consoleName was "Baseball Cards"),
-    // we can't reliably separate player from set — leave player empty,
-    // rawTitle (sport-prefix-stripped) will be used as display fallback.
+    // Year first + no usable cardSet → can't isolate player; leave empty, rawTitle used as fallback
   } else {
-    // No year — strip parallels, use remainder
-    const pMatches = fullName.match(PARALLEL_RE) || [];
-    parallel = [...new Set(pMatches.map(t => t.trim()))].join(' ') || null;
+    const m = fullName.match(PARALLEL_RE) || [];
+    parallel = [...new Set(m.map(t => t.trim()))].join(' ') || null;
     player   = fullName.replace(PARALLEL_RE, '').replace(/\s+/g, ' ').trim();
   }
 
   return {
     id:         String(product.id),
-    player,                // may be empty for ambiguous set-level results
+    player,
     year,
     cardSet,
     cardNumber: null,
     sport:      null,
     parallel,
     imageUrl:   null,
-    rawTitle:   fullName,  // sport-prefix-stripped full name; client uses as display fallback
+    rawTitle:   fullName,
   };
 }
 
@@ -186,9 +249,7 @@ async function lookupPriceCharting(query) {
 
     const data     = await res.json();
     const products = Array.isArray(data?.products) ? data.products.slice(0, 8) : [];
-    if (!products.length) return [];
-
-    return products.map(parsePCProduct);
+    return products.length ? products.map(parsePCProduct) : [];
 
   } catch (err) {
     clearTimeout(timeoutId);
@@ -220,38 +281,20 @@ exports.handler = async (event) => {
     };
   }
 
-  const tcgApiKey = process.env.TRADING_CARD_API_KEY;
-  const isTCG     = TCG_SPORTS.has(sport);
+  const tcgApiKey  = process.env.TRADING_CARD_API_KEY;
+  const pokemonKey = process.env.POKEMON_TCG_API_KEY;
+  const isPokemon  = looksLikePokemon(query.trim(), sport);
+  const isTCG      = TCG_SPORTS.has(sport);
 
-  // Without Trading Card API key, TCG sports fall back to local CARD_DB stub
-  if (!tcgApiKey && isTCG) {
-    return {
-      statusCode: 200,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ stub: true, results: [] }),
-    };
-  }
-
-  // Determine source for cache key
-  const source    = tcgApiKey ? 'tradingcardapi' : 'pricecharting';
-  const queryKey  = buildQueryKey(query.trim(), source);
-
-  // Cache read
-  const cached = await readSearchCache(queryKey);
-  if (cached) {
-    return {
-      statusCode: 200,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ stub: false, results: cached.results, fromCache: true, source: cached.source }),
-    };
-  }
-
-  // ── Trading Card API path ──
+  // ── 1. Trading Card API (covers everything when key is set) ──
   if (tcgApiKey) {
-    const params = new URLSearchParams({
-      'filter[name]': query.trim(),
-      'page[limit]':  '8',
-    });
+    const queryKey = buildQueryKey(query.trim(), 'tradingcardapi');
+    const cached   = await readSearchCache(queryKey);
+    if (cached) {
+      return respond({ stub: false, results: cached.results, fromCache: true, source: cached.source });
+    }
+
+    const params = new URLSearchParams({ 'filter[name]': query.trim(), 'page[limit]': '8' });
     if (sport) params.set('filter[sport]', sport);
 
     const controller = new AbortController();
@@ -267,74 +310,77 @@ exports.handler = async (event) => {
       if (!res.ok) {
         const detail = await res.text().catch(() => '');
         console.error('[trading-card-lookup] TCG API error', res.status, detail);
-        return {
-          statusCode: 200,
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ stub: false, results: [], error: `API error ${res.status}` }),
-        };
+        return respond({ stub: false, results: [], error: `API error ${res.status}` });
       }
 
-      const data  = await res.json();
-      const items = Array.isArray(data?.data) ? data.data : [];
-      const results = items.map(r => ({
+      const data    = await res.json();
+      const results = (Array.isArray(data?.data) ? data.data : []).map(r => ({
         id:         r.id,
-        player:     r.attributes?.name          || '',
-        year:       r.attributes?.year          ? String(r.attributes.year) : '',
-        cardSet:    r.attributes?.set_name      || '',
-        cardNumber: r.attributes?.card_number   || null,
-        sport:      r.attributes?.sport         || null,
-        parallel:   r.attributes?.parallel      || null,
-        imageUrl:   r.attributes?.image_url     || null,
+        player:     r.attributes?.name         || '',
+        year:       r.attributes?.year         ? String(r.attributes.year) : '',
+        cardSet:    r.attributes?.set_name     || '',
+        cardNumber: r.attributes?.card_number  || null,
+        sport:      r.attributes?.sport        || null,
+        parallel:   r.attributes?.parallel     || null,
+        imageUrl:   r.attributes?.image_url    || null,
       }));
 
-      writeSearchCache(queryKey, results, 'tradingcardapi').catch(e =>
-        console.warn('[trading-card-lookup] cache write error:', e.message)
-      );
-
-      return {
-        statusCode: 200,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ stub: false, results, fromCache: false, source: 'tradingcardapi' }),
-      };
+      writeSearchCache(queryKey, results, 'tradingcardapi').catch(() => {});
+      return respond({ stub: false, results, fromCache: false, source: 'tradingcardapi' });
 
     } catch (err) {
       clearTimeout(timeoutId);
-      if (err.name === 'AbortError') {
-        return {
-          statusCode: 200,
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ stub: false, results: [], error: 'timeout' }),
-        };
-      }
+      if (err.name === 'AbortError') return respond({ stub: false, results: [], error: 'timeout' });
       console.error('[trading-card-lookup] TCG fetch error:', err.message);
-      return {
-        statusCode: 200,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ stub: false, results: [], error: err.message }),
-      };
+      return respond({ stub: false, results: [], error: err.message });
     }
   }
 
-  // ── PriceCharting fallback path (no TRADING_CARD_API_KEY, non-TCG) ──
-  const pcResults = await lookupPriceCharting(query.trim());
+  // ── 2. Pokémon TCG API (pokemontcg.io) — for Pokémon queries ──
+  if (isPokemon) {
+    const queryKey = buildQueryKey(query.trim(), 'pokemontcg');
+    const cached   = await readSearchCache(queryKey);
+    if (cached) {
+      return respond({ stub: false, results: cached.results, fromCache: true, source: cached.source });
+    }
 
-  if (!pcResults) {
-    // PriceCharting token missing or request failed — fall back to local CARD_DB
-    console.warn('[trading-card-lookup] PriceCharting unavailable — returning stub');
-    return {
-      statusCode: 200,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ stub: true, results: [] }),
-    };
+    const results = await lookupPokemonTCG(query.trim());
+    if (results && results.length > 0) {
+      writeSearchCache(queryKey, results, 'pokemontcg').catch(() => {});
+      return respond({ stub: false, results, fromCache: false, source: 'pokemontcg' });
+    }
+    if (results !== null) {
+      // API responded but no matches
+      return respond({ stub: false, results: [], source: 'pokemontcg' });
+    }
+    // null = API unavailable → fall through to stub
+    console.warn('[trading-card-lookup] Pokémon TCG API unavailable — returning stub');
+    return respond({ stub: true, results: [] });
   }
 
-  writeSearchCache(queryKey, pcResults, 'pricecharting').catch(e =>
-    console.warn('[trading-card-lookup] cache write error:', e.message)
-  );
+  // ── 3. PriceCharting fallback (non-TCG sports cards) ──
+  if (!isTCG) {
+    const queryKey = buildQueryKey(query.trim(), 'pricecharting');
+    const cached   = await readSearchCache(queryKey);
+    if (cached) {
+      return respond({ stub: false, results: cached.results, fromCache: true, source: cached.source });
+    }
 
+    const results = await lookupPriceCharting(query.trim());
+    if (results) {
+      writeSearchCache(queryKey, results, 'pricecharting').catch(() => {});
+      return respond({ stub: false, results, fromCache: false, source: 'pricecharting' });
+    }
+  }
+
+  // ── 4. Stub — TCG sports without any key, or all APIs failed ──
+  return respond({ stub: true, results: [] });
+};
+
+function respond(payload) {
   return {
     statusCode: 200,
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ stub: false, results: pcResults, fromCache: false, source: 'pricecharting' }),
+    headers:    { 'Content-Type': 'application/json' },
+    body:       JSON.stringify(payload),
   };
-};
+}
