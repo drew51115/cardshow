@@ -342,11 +342,16 @@ Cancel at each state:
 
 ### Trading Card Lookup Function (trading-card-lookup.js)
 - **Endpoint:** POST `{ query, sport? }` → `{ stub: bool, results: [...], fromCache?: bool, source?: string }`
-- **Stub mode:** when `TRADING_CARD_API_KEY` is unset, returns `{ stub: true, results: [] }` and logs a warning. Client silently falls back to local CARD_DB. All UI works — sellers just get 60-card local list instead of 3M+.
-- **Live mode:** `GET https://api.tradingcardapi.com/v1/cards?filter[name]=...&page[limit]=8` with `Authorization: Bearer` and `Accept: application/vnd.api+json`. 5-second timeout.
-- **To activate:** add `TRADING_CARD_API_KEY` in Netlify dashboard → Site settings → Environment variables (apply at tradingcardapi.com/early-access).
-- Returns normalized objects: `{ id, player, year, cardSet, cardNumber, sport, parallel, imageUrl }`
-- **Cache:** results written to `card_search_cache` (Supabase) after successful API call; read on next identical query within 7 days. Requires `SUPABASE_SERVICE_KEY`. Cache write is non-blocking — failure never breaks the response.
+- **Routing logic (in priority order):**
+  1. `TRADING_CARD_API_KEY` set → Trading Card API for all sports (3M+ cards)
+  2. No `TRADING_CARD_API_KEY`, non-TCG sport, `PRICECHARTING_TOKEN` set → PriceCharting search fallback
+  3. No `TRADING_CARD_API_KEY`, TCG sport (Pokemon/MTG/etc.) → `stub: true` (local CARD_DB fallback)
+  4. No keys at all → `stub: true`
+- **Trading Card API mode:** `GET https://api.tradingcardapi.com/v1/cards?filter[name]=...&page[limit]=8` with `Authorization: Bearer` and `Accept: application/vnd.api+json`. 5-second timeout.
+- **PriceCharting fallback mode:** `GET sportscardspro.com/api/products?t=TOKEN&q=...` → up to 8 results. Parses the `name` + `console-name` fields into structured `{ player, year, cardSet, parallel }` via `parsePCProduct()`. `cardNumber` and `imageUrl` are null in this mode.
+- **`parsePCProduct(product)`** — extracts year via regex, uses `console-name` as set, strips known parallel terms to isolate player name.
+- Returns normalized objects: `{ id, player, year, cardSet, cardNumber, sport, parallel, imageUrl, rawTitle? }`
+- **Cache:** results written to `card_search_cache` (Supabase) after successful live call; read on next identical query within 7 days. Cache key prefixed by source (`tradingcardapi:` or `pricecharting:`). Requires `SUPABASE_SERVICE_KEY`. Cache write is non-blocking.
 
 ### Card Search Cache (card_search_cache table)
 - **TTL:** 7 days, keyed by `query_key` = `"tradingcardapi:{normalized_query}"` (lowercased, whitespace-collapsed)
