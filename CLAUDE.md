@@ -268,6 +268,7 @@ Called from `fillFormFromScan` (barcode) and `fillFormFromVision` (vision). Gene
 | `TRADING_CARD_API_KEY` | Trading Card API key for live card DB autocomplete (Sprint 3) — add in Netlify dashboard → Site settings → Environment variables once approved at tradingcardapi.com/early-access |
 | `CACHE_INVALIDATE_SECRET` | Random secret protecting `/.netlify/functions/invalidate-search-cache` — set to output of `openssl rand -hex 24`; pass as `x-invalidate-secret` request header |
 | `POKEMON_TCG_API_KEY` | pokemontcg.io API key — optional; raises rate limits. Free tier works without it. Register at dev.pokemontcg.io |
+| `CARDSIGHT_API_KEY` | CardSight AI key — primary sports card comp source. Free tier: 750 calls/month. cardsight.ai/for-developers |
 
 ### Credential Injection (no build step workaround)
 Supabase URL and anon key are **not** hardcoded in tracked files. `netlify.toml` has a `command` that runs `sed` to replace `SUPABASE_URL_PLACEHOLDER` / `SUPABASE_ANON_KEY_PLACEHOLDER` in all three HTML files at deploy time. `SECRETS_SCAN_OMIT_KEYS = "SUPABASE_URL,SUPABASE_ANON_KEY"` prevents Netlify's secrets scanner from blocking the build on the injected values (they are intentionally public publishable keys).
@@ -397,14 +398,25 @@ Cancel at each state:
 - **`exportReportCSV()`** — downloads filtered sold cards as CSV; filename includes show name (or "all-time") and date; columns: Card Title, Player, Year, Set, Grade, Grader, Ask Price, Sold Price, Delta, Payment Method, Sale Time, Notes
 - **`adminTabReport`** is permanently hidden from the admin tab bar — admins access All Inventory only; sellers use `sellerTabBar` for their own report
 
-## Comp Pricing — PriceCharting + TCG API Integration
+## Comp Pricing — CardSight AI + PriceCharting + TCG API
 
 ### Architecture
 - `netlify/functions/comp-lookup.js` — POST `{ cards: [...] }` → `{ results: [...] }`
 - Cards processed **sequentially** (for...of, never Promise.all) to respect PriceCharting's 1 req/s limit
-- Sport routing: `TCG_SPORTS` list → TCG API; everything else → PriceCharting
+- Sport routing:
+  - Pokemon → pokemontcg.io (TCGPlayer market prices), fallback to TCG API
+  - Other TCG (MTG, Yu-Gi-Oh, etc.) → TCG API
+  - Sports cards → **CardSight AI** (primary), fallback to PriceCharting
 
-### PriceCharting API — Two-Step Pattern
+### CardSight AI — Primary Sports Card Comp Source
+- `CARDSIGHT_API_KEY` env var (set in Netlify). Free tier: 750 calls/month — 24h `price_cache` TTL limits redundant calls significantly.
+- **⚠ API shape not confirmed:** cardsight.ai returns 403 to automated fetches. The endpoint, auth header, request field names, and response field names in `lookupCardSight()` are marked with `// TODO: CONFIRM FROM DOCS` comments. Update these once you have API access and can verify the actual shape.
+- Returns normalised `{ stub, compPrice, lowPrice, highPrice, recentSales[], source: 'cardsight', matchedCard }`.
+- `recentSales` — array of `{ price, date, source }` individual sale records if the API provides them; `[]` otherwise.
+- Source label in buyer modal: "Real sales data · CardSight AI"
+- Fallback: if CardSight returns stub or no `compPrice`, falls through to PriceCharting.
+
+### PriceCharting API — Fallback for Sports Cards
 1. **Search:** `GET sportscardspro.com/api/products?t=TOKEN&q=<player year set>` → get `product.id`
 2. **Price:** `GET sportscardspro.com/api/product?t=TOKEN&id=<id>` → get grade-tiered price
 - Prices returned in **pennies** — always divide by 100
@@ -420,9 +432,24 @@ Cancel at each state:
 - Returns `{ compPrice, lowPrice, highPrice, source: 'tcgapi', cardName, setName }`
 - 6s timeout, graceful stub on any error
 
+### Normalised Result Shape (all sources)
+```js
+{
+  stub:         false,
+  compPrice:    number,          // median or market price
+  lowPrice:     number | null,
+  highPrice:    number | null,
+  recentSales:  [{ price, date, source }],  // CardSight only; [] for all others
+  source:       'cardsight' | 'pricecharting' | 'pokemontcg' | 'tcgapi',
+  matchedCard:  string | null,
+  fromCache:    true,            // only on cache hits
+}
+```
+
 ### price_cache Table (Supabase)
 - **TTL:** 24 hours, keyed by `card_fingerprint` (`player|year|set|cardNumber|parallel|grade|grader` lowercased)
 - Cache hits return `{ fromCache: true }` — no API call, no delay needed
+- `source` column distinguishes which API matched — query it to compare CardSight vs PriceCharting match rates
 - Requires `SUPABASE_SERVICE_KEY` (service role) in Netlify env vars
 - Table must exist: run `SELECT to_regclass('public.price_cache');` in Supabase SQL editor; if null, run the CREATE TABLE SQL from the comp-check sprint output
 
@@ -430,7 +457,7 @@ Cancel at each state:
 - Separate from `detectSport()` (UI badges) — this routes API selection only
 - Checks `card.Sport` first; falls back to keyword scan of title/set/player
 - TCG keywords: pokemon, mtg, magic, yu-gi-oh, lorcana, one piece, dragon ball, digimon, scarlet, violet, base set, evolving skies, prismatic, obsidian, etc.
-- Default for unrecognized: `'Baseball'` (routes to PriceCharting)
+- Default for unrecognized: `'Baseball'` (routes to CardSight → PriceCharting fallback)
 
 ### runCompCheck(cards) — app.html
 - Sequential card-by-card loop with progress bar + cancel button

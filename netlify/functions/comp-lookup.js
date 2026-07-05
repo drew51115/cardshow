@@ -1,8 +1,8 @@
-// comp-lookup.js — PriceCharting + Pokémon TCG API + TCG API comp price lookup
+// comp-lookup.js — CardSight AI + PriceCharting + Pokémon TCG API + TCG API
 // Routing:
 //   Pokemon     → pokemontcg.io, fallback to TCG API
 //   Other TCG   → TCG API
-//   Sports      → PriceCharting, fallback to TCG API if not found
+//   Sports      → CardSight AI (primary), fallback to PriceCharting
 //
 // Rate limit: 1 call/second enforced via waitForPCRateLimit() for PriceCharting.
 // Batch processing is sequential (for...of), never parallel, to respect the limit.
@@ -62,12 +62,13 @@ async function checkPriceCache(card) {
 
     if (!data) return null;
     return {
-      stub:      false,
-      compPrice: data.comp_price,
-      lowPrice:  data.low_price  || null,
-      highPrice: data.high_price || null,
-      source:    data.source,
-      fromCache: true,
+      stub:         false,
+      compPrice:    data.comp_price,
+      lowPrice:     data.low_price   || null,
+      highPrice:    data.high_price  || null,
+      recentSales:  [],
+      source:       data.source,
+      fromCache:    true,
     };
   } catch {
     return null;
@@ -94,7 +95,123 @@ async function writePriceCache(card, result) {
   }
 }
 
+// ── CARDSIGHT AI LOOKUP ──
+// Primary source for sports cards.
+// Free tier: 750 calls/month. 24h price_cache TTL limits redundant calls.
+//
+// ⚠ DOCS INACCESSIBLE: cardsight.ai returned 403 for all automated fetches.
+// The endpoint, auth header, request shape, and response field names below
+// are marked with TODO comments. Update them once you have API access.
+// The surrounding error handling, timeout, and return shape are correct.
+
+async function lookupCardSight(card) {
+  const apiKey = process.env.CARDSIGHT_API_KEY;
+  if (!apiKey) {
+    console.warn('CARDSIGHT_API_KEY not set — returning stub');
+    return { stub: true };
+  }
+
+  try {
+    // TODO: CONFIRM FROM DOCS — exact endpoint path
+    // Common patterns: /v1/prices, /api/comps, /api/cards/price
+    const BASE_URL = 'https://api.cardsight.ai';  // TODO: CONFIRM FROM DOCS
+    const ENDPOINT = '/v1/prices';                 // TODO: CONFIRM FROM DOCS
+
+    // TODO: CONFIRM FROM DOCS — request shape (JSON body vs query params)
+    // Sending as JSON body; swap to query params if the API expects GET
+    const body = {
+      player:  card.player  || undefined,  // TODO: CONFIRM field name
+      year:    card.year    || undefined,  // TODO: CONFIRM field name
+      set:     card.cardSet || undefined,  // TODO: CONFIRM field name (may be 'cardSet', 'set_name', etc.)
+      grade:   card.grade   || undefined,  // TODO: CONFIRM field name
+      grader:  card.grader  || undefined,  // TODO: CONFIRM field name
+      number:  card.cardNumber || undefined, // TODO: CONFIRM field name (may be 'card_number', 'cardNumber')
+    };
+
+    // TODO: CONFIRM FROM DOCS — auth header (Bearer vs X-API-Key vs other)
+    const res = await fetch(`${BASE_URL}${ENDPOINT}`, {
+      method:  'POST',                              // TODO: CONFIRM method (may be GET)
+      headers: {
+        'Content-Type':  'application/json',
+        'Authorization': `Bearer ${apiKey}`,        // TODO: CONFIRM auth header name/format
+      },
+      body:    JSON.stringify(body),
+      signal:  AbortSignal.timeout(6000),
+    });
+
+    if (process.env.CARDSHOW_DEBUG) {
+      const raw = await res.clone().text();
+      console.log('[cardsight] status:', res.status, 'body:', raw);
+    }
+
+    if (!res.ok) {
+      console.warn('CardSight API failed:', res.status);
+      return { stub: true };
+    }
+
+    const data = await res.json();
+
+    if (process.env.CARDSHOW_DEBUG) console.log('[cardsight]', data);
+
+    // TODO: CONFIRM FROM DOCS — response shape.
+    // Attempting common field names; update once confirmed.
+    // Pattern A: aggregate response → { price, low_price, high_price, card_name, ... }
+    // Pattern B: sales array response → { sales: [{ price, date, source }], card_name, ... }
+
+    // Extract aggregate price — try common field names
+    const compPrice =
+      data?.price        ??
+      data?.market_price ??
+      data?.median_price ??
+      data?.avg_price    ??
+      data?.comp_price   ??
+      data?.data?.price  ??
+      null;  // TODO: CONFIRM FROM DOCS — exact field name
+
+    if (!compPrice) return { stub: true, noData: true };
+
+    const lowPrice  = data?.low_price  ?? data?.low  ?? data?.min_price ?? null; // TODO: CONFIRM
+    const highPrice = data?.high_price ?? data?.high ?? data?.max_price ?? null; // TODO: CONFIRM
+
+    // Extract individual sale records if the API provides them
+    // TODO: CONFIRM FROM DOCS — whether sales array exists and its shape
+    const rawSales  = data?.sales ?? data?.recent_sales ?? data?.transactions ?? [];
+    const recentSales = Array.isArray(rawSales)
+      ? rawSales.map(s => ({
+          price:  Number(s.price ?? s.sale_price ?? s.amount ?? 0),  // TODO: CONFIRM field
+          date:   s.date ?? s.sale_date ?? s.sold_at ?? null,        // TODO: CONFIRM field
+          source: s.source ?? s.marketplace ?? null,                  // TODO: CONFIRM field
+        })).filter(s => s.price > 0)
+      : [];
+
+    const matchedCard =
+      data?.card_name   ??
+      data?.name        ??
+      data?.matched_card ??
+      null;  // TODO: CONFIRM FROM DOCS
+
+    return {
+      stub:        false,
+      compPrice:   Number(compPrice),
+      lowPrice:    lowPrice  ? Number(lowPrice)  : null,
+      highPrice:   highPrice ? Number(highPrice) : null,
+      recentSales,
+      source:      'cardsight',
+      matchedCard: matchedCard || null,
+    };
+
+  } catch (err) {
+    if (err.name === 'TimeoutError') {
+      console.warn('CardSight API timeout');
+    } else {
+      console.warn('CardSight lookup error:', err.message);
+    }
+    return { stub: true };
+  }
+}
+
 // ── PRICECHARTING LOOKUP ──
+// Fallback for sports cards when CardSight returns no result.
 // Two-step: search by name to get product ID, then fetch price data by ID.
 // Prices returned in pennies — divide by 100.
 
@@ -152,13 +269,14 @@ async function lookupPriceCharting(card) {
     if (!compPrice) return { stub: true, noData: true };
 
     return {
-      stub:        false,
+      stub:         false,
       compPrice,
-      lowPrice:    null,
-      highPrice:   null,
-      source:      'pricecharting',
-      matchedCard: product.name,
-      productId:   String(product.id),
+      lowPrice:     null,
+      highPrice:    null,
+      recentSales:  [],
+      source:       'pricecharting',
+      matchedCard:  product.name,
+      productId:    String(product.id),
     };
 
   } catch (err) {
@@ -182,7 +300,6 @@ async function lookupPokemonTCG(card) {
   if (!name) return { stub: true, noData: true };
 
   try {
-    // Build Lucene query: match name, optionally filter by set
     const q = card.cardSet
       ? `name:"${name}" set.name:"${card.cardSet}"`
       : `name:"${name}"`;
@@ -206,16 +323,13 @@ async function lookupPokemonTCG(card) {
     const cards = data.data || [];
     if (!cards.length) return { stub: true, noData: true };
 
-    // Take the most recent card that has pricing
+    const SUBTYPE_ORDER = [
+      'holofoil', 'reverseHolofoil', '1stEditionHolofoil',
+      'normal', '1stEditionNormal',
+    ];
+
     for (const item of cards) {
       const prices = item.tcgplayer?.prices || {};
-
-      // Preferred subtype order
-      const SUBTYPE_ORDER = [
-        'holofoil', 'reverseHolofoil', '1stEditionHolofoil',
-        'normal', '1stEditionNormal',
-      ];
-
       let compPrice = null, lowPrice = null, highPrice = null;
 
       for (const subtype of SUBTYPE_ORDER) {
@@ -228,7 +342,6 @@ async function lookupPokemonTCG(card) {
         }
       }
 
-      // Fallback: any subtype with a market price
       if (!compPrice) {
         for (const p of Object.values(prices)) {
           if (p?.market) {
@@ -242,13 +355,14 @@ async function lookupPokemonTCG(card) {
 
       if (compPrice) {
         return {
-          stub:      false,
+          stub:        false,
           compPrice,
           lowPrice,
           highPrice,
-          source:    'pokemontcg',
-          cardName:  item.name,
-          setName:   item.set?.name || null,
+          recentSales: [],
+          source:      'pokemontcg',
+          cardName:    item.name,
+          setName:     item.set?.name || null,
         };
       }
     }
@@ -300,13 +414,14 @@ async function lookupTCGApi(card) {
     if (!compPrice) return { stub: true, noData: true };
 
     return {
-      stub:      false,
-      compPrice: Number(compPrice),
-      lowPrice:  item.low_price  ? Number(item.low_price)  : null,
-      highPrice: item.high_price ? Number(item.high_price) : null,
-      source:    'tcgapi',
-      cardName:  item.name || item.card_name || null,
-      setName:   item.set  || item.set_name  || null,
+      stub:        false,
+      compPrice:   Number(compPrice),
+      lowPrice:    item.low_price  ? Number(item.low_price)  : null,
+      highPrice:   item.high_price ? Number(item.high_price) : null,
+      recentSales: [],
+      source:      'tcgapi',
+      cardName:    item.name || item.card_name || null,
+      setName:     item.set  || item.set_name  || null,
     };
 
   } catch (err) {
@@ -320,9 +435,9 @@ async function lookupTCGApi(card) {
 }
 
 // ── ROUTER ──
-// Pokemon   → pokemontcg.io, fallback to TCG API
-// Other TCG → TCG API
-// Sports    → PriceCharting, fallback to TCG API if not found
+// Pokemon     → pokemontcg.io, fallback to TCG API
+// Other TCG   → TCG API
+// Sports      → CardSight AI (primary), fallback to PriceCharting
 
 async function lookupComp(card) {
   const cached = await checkPriceCache(card);
@@ -342,15 +457,15 @@ async function lookupComp(card) {
   } else if (isTCG) {
     result = await lookupTCGApi(card);
   } else {
-    // Sports card: PriceCharting first, TCG API as last resort
-    result = await lookupPriceCharting(card);
-    if (result.stub || result.noData) {
-      console.log('PriceCharting miss — falling back to TCG API');
-      result = await lookupTCGApi(card);
+    // Sports: CardSight AI primary, PriceCharting fallback
+    result = await lookupCardSight(card);
+    if (!result || result.stub || !result.compPrice) {
+      console.log('CardSight miss — falling back to PriceCharting');
+      result = await lookupPriceCharting(card);
     }
   }
 
-  if (!result.stub && result.compPrice) {
+  if (result && !result.stub && result.compPrice) {
     await writePriceCache(card, result);
   }
 

@@ -1147,6 +1147,13 @@
   }
   .modal-comp-seller-price { font-weight: 600; font-size: 0.82rem; color: var(--text); flex-shrink: 0; }
   .modal-comp-seller-price.best { color: #4ade80; }
+  .modal-comp-sale-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 4px 0; border-bottom: 1px solid var(--border); font-size: 0.78rem;
+  }
+  .modal-comp-sale-row:last-child { border-bottom: none; }
+  .modal-comp-sale-price { font-weight: 600; color: var(--text); font-family: 'DM Mono', monospace; }
+  .modal-comp-sale-meta { font-size: 0.7rem; color: var(--muted); }
   .modal-comp-skeleton {
     height: 14px;
     background: linear-gradient(90deg, var(--surface) 25%, var(--border) 50%, var(--surface) 75%);
@@ -6234,7 +6241,9 @@ function renderBuyerComp(card, result) {
 
   wrap.style.display = 'block';
 
-  const sourceLabel = result.source === 'pricecharting'
+  const sourceLabel = result.source === 'cardsight'
+    ? 'Real sales data · CardSight AI'
+    : result.source === 'pricecharting'
     ? 'Avg of recent eBay sales · PriceCharting'
     : result.source === 'pokemontcg'
     ? 'TCGPlayer market price · Pokémon TCG API'
@@ -6315,6 +6324,28 @@ function renderBuyerComp(card, result) {
       ${rows}`;
   }
 
+  // Recent sales from CardSight AI — only rendered when individual records returned
+  let recentSalesHtml = '';
+  if (result.recentSales && result.recentSales.length > 0) {
+    const rows = result.recentSales.slice(0, 3).map(s => {
+      const daysAgo = s.date
+        ? Math.round((Date.now() - new Date(s.date).getTime()) / (1000 * 60 * 60 * 24))
+        : null;
+      const dateLabel = daysAgo === 0 ? 'Today'
+                      : daysAgo === 1 ? 'Yesterday'
+                      : daysAgo !== null ? `${daysAgo}d ago`
+                      : '';
+      const meta = [dateLabel, s.source].filter(Boolean).join(' · ');
+      return `<div class="modal-comp-sale-row">
+        <span class="modal-comp-sale-price">$${Number(s.price).toLocaleString()}</span>
+        <span class="modal-comp-sale-meta">${meta}</span>
+      </div>`;
+    }).join('');
+    recentSalesHtml = `<div class="modal-comp-divider"></div>
+      <div class="modal-comp-also-label">Recent sales</div>
+      ${rows}`;
+  }
+
   content.innerHTML = `
     <div class="modal-comp-row">
       <div class="modal-comp-market">
@@ -6324,7 +6355,8 @@ function renderBuyerComp(card, result) {
       </div>
       ${deltaHtml}
     </div>
-    ${alsoHtml}`;
+    ${alsoHtml}
+    ${recentSalesHtml}`;
 }
 
 function detectSport(r) {
