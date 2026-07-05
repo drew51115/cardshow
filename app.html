@@ -511,6 +511,48 @@
     margin-right: 0.4rem;
   }
 
+  /* ── Table directory ── */
+  .dir-row {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 0.875rem 1rem;
+    display: flex; align-items: center; gap: 12px;
+    cursor: pointer; transition: border-color 0.15s, background 0.15s;
+  }
+  .dir-row:hover { border-color: var(--accent); background: var(--surface); }
+  .dir-row.no-inventory { opacity: 0.5; cursor: default; }
+  .dir-row.no-inventory:hover { border-color: var(--border); background: var(--card); }
+  .dir-table-badge {
+    width: 44px; height: 44px; border-radius: 8px;
+    background: rgba(245,200,66,0.12); border: 1px solid rgba(245,200,66,0.3);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'DM Mono', monospace; font-size: 0.7rem; font-weight: 500;
+    color: var(--accent); flex-shrink: 0; letter-spacing: 0.03em;
+  }
+  .dir-table-badge.no-table {
+    background: var(--surface); border-color: var(--border);
+    color: var(--muted); font-size: 0.65rem;
+  }
+  .dir-seller-name { font-size: 0.875rem; font-weight: 600; color: var(--text); margin-bottom: 3px; }
+  .dir-seller-meta { font-size: 0.72rem; color: var(--muted); font-family: 'DM Mono', monospace; margin-bottom: 4px; }
+  .dir-tags { display: flex; gap: 4px; flex-wrap: wrap; }
+  .dir-tag { font-size: 0.65rem; font-weight: 500; padding: 2px 6px; border-radius: 4px; letter-spacing: 0.03em; }
+  .dir-tag-sports  { background:rgba(37,99,235,0.15);  color:#60a5fa; }
+  .dir-tag-tcg     { background:rgba(124,58,237,0.15); color:#a78bfa; }
+  .dir-tag-sealed  { background:rgba(245,158,11,0.15); color:#fbbf24; }
+  .dir-tag-graded  { background:rgba(16,185,129,0.15); color:#34d399; }
+  .dir-tag-raw     { background:rgba(99,102,241,0.15); color:#818cf8; }
+  .dir-tag-lot     { background:rgba(236,72,153,0.15); color:#f472b6; }
+  .dir-right { margin-left: auto; text-align: right; flex-shrink: 0; }
+  .dir-card-count { font-size: 1.1rem; font-weight: 600; color: var(--text); line-height: 1; }
+  .dir-card-count-lbl { font-size: 0.65rem; color: var(--muted); margin-top: 2px; font-family: 'DM Mono', monospace; }
+  .dir-arrow { font-size: 0.75rem; color: var(--accent); margin-top: 4px; opacity: 0.8; }
+  .dir-empty { text-align: center; padding: 2rem 1rem; color: var(--muted); font-size: 0.85rem; }
+  @media (max-width: 480px) {
+    .dir-row { padding: 0.75rem; gap: 10px; }
+    .dir-table-badge { width: 38px; height: 38px; font-size: 0.65rem; }
+    .dir-card-count { font-size: 1rem; }
+  }
+
   /* Filters */
   .filter-bar {
     display: grid;
@@ -3702,6 +3744,11 @@
       <div class="show-pill" style="opacity:0.4; cursor:default;">No shows published yet</div>
     </div>
 
+    <div id="buyerTabBar" style="display:flex;gap:6px;margin:0.65rem 0 0;border-bottom:1px solid var(--border);padding-bottom:0">
+      <button id="buyerTabBrowse" class="admin-tab active" onclick="switchBuyerTab('browse')" style="font-size:0.8rem;padding:0.45rem 1rem">Browse Cards</button>
+      <button id="buyerTabDirectory" class="admin-tab" onclick="switchBuyerTab('directory')" style="font-size:0.8rem;padding:0.45rem 1rem">Find a Table</button>
+    </div>
+
     <div class="filter-bar">
       <div class="filter-search">
         <span class="search-icon">🔍</span>
@@ -3738,6 +3785,28 @@
         <div class="icon">🃏</div>
         <p>No show inventory yet — ask a seller to publish their cards.</p>
       </div>
+    </div>
+
+    <div id="buyerDirectoryPanel" style="display:none">
+      <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center">
+        <div class="filter-search" style="flex:1;min-width:180px">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="directorySearch" placeholder="Search sellers or table number…" oninput="filterDirectory()" style="width:100%">
+        </div>
+        <select id="directoryFilter" class="filter-select" onchange="filterDirectory()">
+          <option value="">All categories</option>
+          <option value="Sports">Sports</option>
+          <option value="Pokemon">Pokemon</option>
+          <option value="TCG">TCG</option>
+          <option value="Graded">Graded</option>
+          <option value="Raw">Raw</option>
+          <option value="Sealed">Sealed</option>
+        </select>
+      </div>
+      <div class="results-meta" style="margin-bottom:8px">
+        <div class="results-count"><span id="directoryCount">0</span> sellers at this show</div>
+      </div>
+      <div id="directoryList" style="display:flex;flex-direction:column;gap:8px"></div>
     </div>
 
   </div>
@@ -8044,6 +8113,7 @@ async function joinShow(showId) {
   }
   renderShowSelectorBuyer();
   filterBuyer();
+  switchBuyerTab('browse'); // reset to Browse Cards on new show load
 
   showToast(`Browsing "${show.name}"`);
 }
@@ -10003,6 +10073,205 @@ function getTableNumber(sellerHandle) {
   const show = buyerShowId && shows[buyerShowId];
   if (!show || !show.tables) return null;
   return show.tables[sellerHandle] || null;
+}
+
+// ── BUYER TAB SYSTEM ──
+
+function switchBuyerTab(tab) {
+  const browseBtn    = document.getElementById('buyerTabBrowse');
+  const directoryBtn = document.getElementById('buyerTabDirectory');
+  const filterBar    = document.querySelector('#view-buyer .filter-bar');
+  const resultsMeta  = document.querySelector('#view-buyer .results-meta');
+  const buyerGrid    = document.getElementById('buyerGrid');
+  const dirPanel     = document.getElementById('buyerDirectoryPanel');
+
+  if (tab === 'browse') {
+    browseBtn?.classList.add('active');
+    directoryBtn?.classList.remove('active');
+    if (filterBar)   filterBar.style.display   = '';
+    if (resultsMeta) resultsMeta.style.display  = '';
+    if (buyerGrid)   buyerGrid.style.display    = '';
+    if (dirPanel)    dirPanel.style.display     = 'none';
+  } else {
+    directoryBtn?.classList.add('active');
+    browseBtn?.classList.remove('active');
+    if (filterBar)   filterBar.style.display    = 'none';
+    if (resultsMeta) resultsMeta.style.display  = 'none';
+    if (buyerGrid)   buyerGrid.style.display    = 'none';
+    if (dirPanel)    dirPanel.style.display     = 'block';
+    renderDirectory();
+  }
+}
+
+// ── TABLE DIRECTORY DATA ──
+
+function buildSellerDirectory() {
+  const cards = showInventory;
+  if (!cards || !cards.length) return [];
+
+  const bySellerMap = {};
+  for (const card of cards) {
+    if (card.Status === 'Sold') continue;
+    const handle = card.Seller || '';
+    if (!bySellerMap[handle]) bySellerMap[handle] = [];
+    bySellerMap[handle].push(card);
+  }
+
+  const TCG_KW = ['pokemon','charizard','pikachu','mewtwo','mtg',
+                  'magic','yu-gi-oh','lorcana','one piece',
+                  'scarlet','violet','evolving skies','base set','jungle set'];
+
+  const entries = Object.entries(bySellerMap).map(([handle, sellerCards]) => {
+    const tableNum = getTableNumber(handle);
+    const tags = new Set();
+
+    for (const c of sellerCards) {
+      const sport    = (c.Sport || c.sport || '').toLowerCase();
+      const title    = (c['Card Title'] || '').toLowerCase();
+      const set      = (c['Set '] || c.Set || '').toLowerCase();
+      const type     = (c.item_type || '').toLowerCase();
+      const parallel = (c['Parallel/Variant'] || '').toLowerCase();
+
+      const isTCG   = TCG_KW.some(kw => title.includes(kw) || set.includes(kw));
+      const isSport = !isTCG && (
+        sport === 'baseball' || sport === 'basketball' ||
+        sport === 'football' || sport === 'hockey' || sport === 'soccer' ||
+        (!sport && !isTCG));
+
+      if (isTCG)                              tags.add('TCG');
+      else if (isSport)                       tags.add('Sports');
+      if (c.Grade && !isNaN(Number(c.Grade))) tags.add('Graded');
+      else if (!c.Grade)                      tags.add('Raw');
+      if (parallel.includes('lot') || type.includes('lot'))             tags.add('Lot');
+      if (parallel.includes('box') || parallel.includes('sealed') ||
+          type.includes('sealed'))            tags.add('Sealed');
+    }
+
+    return { handle, tableNum, cardCount: sellerCards.length, tags: [...tags] };
+  });
+
+  return entries.sort((a, b) => {
+    const aHas = a.tableNum ? 1 : 0;
+    const bHas = b.tableNum ? 1 : 0;
+    if (aHas !== bHas) return bHas - aHas;
+    if (a.tableNum && b.tableNum)
+      return a.tableNum.localeCompare(b.tableNum, undefined, { numeric: true });
+    return b.cardCount - a.cardCount;
+  });
+}
+
+function buildFullSellerDirectory() {
+  const listed        = buildSellerDirectory();
+  const show          = buyerShowId && shows[buyerShowId];
+  if (!show) return listed;
+
+  const listedHandles = new Set(listed.map(e => e.handle));
+  const sellersSet    = (show.sellers instanceof Set)
+    ? show.sellers : new Set(show.sellers || []);
+
+  const noInventory = [];
+  for (const handle of sellersSet) {
+    if (listedHandles.has(handle)) continue;
+    noInventory.push({ handle, tableNum: getTableNumber(handle), cardCount: 0, tags: [] });
+  }
+
+  return [
+    ...listed,
+    ...noInventory.sort((a, b) =>
+      (a.tableNum || 'ZZZ').localeCompare(b.tableNum || 'ZZZ', undefined, { numeric: true })),
+  ];
+}
+
+// ── DIRECTORY RENDER + FILTER ──
+
+function renderDirectory() {
+  const container = document.getElementById('directoryList');
+  const countEl   = document.getElementById('directoryCount');
+  if (!container) return;
+
+  if (!buyerShowId) {
+    container.innerHTML = '<div class="dir-empty">Select a show above to see the seller directory.</div>';
+    if (countEl) countEl.textContent = '0';
+    return;
+  }
+
+  const all     = buildFullSellerDirectory();
+  const q       = (document.getElementById('directorySearch')?.value || '').toLowerCase().trim();
+  const catFilt = document.getElementById('directoryFilter')?.value || '';
+
+  const filtered = all.filter(entry => {
+    const matchQ = !q ||
+      entry.handle.toLowerCase().includes(q) ||
+      (entry.tableNum || '').toLowerCase().includes(q);
+    const matchCat = !catFilt ||
+      entry.tags.includes(catFilt) ||
+      (catFilt === 'Pokemon' && entry.tags.includes('TCG'));
+    return matchQ && matchCat;
+  });
+
+  if (countEl) countEl.textContent = filtered.length;
+
+  if (!filtered.length) {
+    container.innerHTML = '<div class="dir-empty">No sellers match your search.</div>';
+    return;
+  }
+
+  const tagMap = {
+    Sports: 'dir-tag-sports', TCG: 'dir-tag-tcg', Sealed: 'dir-tag-sealed',
+    Graded: 'dir-tag-graded', Raw: 'dir-tag-raw', Lot: 'dir-tag-lot',
+  };
+
+  container.innerHTML = filtered.map(entry => {
+    const hasInv   = entry.cardCount > 0;
+    const hasTable = !!entry.tableNum;
+
+    const tableBadge = hasTable
+      ? `<div class="dir-table-badge">${entry.tableNum}</div>`
+      : `<div class="dir-table-badge no-table">—</div>`;
+
+    const tagHtml = entry.tags.length
+      ? `<div class="dir-tags">${entry.tags.map(t =>
+          `<span class="dir-tag ${tagMap[t] || ''}">${t}</span>`).join('')}</div>`
+      : '';
+
+    const rightHtml = hasInv
+      ? `<div class="dir-right">
+           <div class="dir-card-count">${entry.cardCount}</div>
+           <div class="dir-card-count-lbl">cards listed</div>
+           <div class="dir-arrow">Browse →</div>
+         </div>`
+      : `<div class="dir-right">
+           <div class="dir-card-count-lbl" style="color:var(--muted);font-size:0.7rem">No inventory<br>listed yet</div>
+         </div>`;
+
+    const safeHandle = entry.handle.replace(/'/g, "\\'");
+    const clickAttr  = hasInv
+      ? `onclick="directoryOpenSeller('${safeHandle}')" role="button" tabindex="0"
+         onkeydown="if(event.key==='Enter') directoryOpenSeller('${safeHandle}')"`
+      : '';
+
+    return `<div class="dir-row${hasInv ? '' : ' no-inventory'}" ${clickAttr}>
+      ${tableBadge}
+      <div style="flex:1;min-width:0">
+        <div class="dir-seller-name">${entry.handle}</div>
+        <div class="dir-seller-meta">${hasTable ? `Table ${entry.tableNum}` : 'Table not yet assigned'}</div>
+        ${tagHtml}
+      </div>
+      ${rightHtml}
+    </div>`;
+  }).join('');
+}
+
+function filterDirectory() {
+  renderDirectory();
+}
+
+function directoryOpenSeller(handle) {
+  switchBuyerTab('browse');
+  const sel = document.getElementById('filterSeller');
+  if (sel) sel.value = handle;
+  filterBuyer();
+  document.getElementById('buyerGrid')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 
