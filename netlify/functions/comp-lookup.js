@@ -1,4 +1,9 @@
-// comp-lookup.js — PriceCharting + TCG API comp price lookup
+// comp-lookup.js — PriceCharting + Pokémon TCG API + TCG API comp price lookup
+// Routing:
+//   Pokemon     → pokemontcg.io, fallback to TCG API
+//   Other TCG   → TCG API
+//   Sports      → PriceCharting, fallback to TCG API if not found
+//
 // Rate limit: 1 call/second enforced via waitForPCRateLimit() for PriceCharting.
 // Batch processing is sequential (for...of), never parallel, to respect the limit.
 // Primary rate limiting for multi-card batch runs is enforced client-side in
@@ -9,8 +14,6 @@ const { createClient } = require('@supabase/supabase-js');
 // ── RATE LIMITER ──
 // Enforces 1100ms minimum gap between PriceCharting API calls.
 // Resets on cold start — safe since each Netlify invocation is isolated.
-// For batch runs the client-side 1200ms delay in runCompCheck() is the
-// primary guard; this is defence-in-depth for single-card calls.
 let _lastPCCallTime = 0;
 
 async function waitForPCRateLimit() {
@@ -103,7 +106,6 @@ async function lookupPriceCharting(card) {
   }
 
   try {
-    // STEP 1 — search by name to get product ID
     const query = [card.player, card.year, card.cardSet, card.parallel]
       .filter(Boolean)
       .join(' ');
@@ -124,7 +126,6 @@ async function lookupPriceCharting(card) {
     const product    = searchData?.products?.[0];
     if (!product?.id) return { stub: true, noData: true };
 
-    // STEP 2 — fetch full price data by product ID
     await waitForPCRateLimit();
 
     const priceRes = await fetch(
@@ -140,7 +141,6 @@ async function lookupPriceCharting(card) {
     const p = await priceRes.json();
     if (p.status === 'error') return { stub: true, noData: true };
 
-    // Select price tier by grade; prices stored in pennies
     const gradeNum  = parseFloat(card.grade) || 0;
     const rawPennies =
       gradeNum >= 10 ? p['psa-10-price'] :
@@ -154,7 +154,7 @@ async function lookupPriceCharting(card) {
     return {
       stub:        false,
       compPrice,
-      lowPrice:    null,  // PriceCharting does not expose low/high in this endpoint
+      lowPrice:    null,
       highPrice:   null,
       source:      'pricecharting',
       matchedCard: product.name,
@@ -166,6 +166,100 @@ async function lookupPriceCharting(card) {
       console.warn('PriceCharting API timeout');
     } else {
       console.warn('PriceCharting lookup error:', err.message);
+    }
+    return { stub: true };
+  }
+}
+
+// ── POKÉMON TCG API LOOKUP ──
+// Uses pokemontcg.io v2 — returns TCGPlayer market prices.
+// Optional POKEMON_TCG_API_KEY raises rate limits (free tier works without it).
+// Price subtype priority: holofoil → reverseHolofoil → 1stEditionHolofoil →
+//   normal → 1stEditionNormal → any available.
+
+async function lookupPokemonTCG(card) {
+  const name = (card.player || '').trim();
+  if (!name) return { stub: true, noData: true };
+
+  try {
+    // Build Lucene query: match name, optionally filter by set
+    const q = card.cardSet
+      ? `name:"${name}" set.name:"${card.cardSet}"`
+      : `name:"${name}"`;
+
+    const headers = { 'Content-Type': 'application/json' };
+    if (process.env.POKEMON_TCG_API_KEY) {
+      headers['X-Api-Key'] = process.env.POKEMON_TCG_API_KEY;
+    }
+
+    const res = await fetch(
+      `https://api.pokemontcg.io/v2/cards?q=${encodeURIComponent(q)}&pageSize=4&orderBy=-set.releaseDate`,
+      { headers, signal: AbortSignal.timeout(6000) }
+    );
+
+    if (!res.ok) {
+      console.warn('Pokemon TCG API failed:', res.status);
+      return { stub: true };
+    }
+
+    const data  = await res.json();
+    const cards = data.data || [];
+    if (!cards.length) return { stub: true, noData: true };
+
+    // Take the most recent card that has pricing
+    for (const item of cards) {
+      const prices = item.tcgplayer?.prices || {};
+
+      // Preferred subtype order
+      const SUBTYPE_ORDER = [
+        'holofoil', 'reverseHolofoil', '1stEditionHolofoil',
+        'normal', '1stEditionNormal',
+      ];
+
+      let compPrice = null, lowPrice = null, highPrice = null;
+
+      for (const subtype of SUBTYPE_ORDER) {
+        const p = prices[subtype];
+        if (p?.market) {
+          compPrice = p.market;
+          lowPrice  = p.low  || null;
+          highPrice = p.high || null;
+          break;
+        }
+      }
+
+      // Fallback: any subtype with a market price
+      if (!compPrice) {
+        for (const p of Object.values(prices)) {
+          if (p?.market) {
+            compPrice = p.market;
+            lowPrice  = p.low  || null;
+            highPrice = p.high || null;
+            break;
+          }
+        }
+      }
+
+      if (compPrice) {
+        return {
+          stub:      false,
+          compPrice,
+          lowPrice,
+          highPrice,
+          source:    'pokemontcg',
+          cardName:  item.name,
+          setName:   item.set?.name || null,
+        };
+      }
+    }
+
+    return { stub: true, noData: true };
+
+  } catch (err) {
+    if (err.name === 'TimeoutError') {
+      console.warn('Pokemon TCG API timeout');
+    } else {
+      console.warn('Pokemon TCG API error:', err.message);
     }
     return { stub: true };
   }
@@ -226,19 +320,36 @@ async function lookupTCGApi(card) {
 }
 
 // ── ROUTER ──
+// Pokemon   → pokemontcg.io, fallback to TCG API
+// Other TCG → TCG API
+// Sports    → PriceCharting, fallback to TCG API if not found
 
 async function lookupComp(card) {
-  const isTCG = TCG_SPORTS.includes(card.sport);
-
-  // Check cache first (24h TTL)
   const cached = await checkPriceCache(card);
   if (cached) return cached;
 
-  const result = isTCG
-    ? await lookupTCGApi(card)
-    : await lookupPriceCharting(card);
+  const isPokemon = card.sport === 'Pokemon';
+  const isTCG     = TCG_SPORTS.includes(card.sport);
 
-  // Write successful results to cache
+  let result;
+
+  if (isPokemon) {
+    result = await lookupPokemonTCG(card);
+    if (result.stub) {
+      console.log('Pokemon TCG API miss — falling back to TCG API');
+      result = await lookupTCGApi(card);
+    }
+  } else if (isTCG) {
+    result = await lookupTCGApi(card);
+  } else {
+    // Sports card: PriceCharting first, TCG API as last resort
+    result = await lookupPriceCharting(card);
+    if (result.stub || result.noData) {
+      console.log('PriceCharting miss — falling back to TCG API');
+      result = await lookupTCGApi(card);
+    }
+  }
+
   if (!result.stub && result.compPrice) {
     await writePriceCache(card, result);
   }
