@@ -1099,6 +1099,63 @@
 
 
 
+  /* ── Buyer comp section in card modal ── */
+  #modalCompWrap { margin-bottom: 1.2rem; }
+  .modal-comp-box {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 1rem 1.2rem;
+  }
+  .modal-comp-label {
+    font-family: 'DM Mono', monospace; font-size: 0.64rem;
+    letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted);
+    margin-bottom: 0.65rem; display: flex; align-items: center;
+    justify-content: space-between;
+  }
+  .modal-comp-source { font-size: 0.6rem; color: var(--muted); opacity: 0.7; font-style: normal; letter-spacing: 0.04em; }
+  .modal-comp-row { display: flex; align-items: flex-end; gap: 1rem; flex-wrap: wrap; }
+  .modal-comp-market { flex: 1; min-width: 100px; }
+  .modal-comp-market-value {
+    font-family: 'Bebas Neue', sans-serif; font-size: 2rem;
+    letter-spacing: 0.04em; color: var(--text); line-height: 1;
+  }
+  .modal-comp-market-sub { font-size: 0.68rem; color: var(--muted); font-family: 'DM Mono', monospace; margin-top: 2px; }
+  .modal-comp-delta {
+    font-size: 0.75rem; font-weight: 600; font-family: 'DM Mono', monospace;
+    padding: 4px 10px; border-radius: 6px; letter-spacing: 0.02em; align-self: center;
+  }
+  .modal-comp-delta.deal { background: rgba(22,163,74,0.12); color: #4ade80; border: 1px solid rgba(22,163,74,0.25); }
+  .modal-comp-delta.fair { background: rgba(148,163,184,0.1); color: var(--muted); border: 1px solid var(--border); }
+  .modal-comp-delta.high { background: rgba(245,158,11,0.12); color: #fbbf24; border: 1px solid rgba(245,158,11,0.25); }
+  .modal-comp-divider { height: 1px; background: var(--border); margin: 0.8rem 0; }
+  .modal-comp-also-label {
+    font-family: 'DM Mono', monospace; font-size: 0.6rem; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--muted); margin-bottom: 0.5rem;
+  }
+  .modal-comp-seller-row {
+    display: flex; align-items: center; gap: 8px; padding: 5px 0;
+    border-bottom: 1px solid var(--border); font-size: 0.8rem;
+  }
+  .modal-comp-seller-row:last-child { border-bottom: none; }
+  .modal-comp-seller-table {
+    font-family: 'DM Mono', monospace; font-size: 0.68rem; color: var(--gold);
+    background: rgba(245,200,66,0.1); border: 1px solid rgba(245,200,66,0.2);
+    border-radius: 5px; padding: 2px 6px; flex-shrink: 0;
+  }
+  .modal-comp-seller-name {
+    flex: 1; color: var(--text); font-size: 0.78rem;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .modal-comp-seller-price { font-weight: 600; font-size: 0.82rem; color: var(--text); flex-shrink: 0; }
+  .modal-comp-seller-price.best { color: #4ade80; }
+  .modal-comp-skeleton {
+    height: 14px;
+    background: linear-gradient(90deg, var(--surface) 25%, var(--border) 50%, var(--surface) 75%);
+    background-size: 200% 100%; animation: comp-shimmer 1.4s infinite;
+    border-radius: 4px; margin-bottom: 8px;
+  }
+  @keyframes comp-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+  .modal-comp-empty { font-size: 0.78rem; color: var(--muted); font-style: italic; padding: 2px 0; }
+
   /* ── QR PANEL ── */
   .qr-panel {
     background: var(--card);
@@ -3851,6 +3908,20 @@
           <div id="modalNotes"></div>
         </div>
       </div>
+
+      <!-- ── Buyer comp section ── -->
+      <div id="modalCompWrap" style="display:none">
+        <div class="modal-comp-box">
+          <div class="modal-comp-label">
+            <span>Market value</span>
+            <span class="modal-comp-source" id="modalCompSource"></span>
+          </div>
+          <div id="modalCompContent">
+            <div class="modal-comp-skeleton" style="width:55%"></div>
+            <div class="modal-comp-skeleton" style="width:35%"></div>
+          </div>
+        </div>
+      </div>
     </div>
     <div class="modal-actions" id="modalActions">
       <a class="btn-whatsapp" id="modalWhatsApp" href="#" target="_blank" rel="noopener">
@@ -5968,6 +6039,16 @@ async function openCardModal(idx) {
   const r = currentDisplayRows[idx];
   if (!r) return;
 
+  // Reset comp section to skeleton before async fetch
+  const compWrap    = document.getElementById('modalCompWrap');
+  const compContent = document.getElementById('modalCompContent');
+  const compSource  = document.getElementById('modalCompSource');
+  if (compWrap)    compWrap.style.display    = 'block';
+  if (compContent) compContent.innerHTML     =
+    '<div class="modal-comp-skeleton" style="width:60%"></div>' +
+    '<div class="modal-comp-skeleton" style="width:38%"></div>';
+  if (compSource)  compSource.textContent    = '';
+
   const isGraded    = r.Grade && !isNaN(Number(r.Grade));
   const grader      = r.Grader || (isGraded ? 'PSA' : null);
   const sellerHandle = r.Seller || 'unknown';
@@ -6031,6 +6112,16 @@ async function openCardModal(idx) {
   document.getElementById('cardModal').classList.add('open');
   document.body.style.overflow = 'hidden';
 
+  // Fetch comp data after modal is already visible — non-blocking
+  if (currentRole === 'buyer' || !currentRole) {
+    fetchBuyerComp(r).then(result => {
+      if (!document.getElementById('cardModal').classList.contains('open')) return;
+      renderBuyerComp(r, result);
+    });
+  } else {
+    if (compWrap) compWrap.style.display = 'none';
+  }
+
   // Seller notes
   const notes = r.Notes || r['Seller Notes'] || '';
   if (notes) {
@@ -6086,10 +6177,155 @@ async function openCardModal(idx) {
 function closeModal() {
   document.getElementById('cardModal').classList.remove('open');
   document.body.style.overflow = '';
+  // Reset comp so skeleton shows on next open, not stale data
+  const cw = document.getElementById('modalCompWrap');
+  const cc = document.getElementById('modalCompContent');
+  if (cw) cw.style.display = 'none';
+  if (cc) cc.innerHTML = '';
 }
 
 function handleModalOverlayClick(e) {
   if (e.target === document.getElementById('cardModal')) closeModal();
+}
+
+// ── BUYER COMP LOOKUP ──
+
+async function fetchBuyerComp(card) {
+  try {
+    const res = await fetch('/.netlify/functions/comp-lookup', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cards: [{
+        id:         cardFingerprint(card),
+        player:     card.Player         || card['Card Title'] || '',
+        year:       card.Year           || null,
+        cardSet:    card['Set ']        || card['Set'] || '',
+        cardNumber: card.Number         || card['Card #'] || '',
+        grade:      card.Grade          || null,
+        grader:     card.Grader         || null,
+        parallel:   card['Parallel/Variant'] || '',
+        sport:      detectCardSport(card),
+      }] }),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return null;
+    const data   = await res.json();
+    const result = data.results?.[0];
+    if (!result || result.stub) return null;
+    return result;
+  } catch(err) {
+    console.warn('Buyer comp fetch failed:', err.message);
+    return null;
+  }
+}
+
+function renderBuyerComp(card, result) {
+  const DEAL_THRESHOLD = 5;   // % below market → green deal badge
+  const HIGH_THRESHOLD = 20;  // % above market → amber high badge
+
+  if (window.CARDSHOW_DEBUG) console.log('[comp]', result);
+
+  const wrap    = document.getElementById('modalCompWrap');
+  const content = document.getElementById('modalCompContent');
+  const source  = document.getElementById('modalCompSource');
+  if (!wrap || !content) return;
+
+  if (!result || !result.compPrice) {
+    wrap.style.display = 'none';
+    return;
+  }
+
+  wrap.style.display = 'block';
+
+  const sourceLabel = result.source === 'pricecharting'
+    ? 'Avg of recent eBay sales · PriceCharting'
+    : result.source === 'tcgapi'
+    ? 'Market avg · TCG API'
+    : 'Market average';
+  if (source) source.textContent = sourceLabel;
+
+  const gradeNum  = parseFloat(card.Grade) || 0;
+  const tierLabel = gradeNum >= 10 ? 'PSA 10 market value'
+                  : gradeNum >= 9  ? 'PSA 9 market value'
+                  : gradeNum > 0   ? 'Graded market value'
+                  : 'Ungraded market value';
+
+  const asking   = Number(card.Price || 0);
+  const market   = result.compPrice;
+  const deltaPct = market > 0 ? ((asking - market) / market) * 100 : null;
+
+  let deltaClass = 'fair';
+  let deltaText  = '';
+  if (deltaPct !== null) {
+    const abs = Math.abs(deltaPct);
+    if (deltaPct < -DEAL_THRESHOLD) {
+      deltaClass = 'deal';
+      deltaText  = `↓ ${abs.toFixed(1)}% below market`;
+    } else if (deltaPct > HIGH_THRESHOLD) {
+      deltaClass = 'high';
+      deltaText  = `↑ ${deltaPct.toFixed(1)}% above market`;
+    } else if (deltaPct > DEAL_THRESHOLD) {
+      deltaClass = 'fair';
+      deltaText  = `+${deltaPct.toFixed(1)}% above market`;
+    } else {
+      deltaClass = 'fair';
+      deltaText  = 'Near market value';
+    }
+  }
+
+  const deltaHtml = deltaText
+    ? `<div class="modal-comp-delta ${deltaClass}">${deltaText}</div>`
+    : '';
+
+  // Multi-seller same-card lookup from showInventory — no DB query
+  const currentSeller = card.Seller || '';
+  const sameCards = showInventory.filter(c => {
+    if (c.Status === 'Sold')          return false;
+    if (c.Seller === currentSeller)   return false;
+    const samePlayer = (c.Player || '').toLowerCase() === (card.Player || '').toLowerCase();
+    const sameGrade  = String(c.Grade  || '') === String(card.Grade  || '');
+    const sameGrader = (c.Grader || '').toLowerCase() === (card.Grader || '').toLowerCase();
+    const sameSet    = (c['Set '] || c['Set'] || '').toLowerCase() ===
+                       (card['Set '] || card['Set'] || '').toLowerCase();
+    return samePlayer && sameGrade && sameGrader && sameSet;
+  }).map(c => ({
+    seller: c.Seller || '',
+    table:  getTableNumber(c.Seller || ''),
+    price:  Number(c.Price || 0),
+  })).sort((a, b) => a.price - b.price);
+
+  let alsoHtml = '';
+  if (sameCards.length > 0) {
+    const lowestPrice = sameCards[0].price;
+    const rows = sameCards.slice(0, 3).map(s => {
+      const tableLabel = s.table
+        ? `<span class="modal-comp-seller-table">Table ${s.table}</span>`
+        : '';
+      const isBest = s.price === lowestPrice;
+      return `<div class="modal-comp-seller-row">
+        ${tableLabel}
+        <span class="modal-comp-seller-name">@${s.seller}</span>
+        <span class="modal-comp-seller-price${isBest ? ' best' : ''}">
+          $${s.price.toLocaleString()}${isBest ? ' ✓' : ''}
+        </span>
+      </div>`;
+    }).join('');
+
+    alsoHtml = `<div class="modal-comp-divider"></div>
+      <div class="modal-comp-also-label">Also at this show (${sameCards.length})</div>
+      ${rows}`;
+  }
+
+  content.innerHTML = `
+    <div class="modal-comp-row">
+      <div class="modal-comp-market">
+        <div class="modal-comp-market-value">$${market.toLocaleString(undefined,
+          { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</div>
+        <div class="modal-comp-market-sub">${tierLabel}</div>
+      </div>
+      ${deltaHtml}
+    </div>
+    ${alsoHtml}`;
 }
 
 function detectSport(r) {
