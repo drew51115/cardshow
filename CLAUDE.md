@@ -267,6 +267,7 @@ Called from `fillFormFromScan` (barcode) and `fillFormFromVision` (vision). Gene
 | `ANTHROPIC_API_KEY` | Claude API key for vision-scan.js (Sprint 2) |
 | `TRADING_CARD_API_KEY` | Trading Card API key for live card DB autocomplete (Sprint 3) — add in Netlify dashboard → Site settings → Environment variables once approved at tradingcardapi.com/early-access |
 | `CACHE_INVALIDATE_SECRET` | Random secret protecting `/.netlify/functions/invalidate-search-cache` — set to output of `openssl rand -hex 24`; pass as `x-invalidate-secret` request header |
+| `POKEMON_TCG_API_KEY` | pokemontcg.io API key — optional; raises rate limits. Free tier works without it. Register at dev.pokemontcg.io |
 
 ### Credential Injection (no build step workaround)
 Supabase URL and anon key are **not** hardcoded in tracked files. `netlify.toml` has a `command` that runs `sed` to replace `SUPABASE_URL_PLACEHOLDER` / `SUPABASE_ANON_KEY_PLACEHOLDER` in all three HTML files at deploy time. `SECRETS_SCAN_OMIT_KEYS = "SUPABASE_URL,SUPABASE_ANON_KEY"` prevents Netlify's secrets scanner from blocking the build on the injected values (they are intentionally public publishable keys).
@@ -343,15 +344,14 @@ Cancel at each state:
 ### Trading Card Lookup Function (trading-card-lookup.js)
 - **Endpoint:** POST `{ query, sport? }` → `{ stub: bool, results: [...], fromCache?: bool, source?: string }`
 - **Routing logic (in priority order):**
-  1. `TRADING_CARD_API_KEY` set → Trading Card API for all sports (3M+ cards)
-  2. No `TRADING_CARD_API_KEY`, non-TCG sport, `PRICECHARTING_TOKEN` set → PriceCharting search fallback
-  3. No `TRADING_CARD_API_KEY`, TCG sport (Pokemon/MTG/etc.) → `stub: true` (local CARD_DB fallback)
-  4. No keys at all → `stub: true`
+  1. `TRADING_CARD_API_KEY` set → Trading Card API for all sports + TCG (3M+ cards); cache key `"tradingcardapi:"`
+  2. No `TRADING_CARD_API_KEY` → Pokémon TCG API + PriceCharting run in **parallel** via `Promise.all`; results merged (Pokémon first, deduped by id, capped at 8); cache key `"auto:"`
+  3. Both parallel APIs return empty → `stub: true` (client falls back to local CARD_DB)
 - **Trading Card API mode:** `GET https://api.tradingcardapi.com/v1/cards?filter[name]=...&page[limit]=8` with `Authorization: Bearer` and `Accept: application/vnd.api+json`. 5-second timeout.
 - **PriceCharting fallback mode:** `GET sportscardspro.com/api/products?t=TOKEN&q=...` → up to 8 results. Parses the `name` + `console-name` fields into structured `{ player, year, cardSet, parallel }` via `parsePCProduct()`. `cardNumber` and `imageUrl` are null in this mode.
 - **`parsePCProduct(product)`** — extracts year via regex, uses `console-name` as set, strips known parallel terms to isolate player name.
 - Returns normalized objects: `{ id, player, year, cardSet, cardNumber, sport, parallel, imageUrl, rawTitle? }`
-- **Cache:** results written to `card_search_cache` (Supabase) after successful live call; read on next identical query within 7 days. Cache key prefixed by source (`tradingcardapi:` or `pricecharting:`). Requires `SUPABASE_SERVICE_KEY`. Cache write is non-blocking.
+- **Cache:** results written to `card_search_cache` (Supabase) after successful live call; read on next identical query within 7 days. Cache key prefixed by source (`tradingcardapi:` or `auto:`). Requires `SUPABASE_SERVICE_KEY`. Cache write is non-blocking.
 
 ### Card Search Cache (card_search_cache table)
 - **TTL:** 7 days, keyed by `query_key` = `"tradingcardapi:{normalized_query}"` (lowercased, whitespace-collapsed)
@@ -493,6 +493,12 @@ Cancel at each state:
 - **Mobile Add Card FAB** — `#fabAddCard` fixed bottom-right circle (56px, `≤767px` only). Black `#07080c` background, gold border, gold "+" text — high contrast against dark UI. Shown only for sellers; hidden for admin and on sign-out. Toast raised to `bottom: 5.5rem` on mobile to avoid FAB collision.
 - **Admin mobile UX** — On `≤599px`: nav name/role hidden, only avatar + sign-out visible; partnership link hidden; gap/padding tightened. Admin sidebar (`#adminShowsPanel` Quick Actions) hidden on mobile — it duplicated the Create New Show CTA in main content. Admin grid collapses to `1fr` so main content fills full width.
 - **Add Card type toggle selected state** — Selected tab now `background: var(--card); color: var(--gold); border-bottom: 2px solid var(--gold)`. `acSetType()` applies same styles dynamically. Replaced gold-fill + black-text with gold-on-dark, consistent with all other gold accents in the UI.
+- **trading-card-lookup.js parallel mode** — Removed keyword-based Pokémon detection (`looksLikePokemon()`). Now runs `lookupPokemonTCG()` + `lookupPriceCharting()` in parallel via `Promise.all` for every query. pokemontcg.io returns `[]` for sports queries; PriceCharting returns `[]` for TCG queries — safe to merge. Cache key prefix changed from `pricecharting:` / `pokemon:` to `auto:`. Pokémon results listed first in merged output.
+- **trading-card-lookup.js PriceCharting parser fix** — `parsePCProduct()` strips `SPORT_PREFIX_RE` ("Baseball Cards", "Football Cards", etc.) from both `name` and `console-name` before extracting fields. When year appears first and no usable `cardSet` exists, leaves `player` empty and returns `rawTitle` (stripped full name) as display fallback. Prevents "Baseball Cards" appearing as player name.
+- **Pokémon TCG API integration** — `lookupPokemonTCG(query)` hits `api.pokemontcg.io/v2/cards` with Lucene-style `name:"query*"` search. Optional `POKEMON_TCG_API_KEY` header raises rate limits. Returns normalized `{ id, player, year, cardSet, cardNumber, sport:'Pokemon', parallel, imageUrl }`. Added `POKEMON_TCG_API_KEY` to `.env.example`.
+- **show.html buyer view audit fixes** — Three issues fixed: (1) `#debugInfo` element and all JS writing to it removed — raw href/hash debug was visible to real buyers during page load. (2) Stale `isPreview` block removed — `fetchInventoryFromDB` loads all cards from Supabase so the capped-preview message was dead code. (3) `renderSellerRoster()` at-show notice injection guarded with `getElementById` check to prevent duplicate HTML when `renderPage()` runs twice.
+- **show.html seller list from DB** — `showMeta.sellers` now rebuilt from actual DB card data after `fetchInventoryFromDB` completes. Previously used URL hash snapshot which went stale when sellers were added/removed after the share link was generated.
+- **show.html seller roster redesign** — Replaced initials chips + tooltip with a bordered name list. Each row: gold dot · display name (DM Sans) · `@handle` (DM Mono, muted). `fetchSellerProfiles(handles)` fires a single `SELECT handle, display_name FROM sellers WHERE handle IN (...)` after inventory loads; results populate `sellerProfiles{}` and re-render the roster. Falls back to handle-with-underscores-replaced if no display name is set. No interaction required — all names visible immediately on any screen size.
 
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`
