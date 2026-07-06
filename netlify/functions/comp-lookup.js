@@ -122,8 +122,8 @@ async function lookupCardSight(card) {
   }
 
   const headers = {
-    'Authorization': `Bearer ${apiKey}`,
-    'Content-Type':  'application/json',
+    'X-API-Key':    apiKey,
+    'Content-Type': 'application/json',
   };
 
   try {
