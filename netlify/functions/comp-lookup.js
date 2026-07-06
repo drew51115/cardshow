@@ -149,18 +149,29 @@ async function lookupCardSight(card) {
 
     const searchData = await searchRes.json();
     const cards = searchData?.cards || searchData?.data || [];
+
+    if (process.env.CARDSHOW_DEBUG)
+      console.log('[cardsight] catalog results:', JSON.stringify(cards.slice(0, 2), null, 2));
+
     if (!cards.length) {
-      if (process.env.CARDSHOW_DEBUG)
-        console.log('[cardsight] no catalog match for:', card.player);
+      console.warn(`[cardsight] no catalog match for: "${card.player}"`);
       return { stub: true, noData: true };
     }
 
-    // Validate that a result actually matches the searched player name.
-    // CardSight catalog search can return unrelated cards — reject them.
+    // Validate the result matches the searched player — CardSight may return unrelated cards.
+    // Check every string field in the card object since the player name field is uncertain.
     const playerLower = (card.player || '').toLowerCase();
-    const matched = cards.find(c => c.name && c.name.toLowerCase().includes(playerLower));
+    function cardMatchesPlayer(c) {
+      const allText = Object.values(c)
+        .filter(v => typeof v === 'string')
+        .join(' ')
+        .toLowerCase();
+      return allText.includes(playerLower);
+    }
+
+    const matched = cards.find(cardMatchesPlayer);
     if (!matched) {
-      console.warn(`[cardsight] catalog results don't match player "${card.player}" — got "${cards[0]?.name}"`);
+      console.warn(`[cardsight] no result matched player "${card.player}" — top result fields: ${JSON.stringify(cards[0])}`);
       return { stub: true, noData: true };
     }
 
