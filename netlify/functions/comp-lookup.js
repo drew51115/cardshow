@@ -128,13 +128,10 @@ async function lookupCardSight(card) {
 
   try {
     // ── STEP 1: Catalog search to get card UUID ──────────────────────────────
-    // Build a text query combining player + year + manufacturer for the search.
-    // CardSight ignores the 'player' filter param — use 'q' (generic text search).
-    const mfr = inferManufacturer(card.cardSet);
-    const queryText = [card.player, card.year, mfr].filter(Boolean).join(' ');
-
+    // Use player= param per CardSight SDK spec. Pass player name only —
+    // adding year/manufacturer sends mixed-sport noise that surfaces MTG cards.
     const searchParams = new URLSearchParams();
-    searchParams.set('q', queryText);
+    if (card.player) searchParams.set('player', card.player);
     searchParams.set('take', '3');
 
     const searchRes = await fetch(
@@ -158,20 +155,14 @@ async function lookupCardSight(card) {
       return { stub: true, noData: true };
     }
 
-    // Validate the result matches the searched player — CardSight may return unrelated cards.
-    // Check every string field in the card object since the player name field is uncertain.
+    // Validate: for sports cards the name field IS the player name.
+    // Reject results where name doesn't match — catches MTG/TCG bleed-through.
     const playerLower = (card.player || '').toLowerCase();
-    function cardMatchesPlayer(c) {
-      const allText = Object.values(c)
-        .filter(v => typeof v === 'string')
-        .join(' ')
-        .toLowerCase();
-      return allText.includes(playerLower);
-    }
-
-    const matched = cards.find(cardMatchesPlayer);
+    const matched = cards.find(c =>
+      typeof c.name === 'string' && c.name.toLowerCase().includes(playerLower)
+    );
     if (!matched) {
-      console.warn(`[cardsight] no result matched player "${card.player}" — top result fields: ${JSON.stringify(cards[0])}`);
+      console.warn(`[cardsight] no match for "${card.player}" — got name="${cards[0]?.name}" set="${cards[0]?.releaseName}"`);
       return { stub: true, noData: true };
     }
 
