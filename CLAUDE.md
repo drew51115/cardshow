@@ -410,9 +410,15 @@ Cancel at each state:
 
 ### CardSight AI — Primary Sports Card Comp Source
 - `CARDSIGHT_API_KEY` env var (set in Netlify). Free tier: 750 calls/month — 24h `price_cache` TTL limits redundant calls significantly.
-- **⚠ API shape not confirmed:** cardsight.ai returns 403 to automated fetches. The endpoint, auth header, request field names, and response field names in `lookupCardSight()` are marked with `// TODO: CONFIRM FROM DOCS` comments. Update these once you have API access and can verify the actual shape.
+- **Two-step flow** (confirmed from SDK docs):
+  - Step 1: `GET /v1/catalog/cards?player=&year=&manufacturer=&take=3` → array of cards with `id` (UUID)
+  - Step 2: `GET /v1/pricing/{card_id}?period=90d&listing_type=both&limit=25` → `{ raw: { records }, graded: [{ company_name, grades: [{ grade_value, records }] }] }`
+- Auth: `Authorization: Bearer {CARDSIGHT_API_KEY}`
+- `inferManufacturer(cardSet)` maps set name keywords (Bowman/Topps, Prizm/Panini, Upper Deck, etc.) to manufacturer param; omits param when unknown.
+- Grade matching: finds exact `grade_value` match first, falls back to within ±0.5; falls back to raw sales for ungraded cards.
+- `compPrice` computed as median of up to 5 most recent sale records.
 - Returns normalised `{ stub, compPrice, lowPrice, highPrice, recentSales[], source: 'cardsight', matchedCard }`.
-- `recentSales` — array of `{ price, date, source }` individual sale records if the API provides them; `[]` otherwise.
+- `recentSales` — array of `{ price, date, source }` up to 3 individual sale records; `[]` for all other sources.
 - Source label in buyer modal: "Real sales data · CardSight AI"
 - Fallback: if CardSight returns stub or no `compPrice`, falls through to PriceCharting.
 

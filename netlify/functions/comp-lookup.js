@@ -96,115 +96,154 @@ async function writePriceCache(card, result) {
 }
 
 // ── CARDSIGHT AI LOOKUP ──
-// Primary source for sports cards.
+// Primary source for sports cards. Two-step flow:
+//   Step 1: GET /v1/catalog/cards?player=&year=&manufacturer= → card UUID
+//   Step 2: GET /v1/pricing/{card_id}?period=90d&listing_type=both → sale records
 // Free tier: 750 calls/month. 24h price_cache TTL limits redundant calls.
-//
-// ⚠ DOCS INACCESSIBLE: cardsight.ai returned 403 for all automated fetches.
-// The endpoint, auth header, request shape, and response field names below
-// are marked with TODO comments. Update them once you have API access.
-// The surrounding error handling, timeout, and return shape are correct.
+
+// Helper: map common set names to CardSight's manufacturer parameter
+function inferManufacturer(cardSet) {
+  const s = (cardSet || '').toLowerCase();
+  if (s.includes('topps') || s.includes('bowman'))         return 'Topps';
+  if (s.includes('panini') || s.includes('prizm') ||
+      s.includes('donruss') || s.includes('select') ||
+      s.includes('mosaic')  || s.includes('contenders'))   return 'Panini';
+  if (s.includes('upper deck') || s.includes('ud '))       return 'Upper Deck';
+  if (s.includes('fleer'))                                  return 'Fleer';
+  if (s.includes('score'))                                  return 'Score';
+  return null; // omit manufacturer filter if unknown
+}
 
 async function lookupCardSight(card) {
   const apiKey = process.env.CARDSIGHT_API_KEY;
   if (!apiKey) {
-    console.warn('CARDSIGHT_API_KEY not set — returning stub');
+    console.warn('[cardsight] CARDSIGHT_API_KEY not set');
     return { stub: true };
   }
 
+  const headers = {
+    'Authorization': `Bearer ${apiKey}`,
+    'Content-Type':  'application/json',
+  };
+
   try {
-    // TODO: CONFIRM FROM DOCS — exact endpoint path
-    // Common patterns: /v1/prices, /api/comps, /api/cards/price
-    const BASE_URL = 'https://api.cardsight.ai';  // TODO: CONFIRM FROM DOCS
-    const ENDPOINT = '/v1/prices';                 // TODO: CONFIRM FROM DOCS
+    // ── STEP 1: Catalog search to get card UUID ──────────────────────────────
+    const searchParams = new URLSearchParams();
+    if (card.player)  searchParams.set('player', card.player);
+    if (card.year)    searchParams.set('year', String(card.year));
+    const mfr = inferManufacturer(card.cardSet);
+    if (mfr) searchParams.set('manufacturer', mfr);
+    searchParams.set('take', '3');
 
-    // TODO: CONFIRM FROM DOCS — request shape (JSON body vs query params)
-    // Sending as JSON body; swap to query params if the API expects GET
-    const body = {
-      player:  card.player  || undefined,  // TODO: CONFIRM field name
-      year:    card.year    || undefined,  // TODO: CONFIRM field name
-      set:     card.cardSet || undefined,  // TODO: CONFIRM field name (may be 'cardSet', 'set_name', etc.)
-      grade:   card.grade   || undefined,  // TODO: CONFIRM field name
-      grader:  card.grader  || undefined,  // TODO: CONFIRM field name
-      number:  card.cardNumber || undefined, // TODO: CONFIRM field name (may be 'card_number', 'cardNumber')
-    };
+    const searchRes = await fetch(
+      `https://api.cardsight.ai/v1/catalog/cards?${searchParams}`,
+      { headers, signal: AbortSignal.timeout(6000) }
+    );
 
-    // TODO: CONFIRM FROM DOCS — auth header (Bearer vs X-API-Key vs other)
-    const res = await fetch(`${BASE_URL}${ENDPOINT}`, {
-      method:  'POST',                              // TODO: CONFIRM method (may be GET)
-      headers: {
-        'Content-Type':  'application/json',
-        'Authorization': `Bearer ${apiKey}`,        // TODO: CONFIRM auth header name/format
-      },
-      body:    JSON.stringify(body),
-      signal:  AbortSignal.timeout(6000),
-    });
-
-    if (process.env.CARDSHOW_DEBUG) {
-      const raw = await res.clone().text();
-      console.log('[cardsight] status:', res.status, 'body:', raw);
-    }
-
-    if (!res.ok) {
-      console.warn('CardSight API failed:', res.status);
+    if (!searchRes.ok) {
+      console.warn(`[cardsight] catalog search failed: ${searchRes.status}`);
       return { stub: true };
     }
 
-    const data = await res.json();
+    const searchData = await searchRes.json();
+    const cards = searchData?.cards || searchData?.data || [];
+    if (!cards.length) {
+      if (process.env.CARDSHOW_DEBUG)
+        console.log('[cardsight] no catalog match for:', card.player);
+      return { stub: true, noData: true };
+    }
 
-    if (process.env.CARDSHOW_DEBUG) console.log('[cardsight]', data);
+    const cardId = cards[0].id;
+    if (!cardId) return { stub: true, noData: true };
 
-    // TODO: CONFIRM FROM DOCS — response shape.
-    // Attempting common field names; update once confirmed.
-    // Pattern A: aggregate response → { price, low_price, high_price, card_name, ... }
-    // Pattern B: sales array response → { sales: [{ price, date, source }], card_name, ... }
+    // ── STEP 2: Pricing lookup by UUID ───────────────────────────────────────
+    const pricingParams = new URLSearchParams({
+      period:       '90d',
+      listing_type: 'both',
+      limit:        '25',
+    });
 
-    // Extract aggregate price — try common field names
-    const compPrice =
-      data?.price        ??
-      data?.market_price ??
-      data?.median_price ??
-      data?.avg_price    ??
-      data?.comp_price   ??
-      data?.data?.price  ??
-      null;  // TODO: CONFIRM FROM DOCS — exact field name
+    const pricingRes = await fetch(
+      `https://api.cardsight.ai/v1/pricing/${cardId}?${pricingParams}`,
+      { headers, signal: AbortSignal.timeout(6000) }
+    );
+
+    if (!pricingRes.ok) {
+      console.warn(`[cardsight] pricing failed: ${pricingRes.status}`);
+      return { stub: true };
+    }
+
+    const pricingData = await pricingRes.json();
+    if (process.env.CARDSHOW_DEBUG)
+      console.log('[cardsight] pricing:', JSON.stringify(pricingData, null, 2));
+
+    // ── Extract the right price tier by grade ────────────────────────────────
+    const gradeNum  = parseFloat(card.grade) || 0;
+    let compPrice   = null;
+    let recentSales = [];
+
+    if (gradeNum > 0 && pricingData.graded?.length) {
+      const graderName = (card.grader || 'PSA').toUpperCase();
+      const company = pricingData.graded.find(
+        c => c.company_name?.toUpperCase() === graderName
+      ) || pricingData.graded[0];
+
+      if (company?.grades?.length) {
+        const gradeMatch = company.grades.find(
+          g => parseFloat(g.grade_value) === gradeNum
+        ) || company.grades.find(
+          g => Math.abs(parseFloat(g.grade_value) - gradeNum) <= 0.5
+        );
+
+        if (gradeMatch?.records?.length) {
+          recentSales = gradeMatch.records
+            .slice(0, 5)
+            .map(r => ({
+              price:  Number(r.price),
+              date:   r.date   || null,
+              source: r.source || 'CardSight',
+            }))
+            .filter(r => r.price > 0);
+        }
+      }
+    } else if (pricingData.raw?.records?.length) {
+      // Ungraded — use raw sales
+      recentSales = pricingData.raw.records
+        .slice(0, 5)
+        .map(r => ({
+          price:  Number(r.price),
+          date:   r.date   || null,
+          source: r.source || 'CardSight',
+        }))
+        .filter(r => r.price > 0);
+    }
+
+    if (recentSales.length) {
+      const prices = recentSales.map(r => r.price).sort((a, b) => a - b);
+      const mid    = Math.floor(prices.length / 2);
+      compPrice    = prices.length % 2 !== 0
+        ? prices[mid]
+        : (prices[mid - 1] + prices[mid]) / 2;
+    }
 
     if (!compPrice) return { stub: true, noData: true };
 
-    const lowPrice  = data?.low_price  ?? data?.low  ?? data?.min_price ?? null; // TODO: CONFIRM
-    const highPrice = data?.high_price ?? data?.high ?? data?.max_price ?? null; // TODO: CONFIRM
-
-    // Extract individual sale records if the API provides them
-    // TODO: CONFIRM FROM DOCS — whether sales array exists and its shape
-    const rawSales  = data?.sales ?? data?.recent_sales ?? data?.transactions ?? [];
-    const recentSales = Array.isArray(rawSales)
-      ? rawSales.map(s => ({
-          price:  Number(s.price ?? s.sale_price ?? s.amount ?? 0),  // TODO: CONFIRM field
-          date:   s.date ?? s.sale_date ?? s.sold_at ?? null,        // TODO: CONFIRM field
-          source: s.source ?? s.marketplace ?? null,                  // TODO: CONFIRM field
-        })).filter(s => s.price > 0)
-      : [];
-
-    const matchedCard =
-      data?.card_name   ??
-      data?.name        ??
-      data?.matched_card ??
-      null;  // TODO: CONFIRM FROM DOCS
-
+    const allPrices = recentSales.map(r => r.price);
     return {
       stub:        false,
-      compPrice:   Number(compPrice),
-      lowPrice:    lowPrice  ? Number(lowPrice)  : null,
-      highPrice:   highPrice ? Number(highPrice) : null,
-      recentSales,
+      compPrice,
+      lowPrice:    allPrices.length ? Math.min(...allPrices) : null,
+      highPrice:   allPrices.length ? Math.max(...allPrices) : null,
+      recentSales: recentSales.slice(0, 3),
       source:      'cardsight',
-      matchedCard: matchedCard || null,
+      matchedCard: cards[0].name || card.player,
     };
 
   } catch (err) {
     if (err.name === 'TimeoutError') {
-      console.warn('CardSight API timeout');
+      console.warn('[cardsight] timeout');
     } else {
-      console.warn('CardSight lookup error:', err.message);
+      console.warn('[cardsight] error:', err.message);
     }
     return { stub: true };
   }
