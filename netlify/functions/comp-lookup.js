@@ -115,6 +115,13 @@ function inferManufacturer(cardSet) {
 }
 
 async function lookupCardSight(card) {
+  // DISABLED: CardSight catalog search ignores all filter params (player=, q=, etc.)
+  // and returns random MTG/Garbage Pail Kids cards regardless of input. The endpoint
+  // does not match the SDK docs. Re-enable once CardSight support confirms correct params.
+  // Contact: cardsight.ai — reference this issue: player= param not filtering results.
+  return { stub: true };
+
+  // eslint-disable-next-line no-unreachable
   const apiKey = process.env.CARDSIGHT_API_KEY;
   if (!apiKey) {
     console.warn('[cardsight] CARDSIGHT_API_KEY not set');
