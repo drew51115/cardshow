@@ -128,11 +128,13 @@ async function lookupCardSight(card) {
 
   try {
     // ── STEP 1: Catalog search to get card UUID ──────────────────────────────
-    const searchParams = new URLSearchParams();
-    if (card.player)  searchParams.set('player', card.player);
-    if (card.year)    searchParams.set('year', String(card.year));
+    // Build a text query combining player + year + manufacturer for the search.
+    // CardSight ignores the 'player' filter param — use 'q' (generic text search).
     const mfr = inferManufacturer(card.cardSet);
-    if (mfr) searchParams.set('manufacturer', mfr);
+    const queryText = [card.player, card.year, mfr].filter(Boolean).join(' ');
+
+    const searchParams = new URLSearchParams();
+    searchParams.set('q', queryText);
     searchParams.set('take', '3');
 
     const searchRes = await fetch(
