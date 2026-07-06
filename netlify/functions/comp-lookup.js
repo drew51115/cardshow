@@ -153,7 +153,16 @@ async function lookupCardSight(card) {
       return { stub: true, noData: true };
     }
 
-    const cardId = cards[0].id;
+    // Validate that a result actually matches the searched player name.
+    // CardSight catalog search can return unrelated cards — reject them.
+    const playerLower = (card.player || '').toLowerCase();
+    const matched = cards.find(c => c.name && c.name.toLowerCase().includes(playerLower));
+    if (!matched) {
+      console.warn(`[cardsight] catalog results don't match player "${card.player}" — got "${cards[0]?.name}"`);
+      return { stub: true, noData: true };
+    }
+
+    const cardId = matched.id;
     if (!cardId) return { stub: true, noData: true };
 
     // ── STEP 2: Pricing lookup by UUID ───────────────────────────────────────
@@ -236,7 +245,7 @@ async function lookupCardSight(card) {
       highPrice:   allPrices.length ? Math.max(...allPrices) : null,
       recentSales: recentSales.slice(0, 3),
       source:      'cardsight',
-      matchedCard: cards[0].name || card.player,
+      matchedCard: matched.name || card.player,
     };
 
   } catch (err) {
