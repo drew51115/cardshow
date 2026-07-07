@@ -416,7 +416,7 @@ Cancel at each state:
 - Auth: `X-API-Key: {CARDSIGHT_API_KEY}` (not `Authorization: Bearer`)
 - All field accesses use optional chaining + fallback chains due to undocumented Swagger (`id ?? uuid ?? card_id`, `grade_value ?? grade ?? label ?? value`, `company_name ?? grader ?? label`, `raw?.records ?? raw?.sales ?? records ?? []`, etc.)
 - `listing_type` filter accepts `'sold'`, `'completed'`, `'auction'`, `'fixed'`; records with absent field are also included as fallback.
-- Player name validation: `matched = cards.find(c => c.name.toLowerCase().includes(playerLower))` — skips if no name match to avoid wrong-player results.
+- Catalog result selection: `scoreCatalogMatch(results, card)` scores all 10 candidates (take=10) and returns the highest-scoring card above a 40-point threshold. Scoring: year match 40 pts (mismatch disqualifies the candidate entirely), set/release name up to 30 pts (10 per matching keyword), solo-player bonus 15 pts (multi-player cards penalised -5 per slash), card number 10 pts exact / 5 pts partial, AUTO attribute 5 pts, player in name 5 pts. `release=` hint also passed to catalog endpoint to help narrow server-side results. `CARDSHOW_DEBUG` logs each candidate's score and the selected card.
 - Grade matching: finds exact `grade_value` match first, falls back to within ±0.5; falls back to raw sales for ungraded cards.
 - `compPrice` computed as median of up to 5 most recent sale records.
 - Returns normalised `{ stub, compPrice, lowPrice, highPrice, recentSales[], source: 'cardsight', matchedCard }`.
