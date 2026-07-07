@@ -1150,10 +1150,14 @@
   .modal-comp-sale-row {
     display: flex; align-items: center; justify-content: space-between;
     padding: 4px 0; border-bottom: 1px solid var(--border); font-size: 0.78rem;
+    text-decoration: none; color: inherit;
   }
+  a.modal-comp-sale-row { cursor: pointer; }
+  a.modal-comp-sale-row:hover { background: rgba(245,200,66,0.06); border-radius: 4px; }
   .modal-comp-sale-row:last-child { border-bottom: none; }
   .modal-comp-sale-price { font-weight: 600; color: var(--text); font-family: 'DM Mono', monospace; }
   .modal-comp-sale-meta { font-size: 0.7rem; color: var(--muted); }
+  .modal-comp-sale-link-icon { font-size: 0.65rem; color: var(--gold); margin-left: 4px; opacity: 0.8; }
   .modal-comp-skeleton {
     height: 14px;
     background: linear-gradient(90deg, var(--surface) 25%, var(--border) 50%, var(--surface) 75%);
@@ -6336,10 +6340,14 @@ function renderBuyerComp(card, result) {
                       : daysAgo !== null ? `${daysAgo}d ago`
                       : '';
       const meta = [dateLabel, s.source].filter(Boolean).join(' · ');
-      return `<div class="modal-comp-sale-row">
+      const safeUrl = s.url ? _escHtml(s.url) : null;
+      const tag = safeUrl ? `a href="${safeUrl}" target="_blank" rel="noopener noreferrer"` : 'div';
+      const closeTag = safeUrl ? 'a' : 'div';
+      const linkIcon = safeUrl ? `<span class="modal-comp-sale-link-icon">↗</span>` : '';
+      return `<${tag} class="modal-comp-sale-row">
         <span class="modal-comp-sale-price">$${Number(s.price).toLocaleString()}</span>
-        <span class="modal-comp-sale-meta">${meta}</span>
-      </div>`;
+        <span class="modal-comp-sale-meta">${meta}${linkIcon}</span>
+      </${closeTag}>`;
     }).join('');
     recentSalesHtml = `<div class="modal-comp-divider"></div>
       <div class="modal-comp-also-label">Recent sales</div>
