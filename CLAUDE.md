@@ -410,15 +410,18 @@ Cancel at each state:
 
 ### CardSight AI — Primary Sports Card Comp Source
 - `CARDSIGHT_API_KEY` env var (set in Netlify). Free tier: 750 calls/month — 24h `price_cache` TTL limits redundant calls significantly.
-- **Two-step flow** (confirmed from SDK docs):
-  - Step 1: `GET /v1/catalog/cards?player=&year=&manufacturer=&take=3` → array of cards with `id` (UUID)
+- **Two-step flow** (confirmed by CardSight support):
+  - Step 1: `GET /v1/catalog/cards?name={player}&take=3` → array of cards with `id` (UUID). **`name=` is the correct param** — `player=` and `q=` were wrong/outdated SDK docs and ignored by the API.
   - Step 2: `GET /v1/pricing/{card_id}?period=90d&listing_type=both&limit=25` → `{ raw: { records }, graded: [{ company_name, grades: [{ grade_value, records }] }] }`
-- Auth: `Authorization: Bearer {CARDSIGHT_API_KEY}`
-- `inferManufacturer(cardSet)` maps set name keywords (Bowman/Topps, Prizm/Panini, Upper Deck, etc.) to manufacturer param; omits param when unknown.
+- Auth: `X-API-Key: {CARDSIGHT_API_KEY}` (not `Authorization: Bearer`)
+- All field accesses use optional chaining + fallback chains due to undocumented Swagger (`id ?? uuid ?? card_id`, `grade_value ?? grade ?? label ?? value`, `company_name ?? grader ?? label`, `raw?.records ?? raw?.sales ?? records ?? []`, etc.)
+- `listing_type` filter accepts `'sold'`, `'completed'`, `'auction'`, `'fixed'`; records with absent field are also included as fallback.
+- Player name validation: `matched = cards.find(c => c.name.toLowerCase().includes(playerLower))` — skips if no name match to avoid wrong-player results.
 - Grade matching: finds exact `grade_value` match first, falls back to within ±0.5; falls back to raw sales for ungraded cards.
 - `compPrice` computed as median of up to 5 most recent sale records.
 - Returns normalised `{ stub, compPrice, lowPrice, highPrice, recentSales[], source: 'cardsight', matchedCard }`.
-- `recentSales` — array of `{ price, date, source }` up to 3 individual sale records; `[]` for all other sources.
+- `recentSales` — array of `{ price, date, source, url, image }` up to 3 individual sale records; `[]` for all other sources. `url` links to original eBay/marketplace listing.
+- Buyer modal: sale rows with `url` render as tappable `<a>` links with `↗` gold icon; without URL fall back to `<div>`.
 - Source label in buyer modal: "Real sales data · CardSight AI"
 - Fallback: if CardSight returns stub or no `compPrice`, falls through to PriceCharting.
 
