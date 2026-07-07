@@ -95,6 +95,96 @@ async function writePriceCache(card, result) {
   }
 }
 
+// ── CARDSIGHT CATALOG SCORING ──
+// Scores catalog results against seller card attributes; returns best match
+// or null when no result clears the minimum confidence threshold.
+//
+// Point values:
+//   Year match      40 pts  (year mismatch is disqualifying — card is skipped)
+//   Set/release     up to 30 pts (10 per matching word, capped)
+//   Solo player     15 pts  (multi-player cards penalised -5 per slash)
+//   Card number     10 pts exact / 5 pts partial
+//   AUTO attribute   5 pts  (when parallel contains "auto")
+//   Player in name   5 pts
+// Minimum threshold: 40 pts (year must match).
+
+function scoreCatalogMatch(results, card) {
+  if (!results || !results.length) return null;
+
+  const targetYear     = String(card.year || '').trim();
+  const targetSet      = (card.cardSet || '').toLowerCase();
+  const targetNumber   = (card.cardNumber || '').toLowerCase().trim();
+  const targetParallel = (card.parallel || '').toLowerCase();
+  const targetPlayer   = (card.player || '').toLowerCase().trim();
+
+  const setWords = targetSet
+    .replace(/^\d{4}[-\s]*/, '')
+    .split(/\s+/)
+    .filter(w => w.length > 2);
+
+  let bestScore = -1;
+  let bestCard  = null;
+
+  for (const c of results) {
+    let score = 0;
+
+    // Year match (40 pts) — mismatch is disqualifying
+    if (targetYear && String(c.releaseYear) === targetYear) {
+      score += 40;
+    } else if (targetYear) {
+      continue;
+    }
+
+    // Release/set name match (up to 30 pts, 10 per matching word)
+    const combined = ((c.releaseName || '') + ' ' + (c.setName || '')).toLowerCase();
+    let setScore = 0;
+    for (const word of setWords) {
+      if (combined.includes(word)) setScore += 10;
+    }
+    score += Math.min(setScore, 30);
+
+    // Single-player bonus (15 pts); penalise multi-player (-5 per slash)
+    const slashes = (c.name || '').split('/').length - 1;
+    score += slashes === 0 ? 15 : slashes * -5;
+
+    // Card number match (10 pts exact / 5 pts partial)
+    if (targetNumber && c.number) {
+      const cNum = c.number.toLowerCase().trim();
+      if (cNum === targetNumber) score += 10;
+      else if (cNum.includes(targetNumber) || targetNumber.includes(cNum)) score += 5;
+    }
+
+    // AUTO attribute match (5 pts)
+    if (targetParallel.includes('auto') && c.attributes?.includes('AUTO')) score += 5;
+
+    // Player name present in card name (5 pts)
+    if (targetPlayer && (c.name || '').toLowerCase().includes(targetPlayer)) score += 5;
+
+    if (process.env.CARDSHOW_DEBUG) {
+      console.log(`[cardsight score] ${score} | ${c.name} | ${c.releaseName} ${c.releaseYear} | #${c.number}`);
+    }
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestCard  = c;
+    }
+  }
+
+  const MINIMUM_SCORE = 40;
+  if (bestScore < MINIMUM_SCORE) {
+    if (process.env.CARDSHOW_DEBUG) {
+      console.log(`[cardsight] best score ${bestScore} below threshold ${MINIMUM_SCORE} — no match`);
+    }
+    return null;
+  }
+
+  if (process.env.CARDSHOW_DEBUG) {
+    console.log(`[cardsight] selected: ${bestCard?.name} (score ${bestScore})`);
+  }
+
+  return bestCard;
+}
+
 // ── CARDSIGHT AI LOOKUP ──
 // Primary source for sports cards. Two-step flow:
 //   Step 1: GET /v1/catalog/cards?name= → card UUID
@@ -119,7 +209,13 @@ async function lookupCardSight(card) {
     // name= confirmed by CardSight support (player= was the incorrect SDK doc param).
     const searchParams = new URLSearchParams();
     if (card.player) searchParams.set('name', card.player);
-    searchParams.set('take', '3');
+    searchParams.set('take', '10');
+
+    // Pass set name hint to help narrow results — CardSight may support release=
+    if (card.cardSet) {
+      const setHint = card.cardSet.replace(/^\d{4}[-\s]*/, '').trim();
+      if (setHint) searchParams.set('release', setHint);
+    }
 
     const searchRes = await fetch(
       `https://api.cardsight.ai/v1/catalog/cards?${searchParams}`,
@@ -147,18 +243,13 @@ async function lookupCardSight(card) {
       return { stub: true, noData: true };
     }
 
-    // Validate: name field IS the player name for sports cards.
-    // Rejects MTG/TCG bleed-through (those have card ability text in name).
-    const playerLower = (card.player || '').toLowerCase();
-    const matched = cards.find(c =>
-      typeof c.name === 'string' && c.name.toLowerCase().includes(playerLower)
-    );
+    // Score all catalog results and pick the best match by year + set + player signals.
+    const matched = scoreCatalogMatch(cards, card);
     if (!matched) {
-      console.warn(`[cardsight] no name match for "${card.player}" — got name="${cards[0]?.name}" set="${cards[0]?.releaseName}"`);
+      console.warn(`[cardsight] no scored match for "${card.player}" in ${cards.length} results`);
       return { stub: true, noData: true };
     }
 
-    // VERIFY: UUID field name from Swagger — keeping fallback chain
     const cardId = matched?.id ?? matched?.uuid ?? matched?.card_id;
     if (!cardId) return { stub: true, noData: true };
 
