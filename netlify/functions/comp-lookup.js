@@ -95,37 +95,106 @@ async function writePriceCache(card, result) {
   }
 }
 
-// ── CARDSIGHT CATALOG SCORING ──
-// Scores catalog results against seller card attributes; returns best match
-// or null when no result clears the minimum confidence threshold.
-//
-// Point values:
-//   Year match         40 pts  (year mismatch is disqualifying — card is skipped)
-//   Set/release        up to 30 pts (10 per matching word, capped)
-//   Solo player        15 pts  (multi-player cards penalised -5 per slash)
-//   ROOKIE attribute   +15/-5 pts
-//   AUTO attribute     +10/-10 pts
-//   Card number        10 pts exact / 5 pts partial
-//   REFRACTOR          +10 pts
-//   PATCH/RELIC/JERSEY +10 pts
-//   League code        +10 pts match / -15 pts wrong league
-//   Player in name     5 pts
-// Minimum threshold: 40 pts (year must match).
+// ── CARDSIGHT CATALOG HELPERS ──
 
+// Map set name to the most distinctive release keyword for releaseName=
+// CardSight does partial case-insensitive match on this field.
+function extractReleaseName(cardSet) {
+  const s = (cardSet || '').toLowerCase().replace(/^\d{4}[-\s]*/, '');
+  const signatures = [
+    ['bowman chrome',                   'Bowman Chrome'],
+    ['topps chrome update sapphire',    'Chrome Update Sapphire'],
+    ['topps chrome update',             'Chrome Update'],
+    ['topps chrome',                    'Topps Chrome'],
+    ['bowman platinum',                 'Bowman Platinum'],
+    ['bowman sterling',                 'Bowman Sterling'],
+    ["bowman's best",                   "Bowman's Best"],
+    ['bowman',                          'Bowman'],
+    ['prizm draft',                     'Prizm Draft'],
+    ['panini prizm',                    'Prizm'],
+    ['prizm',                           'Prizm'],
+    ['select',                          'Select'],
+    ['donruss optic',                   'Optic'],
+    ['donruss',                         'Donruss'],
+    ['panini contenders',               'Contenders'],
+    ['topps update',                    'Topps Update'],
+    ['topps series 1',                  'Topps Series 1'],
+    ['topps series 2',                  'Topps Series 2'],
+    ['topps heritage',                  'Topps Heritage'],
+    ['topps finest',                    'Finest'],
+    ['topps stadium club',              'Stadium Club'],
+    ['panini chronicles',               'Chronicles'],
+    ['upper deck',                      'Upper Deck'],
+    ['fleer ultra',                     'Fleer Ultra'],
+  ];
+  for (const [key, val] of signatures) {
+    if (s.includes(key)) return val;
+  }
+  const words = s.split(/\s+/).filter(w => w.length > 3);
+  return words[0] ? words[0].charAt(0).toUpperCase() + words[0].slice(1) : null;
+}
+
+// Map card fields to CardSight attributeShortName codes (case-sensitive).
+// AU is returned first — it's more specific and higher-priority for pricing.
+function deriveAttributeShortNames(card) {
+  const combined = ((card.cardTitle || '') + ' ' + (card.parallel || '')).toLowerCase();
+  const attrs = [];
+  if (combined.includes('auto') || /\bau\b/.test(combined)) attrs.push('AU');
+  if (/\brc\b/.test(combined) || combined.includes('rookie'))  attrs.push('RC');
+  return attrs;
+}
+
+// Build URLSearchParams for a catalog search attempt (1 = most specific, 3 = broadest).
+function buildCardSightParams(card, attempt) {
+  const params = new URLSearchParams();
+  if (card.player) params.set('name', card.player);
+  if (card.year)   params.set('year', String(card.year));
+
+  if (attempt === 1) {
+    if (card.cardNumber && card.cardNumber.length > 1) {
+      params.set('number', card.cardNumber.trim());
+    }
+    if (card.cardSet) {
+      const release = extractReleaseName(card.cardSet);
+      if (release) params.set('releaseName', release);
+    }
+    const attrs = deriveAttributeShortNames(card);
+    if (attrs.length) params.set('attributeShortName', attrs[0]);
+    params.set('take', '5');
+  } else if (attempt === 2) {
+    if (card.cardSet) {
+      const release = extractReleaseName(card.cardSet);
+      if (release) params.set('releaseName', release);
+    }
+    const attrs = deriveAttributeShortNames(card);
+    if (attrs.length) params.set('attributeShortName', attrs[0]);
+    params.set('take', '10');
+  } else {
+    params.set('take', '20');
+  }
+
+  params.set('sort', 'name');
+  params.set('order', 'asc');
+  return params;
+}
+
+// Tiebreaker for multiple results already pre-filtered by year/release/attribute.
+// Results here are expected to be 2-10 cards, not hundreds.
 function scoreCatalogMatch(results, card) {
-  if (!results || !results.length) return null;
+  if (!results?.length) return null;
 
-  const targetYear     = String(card.year || '').trim();
-  const targetSet      = (card.cardSet || '').toLowerCase();
-  const targetNumber   = (card.cardNumber || '').toLowerCase().trim();
-  const targetParallel = (card.parallel || '').toLowerCase();
-  const targetPlayer   = (card.player || '').toLowerCase().trim();
-  const targetTitle    = (card.cardTitle || '').toLowerCase();
+  const targetNumber = (card.cardNumber || '').toLowerCase().trim();
+  const targetPlayer = (card.player     || '').toLowerCase().trim();
 
-  const setWords = targetSet
-    .replace(/^\d{4}[-\s]*/, '')
-    .split(/\s+/)
-    .filter(w => w.length > 2);
+  // Fast path: exact card number match
+  if (targetNumber) {
+    const exact = results.find(c => c.number?.toLowerCase().trim() === targetNumber);
+    if (exact) {
+      if (process.env.CARDSHOW_DEBUG)
+        console.log('[cardsight] exact number match:', exact.name);
+      return exact;
+    }
+  }
 
   let bestScore = -1;
   let bestCard  = null;
@@ -133,79 +202,22 @@ function scoreCatalogMatch(results, card) {
   for (const c of results) {
     let score = 0;
 
-    // Year match (40 pts) — mismatch is disqualifying
-    if (targetYear && String(c.releaseYear) === targetYear) {
-      score += 40;
-    } else if (targetYear) {
-      continue;
-    }
-
-    // Release/set name match (up to 30 pts, 10 per matching word)
-    const combined = ((c.releaseName || '') + ' ' + (c.setName || '')).toLowerCase();
-    let setScore = 0;
-    for (const word of setWords) {
-      if (combined.includes(word)) setScore += 10;
-    }
-    score += Math.min(setScore, 30);
-
-    // Single-player bonus (15 pts); penalise multi-player (-5 per slash)
+    // Solo card preferred over multi-player
     const slashes = (c.name || '').split('/').length - 1;
-    score += slashes === 0 ? 15 : slashes * -5;
+    if (slashes === 0) score += 20;
+    else               score -= slashes * 8;
 
-    // Card number match (10 pts exact / 5 pts partial)
+    // Player name in card name
+    if (targetPlayer && (c.name || '').toLowerCase().includes(targetPlayer)) score += 10;
+
+    // Partial card number match
     if (targetNumber && c.number) {
       const cNum = c.number.toLowerCase().trim();
-      if (cNum === targetNumber) score += 10;
-      else if (cNum.includes(targetNumber) || targetNumber.includes(cNum)) score += 5;
+      if (cNum.includes(targetNumber) || targetNumber.includes(cNum)) score += 8;
     }
-
-    const attrs = c.attributes || [];
-
-    // AUTO (+10 match / -10 mismatch)
-    const sellerIsAuto =
-      targetParallel.includes('auto') || targetTitle.includes('auto');
-    if (sellerIsAuto && attrs.includes('AUTO'))  score += 10;
-    if (sellerIsAuto && !attrs.includes('AUTO')) score -= 10;
-
-    // ROOKIE (+15 match / -5 mismatch)
-    const sellerIsRookie =
-      /\brc\b/i.test(targetTitle) || /rookie/i.test(targetTitle) ||
-      /\brc\b/i.test(targetParallel) || /rookie/i.test(targetParallel);
-    if (sellerIsRookie && attrs.includes('ROOKIE'))  score += 15;
-    if (sellerIsRookie && !attrs.includes('ROOKIE')) score -= 5;
-
-    // REFRACTOR (+10)
-    if (targetParallel.includes('refractor') && attrs.includes('REFRACTOR')) score += 10;
-
-    // PATCH / RELIC / JERSEY (+10)
-    const sellerHasPatch =
-      targetParallel.includes('patch') ||
-      targetParallel.includes('relic') ||
-      targetParallel.includes('jersey');
-    if (sellerHasPatch &&
-        (attrs.includes('PATCH') || attrs.includes('RELIC') || attrs.includes('JERSEY'))) {
-      score += 10;
-    }
-
-    // League code match (+10) / wrong league (-15)
-    const leagueMap = {
-      'baseball': 'MLB', 'basketball': 'NBA',
-      'football': 'NFL', 'hockey': 'NHL', 'soccer': 'MLS',
-    };
-    const targetLeague = leagueMap[(card.sport || '').toLowerCase()];
-    if (targetLeague) {
-      if (attrs.some(a => a.startsWith(targetLeague))) score += 10;
-      const wrongLeague = Object.values(leagueMap)
-        .filter(l => l !== targetLeague)
-        .some(l => attrs.some(a => a.startsWith(l)));
-      if (wrongLeague) score -= 15;
-    }
-
-    // Player name present in card name (5 pts)
-    if (targetPlayer && (c.name || '').toLowerCase().includes(targetPlayer)) score += 5;
 
     if (process.env.CARDSHOW_DEBUG) {
-      console.log(`[cardsight score] ${score} | ${c.name} | ${c.releaseName} ${c.releaseYear} | #${c.number}`);
+      console.log(`[cardsight score] ${score} | ${c.name} | #${c.number}`);
     }
 
     if (score > bestScore) {
@@ -214,19 +226,8 @@ function scoreCatalogMatch(results, card) {
     }
   }
 
-  const MINIMUM_SCORE = 40;
-  if (bestScore < MINIMUM_SCORE) {
-    if (process.env.CARDSHOW_DEBUG) {
-      console.log(`[cardsight] best score ${bestScore} below threshold ${MINIMUM_SCORE} — no match`);
-    }
-    return null;
-  }
-
-  if (process.env.CARDSHOW_DEBUG) {
-    console.log(`[cardsight] selected: ${bestCard?.name} (score ${bestScore})`);
-  }
-
-  return bestCard;
+  // No minimum threshold — results already pre-filtered before scoring
+  return bestCard || results[0];
 }
 
 // ── CARDSIGHT AI LOOKUP ──
@@ -250,52 +251,66 @@ async function lookupCardSight(card) {
 
   try {
     // ── STEP 1: Catalog search to get card UUID ──────────────────────────────
-    // name= confirmed by CardSight support (player= was the incorrect SDK doc param).
-    const searchParams = new URLSearchParams();
-    if (card.player) searchParams.set('name', card.player);
-    searchParams.set('take', '10');
+    // Tiered query strategy: attempt 1 (number+releaseName+attributeShortName),
+    // attempt 2 (releaseName+attribute, no number), attempt 3 (name+year only).
+    // Confirmed filter params from CardSight support: number= exact,
+    // releaseName= partial case-insensitive, attributeShortName= exact (RC/AU).
+    let selectedCard = null;
 
-    // Pass set name hint to help narrow results — CardSight may support release=
-    if (card.cardSet) {
-      const setHint = card.cardSet.replace(/^\d{4}[-\s]*/, '').trim();
-      if (setHint) searchParams.set('release', setHint);
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const searchParams = buildCardSightParams(card, attempt);
+      const searchUrl    = `https://api.cardsight.ai/v1/catalog/cards?${searchParams}`;
+
+      if (process.env.CARDSHOW_DEBUG) {
+        console.log(`[cardsight] attempt ${attempt}:`, searchUrl);
+      }
+
+      const searchRes = await fetch(searchUrl, {
+        headers,
+        signal: AbortSignal.timeout(6000),
+      });
+
+      if (!searchRes.ok) {
+        console.warn(`[cardsight] catalog search failed: ${searchRes.status}`);
+        break;
+      }
+
+      const searchData = await searchRes.json();
+      const results    = searchData?.cards || searchData?.data || [];
+
+      if (process.env.CARDSHOW_DEBUG) {
+        console.log(`[cardsight] attempt ${attempt} returned`, results.length,
+          'results (total:', searchData?.total_count, ')');
+        results.forEach(c =>
+          console.log(' -', c.name, '|', c.releaseName, c.releaseYear, '| #', c.number));
+      }
+
+      if (!results.length) continue;
+
+      if (results.length === 1) {
+        selectedCard = results[0];
+        if (process.env.CARDSHOW_DEBUG)
+          console.log('[cardsight] single result — using directly:', selectedCard.name);
+        break;
+      }
+
+      const scored = scoreCatalogMatch(results, card);
+      if (scored) {
+        selectedCard = scored;
+        break;
+      }
     }
 
-    const searchRes = await fetch(
-      `https://api.cardsight.ai/v1/catalog/cards?${searchParams}`,
-      { headers, signal: AbortSignal.timeout(6000) }
-    );
-
-    if (!searchRes.ok) {
-      console.warn(`[cardsight] catalog search failed: ${searchRes.status}`);
-      return { stub: true };
-    }
-
-    const searchData = await searchRes.json();
-
-    if (process.env.CARDSHOW_DEBUG)
-      console.log('[cardsight catalog]', JSON.stringify(searchData, null, 2));
-
-    // VERIFY: response array field name from Swagger — keeping fallback chain
-    const cards = searchData?.cards
-      || searchData?.data
-      || searchData?.results
-      || [];
-
-    if (!cards.length) {
-      console.warn(`[cardsight] no catalog match for: "${card.player}"`);
+    if (!selectedCard) {
+      if (process.env.CARDSHOW_DEBUG) console.log('[cardsight] no match after all attempts');
       return { stub: true, noData: true };
     }
 
-    // Score all catalog results and pick the best match by year + set + player signals.
-    const matched = scoreCatalogMatch(cards, card);
-    if (!matched) {
-      console.warn(`[cardsight] no scored match for "${card.player}" in ${cards.length} results`);
-      return { stub: true, noData: true };
-    }
-
-    const cardId = matched?.id ?? matched?.uuid ?? matched?.card_id;
+    const cardId = selectedCard.id;
     if (!cardId) return { stub: true, noData: true };
+
+    // For return value — use selectedCard in place of former `matched`
+    const matched = selectedCard;
 
     // ── STEP 2: Pricing lookup by UUID ───────────────────────────────────────
     const pricingParams = new URLSearchParams({
