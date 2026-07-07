@@ -100,12 +100,16 @@ async function writePriceCache(card, result) {
 // or null when no result clears the minimum confidence threshold.
 //
 // Point values:
-//   Year match      40 pts  (year mismatch is disqualifying — card is skipped)
-//   Set/release     up to 30 pts (10 per matching word, capped)
-//   Solo player     15 pts  (multi-player cards penalised -5 per slash)
-//   Card number     10 pts exact / 5 pts partial
-//   AUTO attribute   5 pts  (when parallel contains "auto")
-//   Player in name   5 pts
+//   Year match         40 pts  (year mismatch is disqualifying — card is skipped)
+//   Set/release        up to 30 pts (10 per matching word, capped)
+//   Solo player        15 pts  (multi-player cards penalised -5 per slash)
+//   ROOKIE attribute   +15/-5 pts
+//   AUTO attribute     +10/-10 pts
+//   Card number        10 pts exact / 5 pts partial
+//   REFRACTOR          +10 pts
+//   PATCH/RELIC/JERSEY +10 pts
+//   League code        +10 pts match / -15 pts wrong league
+//   Player in name     5 pts
 // Minimum threshold: 40 pts (year must match).
 
 function scoreCatalogMatch(results, card) {
@@ -116,6 +120,7 @@ function scoreCatalogMatch(results, card) {
   const targetNumber   = (card.cardNumber || '').toLowerCase().trim();
   const targetParallel = (card.parallel || '').toLowerCase();
   const targetPlayer   = (card.player || '').toLowerCase().trim();
+  const targetTitle    = (card.cardTitle || '').toLowerCase();
 
   const setWords = targetSet
     .replace(/^\d{4}[-\s]*/, '')
@@ -154,8 +159,47 @@ function scoreCatalogMatch(results, card) {
       else if (cNum.includes(targetNumber) || targetNumber.includes(cNum)) score += 5;
     }
 
-    // AUTO attribute match (5 pts)
-    if (targetParallel.includes('auto') && c.attributes?.includes('AUTO')) score += 5;
+    const attrs = c.attributes || [];
+
+    // AUTO (+10 match / -10 mismatch)
+    const sellerIsAuto =
+      targetParallel.includes('auto') || targetTitle.includes('auto');
+    if (sellerIsAuto && attrs.includes('AUTO'))  score += 10;
+    if (sellerIsAuto && !attrs.includes('AUTO')) score -= 10;
+
+    // ROOKIE (+15 match / -5 mismatch)
+    const sellerIsRookie =
+      /\brc\b/i.test(targetTitle) || /rookie/i.test(targetTitle) ||
+      /\brc\b/i.test(targetParallel) || /rookie/i.test(targetParallel);
+    if (sellerIsRookie && attrs.includes('ROOKIE'))  score += 15;
+    if (sellerIsRookie && !attrs.includes('ROOKIE')) score -= 5;
+
+    // REFRACTOR (+10)
+    if (targetParallel.includes('refractor') && attrs.includes('REFRACTOR')) score += 10;
+
+    // PATCH / RELIC / JERSEY (+10)
+    const sellerHasPatch =
+      targetParallel.includes('patch') ||
+      targetParallel.includes('relic') ||
+      targetParallel.includes('jersey');
+    if (sellerHasPatch &&
+        (attrs.includes('PATCH') || attrs.includes('RELIC') || attrs.includes('JERSEY'))) {
+      score += 10;
+    }
+
+    // League code match (+10) / wrong league (-15)
+    const leagueMap = {
+      'baseball': 'MLB', 'basketball': 'NBA',
+      'football': 'NFL', 'hockey': 'NHL', 'soccer': 'MLS',
+    };
+    const targetLeague = leagueMap[(card.sport || '').toLowerCase()];
+    if (targetLeague) {
+      if (attrs.some(a => a.startsWith(targetLeague))) score += 10;
+      const wrongLeague = Object.values(leagueMap)
+        .filter(l => l !== targetLeague)
+        .some(l => attrs.some(a => a.startsWith(l)));
+      if (wrongLeague) score -= 15;
+    }
 
     // Player name present in card name (5 pts)
     if (targetPlayer && (c.name || '').toLowerCase().includes(targetPlayer)) score += 5;

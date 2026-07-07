@@ -5516,6 +5516,7 @@ async function runCompCheck(cards) {
           grader:     card.Grader          || null,
           parallel:   card['Parallel/Variant'] || '',
           sport:      detectCardSport(card),
+          cardTitle:  card['Card Title']   || '',
         }] }),
       });
 
@@ -6213,6 +6214,7 @@ async function fetchBuyerComp(card) {
         grader:     card.Grader         || null,
         parallel:   card['Parallel/Variant'] || '',
         sport:      detectCardSport(card),
+        cardTitle:  card['Card Title']  || '',
       }] }),
       signal: AbortSignal.timeout(8000),
     });
