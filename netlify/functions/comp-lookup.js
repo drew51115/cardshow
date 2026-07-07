@@ -413,6 +413,42 @@ async function lookupCardSight(card) {
 // Fallback for sports cards when CardSight returns no result.
 // Two-step: search by name to get product ID, then fetch price data by ID.
 // Prices returned in pennies — divide by 100.
+//
+// Confirmed field names from official sportscardspro API docs:
+//   PSA 10 → manual-only-price   BGS 10 → bgs-10-price
+//   CGC 10 → condition-17-price  SGC 10 → condition-18-price
+//   Grade 9 → graded-price       Grade 8/8.5 → new-price
+//   Grade 7/7.5 → cib-price      Ungraded → loose-price
+
+function buildPCQuery(card) {
+  const parts = [
+    card.player  || '',
+    card.year    ? String(card.year) : '',
+    card.cardSet || '',
+  ].map(s => s.trim()).filter(Boolean);
+
+  // Add card number when it's specific enough to help (not generic "1")
+  if (card.cardNumber && card.cardNumber.length > 1) parts.push(card.cardNumber);
+
+  return parts.join(' ').trim();
+}
+
+function selectPCPrice(p, card) {
+  const gradeNum = parseFloat(card.grade) || 0;
+  const grader   = (card.grader || '').toUpperCase();
+
+  if (gradeNum >= 10) {
+    if (grader === 'BGS') return p['bgs-10-price'];
+    if (grader === 'CGC') return p['condition-17-price'];
+    if (grader === 'SGC') return p['condition-18-price'];
+    return p['manual-only-price'];  // PSA 10 and default
+  }
+  if (gradeNum >= 9.5) return p['box-only-price'];
+  if (gradeNum >= 9)   return p['graded-price'];
+  if (gradeNum >= 7)   return p['new-price'];
+  if (gradeNum > 0)    return p['cib-price'];
+  return p['loose-price'];
+}
 
 async function lookupPriceCharting(card) {
   const token = process.env.PRICECHARTING_TOKEN;
@@ -422,9 +458,10 @@ async function lookupPriceCharting(card) {
   }
 
   try {
-    const query = [card.player, card.year, card.cardSet, card.parallel]
-      .filter(Boolean)
-      .join(' ');
+    const query = buildPCQuery(card);
+    if (!query) return { stub: true };
+
+    if (process.env.CARDSHOW_DEBUG) console.log('[PC] query:', query);
 
     await waitForPCRateLimit();
 
@@ -438,8 +475,31 @@ async function lookupPriceCharting(card) {
       return { stub: true };
     }
 
-    const searchData = await searchRes.json();
-    const product    = searchData?.products?.[0];
+    let products = (await searchRes.json())?.products || [];
+
+    if (process.env.CARDSHOW_DEBUG) {
+      console.log('[PC] products returned:', products.length);
+      if (products.length) {
+        console.log('[PC] best match:', products[0]['product-name'],
+          '|', products[0]['console-name']);
+      }
+    }
+
+    // Retry with simplified query (player + year only) when set name causes a miss
+    if (!products.length) {
+      const simpleQuery = [card.player, card.year].filter(Boolean).join(' ').trim();
+      if (simpleQuery && simpleQuery !== query) {
+        if (process.env.CARDSHOW_DEBUG) console.log('[PC] retrying with simplified query:', simpleQuery);
+        await waitForPCRateLimit();
+        const retryRes = await fetch(
+          `https://www.sportscardspro.com/api/products?t=${token}&q=${encodeURIComponent(simpleQuery)}`,
+          { signal: AbortSignal.timeout(6000) }
+        );
+        if (retryRes.ok) products = (await retryRes.json())?.products || [];
+      }
+    }
+
+    const product = products[0];
     if (!product?.id) return { stub: true, noData: true };
 
     await waitForPCRateLimit();
@@ -454,28 +514,45 @@ async function lookupPriceCharting(card) {
       return { stub: true };
     }
 
-    const p = await priceRes.json();
-    if (p.status === 'error') return { stub: true, noData: true };
+    const priceData = await priceRes.json();
+    if (priceData.status === 'error') return { stub: true, noData: true };
 
-    const gradeNum  = parseFloat(card.grade) || 0;
-    const rawPennies =
-      gradeNum >= 10 ? p['psa-10-price'] :
-      gradeNum >= 9  ? p['psa-9-price']  :
-      gradeNum > 0   ? p['graded-price'] :
-                       p['loose-price'];
+    const rawPennies = selectPCPrice(priceData, card);
 
-    const compPrice = (rawPennies && rawPennies > 0) ? rawPennies / 100 : null;
-    if (!compPrice) return { stub: true, noData: true };
+    if (process.env.CARDSHOW_DEBUG) {
+      console.log('[PC] price data:', JSON.stringify({
+        'manual-only-price': priceData['manual-only-price'],
+        'graded-price':      priceData['graded-price'],
+        'loose-price':       priceData['loose-price'],
+        'bgs-10-price':      priceData['bgs-10-price'],
+      }));
+      console.log('[PC] selected price (pennies):', rawPennies);
+    }
+
+    // 0 means no data for that grade tier, not a $0 card
+    if (!rawPennies || rawPennies <= 0) {
+      const fallback = priceData['loose-price'];
+      if (!fallback || fallback <= 0) return { stub: true, noData: true };
+      return {
+        stub:          false,
+        compPrice:     fallback / 100,
+        lowPrice:      null,
+        highPrice:     null,
+        recentSales:   [],
+        source:        'pricecharting',
+        matchedCard:   priceData['product-name'] || product['product-name'],
+        gradeFallback: true,
+      };
+    }
 
     return {
-      stub:         false,
-      compPrice,
-      lowPrice:     null,
-      highPrice:    null,
-      recentSales:  [],
-      source:       'pricecharting',
-      matchedCard:  product.name,
-      productId:    String(product.id),
+      stub:        false,
+      compPrice:   rawPennies / 100,
+      lowPrice:    null,
+      highPrice:   null,
+      recentSales: [],
+      source:      'pricecharting',
+      matchedCard: priceData['product-name'] || product['product-name'],
     };
 
   } catch (err) {
