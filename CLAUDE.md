@@ -411,13 +411,19 @@ Cancel at each state:
 ### CardSight AI — Primary Sports Card Comp Source
 - `CARDSIGHT_API_KEY` env var (set in Netlify). Free tier: 750 calls/month — 24h `price_cache` TTL limits redundant calls significantly.
 - **Two-step flow** (confirmed by CardSight support):
-  - Step 1: `GET /v1/catalog/cards?name={player}&take=3` → array of cards with `id` (UUID). **`name=` is the correct param** — `player=` and `q=` were wrong/outdated SDK docs and ignored by the API.
+  - Step 1: Tiered catalog search — up to 3 attempts with progressively broader params. Confirmed params from CardSight support: `number=` (exact match), `releaseName=` (partial CI), `attributeShortName=` (exact case-sensitive: `RC`, `AU`), `year=`, `name=` (partial, player name), `sort=`/`order=`.
+    - Attempt 1: `name+year+number+releaseName+attributeShortName` (take=5) — most specific
+    - Attempt 2: `name+year+releaseName+attributeShortName` no number (take=10)
+    - Attempt 3: `name+year` only (take=20) — broadest fallback
   - Step 2: `GET /v1/pricing/{card_id}?period=90d&listing_type=both&limit=25` → `{ raw: { records }, graded: [{ company_name, grades: [{ grade_value, records }] }] }`
 - Auth: `X-API-Key: {CARDSIGHT_API_KEY}` (not `Authorization: Bearer`)
 - All field accesses use optional chaining + fallback chains due to undocumented Swagger (`id ?? uuid ?? card_id`, `grade_value ?? grade ?? label ?? value`, `company_name ?? grader ?? label`, `raw?.records ?? raw?.sales ?? records ?? []`, etc.)
 - `listing_type` filter accepts `'sold'`, `'completed'`, `'auction'`, `'fixed'`; records with absent field are also included as fallback.
 - Catalog result selection: `scoreCatalogMatch(results, card)` scores all 10 candidates (take=10) and returns the highest-scoring card above a 40-point threshold. Scoring: year match 40 pts (mismatch disqualifies the candidate entirely), set/release name up to 30 pts (10 per matching keyword), solo-player bonus 15 pts (multi-player cards penalised -5 per slash), card number 10 pts exact / 5 pts partial, AUTO attribute 5 pts, player in name 5 pts. `release=` hint also passed to catalog endpoint to help narrow server-side results. `CARDSHOW_DEBUG` logs each candidate's score and the selected card.
 - Expanded attribute scoring: ROOKIE (+15/-5), AUTO (+10/-10), REFRACTOR (+10), PATCH/RELIC/JERSEY (+10), league code match (+10, e.g. MLB-* for baseball), wrong league (-15). AUTO/ROOKIE checked against `cardTitle` field in addition to `parallel`. `cardTitle` now passed in both comp fetch calls (buyer `fetchBuyerComp` and seller `runCompCheck`).
+- `extractReleaseName(cardSet)` maps set name to CardSight's `releaseName` keyword (25-entry signature table; e.g. "2024 Topps Chrome" → "Topps Chrome"); falls back to first long word.
+- `deriveAttributeShortNames(card)` maps cardTitle/parallel to RC/AU codes; AU returned first (more pricing-specific).
+- `scoreCatalogMatch()` is now a tiebreaker — results already pre-filtered by year/release/attr. Fast path on exact number match; then scores solo card (+20), player in name (+10), partial number (+8). No minimum threshold.
 - Grade matching: finds exact `grade_value` match first, falls back to within ±0.5; falls back to raw sales for ungraded cards.
 - `compPrice` computed as median of up to 5 most recent sale records.
 - Returns normalised `{ stub, compPrice, lowPrice, highPrice, recentSales[], source: 'cardsight', matchedCard }`.
