@@ -353,26 +353,58 @@ async function lookupCardSight(card) {
     let compPrice   = null;
     let recentSales = [];
 
-    // Helper: map a raw records array to the normalised sale shape,
-    // filtering to completed transactions only (not BIN asking prices).
-    function mapRecords(records) {
+    // Filter to completed sales, score by parallel match, sort, and normalise.
+    // Records whose parallel_name matches the seller's parallel variant float
+    // to the top; within the same score, most recent sales come first.
+    const sellerParallel = (card.parallel || '').toLowerCase();
+    const sellerRunMatch = sellerParallel.match(/\/(\d+)/);
+    const sellerRun      = sellerRunMatch ? sellerRunMatch[1] : null;
+    const parallelWords  = sellerParallel
+      .replace(/\/\d+/, '')
+      .trim()
+      .split(/\s+/)
+      .filter(w => w.length > 2);
+
+    function scoreAndSortRecords(records) {
       if (!Array.isArray(records)) return [];
-      return records
-        .filter(r => {
-          // VERIFY: listing_type values for completed sales from Swagger
-          // Include record if field absent (older data), or if it indicates a sale
-          const lt = r?.listing_type ?? r?.type ?? '';
-          return !lt || lt === 'sold' || lt === 'completed' || lt === 'auction' || lt === 'fixed';
-        })
-        .slice(0, 5)
-        .map(r => ({
-          price:  Number(r?.price ?? r?.sold_price ?? r?.amount ?? 0),
-          date:   r?.date ?? r?.sold_date ?? r?.created_at ?? null,             // VERIFY
-          source: r?.source ?? r?.marketplace ?? 'CardSight',                   // VERIFY
-          url:    r?.url ?? r?.listing_url ?? r?.source_url ?? null,            // VERIFY
-          image:  r?.image_url ?? r?.image ?? r?.card_image ?? null,            // VERIFY
-        }))
-        .filter(r => r.price > 0);
+
+      const completed = records.filter(r => {
+        const lt = r?.listing_type ?? r?.type ?? '';
+        return !lt || lt === 'sold' || lt === 'completed' || lt === 'auction' || lt === 'fixed';
+      });
+
+      const scored = completed.map(r => {
+        const recParallel = (r?.parallel_name || '').toLowerCase();
+        let matchScore = 0;
+
+        if (sellerParallel && recParallel) {
+          for (const word of parallelWords) {
+            if (recParallel.includes(word)) matchScore += 10;
+          }
+          // Bonus for matching print run (/50, /150 etc.)
+          const recRunMatch = recParallel.match(/\/(\d+)/)
+                           || (r?.title || '').match(/\/(\d+)/);
+          const recRun = recRunMatch ? recRunMatch[1] : null;
+          if (sellerRun && recRun && sellerRun === recRun) matchScore += 20;
+        }
+
+        return { ...r, _matchScore: matchScore };
+      });
+
+      scored.sort((a, b) =>
+        b._matchScore !== a._matchScore
+          ? b._matchScore - a._matchScore
+          : new Date(b.date || b.sold_date || 0) - new Date(a.date || a.sold_date || 0)
+      );
+
+      return scored.slice(0, 5).map(r => ({
+        price:        Number(r?.price ?? r?.sold_price ?? r?.amount ?? 0),
+        date:         r?.date ?? r?.sold_date ?? r?.created_at ?? null,
+        source:       r?.source ?? r?.marketplace ?? 'CardSight',
+        url:          r?.url ?? r?.listing_url ?? r?.source_url ?? null,
+        image:        r?.image_url ?? r?.image ?? r?.card_image ?? null,
+        parallelName: r?.parallel_name || null,
+      })).filter(r => r.price > 0);
     }
 
     // VERIFY: graded section field name from Swagger (currently 'graded')
@@ -393,7 +425,7 @@ async function lookupCardSight(card) {
         );
 
         // VERIFY: sale records field name within a grade entry (currently 'records')
-        recentSales = mapRecords(gradeMatch?.records ?? gradeMatch?.sales ?? []);
+        recentSales = scoreAndSortRecords(gradeMatch?.records ?? gradeMatch?.sales ?? []);
       }
     }
 
@@ -404,7 +436,7 @@ async function lookupCardSight(card) {
         ?? pricingData?.raw?.sales
         ?? pricingData?.records
         ?? [];
-      recentSales = mapRecords(rawRecords);
+      recentSales = scoreAndSortRecords(rawRecords);
     }
 
     if (recentSales.length) {
