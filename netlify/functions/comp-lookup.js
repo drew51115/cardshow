@@ -144,36 +144,36 @@ function deriveAttributeShortNames(card) {
   return attrs;
 }
 
-// Build URLSearchParams for a catalog search attempt (1 = most specific, 3 = broadest).
+// Build URLSearchParams for a catalog search attempt.
+// Attempt 1: number= only (isolated — combining with other filters causes 500s)
+// Attempt 2: releaseName= + attributeShortName= (no number)
+// Attempt 3: releaseName= only (no attribute)
+// Attempt 4: name + year only — broadest fallback
+// Attempt 1 is skipped automatically when no card number is present.
 function buildCardSightParams(card, attempt) {
-  const params = new URLSearchParams();
+  const params  = new URLSearchParams();
   if (card.player) params.set('name', card.player);
   if (card.year)   params.set('year', String(card.year));
 
+  const release = card.cardSet ? extractReleaseName(card.cardSet) : null;
+  const attrs   = deriveAttributeShortNames(card);
+
   if (attempt === 1) {
-    if (card.cardNumber && card.cardNumber.length > 1) {
-      params.set('number', card.cardNumber.trim());
-    }
-    if (card.cardSet) {
-      const release = extractReleaseName(card.cardSet);
-      if (release) params.set('releaseName', release);
-    }
-    const attrs = deriveAttributeShortNames(card);
-    if (attrs.length) params.set('attributeShortName', attrs[0]);
+    // number= isolated — no other filters to avoid server-side 500s
+    params.set('number', card.cardNumber.trim());
     params.set('take', '5');
   } else if (attempt === 2) {
-    if (card.cardSet) {
-      const release = extractReleaseName(card.cardSet);
-      if (release) params.set('releaseName', release);
-    }
-    const attrs = deriveAttributeShortNames(card);
+    if (release) params.set('releaseName', release);
     if (attrs.length) params.set('attributeShortName', attrs[0]);
     params.set('take', '10');
+  } else if (attempt === 3) {
+    if (release) params.set('releaseName', release);
+    params.set('take', '15');
   } else {
-    params.set('take', '20');
+    params.set('take', '25');
   }
 
-  params.set('sort', 'name');
+  params.set('sort',  'name');
   params.set('order', 'asc');
   return params;
 }
@@ -251,13 +251,17 @@ async function lookupCardSight(card) {
 
   try {
     // ── STEP 1: Catalog search to get card UUID ──────────────────────────────
-    // Tiered query strategy: attempt 1 (number+releaseName+attributeShortName),
-    // attempt 2 (releaseName+attribute, no number), attempt 3 (name+year only).
-    // Confirmed filter params from CardSight support: number= exact,
-    // releaseName= partial case-insensitive, attributeShortName= exact (RC/AU).
+    // Up to 4 tiered attempts, progressively broader. number= is isolated in
+    // attempt 1 because combining it with releaseName= / attributeShortName=
+    // triggers 500s on CardSight's server for certain card numbers (e.g. RA-PS,
+    // BPA-PS2). 401/429 break the loop; 500/404 use continue to try next tier.
     let selectedCard = null;
+    const hasNumber  = card.cardNumber && card.cardNumber.trim().length > 1;
 
-    for (let attempt = 1; attempt <= 3; attempt++) {
+    for (let attempt = 1; attempt <= 4; attempt++) {
+      // Skip attempt 1 (number-only) when no card number available
+      if (attempt === 1 && !hasNumber) continue;
+
       const searchParams = buildCardSightParams(card, attempt);
       const searchUrl    = `https://api.cardsight.ai/v1/catalog/cards?${searchParams}`;
 
@@ -271,8 +275,18 @@ async function lookupCardSight(card) {
       });
 
       if (!searchRes.ok) {
-        console.warn(`[cardsight] catalog search failed: ${searchRes.status}`);
-        break;
+        // Log the full URL so it can be sent to CardSight support to reproduce
+        console.warn(`[cardsight] attempt ${attempt} failed: ${searchRes.status}`, searchUrl);
+        try {
+          const errBody = await searchRes.text();
+          console.warn('[cardsight] error body:', errBody);
+        } catch { /* ignore */ }
+
+        // Auth and rate-limit errors won't improve with a different query
+        if (searchRes.status === 401 || searchRes.status === 429) break;
+
+        // 500/404: try next attempt with simpler params
+        continue;
       }
 
       const searchData = await searchRes.json();
