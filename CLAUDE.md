@@ -427,13 +427,14 @@ Cancel at each state:
 - `extractReleaseName(cardSet)` maps set name to CardSight's `releaseName` keyword (40-entry signature table; **order matters** — more specific variants listed first, e.g. "Topps Chrome Update" before "Topps Chrome", "Bowman Chrome Draft" before "Bowman Chrome"). Falls back to first long word.
 - `deriveAttributeShortNames(card)` maps cardTitle/parallel to RC/AU codes; AU returned first (more pricing-specific).
 - `scoreCatalogMatch()` is now a tiebreaker — results already pre-filtered by year/release/attr. Fast path on exact number match; then scores solo card (+20), player in name (+10), partial number (+8). No minimum threshold.
+- **Exact number tie-break**: when `number=` returns multiple cards sharing the same number across different releases (e.g. Bowman Sterling + Topps Chrome + Triple Threads all sharing "RA-PS"), each is scored by `releaseName` word overlap against the seller's set. The highest-scoring release wins; first result is the safe default.
 - Grade matching: finds exact `grade_value` match first, falls back to within ±0.5; falls back to raw sales for ungraded cards.
 - `compPrice` computed as median of up to 5 most recent sale records.
-- Returns normalised `{ stub, compPrice, lowPrice, highPrice, recentSales[], source: 'cardsight', matchedCard, parallelId, cardId }`.
-- `recentSales` — array of `{ price, date, source, url, image, parallelName }` up to 5 individual sale records sorted by parallel match score (see `scoreAndSortRecords`); `[]` for all other sources. `url` links to original eBay/marketplace listing.
-- Buyer modal: sale rows with `url` render as tappable `<a>` links with `↗` gold icon; without URL fall back to `<div>`.
-- Source label in buyer modal: "Real sales data · CardSight AI"
-- `scoreAndSortRecords(records)` — replaces old `mapRecords()`; filters to completed sales, scores each record against seller's `card.parallel` (10pts per matching word, +20pts for matching print run like `/50`), sorts by score desc then date desc, slices to 5, normalises to `{ price, date, source, url, image, parallelName }`. Applied to both graded path (`gradeMatch.records`) and raw ungraded fallback (`pricingData.raw.records`). Seller-parallel variables (`sellerParallel`, `sellerRun`, `parallelWords`) computed once in the outer closure before the function is defined.
+- Returns normalised `{ stub, compPrice, lowPrice, highPrice, recentSales[], source: 'cardsight', matchedCard, parallelId, cardId, isBinOnly }`.
+- `recentSales` — array of `{ price, date, source, url, image, parallelName, isBin }` up to 5 individual sale records sorted by parallel match score (see `scoreAndSortRecords`); `[]` for all other sources. `url` links to original eBay/marketplace listing.
+- Buyer modal: sale rows with `url` render as tappable `<a>` links with `↗` gold icon; without URL fall back to `<div>`. BIN rows show a "BIN" badge in muted style.
+- Source label in buyer modal: "Real sales data · CardSight AI" (completed sales) or "Current asking prices · CardSight AI" (`isBinOnly=true`).
+- `scoreAndSortRecords(records)` — returns `{ rows, isBinOnly }`. Separates completed sales (sold/completed/auction) from BIN (fixed) listings. Completed sales used as primary; BIN used as fallback only when no completed sales exist. Parallel normalisation strips Auto/Autograph/RC/Rookie from seller parallel before word matching — CardSight tracks autograph status at card/set level, not parallel level. Refractor is normalised out then re-added to ensure it still matches CardSight parallel names. Seller-parallel variables computed once in the outer closure.
 - Fallback: if CardSight returns stub or no `compPrice`, falls through to PriceCharting.
 
 ### PriceCharting API — Fallback for Sports Cards
