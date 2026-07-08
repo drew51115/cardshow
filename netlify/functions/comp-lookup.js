@@ -706,6 +706,49 @@ function selectPCPrice(p, card) {
   return p['loose-price'];
 }
 
+// Score a PriceCharting result against the seller's card.
+// Bracket variants like [Image Variation] are subsets — penalise unless
+// the bracket content matches the seller's parallel.
+function scorePCResult(product, card) {
+  const pName  = (product['product-name'] || '').toLowerCase();
+  let score = 0;
+
+  // Bracket variants are subset/parallel cards — penalise unless bracket
+  // content matches seller's parallel (e.g. seller has "Gold /10" → [Gold])
+  const bracketMatch = (product['product-name'] || '').match(/\[([^\]]+)\]/);
+  if (bracketMatch) {
+    const bracketContent = bracketMatch[1].toLowerCase();
+    const sellerParallel = (card.parallel || '').toLowerCase();
+    if (sellerParallel && sellerParallel.includes(bracketContent)) {
+      score += 5;   // bracket matches seller parallel — ok
+    } else {
+      score -= 25;  // bracket doesn't match — strong penalty
+    }
+  } else {
+    score += 15;    // no bracket — base card bonus
+  }
+
+  // Card number present in product name
+  const num = (card.cardNumber || '').trim();
+  if (num && pName.includes('#' + num.toLowerCase())) score += 20;
+
+  // Last name sanity check
+  const player = (card.player || '').toLowerCase();
+  const lastName = player.split(' ').pop();
+  if (lastName && lastName.length > 2 && pName.includes(lastName)) score += 5;
+
+  // Subset / variation keywords — penalise regardless of brackets
+  const subsetKeywords = [
+    'image variation', 'photo variation', 'rookie cup', 'award winner',
+    'all star', 'short print', 'super short print', 'variation', 'error',
+  ];
+  for (const kw of subsetKeywords) {
+    if (pName.includes(kw)) { score -= 15; break; }
+  }
+
+  return score;
+}
+
 async function lookupPriceCharting(card) {
   const token = process.env.PRICECHARTING_TOKEN;
   if (!token) {
@@ -733,13 +776,8 @@ async function lookupPriceCharting(card) {
 
     let products = (await searchRes.json())?.products || [];
 
-    if (process.env.CARDSHOW_DEBUG) {
+    if (process.env.CARDSHOW_DEBUG)
       console.log('[PC] products returned:', products.length);
-      if (products.length) {
-        console.log('[PC] best match:', products[0]['product-name'],
-          '|', products[0]['console-name']);
-      }
-    }
 
     // Retry with simplified query (player + year only) when set name causes a miss
     if (!products.length) {
@@ -755,8 +793,22 @@ async function lookupPriceCharting(card) {
       }
     }
 
-    let product = products[0];
+    // Score results — penalise bracket variants that don't match seller's parallel
+    const scoredProducts = products
+      .map(p => ({ product: p, score: scorePCResult(p, card) }))
+      .sort((a, b) => b.score - a.score);
+
+    if (process.env.CARDSHOW_DEBUG) {
+      console.log('[PC] top 3 scored results:');
+      scoredProducts.slice(0, 3).forEach(s =>
+        console.log(`  [${s.score}]`, s.product['product-name'], '|', s.product['console-name']));
+    }
+
+    let product = scoredProducts[0].product;
     if (!product?.id) return { stub: true, noData: true };
+
+    if (process.env.CARDSHOW_DEBUG)
+      console.log('[PC] best match:', product['product-name'], '|', product['console-name']);
 
     let priceData = await fetchPCPrices(token, product.id);
     if (!priceData || priceData.status === 'error') return { stub: true, noData: true };
