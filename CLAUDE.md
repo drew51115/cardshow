@@ -410,25 +410,26 @@ Cancel at each state:
 
 ### CardSight AI — Primary Sports Card Comp Source
 - `CARDSIGHT_API_KEY` env var (set in Netlify). Free tier: 750 calls/month — 24h `price_cache` TTL limits redundant calls significantly.
-- **Two-step flow** (confirmed by CardSight support):
+- **Three-step flow** (confirmed by CardSight support):
   - Step 1: Tiered catalog search — up to 4 attempts with progressively broader params. Confirmed params from CardSight support: `number=` (exact match), `releaseName=` (partial CI), `attributeShortName=` (exact case-sensitive: `RC`, `AU`), `year=`, `name=` (partial, player name), `sort=`/`order=`.
     - Attempt 1: `name+year+number` only (take=5) — `number=` is **isolated** from other filters; combining with `releaseName=`/`attributeShortName=` causes CardSight 500s for certain card numbers (e.g. RA-PS, BPA-PS2). Skipped when no card number present.
     - Attempt 2: `name+year+releaseName+attributeShortName` no number (take=10)
     - Attempt 3: `name+year+releaseName` no attribute (take=15)
     - Attempt 4: `name+year` only (take=25) — broadest fallback
   - 500/404 responses use `continue` (try next attempt); 401/429 `break` the loop. Full failing URL + error body logged on any non-ok for CardSight support reproduction.
-  - Step 2: `GET /v1/pricing/{card_id}?period=90d&listing_type=both&limit=25` → `{ raw: { records }, graded: [{ company_name, grades: [{ grade_value, records }] }] }`
+  - Step 2: Parallel resolution — `GET /v1/catalog/cards/{card_id}` → list of parallels with `id` and `name`. Scores each parallel name against seller's `card.parallel` (word overlap + print run match); selects `parallel_id` when ≥1 word overlap. Non-fatal: timeout/404 skips to aggregate pricing. Only runs when seller has a parallel AND `parallel_id` is not already cached.
+  - Step 3: `GET /v1/pricing/{card_id}?parallel_id=&period=&listing_type=both&limit=25` → `{ raw: { records }, graded: [{ company_name, grades: [{ grade_value, records }] }] }`. `period=all` when print run ≤100 (scarce parallels may have zero 90-day sales); `period=90d` otherwise. `parallel_id=` filters to matching parallel variant only.
 - Auth: `X-API-Key: {CARDSIGHT_API_KEY}` (not `Authorization: Bearer`)
 - All field accesses use optional chaining + fallback chains due to undocumented Swagger (`id ?? uuid ?? card_id`, `grade_value ?? grade ?? label ?? value`, `company_name ?? grader ?? label`, `raw?.records ?? raw?.sales ?? records ?? []`, etc.)
 - `listing_type` filter accepts `'sold'`, `'completed'`, `'auction'`, `'fixed'`; records with absent field are also included as fallback.
 - Catalog result selection: `scoreCatalogMatch(results, card)` scores all 10 candidates (take=10) and returns the highest-scoring card above a 40-point threshold. Scoring: year match 40 pts (mismatch disqualifies the candidate entirely), set/release name up to 30 pts (10 per matching keyword), solo-player bonus 15 pts (multi-player cards penalised -5 per slash), card number 10 pts exact / 5 pts partial, AUTO attribute 5 pts, player in name 5 pts. `release=` hint also passed to catalog endpoint to help narrow server-side results. `CARDSHOW_DEBUG` logs each candidate's score and the selected card.
 - Expanded attribute scoring: ROOKIE (+15/-5), AUTO (+10/-10), REFRACTOR (+10), PATCH/RELIC/JERSEY (+10), league code match (+10, e.g. MLB-* for baseball), wrong league (-15). AUTO/ROOKIE checked against `cardTitle` field in addition to `parallel`. `cardTitle` now passed in both comp fetch calls (buyer `fetchBuyerComp` and seller `runCompCheck`).
-- `extractReleaseName(cardSet)` maps set name to CardSight's `releaseName` keyword (25-entry signature table; e.g. "2024 Topps Chrome" → "Topps Chrome"); falls back to first long word.
+- `extractReleaseName(cardSet)` maps set name to CardSight's `releaseName` keyword (40-entry signature table; **order matters** — more specific variants listed first, e.g. "Topps Chrome Update" before "Topps Chrome", "Bowman Chrome Draft" before "Bowman Chrome"). Falls back to first long word.
 - `deriveAttributeShortNames(card)` maps cardTitle/parallel to RC/AU codes; AU returned first (more pricing-specific).
 - `scoreCatalogMatch()` is now a tiebreaker — results already pre-filtered by year/release/attr. Fast path on exact number match; then scores solo card (+20), player in name (+10), partial number (+8). No minimum threshold.
 - Grade matching: finds exact `grade_value` match first, falls back to within ±0.5; falls back to raw sales for ungraded cards.
 - `compPrice` computed as median of up to 5 most recent sale records.
-- Returns normalised `{ stub, compPrice, lowPrice, highPrice, recentSales[], source: 'cardsight', matchedCard }`.
+- Returns normalised `{ stub, compPrice, lowPrice, highPrice, recentSales[], source: 'cardsight', matchedCard, parallelId, cardId }`.
 - `recentSales` — array of `{ price, date, source, url, image, parallelName }` up to 5 individual sale records sorted by parallel match score (see `scoreAndSortRecords`); `[]` for all other sources. `url` links to original eBay/marketplace listing.
 - Buyer modal: sale rows with `url` render as tappable `<a>` links with `↗` gold icon; without URL fall back to `<div>`.
 - Source label in buyer modal: "Real sales data · CardSight AI"
@@ -473,8 +474,15 @@ Cancel at each state:
 - **TTL:** 24 hours, keyed by `card_fingerprint` (`player|year|set|cardNumber|parallel|grade|grader` lowercased)
 - Cache hits return `{ fromCache: true }` — no API call, no delay needed
 - `source` column distinguishes which API matched — query it to compare CardSight vs PriceCharting match rates
+- `parallel_id` and `card_id` columns store CardSight stable catalog IDs; `getCachedIds()` reads these from stale rows (no TTL filter) so catalog search + parallel resolution are skipped on the next live call for the same fingerprint
 - Requires `SUPABASE_SERVICE_KEY` (service role) in Netlify env vars
 - Table must exist: run `SELECT to_regclass('public.price_cache');` in Supabase SQL editor; if null, run the CREATE TABLE SQL from the comp-check sprint output
+- **Pending migration** — run in Supabase SQL editor to add new columns:
+  ```sql
+  ALTER TABLE price_cache
+    ADD COLUMN IF NOT EXISTS parallel_id text,
+    ADD COLUMN IF NOT EXISTS card_id text;
+  ```
 
 ### Sport Detection (`detectCardSport(card)` — app.html)
 - Separate from `detectSport()` (UI badges) — this routes API selection only
