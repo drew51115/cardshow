@@ -456,10 +456,25 @@ function buildPCQuery(card) {
     card.cardSet || '',
   ].map(s => s.trim()).filter(Boolean);
 
-  // Add card number when it's specific enough to help (not generic "1")
-  if (card.cardNumber && card.cardNumber.length > 1) parts.push(card.cardNumber);
+  // Only append card number when purely numeric — alphanumeric prospect codes
+  // (BPA-PS2, RA-PS, WLA-1, RCPA-PS) are not in PriceCharting's index and
+  // cause false matches on unrelated cards that happen to share the substring.
+  const num = (card.cardNumber || '').trim();
+  if (num && /^\d+$/.test(num)) parts.push(num);
 
   return parts.join(' ').trim();
+}
+
+// Fetch price data for a given PriceCharting product ID.
+// Extracted so the empty-price retry can call it for a different product.
+async function fetchPCPrices(token, productId) {
+  await waitForPCRateLimit();
+  const res = await fetch(
+    `https://www.sportscardspro.com/api/product?t=${token}&id=${productId}`,
+    { signal: AbortSignal.timeout(4000) }
+  );
+  if (!res.ok) return null;
+  try { return await res.json(); } catch { return null; }
 }
 
 function selectPCPrice(p, card) {
@@ -528,23 +543,43 @@ async function lookupPriceCharting(card) {
       }
     }
 
-    const product = products[0];
+    let product = products[0];
     if (!product?.id) return { stub: true, noData: true };
 
-    await waitForPCRateLimit();
+    let priceData = await fetchPCPrices(token, product.id);
+    if (!priceData || priceData.status === 'error') return { stub: true, noData: true };
 
-    const priceRes = await fetch(
-      `https://www.sportscardspro.com/api/product?t=${token}&id=${product.id}`,
-      { signal: AbortSignal.timeout(6000) }
-    );
+    // Check if the matched product actually has any price data
+    const PC_PRICE_FIELDS = [
+      'loose-price', 'graded-price', 'new-price', 'cib-price',
+      'manual-only-price', 'bgs-10-price', 'condition-17-price', 'condition-18-price',
+    ];
+    const hasPriceData = PC_PRICE_FIELDS.some(f => priceData[f] && priceData[f] > 0);
 
-    if (!priceRes.ok) {
-      console.warn('PriceCharting price fetch failed:', priceRes.status);
-      return { stub: true };
+    if (!hasPriceData) {
+      if (process.env.CARDSHOW_DEBUG) {
+        console.log('[PC] no price data for matched card:',
+          priceData['product-name'] || product['product-name']);
+        console.log('[PC] retrying with simplified query');
+      }
+      // The set name may have matched the wrong card — retry with player + year only
+      const simpleQuery = [card.player, card.year].filter(Boolean).join(' ').trim();
+      if (simpleQuery && simpleQuery !== query) {
+        await waitForPCRateLimit();
+        const retryRes = await fetch(
+          `https://www.sportscardspro.com/api/products?t=${token}&q=${encodeURIComponent(simpleQuery)}`,
+          { signal: AbortSignal.timeout(4000) }
+        );
+        if (retryRes.ok) {
+          const retryProducts = (await retryRes.json())?.products || [];
+          if (retryProducts[0]?.id && retryProducts[0].id !== product.id) {
+            product   = retryProducts[0];
+            priceData = await fetchPCPrices(token, product.id);
+            if (!priceData || priceData.status === 'error') return { stub: true, noData: true };
+          }
+        }
+      }
     }
-
-    const priceData = await priceRes.json();
-    if (priceData.status === 'error') return { stub: true, noData: true };
 
     const rawPennies = selectPCPrice(priceData, card);
 
