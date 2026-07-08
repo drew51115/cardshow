@@ -68,10 +68,33 @@ async function checkPriceCache(card) {
       highPrice:    data.high_price  || null,
       recentSales:  [],
       source:       data.source,
+      parallelId:   data.parallel_id || null,
+      cardId:       data.card_id     || null,
       fromCache:    true,
     };
   } catch {
     return null;
+  }
+}
+
+// Read stale/expired cache row for just the CardSight IDs.
+// Used on cache miss to skip catalog search + parallel resolution on the next live call.
+// Does NOT filter by fetched_at — the IDs are stable catalog data.
+async function getCachedIds(card) {
+  const db = getDb();
+  if (!db) return {};
+
+  const fp = buildFingerprint(card);
+  try {
+    const { data } = await db
+      .from('price_cache')
+      .select('card_id, parallel_id')
+      .eq('card_fingerprint', fp)
+      .maybeSingle();
+    if (!data) return {};
+    return { cardId: data.card_id || null, parallelId: data.parallel_id || null };
+  } catch {
+    return {};
   }
 }
 
@@ -85,10 +108,12 @@ async function writePriceCache(card, result) {
     await db.from('price_cache').upsert({
       card_fingerprint: fp,
       comp_price:  result.compPrice,
-      low_price:   result.lowPrice  || null,
-      high_price:  result.highPrice || null,
+      low_price:   result.lowPrice   || null,
+      high_price:  result.highPrice  || null,
       source:      result.source,
       fetched_at:  new Date().toISOString(),
+      parallel_id: result.parallelId || null,
+      card_id:     result.cardId     || null,
     }, { onConflict: 'card_fingerprint' });
   } catch (err) {
     console.warn('Cache write failed:', err.message);
@@ -97,35 +122,54 @@ async function writePriceCache(card, result) {
 
 // ── CARDSIGHT CATALOG HELPERS ──
 
-// Map set name to the most distinctive release keyword for releaseName=
+// Map set name to CardSight's releaseName= keyword.
 // CardSight does partial case-insensitive match on this field.
+// IMPORTANT: more specific strings must come before less specific ones.
+// "Topps Chrome Update" is a distinct release from "Topps Chrome" in CardSight's catalog.
 function extractReleaseName(cardSet) {
   const s = (cardSet || '').toLowerCase().replace(/^\d{4}[-\s]*/, '');
   const signatures = [
-    ['bowman chrome',                   'Bowman Chrome'],
-    ['topps chrome update sapphire',    'Chrome Update Sapphire'],
-    ['topps chrome update',             'Chrome Update'],
-    ['topps chrome',                    'Topps Chrome'],
-    ['bowman platinum',                 'Bowman Platinum'],
-    ['bowman sterling',                 'Bowman Sterling'],
-    ["bowman's best",                   "Bowman's Best"],
-    ['bowman',                          'Bowman'],
-    ['prizm draft',                     'Prizm Draft'],
-    ['panini prizm',                    'Prizm'],
-    ['prizm',                           'Prizm'],
-    ['select',                          'Select'],
-    ['donruss optic',                   'Optic'],
-    ['donruss',                         'Donruss'],
-    ['panini contenders',               'Contenders'],
-    ['topps update',                    'Topps Update'],
-    ['topps series 1',                  'Topps Series 1'],
-    ['topps series 2',                  'Topps Series 2'],
-    ['topps heritage',                  'Topps Heritage'],
-    ['topps finest',                    'Finest'],
-    ['topps stadium club',              'Stadium Club'],
-    ['panini chronicles',               'Chronicles'],
-    ['upper deck',                      'Upper Deck'],
-    ['fleer ultra',                     'Fleer Ultra'],
+    // Topps Chrome variants — most specific first
+    ['topps chrome update sapphire', 'Topps Chrome Update Sapphire Edition'],
+    ['chrome update sapphire',       'Topps Chrome Update Sapphire Edition'],
+    ['topps chrome update',          'Topps Chrome Update'],
+    ['chrome update',                'Topps Chrome Update'],
+    // Bowman Chrome before bare Bowman
+    ['bowman chrome draft',          'Bowman Chrome Draft'],
+    ['bowman chrome',                'Bowman Chrome'],
+    ['topps chrome',                 'Topps Chrome'],
+    ['chrome',                       'Topps Chrome'],  // fallback for bare "Chrome"
+    // Bowman variants
+    ['bowman platinum',              'Bowman Platinum'],
+    ['bowman sterling',              'Bowman Sterling'],
+    ["bowman's best",                "Bowman's Best"],
+    ['bowman',                       'Bowman'],
+    // Prizm variants
+    ['prizm draft picks',            'Prizm Draft Picks'],
+    ['prizm draft',                  'Prizm Draft'],
+    ['panini prizm',                 'Prizm'],
+    ['prizm',                        'Prizm'],
+    // Other Panini
+    ['donruss optic',                'Donruss Optic'],
+    ['panini contenders optic',      'Panini Contenders Optic'],
+    ['panini contenders',            'Panini Contenders'],
+    ['select',                       'Select'],
+    ['donruss',                      'Donruss'],
+    ['panini chronicles',            'Chronicles'],
+    // Topps product lines
+    ['topps update',                 'Topps Update'],
+    ['topps series 2',               'Topps Series 2'],
+    ['topps series 1',               'Topps Series 1'],
+    ['topps heritage',               'Topps Heritage'],
+    ['topps finest',                 'Topps Finest'],
+    ['topps stadium club',           'Stadium Club'],
+    ['topps pro debut',              'Topps Pro Debut'],
+    ['topps',                        'Topps'],
+    // Other
+    ['upper deck',                   'Upper Deck'],
+    ['fleer ultra',                  'Fleer Ultra'],
+    ['fleer',                        'Fleer'],
+    ['score',                        'Score'],
   ];
   for (const [key, val] of signatures) {
     if (s.includes(key)) return val;
@@ -231,13 +275,18 @@ function scoreCatalogMatch(results, card) {
 }
 
 // ── CARDSIGHT AI LOOKUP ──
-// Primary source for sports cards. Two-step flow:
+// Primary source for sports cards. Three-step flow:
 //   Step 1: GET /v1/catalog/cards?name= → card UUID
 //           (Support confirmed: name= is the correct param, not player=)
-//   Step 2: GET /v1/pricing/{card_id}?period=90d&listing_type=both → sale records
+//           Skipped when cached.cardId is provided.
+//   Step 2: GET /v1/catalog/cards/{id} → all parallels for the card
+//           Match seller's parallel to get parallel_id.
+//           Skipped when cached.parallelId is provided OR no parallel specified.
+//   Step 3: GET /v1/pricing/{id}?parallel_id=&period=... → sale records
+//           period=all for numbered ≤100; period=90d otherwise.
 // Free tier: 750 calls/month. 24h price_cache TTL limits redundant calls.
 
-async function lookupCardSight(card) {
+async function lookupCardSight(card, cached = {}) {
   const apiKey = process.env.CARDSIGHT_API_KEY;
   if (!apiKey) {
     console.warn('[cardsight] CARDSIGHT_API_KEY not set');
@@ -251,87 +300,153 @@ async function lookupCardSight(card) {
 
   try {
     // ── STEP 1: Catalog search to get card UUID ──────────────────────────────
+    // Skip when a cached card_id is available — saves 1-4 API calls.
     // Up to 4 tiered attempts, progressively broader. number= is isolated in
     // attempt 1 because combining it with releaseName= / attributeShortName=
-    // triggers 500s on CardSight's server for certain card numbers (e.g. RA-PS,
-    // BPA-PS2). 401/429 break the loop; 500/404 use continue to try next tier.
+    // triggers 500s for certain card numbers (e.g. RA-PS, BPA-PS2).
+    // 401/429 break the loop; 500/404 use continue to try next tier.
     let selectedCard = null;
-    const hasNumber  = card.cardNumber && card.cardNumber.trim().length > 1;
+    let cardId       = cached.cardId || null;
+    let matchedName  = null;
 
-    for (let attempt = 1; attempt <= 4; attempt++) {
-      // Skip attempt 1 (number-only) when no card number available
-      if (attempt === 1 && !hasNumber) continue;
+    if (!cardId) {
+      const hasNumber = card.cardNumber && card.cardNumber.trim().length > 1;
 
-      const searchParams = buildCardSightParams(card, attempt);
-      const searchUrl    = `https://api.cardsight.ai/v1/catalog/cards?${searchParams}`;
+      for (let attempt = 1; attempt <= 4; attempt++) {
+        if (attempt === 1 && !hasNumber) continue;
 
-      if (process.env.CARDSHOW_DEBUG) {
-        console.log(`[cardsight] attempt ${attempt}:`, searchUrl);
-      }
+        const searchParams = buildCardSightParams(card, attempt);
+        const searchUrl    = `https://api.cardsight.ai/v1/catalog/cards?${searchParams}`;
 
-      const searchRes = await fetch(searchUrl, {
-        headers,
-        signal: AbortSignal.timeout(6000),
-      });
-
-      if (!searchRes.ok) {
-        // Log the full URL so it can be sent to CardSight support to reproduce
-        console.warn(`[cardsight] attempt ${attempt} failed: ${searchRes.status}`, searchUrl);
-        try {
-          const errBody = await searchRes.text();
-          console.warn('[cardsight] error body:', errBody);
-        } catch { /* ignore */ }
-
-        // Auth and rate-limit errors won't improve with a different query
-        if (searchRes.status === 401 || searchRes.status === 429) break;
-
-        // 500/404: try next attempt with simpler params
-        continue;
-      }
-
-      const searchData = await searchRes.json();
-      const results    = searchData?.cards || searchData?.data || [];
-
-      if (process.env.CARDSHOW_DEBUG) {
-        console.log(`[cardsight] attempt ${attempt} returned`, results.length,
-          'results (total:', searchData?.total_count, ')');
-        results.forEach(c =>
-          console.log(' -', c.name, '|', c.releaseName, c.releaseYear, '| #', c.number));
-      }
-
-      if (!results.length) continue;
-
-      if (results.length === 1) {
-        selectedCard = results[0];
         if (process.env.CARDSHOW_DEBUG)
-          console.log('[cardsight] single result — using directly:', selectedCard.name);
-        break;
+          console.log(`[cardsight] attempt ${attempt}:`, searchUrl);
+
+        const searchRes = await fetch(searchUrl, {
+          headers,
+          signal: AbortSignal.timeout(6000),
+        });
+
+        if (!searchRes.ok) {
+          console.warn(`[cardsight] attempt ${attempt} failed: ${searchRes.status}`, searchUrl);
+          try {
+            const errBody = await searchRes.text();
+            console.warn('[cardsight] error body:', errBody);
+          } catch { /* ignore */ }
+          if (searchRes.status === 401 || searchRes.status === 429) break;
+          continue;
+        }
+
+        const searchData = await searchRes.json();
+        const results    = searchData?.cards || searchData?.data || [];
+
+        if (process.env.CARDSHOW_DEBUG) {
+          console.log(`[cardsight] attempt ${attempt} returned`, results.length,
+            'results (total:', searchData?.total_count, ')');
+          results.forEach(c =>
+            console.log(' -', c.name, '|', c.releaseName, c.releaseYear, '| #', c.number));
+        }
+
+        if (!results.length) continue;
+
+        selectedCard = results.length === 1
+          ? results[0]
+          : scoreCatalogMatch(results, card);
+
+        if (selectedCard) {
+          if (process.env.CARDSHOW_DEBUG)
+            console.log('[cardsight] selected:', selectedCard.name, '| id:', selectedCard.id);
+          break;
+        }
       }
 
-      const scored = scoreCatalogMatch(results, card);
-      if (scored) {
-        selectedCard = scored;
-        break;
+      if (!selectedCard?.id) {
+        if (process.env.CARDSHOW_DEBUG) console.log('[cardsight] no match after all attempts');
+        return { stub: true, noData: true };
       }
+
+      cardId      = selectedCard.id;
+      matchedName = selectedCard.name;
+    } else {
+      if (process.env.CARDSHOW_DEBUG)
+        console.log('[cardsight] using cached cardId:', cardId);
     }
 
-    if (!selectedCard) {
-      if (process.env.CARDSHOW_DEBUG) console.log('[cardsight] no match after all attempts');
-      return { stub: true, noData: true };
+    // ── STEP 2: Parallel resolution ─────────────────────────────────────────
+    // GET /v1/catalog/cards/{id} → list of parallels with ids.
+    // Only runs when seller has a parallel AND we don't have a cached parallelId.
+    let parallelId = cached.parallelId || null;
+
+    if (!parallelId && card.parallel && card.parallel.trim()) {
+      try {
+        const detailRes = await fetch(
+          `https://api.cardsight.ai/v1/catalog/cards/${cardId}`,
+          { headers, signal: AbortSignal.timeout(4000) }
+        );
+
+        if (detailRes.ok) {
+          const detail    = await detailRes.json();
+          const parallels = detail.parallels ?? detail.card?.parallels ?? [];
+
+          if (process.env.CARDSHOW_DEBUG) {
+            console.log('[cardsight] parallels available:',
+              parallels.map(p => `${p.name} (${p.id ?? p.parallel_id})`));
+          }
+
+          const sellerPStr = card.parallel.toLowerCase()
+            .replace(/\/\d+/g, '')
+            .replace(/refractor/gi, '')
+            .trim();
+          const sellerWords = sellerPStr.split(/\s+/).filter(w => w.length > 2);
+          const sellerRun   = (card.parallel.match(/\/(\d+)/) || [])[1];
+
+          let bestPScore = 0;
+          let bestP      = null;
+
+          for (const p of parallels) {
+            const pName = (p.name || '').toLowerCase()
+              .replace(/refractor/gi, '')
+              .trim();
+            let pScore = 0;
+            for (const w of sellerWords) {
+              if (pName.includes(w)) pScore++;
+            }
+            const pRun = (p.name.match(/\/(\d+)/) || [])[1];
+            if (sellerRun && pRun && sellerRun === pRun) pScore += 3;
+
+            if (pScore > bestPScore) { bestPScore = pScore; bestP = p; }
+          }
+
+          if (bestP && bestPScore > 0) {
+            parallelId = bestP.id ?? bestP.parallel_id ?? null;
+            if (process.env.CARDSHOW_DEBUG)
+              console.log('[cardsight] parallel matched:', bestP.name, '→', parallelId);
+          } else if (process.env.CARDSHOW_DEBUG) {
+            console.log('[cardsight] no parallel match for:', card.parallel);
+          }
+        }
+      } catch (err) {
+        console.warn('[cardsight] parallel lookup failed:', err.message);
+      }
+    } else if (!card.parallel?.trim() && process.env.CARDSHOW_DEBUG) {
+      console.log('[cardsight] no parallel specified — skipping detail call');
     }
 
-    const cardId = selectedCard.id;
-    if (!cardId) return { stub: true, noData: true };
+    // ── STEP 3: Pricing lookup ───────────────────────────────────────────────
+    // period=all for numbered ≤100 (scarce parallels may have very few 90d sales).
+    const printRun = parseInt((card.parallel || '').match(/\/(\d+)/)?.[1] || '9999');
+    const period   = printRun <= 100 ? 'all' : '90d';
 
-    // For return value — use selectedCard in place of former `matched`
-    const matched = selectedCard;
-
-    // ── STEP 2: Pricing lookup by UUID ───────────────────────────────────────
     const pricingParams = new URLSearchParams({
-      period:       '90d',
+      period,
       listing_type: 'both',
       limit:        '25',
     });
+    if (parallelId) pricingParams.set('parallel_id', parallelId);
+
+    if (process.env.CARDSHOW_DEBUG) {
+      console.log('[cardsight] period:', period, '| parallelId:', parallelId || 'none (aggregate)');
+      console.log('[cardsight] pricing url:', `https://api.cardsight.ai/v1/pricing/${cardId}?${pricingParams}`);
+    }
 
     const pricingRes = await fetch(
       `https://api.cardsight.ai/v1/pricing/${cardId}?${pricingParams}`,
@@ -457,7 +572,9 @@ async function lookupCardSight(card) {
       highPrice:   allPrices.length ? Math.max(...allPrices) : null,
       recentSales: recentSales.slice(0, 3),
       source:      'cardsight',
-      matchedCard: matched.name || card.player,
+      matchedCard: matchedName || card.player,
+      parallelId:  parallelId || null,
+      cardId:      cardId     || null,
     };
 
   } catch (err) {
@@ -829,8 +946,10 @@ async function lookupComp(card) {
   } else if (isTCG) {
     result = await lookupTCGApi(card);
   } else {
-    // Sports: CardSight AI primary, PriceCharting fallback
-    result = await lookupCardSight(card);
+    // Sports: CardSight AI primary, PriceCharting fallback.
+    // On cache miss, read stale cached IDs to skip catalog search + parallel resolution.
+    const cachedIds = await getCachedIds(card);
+    result = await lookupCardSight(card, cachedIds);
     if (!result || result.stub || !result.compPrice) {
       console.log('CardSight miss — falling back to PriceCharting');
       result = await lookupPriceCharting(card);
