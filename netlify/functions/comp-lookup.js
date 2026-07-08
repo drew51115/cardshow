@@ -232,11 +232,40 @@ function scoreCatalogMatch(results, card) {
 
   // Fast path: exact card number match
   if (targetNumber) {
-    const exact = results.find(c => c.number?.toLowerCase().trim() === targetNumber);
-    if (exact) {
+    const exactMatches = results.filter(c =>
+      c.number?.toLowerCase().trim() === targetNumber
+    );
+
+    if (exactMatches.length === 1) {
       if (process.env.CARDSHOW_DEBUG)
-        console.log('[cardsight] exact number match:', exact.name);
-      return exact;
+        console.log('[cardsight] exact number match:', exactMatches[0].name, '|', exactMatches[0].releaseName);
+      return exactMatches[0];
+    }
+
+    if (exactMatches.length > 1) {
+      // Multiple cards share the same number across different releases.
+      // Score by releaseName to pick the right product line.
+      const release  = card.cardSet ? extractReleaseName(card.cardSet) : '';
+      const relLower = release.toLowerCase();
+      const releaseWords = relLower.split(/\s+/).filter(w => w.length > 2);
+
+      let bestScore = -1;
+      let bestMatch = exactMatches[0];
+
+      for (const c of exactMatches) {
+        const cRelease = (c.releaseName || '').toLowerCase();
+        let score = 0;
+        for (const word of releaseWords) {
+          if (cRelease.includes(word)) score += 10;
+        }
+        if (process.env.CARDSHOW_DEBUG)
+          console.log(`[cardsight] number tie-break score ${score}:`, c.name, '|', c.releaseName);
+        if (score > bestScore) { bestScore = score; bestMatch = c; }
+      }
+
+      if (process.env.CARDSHOW_DEBUG)
+        console.log('[cardsight] selected from tie-break:', bestMatch.name, '|', bestMatch.releaseName, '| id:', bestMatch.id);
+      return bestMatch;
     }
   }
 
@@ -392,11 +421,20 @@ async function lookupCardSight(card, cached = {}) {
               parallels.map(p => `${p.name} (${p.id ?? p.parallel_id})`));
           }
 
+            // Strip autograph/rookie status — CardSight tracks those at the
+          // card level, not the parallel level. Parallels are "Refractor",
+          // "Gold Refractor", "SuperFractor" etc.
+          const hadRefractor = /refractor/i.test(card.parallel);
           const sellerPStr = card.parallel.toLowerCase()
             .replace(/\/\d+/g, '')
-            .replace(/refractor/gi, '')
+            .replace(/\bautograph\b/g, '')
+            .replace(/\bauto\b/g, '')
+            .replace(/\brc\b/g, '')
+            .replace(/\brookie\b/g, '')
+            .replace(/\brefractor\b/g, '')
             .trim();
-          const sellerWords = sellerPStr.split(/\s+/).filter(w => w.length > 2);
+          const normPStr    = hadRefractor ? sellerPStr + ' refractor' : sellerPStr;
+          const sellerWords = normPStr.split(/\s+/).filter(w => w.length > 2);
           const sellerRun   = (card.parallel.match(/\/(\d+)/) || [])[1];
 
           let bestPScore = 0;
@@ -471,38 +509,53 @@ async function lookupCardSight(card, cached = {}) {
     // Filter to completed sales, score by parallel match, sort, and normalise.
     // Records whose parallel_name matches the seller's parallel variant float
     // to the top; within the same score, most recent sales come first.
-    const sellerParallel = (card.parallel || '').toLowerCase();
-    const sellerRunMatch = sellerParallel.match(/\/(\d+)/);
-    const sellerRun      = sellerRunMatch ? sellerRunMatch[1] : null;
-    const parallelWords  = sellerParallel
-      .replace(/\/\d+/, '')
-      .trim()
+    const sellerParallel    = (card.parallel || '').toLowerCase();
+    const sellerRunMatch    = sellerParallel.match(/\/(\d+)/);
+    const sellerRun         = sellerRunMatch ? sellerRunMatch[1] : null;
+    const hadRefractorSort  = /refractor/i.test(card.parallel || '');
+    const normParallelSort  = sellerParallel
+      .replace(/\/\d+/g,      '')
+      .replace(/\bautograph\b/g, '')
+      .replace(/\bauto\b/g,   '')
+      .replace(/\brc\b/g,     '')
+      .replace(/\brookie\b/g, '')
+      .replace(/\brefractor\b/g, '')
+      .trim();
+    const parallelWords = (hadRefractorSort ? normParallelSort + ' refractor' : normParallelSort)
       .split(/\s+/)
       .filter(w => w.length > 2);
 
+    // Separate completed sales from BIN (fixed-price) listings.
+    // Completed sales are the primary comp signal.
+    // BIN listings are used as fallback only when no completed sales exist.
     function scoreAndSortRecords(records) {
-      if (!Array.isArray(records)) return [];
+      if (!Array.isArray(records)) return { rows: [], isBinOnly: false };
 
-      const completed = records.filter(r => {
-        const lt = r?.listing_type ?? r?.type ?? '';
-        return !lt || lt === 'sold' || lt === 'completed' || lt === 'auction' || lt === 'fixed';
-      });
+      const isCompleted = r => {
+        const lt = String(r?.listing_type ?? r?.type ?? '').toLowerCase();
+        return !lt || lt === 'sold' || lt === 'completed' || lt === 'auction';
+      };
+      const isBin = r =>
+        String(r?.listing_type ?? r?.type ?? '').toLowerCase() === 'fixed';
 
-      const scored = completed.map(r => {
+      const completedSales = records.filter(isCompleted);
+      const binListings    = records.filter(isBin);
+
+      const sourceRecords = completedSales.length ? completedSales : binListings;
+      const binOnly       = completedSales.length === 0 && binListings.length > 0;
+
+      const scored = sourceRecords.map(r => {
         const recParallel = (r?.parallel_name || '').toLowerCase();
         let matchScore = 0;
-
         if (sellerParallel && recParallel) {
           for (const word of parallelWords) {
             if (recParallel.includes(word)) matchScore += 10;
           }
-          // Bonus for matching print run (/50, /150 etc.)
           const recRunMatch = recParallel.match(/\/(\d+)/)
                            || (r?.title || '').match(/\/(\d+)/);
           const recRun = recRunMatch ? recRunMatch[1] : null;
           if (sellerRun && recRun && sellerRun === recRun) matchScore += 20;
         }
-
         return { ...r, _matchScore: matchScore };
       });
 
@@ -512,15 +565,20 @@ async function lookupCardSight(card, cached = {}) {
           : new Date(b.date || b.sold_date || 0) - new Date(a.date || a.sold_date || 0)
       );
 
-      return scored.slice(0, 5).map(r => ({
+      const rows = scored.slice(0, 5).map(r => ({
         price:        Number(r?.price ?? r?.sold_price ?? r?.amount ?? 0),
         date:         r?.date ?? r?.sold_date ?? r?.created_at ?? null,
         source:       r?.source ?? r?.marketplace ?? 'CardSight',
         url:          r?.url ?? r?.listing_url ?? r?.source_url ?? null,
         image:        r?.image_url ?? r?.image ?? r?.card_image ?? null,
         parallelName: r?.parallel_name || null,
+        isBin:        isBin(r),
       })).filter(r => r.price > 0);
+
+      return { rows, isBinOnly: binOnly };
     }
+
+    let isBinOnly = false;
 
     // VERIFY: graded section field name from Swagger (currently 'graded')
     if (gradeNum > 0 && pricingData?.graded?.length) {
@@ -540,7 +598,9 @@ async function lookupCardSight(card, cached = {}) {
         );
 
         // VERIFY: sale records field name within a grade entry (currently 'records')
-        recentSales = scoreAndSortRecords(gradeMatch?.records ?? gradeMatch?.sales ?? []);
+        const sorted = scoreAndSortRecords(gradeMatch?.records ?? gradeMatch?.sales ?? []);
+        recentSales  = sorted.rows;
+        isBinOnly    = sorted.isBinOnly;
       }
     }
 
@@ -551,7 +611,9 @@ async function lookupCardSight(card, cached = {}) {
         ?? pricingData?.raw?.sales
         ?? pricingData?.records
         ?? [];
-      recentSales = scoreAndSortRecords(rawRecords);
+      const sorted = scoreAndSortRecords(rawRecords);
+      recentSales  = sorted.rows;
+      isBinOnly    = sorted.isBinOnly;
     }
 
     if (recentSales.length) {
@@ -575,6 +637,7 @@ async function lookupCardSight(card, cached = {}) {
       matchedCard: matchedName || card.player,
       parallelId:  parallelId || null,
       cardId:      cardId     || null,
+      isBinOnly:   isBinOnly  || false,
     };
 
   } catch (err) {
