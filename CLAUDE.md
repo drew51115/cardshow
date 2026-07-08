@@ -411,10 +411,12 @@ Cancel at each state:
 ### CardSight AI — Primary Sports Card Comp Source
 - `CARDSIGHT_API_KEY` env var (set in Netlify). Free tier: 750 calls/month — 24h `price_cache` TTL limits redundant calls significantly.
 - **Two-step flow** (confirmed by CardSight support):
-  - Step 1: Tiered catalog search — up to 3 attempts with progressively broader params. Confirmed params from CardSight support: `number=` (exact match), `releaseName=` (partial CI), `attributeShortName=` (exact case-sensitive: `RC`, `AU`), `year=`, `name=` (partial, player name), `sort=`/`order=`.
-    - Attempt 1: `name+year+number+releaseName+attributeShortName` (take=5) — most specific
+  - Step 1: Tiered catalog search — up to 4 attempts with progressively broader params. Confirmed params from CardSight support: `number=` (exact match), `releaseName=` (partial CI), `attributeShortName=` (exact case-sensitive: `RC`, `AU`), `year=`, `name=` (partial, player name), `sort=`/`order=`.
+    - Attempt 1: `name+year+number` only (take=5) — `number=` is **isolated** from other filters; combining with `releaseName=`/`attributeShortName=` causes CardSight 500s for certain card numbers (e.g. RA-PS, BPA-PS2). Skipped when no card number present.
     - Attempt 2: `name+year+releaseName+attributeShortName` no number (take=10)
-    - Attempt 3: `name+year` only (take=20) — broadest fallback
+    - Attempt 3: `name+year+releaseName` no attribute (take=15)
+    - Attempt 4: `name+year` only (take=25) — broadest fallback
+  - 500/404 responses use `continue` (try next attempt); 401/429 `break` the loop. Full failing URL + error body logged on any non-ok for CardSight support reproduction.
   - Step 2: `GET /v1/pricing/{card_id}?period=90d&listing_type=both&limit=25` → `{ raw: { records }, graded: [{ company_name, grades: [{ grade_value, records }] }] }`
 - Auth: `X-API-Key: {CARDSIGHT_API_KEY}` (not `Authorization: Bearer`)
 - All field accesses use optional chaining + fallback chains due to undocumented Swagger (`id ?? uuid ?? card_id`, `grade_value ?? grade ?? label ?? value`, `company_name ?? grader ?? label`, `raw?.records ?? raw?.sales ?? records ?? []`, etc.)
