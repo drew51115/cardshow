@@ -438,10 +438,11 @@ Cancel at each state:
 1. **Search:** `GET sportscardspro.com/api/products?t=TOKEN&q=<player year set>` → get `product.id`
 2. **Price:** `GET sportscardspro.com/api/product?t=TOKEN&id=<id>` → get grade-tiered price
 - Prices returned in **pennies** — always divide by 100
-- `buildPCQuery(card)` constructs `"player year set"` as one free-text string (documented format). Card number appended only when >1 char.
+- `buildPCQuery(card)` constructs `"player year set"` as one free-text string (documented format). Card number appended only when purely numeric (`/^\d+$/`) — alphanumeric codes like BPA-PS2, RA-PS, RCPA-PS are not in PriceCharting's index and cause false matches.
 - Confirmed grade field names from official API docs: PSA 10 → `manual-only-price`, BGS 10 → `bgs-10-price`, CGC 10 → `condition-17-price`, SGC 10 → `condition-18-price`, Grade 9 → `graded-price`, Grade 8/8.5 → `new-price`, Grade 7 → `cib-price`, Ungraded → `loose-price`
 - `selectPCPrice(p, card)` selects the correct tier; 0 is treated as noData (not $0 card); `loose-price` used as fallback with `gradeFallback: true` on result
 - Retry with `player year` only when full query returns 0 products (set name token mismatch is a common miss cause)
+- `fetchPCPrices(token, productId)` helper extracts the price fetch step — called for the initial product, and again for a retry product ID when the first match returns all-zero price data (`{}` in logs). Empty price data `{}` triggers a second search with `player+year` only and fetches prices for the new product ID.
 - `PRICECHARTING_TOKEN` must be set in Netlify — degrades to `{ stub: true }` without it
 
 ### Rate Limiting
