@@ -429,9 +429,10 @@ Cancel at each state:
 - Grade matching: finds exact `grade_value` match first, falls back to within ±0.5; falls back to raw sales for ungraded cards.
 - `compPrice` computed as median of up to 5 most recent sale records.
 - Returns normalised `{ stub, compPrice, lowPrice, highPrice, recentSales[], source: 'cardsight', matchedCard }`.
-- `recentSales` — array of `{ price, date, source, url, image }` up to 3 individual sale records; `[]` for all other sources. `url` links to original eBay/marketplace listing.
+- `recentSales` — array of `{ price, date, source, url, image, parallelName }` up to 5 individual sale records sorted by parallel match score (see `scoreAndSortRecords`); `[]` for all other sources. `url` links to original eBay/marketplace listing.
 - Buyer modal: sale rows with `url` render as tappable `<a>` links with `↗` gold icon; without URL fall back to `<div>`.
 - Source label in buyer modal: "Real sales data · CardSight AI"
+- `scoreAndSortRecords(records)` — replaces old `mapRecords()`; filters to completed sales, scores each record against seller's `card.parallel` (10pts per matching word, +20pts for matching print run like `/50`), sorts by score desc then date desc, slices to 5, normalises to `{ price, date, source, url, image, parallelName }`. Applied to both graded path (`gradeMatch.records`) and raw ungraded fallback (`pricingData.raw.records`). Seller-parallel variables (`sellerParallel`, `sellerRun`, `parallelWords`) computed once in the outer closure before the function is defined.
 - Fallback: if CardSight returns stub or no `compPrice`, falls through to PriceCharting.
 
 ### PriceCharting API — Fallback for Sports Cards
