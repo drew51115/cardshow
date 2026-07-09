@@ -915,28 +915,37 @@ async function lookupPokemonTCG(card) {
   if (!name) return { stub: true, noData: true };
 
   try {
-    const q = card.cardSet
-      ? `name:"${name}" set.name:"${card.cardSet}"`
-      : `name:"${name}"`;
+    // Only filter by card number if available — set.name strict match
+    // fails for partial/abbreviated set names sellers typically enter.
+    const queryParts = [`name:"${name}"`];
+    if (card.cardNumber) queryParts.push(`number:${card.cardNumber}`);
 
     const headers = { 'Content-Type': 'application/json' };
     if (process.env.POKEMON_TCG_API_KEY) {
       headers['X-Api-Key'] = process.env.POKEMON_TCG_API_KEY;
+    } else {
+      console.warn('[pokemontcg] POKEMON_TCG_API_KEY not set — unauthenticated (throttled)');
     }
 
+    const q = queryParts.join(' ');
+    if (process.env.CARDSHOW_DEBUG) console.log('[pokemontcg] query:', q);
+
     const res = await fetch(
-      `https://api.pokemontcg.io/v2/cards?q=${encodeURIComponent(q)}&pageSize=4&orderBy=-set.releaseDate`,
-      { headers, signal: AbortSignal.timeout(6000) }
+      `https://api.pokemontcg.io/v2/cards?q=${encodeURIComponent(q)}&pageSize=5&orderBy=-set.releaseDate`,
+      { headers, signal: AbortSignal.timeout(5000) }
     );
 
     if (!res.ok) {
-      console.warn('Pokemon TCG API failed:', res.status);
+      console.warn('[pokemontcg] API failed:', res.status);
       return { stub: true };
     }
 
     const data  = await res.json();
     const cards = data.data || [];
     if (!cards.length) return { stub: true, noData: true };
+
+    if (process.env.CARDSHOW_DEBUG)
+      console.log('[pokemontcg] results:', cards.length, '| first:', cards[0]?.name, cards[0]?.set?.name);
 
     const SUBTYPE_ORDER = [
       'holofoil', 'reverseHolofoil', '1stEditionHolofoil',
@@ -969,6 +978,8 @@ async function lookupPokemonTCG(card) {
       }
 
       if (compPrice) {
+        if (process.env.CARDSHOW_DEBUG)
+          console.log('[pokemontcg] matched:', item.name, item.set?.name, '| price:', compPrice);
         return {
           stub:        false,
           compPrice,
@@ -976,8 +987,7 @@ async function lookupPokemonTCG(card) {
           highPrice,
           recentSales: [],
           source:      'pokemontcg',
-          cardName:    item.name,
-          setName:     item.set?.name || null,
+          matchedCard: `${item.name} ${item.set?.name || ''}`.trim(),
         };
       }
     }
@@ -986,9 +996,9 @@ async function lookupPokemonTCG(card) {
 
   } catch (err) {
     if (err.name === 'TimeoutError') {
-      console.warn('Pokemon TCG API timeout');
+      console.warn('[pokemontcg] request timed out');
     } else {
-      console.warn('Pokemon TCG API error:', err.message);
+      console.warn('[pokemontcg] error:', err.message);
     }
     return { stub: true };
   }
@@ -999,7 +1009,7 @@ async function lookupPokemonTCG(card) {
 async function lookupTCGApi(card) {
   const apiKey = process.env.TCG_API_KEY;
   if (!apiKey) {
-    console.warn('TCG_API_KEY not set — returning stub');
+    console.warn('[tcgapi] TCG_API_KEY not set — returning stub');
     return { stub: true };
   }
 
@@ -1007,17 +1017,25 @@ async function lookupTCGApi(card) {
     const query = [card.player, card.year, card.cardSet, card.cardNumber]
       .filter(Boolean)
       .join(' ');
+    if (!query) return { stub: true };
+
+    if (process.env.CARDSHOW_DEBUG) console.log('[tcgapi] query:', query);
 
     const res = await fetch(
-      `https://api.tcgapi.dev/v1/cards?q=${encodeURIComponent(query)}&limit=1`,
+      `https://api.tcgapi.dev/v1/cards?q=${encodeURIComponent(query)}&limit=5`,
       {
-        headers: { Authorization: `Bearer ${apiKey}` },
-        signal:  AbortSignal.timeout(6000),
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type':  'application/json',
+        },
+        signal: AbortSignal.timeout(5000),
       }
     );
 
     if (!res.ok) {
-      console.warn('TCG API lookup failed:', res.status);
+      console.warn(`[tcgapi] API failed: ${res.status}`);
+      if (res.status === 401)
+        console.warn('[tcgapi] 401 — check TCG_API_KEY in Netlify environment variables');
       return { stub: true };
     }
 
@@ -1026,24 +1044,34 @@ async function lookupTCGApi(card) {
     if (!item) return { stub: true, noData: true };
 
     const compPrice = item.market_price || item.mid_price || item.price || null;
+
+    if (process.env.CARDSHOW_DEBUG) {
+      console.log('[tcgapi] matched:', item.name || item.id);
+      console.log('[tcgapi] price fields:', JSON.stringify({
+        price:        item.price,
+        market_price: item.market_price,
+        low_price:    item.low_price,
+        high_price:   item.high_price,
+      }));
+    }
+
     if (!compPrice) return { stub: true, noData: true };
 
     return {
       stub:        false,
       compPrice:   Number(compPrice),
-      lowPrice:    item.low_price  ? Number(item.low_price)  : null,
-      highPrice:   item.high_price ? Number(item.high_price) : null,
+      lowPrice:    Number(item.low_price  || item.lowPrice  || 0) || null,
+      highPrice:   Number(item.high_price || item.highPrice || 0) || null,
       recentSales: [],
       source:      'tcgapi',
-      cardName:    item.name || item.card_name || null,
-      setName:     item.set  || item.set_name  || null,
+      matchedCard: item.name || item.card_name || null,
     };
 
   } catch (err) {
     if (err.name === 'TimeoutError') {
-      console.warn('TCG API timeout');
+      console.warn('[tcgapi] request timed out');
     } else {
-      console.warn('TCG API lookup error:', err.message);
+      console.warn('[tcgapi] lookup error:', err.message);
     }
     return { stub: true };
   }
@@ -1094,6 +1122,17 @@ async function lookupComp(card) {
 // 1 call/second PriceCharting rate limit.
 
 exports.handler = async (event) => {
+  if (process.env.CARDSHOW_DEBUG) {
+    console.log('[comp-lookup] env check:', {
+      CARDSIGHT_API_KEY:    !!process.env.CARDSIGHT_API_KEY,
+      PRICECHARTING_TOKEN:  !!process.env.PRICECHARTING_TOKEN,
+      TCG_API_KEY:          !!process.env.TCG_API_KEY,
+      POKEMON_TCG_API_KEY:  !!process.env.POKEMON_TCG_API_KEY,
+      SUPABASE_URL:         !!process.env.SUPABASE_URL,
+      SUPABASE_SERVICE_KEY: !!process.env.SUPABASE_SERVICE_KEY,
+    });
+  }
+
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method not allowed' };
   }
