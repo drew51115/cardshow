@@ -493,8 +493,18 @@ Cancel at each state:
 - Checks `card.Sport` first; falls back to keyword scan of title/set/player
 - TCG keywords: pokemon, mtg, magic, yu-gi-oh, lorcana, one piece, dragon ball, digimon, scarlet, violet, base set, evolving skies, prismatic, obsidian, etc.
 - Sport keywords (regex word-boundary): NFL/football/gridiron → Football; NBA/basketball/hoops → Basketball; NHL/hockey → Hockey; MLB/baseball → Baseball
-- Default for unrecognized: `'Baseball'` (routes to CardSight → PriceCharting fallback)
-- `scorePCResult()` fallback inference: when `card.sport` is null, checks player name against known football/baseball/basketball player lists (mahomes, allen, burrow, trout, ohtani, curry, acuna, etc.) to infer sport for the cross-sport penalty check
+- Returns `''` (empty string) for unrecognized cards — comp-lookup.js `inferSportFromPlayer()` handles inference; returning 'Baseball' here caused football cards to get wrong sport and score backwards
+- Sport field is blank in seller inventory by default — inference handles it end-to-end
+
+### Sport Inference (`inferSportFromPlayer()` — comp-lookup.js)
+- Canonical sport inference function used in both `scorePCResult()` and `lookupComp()` routing
+- Checks full names first (most precise: 'josh allen', 'ronald acuna'), then last-name fragments
+- Football checked before basketball, basketball before baseball — prevents 'murray'/'jackson' defaulting to baseball
+- Football: mahomes, allen, burrow, herbert, hurts, brady, manning, rodgers, prescott, stroud, purdy, young + full names
+- Basketball: morant, wembanyama, flagg, tatum, jokic, giannis, embiid, booker, lillard, gilgeous + full names
+- Baseball: trout, ohtani, judge, acuna/acuña, tatis, soto, betts, devers, skenes, mantle, mays, jeter, ripken + full names
+- Returns null when genuinely unknown — sport penalty/bonus skipped rather than guessed wrong
+- `lookupComp()` uses resolvedSport = card.sport || inferSportFromPlayer() for routing decisions (Pokemon vs TCG vs sports)
 
 ### runCompCheck(cards) — app.html
 - Sequential card-by-card loop with progress bar + cancel button

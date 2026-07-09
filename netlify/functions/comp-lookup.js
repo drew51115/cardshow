@@ -775,6 +775,46 @@ function pcSportCategory(sport) {
   return null;
 }
 
+// Infer sport from player name — checks full names first for precision,
+// then falls back to last-name fragments. Football and basketball checked
+// before baseball to avoid ambiguous fragments like 'murray' or 'jackson'.
+function inferSportFromPlayer(playerName) {
+  if (!playerName) return null;
+  const p = playerName.toLowerCase();
+
+  const football = [
+    'josh allen','patrick mahomes','lamar jackson','joe burrow',
+    'justin herbert','jalen hurts','tom brady','peyton manning',
+    'aaron rodgers','matthew stafford','dak prescott','trevor lawrence',
+    'cj stroud','c.j. stroud','brock purdy','bryce young','jordan love',
+    'anthony richardson',
+    'mahomes','burrow','herbert','prescott','stroud','purdy',
+  ];
+  const basketball = [
+    'lebron james','stephen curry','kevin durant','ja morant',
+    'victor wembanyama','cooper flagg','anthony edwards','jayson tatum',
+    'nikola jokic','giannis antetokounmpo','joel embiid','devin booker',
+    'damian lillard','tyrese maxey','jalen brunson',
+    'shai gilgeous-alexander','michael jordan',
+    'morant','wembanyama','flagg','tatum','jokic','giannis','embiid',
+    'booker','lillard','maxey','brunson','gilgeous',
+  ];
+  const baseball = [
+    'mike trout','shohei ohtani','aaron judge','ronald acuna',
+    'ronald acuña','fernando tatis','julio rodriguez','juan soto',
+    'mookie betts','rafael devers','vladimir guerrero','pete alonso',
+    'paul skenes','gunnar henderson','jackson holliday',
+    'trout','ohtani','judge','acuna','acuña','tatis','soto','betts',
+    'devers','skenes','mantle','mays','jeter','ripken','gehrig',
+    'ruth','koufax','clemente','bench','seaver','gwynn',
+  ];
+
+  if (football.some(n => p.includes(n)))   return 'Football';
+  if (basketball.some(n => p.includes(n))) return 'Basketball';
+  if (baseball.some(n => p.includes(n)))   return 'Baseball';
+  return null;
+}
+
 // Score a PriceCharting result against the seller's card.
 // Bracket variants like [Image Variation] are subsets — penalise unless
 // the bracket content matches the seller's parallel.
@@ -835,28 +875,15 @@ function scorePCResult(product, card) {
   }
 
   // Sport / category match via console-name field.
-  // card.sport may be null when detectCardSport() couldn't determine it —
-  // fall back to player name inference so the sport check still fires.
+  // card.sport may be blank — fall back to player name inference.
   let inferredSport = (card.sport || '').toLowerCase();
-  if (!inferredSport && card.player) {
-    const pl = card.player.toLowerCase();
-    const FOOTBALL_PLAYERS = ['mahomes','allen','burrow','herbert','hurts',
-      'brady','manning','rodgers','stafford','prescott','lawrence','stroud',
-      'purdy','young','love','richardson','levis','murray','cousins','dak'];
-    const BASEBALL_PLAYERS = ['trout','ohtani','judge','acuna','acuña','tatis',
-      'rodriguez','soto','betts','devers','vlad','guerrero','alonso','franco',
-      'witt','henderson','rutschman','langford','skenes','jeter','mantle',
-      'mays','aaron','williams','dimaggio','gehrig','ruth','koufax','clemente',
-      'bench','seaver','ryan','schmidt','ripken','gwynn','murray','brett'];
-    const BASKETBALL_PLAYERS = ['lebron','james','curry','durant','morant',
-      'wembanyama','flagg','edwards','tatum','jokic','giannis','embiid',
-      'doncic','booker','lillard','george','mitchell','maxey','brunson',
-      'gilgeous','sga'];
-    if (FOOTBALL_PLAYERS.some(p => pl.includes(p)))      inferredSport = 'football';
-    else if (BASKETBALL_PLAYERS.some(p => pl.includes(p))) inferredSport = 'basketball';
-    else if (BASEBALL_PLAYERS.some(p => pl.includes(p)))  inferredSport = 'baseball';
-    if (inferredSport && process.env.CARDSHOW_DEBUG)
-      console.log('[PC score] sport inferred from player name:', inferredSport);
+  if (!inferredSport) {
+    const inferred = inferSportFromPlayer(card.player);
+    if (inferred) {
+      inferredSport = inferred.toLowerCase();
+      if (process.env.CARDSHOW_DEBUG)
+        console.log('[PC score] sport inferred from player:', inferred, '| player:', card.player);
+    }
   }
 
   const sellerCategory = pcSportCategory(inferredSport);
@@ -1262,8 +1289,13 @@ async function lookupComp(card) {
   const cached = await checkPriceCache(card);
   if (cached) return cached;
 
-  const isPokemon = card.sport === 'Pokemon';
-  const isTCG     = TCG_SPORTS.includes(card.sport);
+  // Resolve sport — use explicit field or infer from player name
+  const resolvedSport = card.sport || inferSportFromPlayer(card.player) || '';
+  if (process.env.CARDSHOW_DEBUG && resolvedSport !== (card.sport || ''))
+    console.log('[lookupComp] sport resolved via inference:', resolvedSport, '(was:', card.sport || 'empty', ')');
+
+  const isPokemon = resolvedSport === 'Pokemon';
+  const isTCG     = TCG_SPORTS.includes(resolvedSport);
 
   let result;
 

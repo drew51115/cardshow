@@ -5180,8 +5180,8 @@ function detectCardSport(card) {
   if (/\b(nhl|hockey)\b/.test(text)) return 'Hockey';
   if (/\b(mlb|baseball)\b/.test(text)) return 'Baseball';
 
-  // Default — most sports cards in the system are baseball
-  return 'Baseball';
+  // Return empty — inference in comp-lookup.js handles sport detection
+  return '';
 }
 
 // Cancellation flag — set to true by cancelCompCheck(), checked each loop iteration.
