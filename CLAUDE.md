@@ -492,7 +492,9 @@ Cancel at each state:
 - Separate from `detectSport()` (UI badges) — this routes API selection only
 - Checks `card.Sport` first; falls back to keyword scan of title/set/player
 - TCG keywords: pokemon, mtg, magic, yu-gi-oh, lorcana, one piece, dragon ball, digimon, scarlet, violet, base set, evolving skies, prismatic, obsidian, etc.
-- Default for unrecognized: `'Baseball'` (routes to CardSight → PriceCharting fallback)
+- Sport keywords (regex word-boundary): NFL/football/gridiron → Football; NBA/basketball/hoops → Basketball; NHL/hockey → Hockey; MLB/baseball → Baseball
+- Returns `null` (not `'Baseball'`) when sport cannot be determined — lets `scorePCResult()` use console-name inference rather than silently routing football cards to Baseball
+- `scorePCResult()` fallback inference: when `card.sport` is null, checks player name against known football/baseball/basketball player lists (mahomes, allen, burrow, trout, ohtani, curry, etc.) to infer sport for the cross-sport penalty check
 
 ### runCompCheck(cards) — app.html
 - Sequential card-by-card loop with progress bar + cancel button

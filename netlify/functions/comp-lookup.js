@@ -783,6 +783,13 @@ function scorePCResult(product, card) {
   const pConsole = (product['console-name'] || '').toLowerCase();
   let score = 0;
 
+  if (process.env.CARDSHOW_DEBUG) {
+    console.log('[PC score] sport:', card.sport,
+      '| player:', card.player,
+      '| product:', (product['product-name'] || '').slice(0, 50),
+      '| console:', product['console-name']);
+  }
+
   // Bracket variants are subset/parallel cards — penalise unless bracket
   // content matches seller's parallel (e.g. seller has "Gold /10" → [Gold])
   const bracketMatch = (product['product-name'] || '').match(/\[([^\]]+)\]/);
@@ -827,15 +834,38 @@ function scorePCResult(product, card) {
     score -= 20;  // wrong player — strong penalty
   }
 
-  // Sport / category match via console-name field
-  const sellerCategory = pcSportCategory(card.sport);
+  // Sport / category match via console-name field.
+  // card.sport may be null when detectCardSport() couldn't determine it —
+  // fall back to player name inference so the sport check still fires.
+  let inferredSport = (card.sport || '').toLowerCase();
+  if (!inferredSport && card.player) {
+    const pl = card.player.toLowerCase();
+    const FOOTBALL_PLAYERS = ['mahomes','allen','burrow','herbert','hurts','jackson',
+      'brady','manning','rodgers','stafford','prescott','lawrence','stroud','murray',
+      'cousins','wilson','dak','fields','lance','trey'];
+    const BASEBALL_PLAYERS = ['trout','ohtani','judge','acuna','tatis','soto',
+      'betts','devers','vlad','guerrero','correa','lindor','freeman','alonso'];
+    const BASKETBALL_PLAYERS = ['james','curry','durant','morant','wembanyama',
+      'flagg','edwards','tatum','jokic','giannis','embiid','doncic','booker'];
+    if (FOOTBALL_PLAYERS.some(p => pl.includes(p)))   inferredSport = 'football';
+    else if (BASEBALL_PLAYERS.some(p => pl.includes(p))) inferredSport = 'baseball';
+    else if (BASKETBALL_PLAYERS.some(p => pl.includes(p))) inferredSport = 'basketball';
+    if (inferredSport && process.env.CARDSHOW_DEBUG)
+      console.log('[PC score] sport inferred from player name:', inferredSport);
+  }
+
+  const sellerCategory = pcSportCategory(inferredSport);
   if (sellerCategory) {
     if (pConsole.includes(sellerCategory)) {
       score += 20;  // correct sport category
+      if (process.env.CARDSHOW_DEBUG) console.log('[PC score] +20 sport match:', sellerCategory, '|', product['console-name']);
     } else if (['baseball', 'basketball', 'football', 'hockey', 'soccer', 'pokemon']
         .some(s => s !== sellerCategory && pConsole.includes(s))) {
       score -= 40;  // wrong sport — eliminate cross-sport false positives
+      if (process.env.CARDSHOW_DEBUG) console.log('[PC score] -40 sport mismatch:', sellerCategory, 'vs', product['console-name']);
     }
+  } else if (process.env.CARDSHOW_DEBUG) {
+    console.log('[PC score] sport check skipped — could not determine seller sport');
   }
 
   // Subset / variation keywords — penalise regardless of brackets

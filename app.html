@@ -5173,7 +5173,16 @@ function detectCardSport(card) {
     'evolving skies','lost origin','prismatic','obsidian'];
 
   if (TCG_KEYWORDS.some(kw => text.includes(kw))) return 'Pokemon';
-  return 'Baseball';
+
+  // Sport-specific keywords — unambiguous terms checked before broad fallback
+  if (/\b(nfl|football|gridiron|quarterback)\b/.test(text)) return 'Football';
+  if (/\b(nba|basketball|hoops)\b/.test(text)) return 'Basketball';
+  if (/\b(nhl|hockey)\b/.test(text)) return 'Hockey';
+  if (/\b(mlb|baseball)\b/.test(text)) return 'Baseball';
+
+  // Return null when sport cannot be determined — lets scorePCResult()
+  // use console-name inference rather than defaulting to Baseball
+  return null;
 }
 
 // Cancellation flag — set to true by cancelCompCheck(), checked each loop iteration.
