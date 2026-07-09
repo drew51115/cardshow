@@ -974,10 +974,15 @@ async function lookupPokemonTCG(card) {
       }
     }
 
-    // Set name — strip year prefix so "1999 Base Set" → "Base Set"
+    // Set name — strip year prefix and reserved Lucene characters.
+    // "&" in "Scarlet & Violet 151" causes pokemontcg.io query timeouts.
     if (card.cardSet) {
-      const setName = card.cardSet.replace(/^\d{4}[-\s]*/, '').trim();
-      if (setName) queryParts.push(`set.name:"${setName}"`)
+      const setName = card.cardSet
+        .replace(/^\d{4}[-\s]*/, '')
+        .replace(/&/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (setName) queryParts.push(`set.name:"${setName}"`);
     }
 
     const headers = { 'Content-Type': 'application/json' };
@@ -988,12 +993,23 @@ async function lookupPokemonTCG(card) {
     }
 
     const q = queryParts.join(' ');
+    const pokeUrl = `https://api.pokemontcg.io/v2/cards?q=${encodeURIComponent(q)}&pageSize=5&orderBy=-set.releaseDate`;
     if (process.env.CARDSHOW_DEBUG) console.log('[pokemontcg] query:', q);
 
-    const res = await fetch(
-      `https://api.pokemontcg.io/v2/cards?q=${encodeURIComponent(q)}&pageSize=5&orderBy=-set.releaseDate`,
-      { headers, signal: AbortSignal.timeout(5000) }
-    );
+    let res;
+    try {
+      res = await fetch(pokeUrl, { headers, signal: AbortSignal.timeout(4000) });
+    } catch (err) {
+      if (err.name !== 'TimeoutError') throw err;
+      console.warn('[pokemontcg] full query timed out — retrying name-only');
+      const retryUrl = `https://api.pokemontcg.io/v2/cards?q=${encodeURIComponent(`name:"${name}"`)}&pageSize=5&orderBy=-set.releaseDate`;
+      try {
+        res = await fetch(retryUrl, { headers, signal: AbortSignal.timeout(3000) });
+      } catch {
+        console.warn('[pokemontcg] retry also timed out');
+        return { stub: true };
+      }
+    }
 
     if (!res.ok) {
       console.warn('[pokemontcg] API failed:', res.status);
