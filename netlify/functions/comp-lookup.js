@@ -289,6 +289,17 @@ function scoreCatalogMatch(results, card) {
       if (cNum.includes(targetNumber) || targetNumber.includes(cNum)) score += 8;
     }
 
+    // Penalise Draft Picks results when the seller's set doesn't reference Draft
+    // Prevents Prizm Draft Picks from beating base Prizm when they share a number
+    const cReleaseLower  = (c.releaseName || '').toLowerCase();
+    const sellerSetLower = (card.cardSet  || '').toLowerCase();
+    if (cReleaseLower.includes('draft picks') &&
+        !sellerSetLower.includes('draft')) {
+      score -= 30;
+      if (process.env.CARDSHOW_DEBUG)
+        console.log(`[cardsight] -30 Draft Picks penalty: ${c.releaseName}`);
+    }
+
     if (process.env.CARDSHOW_DEBUG) {
       console.log(`[cardsight score] ${score} | ${c.name} | #${c.number}`);
     }
