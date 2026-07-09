@@ -961,10 +961,24 @@ async function lookupPokemonTCG(card) {
   if (!name) return { stub: true, noData: true };
 
   try {
-    // Only filter by card number if available — set.name strict match
-    // fails for partial/abbreviated set names sellers typically enter.
+    // Build Lucene query for pokemontcg.io v2 API.
+    // NOTE: "/" is a reserved Lucene character — never pass "4/102" as number.
+    // pokemontcg.io stores only the base number before the slash.
     const queryParts = [`name:"${name}"`];
-    if (card.cardNumber) queryParts.push(`number:${card.cardNumber}`);
+
+    if (card.cardNumber) {
+      const baseNumber = card.cardNumber.split('/')[0].trim();
+      // Only add numeric base numbers — alphanumeric codes don't appear in Pokémon
+      if (baseNumber && /^\d+$/.test(baseNumber)) {
+        queryParts.push(`number:${baseNumber}`);
+      }
+    }
+
+    // Set name — strip year prefix so "1999 Base Set" → "Base Set"
+    if (card.cardSet) {
+      const setName = card.cardSet.replace(/^\d{4}[-\s]*/, '').trim();
+      if (setName) queryParts.push(`set.name:"${setName}"`)
+    }
 
     const headers = { 'Content-Type': 'application/json' };
     if (process.env.POKEMON_TCG_API_KEY) {
@@ -1058,6 +1072,9 @@ async function lookupTCGApi(card) {
     console.warn('[tcgapi] TCG_API_KEY not set — returning stub');
     return { stub: true };
   }
+
+  if (process.env.CARDSHOW_DEBUG)
+    console.log('[tcgapi] key prefix:', apiKey.slice(0, 16) + '...');
 
   try {
     const query = [card.player, card.year, card.cardSet, card.cardNumber]
