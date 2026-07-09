@@ -178,6 +178,20 @@ function extractReleaseName(cardSet) {
   return words[0] ? words[0].charAt(0).toUpperCase() + words[0].slice(1) : null;
 }
 
+// Map card set to manufacturer for catalog search narrowing.
+// Prevents Topps cards from matching Panini results and vice versa.
+function inferManufacturer(cardSet) {
+  const s = (cardSet || '').toLowerCase();
+  if (s.includes('topps') || s.includes('bowman')) return 'Topps';
+  if (s.includes('panini') || s.includes('prizm') || s.includes('donruss') ||
+      s.includes('select') || s.includes('mosaic') || s.includes('contenders') ||
+      s.includes('chronicles') || s.includes('optic'))
+    return 'Panini';
+  if (s.includes('upper deck') || s.includes(' ud ')) return 'Upper Deck';
+  if (s.includes('fleer')) return 'Fleer';
+  return null;
+}
+
 // Map card fields to CardSight attributeShortName codes (case-sensitive).
 // AU is returned first — it's more specific and higher-priority for pricing.
 function deriveAttributeShortNames(card) {
@@ -202,6 +216,8 @@ function buildCardSightParams(card, attempt) {
   const release = card.cardSet ? extractReleaseName(card.cardSet) : null;
   const attrs   = deriveAttributeShortNames(card);
 
+  const mfr = inferManufacturer(card.cardSet);
+
   if (attempt === 1) {
     // number= isolated — no other filters to avoid server-side 500s
     params.set('number', card.cardNumber.trim());
@@ -209,9 +225,11 @@ function buildCardSightParams(card, attempt) {
   } else if (attempt === 2) {
     if (release) params.set('releaseName', release);
     if (attrs.length) params.set('attributeShortName', attrs[0]);
+    if (mfr) params.set('manufacturer', mfr);
     params.set('take', '10');
   } else if (attempt === 3) {
     if (release) params.set('releaseName', release);
+    if (mfr) params.set('manufacturer', mfr);
     params.set('take', '15');
   } else {
     params.set('take', '25');
@@ -337,6 +355,34 @@ async function lookupCardSight(card, cached = {}) {
     'X-API-Key':    apiKey,
     'Content-Type': 'application/json',
   };
+
+  if (process.env.CARDSHOW_DEBUG) {
+    console.log('[cardsight] input card:', {
+      player:     card.player,
+      year:       card.year,
+      cardSet:    card.cardSet,
+      cardNumber: card.cardNumber,
+      grade:      card.grade,
+      grader:     card.grader,
+      parallel:   card.parallel,
+      sport:      card.sport,
+    });
+    const rn = extractReleaseName(card.cardSet);
+    console.log('[cardsight] extractReleaseName result:', rn);
+
+    // Self-test: ensure Topps Chrome never maps to a Panini product
+    const selfTests = [
+      ['Topps Chrome',        'Topps Chrome'],
+      ['Topps Chrome Update', 'Topps Chrome Update'],
+      ['Prizm',               'Prizm'],
+      ['Panini Prizm',        'Prizm'],
+    ];
+    for (const [input, expected] of selfTests) {
+      const result = extractReleaseName(input);
+      if (result !== expected)
+        console.error(`[cardsight] extractReleaseName bug: "${input}" → "${result}" (expected "${expected}")`);
+    }
+  }
 
   try {
     // ── STEP 1: Catalog search to get card UUID ──────────────────────────────
