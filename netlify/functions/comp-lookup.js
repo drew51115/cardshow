@@ -840,16 +840,21 @@ function scorePCResult(product, card) {
   let inferredSport = (card.sport || '').toLowerCase();
   if (!inferredSport && card.player) {
     const pl = card.player.toLowerCase();
-    const FOOTBALL_PLAYERS = ['mahomes','allen','burrow','herbert','hurts','jackson',
-      'brady','manning','rodgers','stafford','prescott','lawrence','stroud','murray',
-      'cousins','wilson','dak','fields','lance','trey'];
-    const BASEBALL_PLAYERS = ['trout','ohtani','judge','acuna','tatis','soto',
-      'betts','devers','vlad','guerrero','correa','lindor','freeman','alonso'];
-    const BASKETBALL_PLAYERS = ['james','curry','durant','morant','wembanyama',
-      'flagg','edwards','tatum','jokic','giannis','embiid','doncic','booker'];
-    if (FOOTBALL_PLAYERS.some(p => pl.includes(p)))   inferredSport = 'football';
-    else if (BASEBALL_PLAYERS.some(p => pl.includes(p))) inferredSport = 'baseball';
+    const FOOTBALL_PLAYERS = ['mahomes','allen','burrow','herbert','hurts',
+      'brady','manning','rodgers','stafford','prescott','lawrence','stroud',
+      'purdy','young','love','richardson','levis','murray','cousins','dak'];
+    const BASEBALL_PLAYERS = ['trout','ohtani','judge','acuna','acuña','tatis',
+      'rodriguez','soto','betts','devers','vlad','guerrero','alonso','franco',
+      'witt','henderson','rutschman','langford','skenes','jeter','mantle',
+      'mays','aaron','williams','dimaggio','gehrig','ruth','koufax','clemente',
+      'bench','seaver','ryan','schmidt','ripken','gwynn','murray','brett'];
+    const BASKETBALL_PLAYERS = ['lebron','james','curry','durant','morant',
+      'wembanyama','flagg','edwards','tatum','jokic','giannis','embiid',
+      'doncic','booker','lillard','george','mitchell','maxey','brunson',
+      'gilgeous','sga'];
+    if (FOOTBALL_PLAYERS.some(p => pl.includes(p)))      inferredSport = 'football';
     else if (BASKETBALL_PLAYERS.some(p => pl.includes(p))) inferredSport = 'basketball';
+    else if (BASEBALL_PLAYERS.some(p => pl.includes(p)))  inferredSport = 'baseball';
     if (inferredSport && process.env.CARDSHOW_DEBUG)
       console.log('[PC score] sport inferred from player name:', inferredSport);
   }
@@ -866,6 +871,24 @@ function scorePCResult(product, card) {
     }
   } else if (process.env.CARDSHOW_DEBUG) {
     console.log('[PC score] sport check skipped — could not determine seller sport');
+  }
+
+  // Year match scoring — penalise by delta to prevent 2025 card winning over 2018
+  const sellerYear = parseInt(card.year) || 0;
+  if (sellerYear > 0) {
+    const yearMatch = pConsole.match(/\b(19|20)\d{2}\b/);
+    const productYear = yearMatch ? parseInt(yearMatch[0]) : 0;
+    if (productYear > 0) {
+      const delta = Math.abs(productYear - sellerYear);
+      let yearScore;
+      if (delta === 0)      yearScore = 15;
+      else if (delta <= 1)  yearScore = -5;
+      else if (delta <= 3)  yearScore = -15;
+      else                  yearScore = -30;
+      score += yearScore;
+      if (process.env.CARDSHOW_DEBUG)
+        console.log(`[PC score] year ${productYear} vs ${sellerYear}: ${yearScore > 0 ? '+' : ''}${yearScore}`);
+    }
   }
 
   // Subset / variation keywords — penalise regardless of brackets
