@@ -763,11 +763,24 @@ function selectPCPrice(p, card) {
   return p['loose-price'];
 }
 
+// Map seller sport to PriceCharting console-name keyword.
+function pcSportCategory(sport) {
+  const s = (sport || '').toLowerCase();
+  if (s === 'baseball')   return 'baseball';
+  if (s === 'basketball') return 'basketball';
+  if (s === 'football')   return 'football';
+  if (s === 'hockey')     return 'hockey';
+  if (s === 'soccer')     return 'soccer';
+  if (s === 'pokemon')    return 'pokemon';
+  return null;
+}
+
 // Score a PriceCharting result against the seller's card.
 // Bracket variants like [Image Variation] are subsets — penalise unless
 // the bracket content matches the seller's parallel.
 function scorePCResult(product, card) {
-  const pName  = (product['product-name'] || '').toLowerCase();
+  const pName    = (product['product-name'] || '').toLowerCase();
+  const pConsole = (product['console-name'] || '').toLowerCase();
   let score = 0;
 
   // Bracket variants are subset/parallel cards — penalise unless bracket
@@ -785,14 +798,45 @@ function scorePCResult(product, card) {
     score += 15;    // no bracket — base card bonus
   }
 
-  // Card number present in product name
+  // Card number — exact match bonus; different number tiebreaker penalty
   const num = (card.cardNumber || '').trim();
-  if (num && pName.includes('#' + num.toLowerCase())) score += 20;
+  if (num) {
+    if (pName.includes('#' + num.toLowerCase())) {
+      score += 20;  // exact number match
+    } else {
+      const productNumMatch = pName.match(/#(\w+)/);
+      const productNum = productNumMatch?.[1] || '';
+      if (productNum && productNum !== num.toLowerCase()) {
+        score -= 5;  // product has a different number — tiebreaker penalty
+      }
+    }
+  }
 
-  // Last name sanity check
-  const player = (card.player || '').toLowerCase();
-  const lastName = player.split(' ').pop();
-  if (lastName && lastName.length > 2 && pName.includes(lastName)) score += 5;
+  // Player name — match against pre-# portion only to avoid "Allen" matching "Allen & Ginter"
+  const playerPortion = pName.split(/\s*#/)[0].trim();
+  const playerParts = (card.player || '').toLowerCase().split(/\s+/);
+  const playerLast  = playerParts[playerParts.length - 1] || '';
+  const playerFirst = playerParts[0] || '';
+  const playerMatch = playerLast.length > 2 && playerFirst.length > 1
+    && playerPortion.includes(playerLast)
+    && playerPortion.includes(playerFirst);
+
+  if (playerMatch) {
+    score += 15;  // both first and last name in player portion
+  } else if (playerPortion.length > 0 && playerLast.length > 2) {
+    score -= 20;  // wrong player — strong penalty
+  }
+
+  // Sport / category match via console-name field
+  const sellerCategory = pcSportCategory(card.sport);
+  if (sellerCategory) {
+    if (pConsole.includes(sellerCategory)) {
+      score += 20;  // correct sport category
+    } else if (['baseball', 'basketball', 'football', 'hockey', 'soccer', 'pokemon']
+        .some(s => s !== sellerCategory && pConsole.includes(s))) {
+      score -= 40;  // wrong sport — eliminate cross-sport false positives
+    }
+  }
 
   // Subset / variation keywords — penalise regardless of brackets
   const subsetKeywords = [
