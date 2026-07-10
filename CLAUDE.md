@@ -268,7 +268,9 @@ Called from `fillFormFromScan` (barcode) and `fillFormFromVision` (vision). Gene
 | `TRADING_CARD_API_KEY` | Trading Card API key for live card DB autocomplete (Sprint 3) — add in Netlify dashboard → Site settings → Environment variables once approved at tradingcardapi.com/early-access |
 | `CACHE_INVALIDATE_SECRET` | Random secret protecting `/.netlify/functions/invalidate-search-cache` — set to output of `openssl rand -hex 24`; pass as `x-invalidate-secret` request header |
 | `POKEMON_TCG_API_KEY` | pokemontcg.io API key — optional; raises rate limits. Free tier works without it. Register at dev.pokemontcg.io |
-| `CARDSIGHT_API_KEY` | CardSight AI key — primary sports card comp source. Free tier: 750 calls/month. cardsight.ai/for-developers |
+| `CARDHEDGE_API_KEY` | Card Hedge key — primary sports card comp source. cardhedge.com |
+| `CARDHEDGE_ENABLED` | Set to `false` to disable Card Hedge without removing the key (default: `true`) |
+| `CARDSIGHT_API_KEY` | CardSight AI key — secondary sports card comp source. Free tier: 750 calls/month. cardsight.ai/for-developers |
 
 ### Credential Injection (no build step workaround)
 Supabase URL and anon key are **not** hardcoded in tracked files. `netlify.toml` has a `command` that runs `sed` to replace `SUPABASE_URL_PLACEHOLDER` / `SUPABASE_ANON_KEY_PLACEHOLDER` in all three HTML files at deploy time. `SECRETS_SCAN_OMIT_KEYS = "SUPABASE_URL,SUPABASE_ANON_KEY"` prevents Netlify's secrets scanner from blocking the build on the injected values (they are intentionally public publishable keys).
@@ -398,7 +400,7 @@ Cancel at each state:
 - **`exportReportCSV()`** — downloads filtered sold cards as CSV; filename includes show name (or "all-time") and date; columns: Card Title, Player, Year, Set, Grade, Grader, Ask Price, Sold Price, Delta, Payment Method, Sale Time, Notes
 - **`adminTabReport`** is permanently hidden from the admin tab bar — admins access All Inventory only; sellers use `sellerTabBar` for their own report
 
-## Comp Pricing — CardSight AI + PriceCharting + TCG API
+## Comp Pricing — Card Hedge + CardSight AI + PriceCharting + TCG API
 
 ### Architecture
 - `netlify/functions/comp-lookup.js` — POST `{ cards: [...] }` → `{ results: [...] }`
@@ -406,9 +408,22 @@ Cancel at each state:
 - Sport routing:
   - Pokemon → pokemontcg.io (TCGPlayer market prices), fallback to TCG API
   - Other TCG (MTG, Yu-Gi-Oh, etc.) → TCG API
-  - Sports cards → **CardSight AI** (primary), fallback to PriceCharting
+  - Sports cards → **Card Hedge** (primary, if enabled) → **CardSight AI** → **PriceCharting** (fallback)
+- Feature flag: `const CARDHEDGE_ENABLED = process.env.CARDHEDGE_ENABLED !== 'false' && !!process.env.CARDHEDGE_API_KEY`
 
-### CardSight AI — Primary Sports Card Comp Source
+### Card Hedge — Primary Sports Card Comp Source
+- `CARDHEDGE_API_KEY` env var (set in Netlify). `CARDHEDGE_ENABLED=false` disables without removing the key.
+- Base URL: `https://api.cardhedger.com`. Auth: `X-API-Key: {key}` (NOT Bearer).
+- **Three-step flow:**
+  - Step 1: `POST /v1/cards/card-match` → `card_id` (5s timeout). On failure: `POST /v1/cards/90day-prices-by-grade` → returns price directly (early return).
+  - Step 2: `POST /v1/cards/card-fmv` → `compPrice` (`fmv`/`price`/`fair_market_value` field, optional chaining), `confidence_grade` (A/B/C/D), `price_explanation`. **D confidence is suppressed** — falls through to CardSight.
+  - Step 3: `POST /v1/cards/comps` → recent sales array (4s timeout, non-fatal). Sales normalised to `{ price, date, source, url, image, isBin }`.
+- Source label in buyer modal: `"Market value · Card Hedge (A confidence)"` when confidence A/B/C; `"Market value · Card Hedge"` otherwise.
+- `priceExplanation` rendered as small muted text below source label in buyer modal when present.
+- Returns normalised `{ stub, compPrice, lowPrice, highPrice, recentSales[], source: 'cardhedge', matchedCard, confidence, priceExplanation }`.
+- **Do NOT use** `card-search` or `card-details` endpoints — they return only TOP grade prices and are not suitable for comp pricing.
+
+### CardSight AI — Secondary Sports Card Comp Source
 - `CARDSIGHT_API_KEY` env var (set in Netlify). Free tier: 750 calls/month — 24h `price_cache` TTL limits redundant calls significantly.
 - **Three-step flow** (confirmed by CardSight support):
   - Step 1: Tiered catalog search — up to 4 attempts with progressively broader params. Confirmed params from CardSight support: `number=` (exact match), `releaseName=` (partial CI), `attributeShortName=` (exact case-sensitive: `RC`, `AU`), `year=`, `name=` (partial, player name), `sort=`/`order=`.

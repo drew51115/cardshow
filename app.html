@@ -6255,7 +6255,11 @@ function renderBuyerComp(card, result) {
 
   wrap.style.display = 'block';
 
-  const sourceLabel = result.source === 'cardsight' && result.isBinOnly
+  const sourceLabel = result.source === 'cardhedge' && result.confidence && result.confidence.toUpperCase() !== 'D'
+    ? `Market value · Card Hedge (${result.confidence.toUpperCase()} confidence)`
+    : result.source === 'cardhedge'
+    ? 'Market value · Card Hedge'
+    : result.source === 'cardsight' && result.isBinOnly
     ? 'Current asking prices · CardSight AI'
     : result.source === 'cardsight'
     ? 'Real sales data · CardSight AI'
@@ -6267,6 +6271,17 @@ function renderBuyerComp(card, result) {
     ? 'Market avg · TCG API'
     : 'Market average';
   if (source) source.textContent = sourceLabel;
+
+  // Show Card Hedge price explanation below source label when present
+  const existingExpl = document.getElementById('modalCompExplanation');
+  if (existingExpl) existingExpl.remove();
+  if (result.source === 'cardhedge' && result.priceExplanation) {
+    const expl = document.createElement('div');
+    expl.id = 'modalCompExplanation';
+    expl.style.cssText = 'font-size:0.75rem;color:var(--muted);margin-top:0.25rem;font-family:"DM Sans",sans-serif;';
+    expl.textContent = result.priceExplanation;
+    if (source) source.insertAdjacentElement('afterend', expl);
+  }
 
   const gradeNum  = parseFloat(card.Grade) || 0;
   const tierLabel = gradeNum >= 10 ? 'PSA 10 market value'

@@ -1,8 +1,8 @@
-// comp-lookup.js — CardSight AI + PriceCharting + Pokémon TCG API + TCG API
+// comp-lookup.js — Card Hedge + CardSight AI + PriceCharting + Pokémon TCG API + TCG API
 // Routing:
 //   Pokemon     → pokemontcg.io, fallback to TCG API
 //   Other TCG   → TCG API
-//   Sports      → CardSight AI (primary), fallback to PriceCharting
+//   Sports      → Card Hedge (primary), CardSight AI (secondary), PriceCharting (fallback)
 //
 // Rate limit: 1 call/second enforced via waitForPCRateLimit() for PriceCharting.
 // Batch processing is sequential (for...of), never parallel, to respect the limit.
@@ -10,6 +10,9 @@
 // app.html's runCompCheck() — this function is called once per card.
 
 const { createClient } = require('@supabase/supabase-js');
+
+// ── FEATURE FLAGS ──
+const CARDHEDGE_ENABLED = process.env.CARDHEDGE_ENABLED !== 'false' && !!process.env.CARDHEDGE_API_KEY;
 
 // ── RATE LIMITER ──
 // Enforces 1100ms minimum gap between PriceCharting API calls.
@@ -1280,10 +1283,172 @@ async function lookupTCGApi(card) {
   }
 }
 
+// ── CARD HEDGE LOOKUP ──
+// Primary source for sports cards when CARDHEDGE_ENABLED is true.
+// Three-step flow:
+//   Step 1: POST /v1/cards/card-match  → card_id (5s timeout)
+//           Fallback: POST /v1/cards/90day-prices-by-grade if card-match fails
+//   Step 2: POST /v1/cards/card-fmv   → compPrice, confidence_grade, price_explanation
+//           D confidence suppressed — falls through to CardSight
+//   Step 3: POST /v1/cards/comps      → recent sales (4s timeout, non-fatal)
+// Auth: X-API-Key header (NOT Bearer)
+// Note: card-search and card-details endpoints return only TOP grade prices —
+//       do NOT use for comp pricing; always use card-fmv or comps.
+
+async function lookupCardHedge(card) {
+  const apiKey = process.env.CARDHEDGE_API_KEY;
+  if (!apiKey) return { stub: true };
+
+  const BASE = 'https://api.cardhedger.com';
+  const headers = {
+    'X-API-Key':    apiKey,
+    'Content-Type': 'application/json',
+  };
+
+  const payload = {
+    player:      card.player     || undefined,
+    year:        card.year       ? String(card.year) : undefined,
+    set:         card.cardSet    || undefined,
+    card_number: card.cardNumber || undefined,
+    parallel:    card.parallel   || undefined,
+    grader:      card.grader     || undefined,
+    grade:       card.grade      ? String(card.grade) : undefined,
+    sport:       card.sport      || undefined,
+  };
+  Object.keys(payload).forEach(k => payload[k] === undefined && delete payload[k]);
+
+  if (process.env.CARDSHOW_DEBUG)
+    console.log('[cardhedge] payload:', JSON.stringify(payload));
+
+  try {
+    // ── Step 1: card-match ───────────────────────────────────────────────────
+    let cardId = null;
+
+    const matchRes = await fetch(`${BASE}/v1/cards/card-match`, {
+      method: 'POST', headers, body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(5000),
+    });
+
+    if (matchRes.ok) {
+      const matchData = await matchRes.json();
+      if (process.env.CARDSHOW_DEBUG)
+        console.log('[cardhedge] card-match raw:', JSON.stringify(matchData));
+      cardId = matchData?.card_id ?? matchData?.id ?? matchData?.data?.card_id ?? null;
+    } else {
+      console.warn('[cardhedge] card-match failed:', matchRes.status);
+      if (matchRes.status === 401 || matchRes.status === 429) return { stub: true };
+    }
+
+    // ── Step 1b: 90day-prices-by-grade fallback ──────────────────────────────
+    if (!cardId) {
+      if (process.env.CARDSHOW_DEBUG)
+        console.log('[cardhedge] card-match no id — trying 90day-prices-by-grade');
+      try {
+        const fbRes = await fetch(`${BASE}/v1/cards/90day-prices-by-grade`, {
+          method: 'POST', headers, body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(5000),
+        });
+        if (fbRes.ok) {
+          const fbData = await fbRes.json();
+          if (process.env.CARDSHOW_DEBUG)
+            console.log('[cardhedge] 90day raw:', JSON.stringify(fbData));
+          const priceRaw = fbData?.price ?? fbData?.fmv ?? fbData?.fair_market_value ?? fbData?.data?.price ?? null;
+          const compPrice = priceRaw ? Number(priceRaw) : null;
+          if (compPrice && compPrice > 0) {
+            return {
+              stub: false, compPrice,
+              lowPrice:    Number(fbData?.low_price  ?? fbData?.low  ?? 0) || null,
+              highPrice:   Number(fbData?.high_price ?? fbData?.high ?? 0) || null,
+              recentSales: [], source: 'cardhedge',
+              matchedCard: card.player || null, confidence: null,
+            };
+          }
+        }
+      } catch (err) {
+        console.warn('[cardhedge] 90day-prices-by-grade error:', err.message);
+      }
+      return { stub: true };
+    }
+
+    // ── Step 2: card-fmv ─────────────────────────────────────────────────────
+    const fmvRes = await fetch(`${BASE}/v1/cards/card-fmv`, {
+      method: 'POST', headers, body: JSON.stringify({ ...payload, card_id: cardId }),
+      signal: AbortSignal.timeout(5000),
+    });
+
+    if (!fmvRes.ok) {
+      console.warn('[cardhedge] card-fmv failed:', fmvRes.status);
+      return { stub: true };
+    }
+
+    const fmvData = await fmvRes.json();
+    if (process.env.CARDSHOW_DEBUG)
+      console.log('[cardhedge] card-fmv raw:', JSON.stringify(fmvData));
+
+    const compPrice        = Number(fmvData?.fmv ?? fmvData?.price ?? fmvData?.fair_market_value ?? fmvData?.data?.fmv ?? 0) || null;
+    const confidence       = fmvData?.confidence_grade ?? fmvData?.confidence ?? fmvData?.data?.confidence_grade ?? null;
+    const priceExplanation = fmvData?.price_explanation ?? fmvData?.explanation ?? fmvData?.data?.price_explanation ?? null;
+
+    if (process.env.CARDSHOW_DEBUG)
+      console.log('[cardhedge] fmv:', compPrice, '| confidence:', confidence, '| explanation:', priceExplanation);
+
+    // Suppress D-confidence results — fall through to CardSight
+    if (!compPrice || (confidence && confidence.toUpperCase() === 'D')) {
+      console.log('[cardhedge] suppressed:', !compPrice ? 'no price' : 'D confidence');
+      return { stub: true };
+    }
+
+    // ── Step 3: comps (non-fatal) ─────────────────────────────────────────────
+    let recentSales = [];
+    try {
+      const compsRes = await fetch(`${BASE}/v1/cards/comps`, {
+        method: 'POST', headers, body: JSON.stringify({ ...payload, card_id: cardId }),
+        signal: AbortSignal.timeout(4000),
+      });
+      if (compsRes.ok) {
+        const compsData = await compsRes.json();
+        if (process.env.CARDSHOW_DEBUG)
+          console.log('[cardhedge] comps raw:', JSON.stringify(compsData));
+        const sales = compsData?.comps ?? compsData?.sales ?? compsData?.data ?? compsData?.results ?? [];
+        if (Array.isArray(sales)) {
+          recentSales = sales.slice(0, 5).map(s => ({
+            price:  Number(s?.price ?? s?.sale_price ?? s?.amount ?? 0),
+            date:   s?.date ?? s?.sale_date ?? s?.sold_date ?? null,
+            source: s?.source ?? s?.marketplace ?? 'Card Hedge',
+            url:    s?.url ?? s?.listing_url ?? null,
+            image:  s?.image_url ?? s?.image ?? null,
+            isBin:  false,
+          })).filter(s => s.price > 0);
+        }
+      }
+    } catch (err) {
+      console.warn('[cardhedge] comps error (non-fatal):', err.message);
+    }
+
+    const allPrices = recentSales.map(s => s.price);
+    return {
+      stub:             false,
+      compPrice,
+      lowPrice:         allPrices.length ? Math.min(...allPrices) : null,
+      highPrice:        allPrices.length ? Math.max(...allPrices) : null,
+      recentSales:      recentSales.slice(0, 3),
+      source:           'cardhedge',
+      matchedCard:      card.player || null,
+      confidence,
+      priceExplanation: priceExplanation || null,
+    };
+
+  } catch (err) {
+    if (err.name === 'TimeoutError') console.warn('[cardhedge] timeout');
+    else console.warn('[cardhedge] error:', err.message);
+    return { stub: true };
+  }
+}
+
 // ── ROUTER ──
 // Pokemon     → pokemontcg.io, fallback to TCG API
 // Other TCG   → TCG API
-// Sports      → CardSight AI (primary), fallback to PriceCharting
+// Sports      → Card Hedge (primary, if enabled) → CardSight AI → PriceCharting
 
 async function lookupComp(card) {
   const cached = await checkPriceCache(card);
@@ -1308,13 +1473,19 @@ async function lookupComp(card) {
   } else if (isTCG) {
     result = await lookupTCGApi(card);
   } else {
-    // Sports: CardSight AI primary, PriceCharting fallback.
-    // On cache miss, read stale cached IDs to skip catalog search + parallel resolution.
-    const cachedIds = await getCachedIds(card);
-    result = await lookupCardSight(card, cachedIds);
+    // Sports: Card Hedge (primary) → CardSight AI (secondary) → PriceCharting (fallback)
+    if (CARDHEDGE_ENABLED) {
+      result = await lookupCardHedge(card);
+      if (result.stub) console.log('[cardhedge] miss — falling back to CardSight');
+    }
+
     if (!result || result.stub || !result.compPrice) {
-      console.log('CardSight miss — falling back to PriceCharting');
-      result = await lookupPriceCharting(card);
+      const cachedIds = await getCachedIds(card);
+      result = await lookupCardSight(card, cachedIds);
+      if (!result || result.stub || !result.compPrice) {
+        console.log('CardSight miss — falling back to PriceCharting');
+        result = await lookupPriceCharting(card);
+      }
     }
   }
 
@@ -1332,6 +1503,8 @@ async function lookupComp(card) {
 exports.handler = async (event) => {
   if (process.env.CARDSHOW_DEBUG) {
     console.log('[comp-lookup] env check:', {
+      CARDHEDGE_API_KEY:    !!process.env.CARDHEDGE_API_KEY,
+      CARDHEDGE_ENABLED:    CARDHEDGE_ENABLED,
       CARDSIGHT_API_KEY:    !!process.env.CARDSIGHT_API_KEY,
       PRICECHARTING_TOKEN:  !!process.env.PRICECHARTING_TOKEN,
       TCG_API_KEY:          !!process.env.TCG_API_KEY,
