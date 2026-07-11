@@ -83,6 +83,14 @@ ALTER TABLE inventory
   ADD COLUMN IF NOT EXISTS product_type text;
 ```
 
+Required for per-admin show isolation:
+```sql
+ALTER TABLE shows ADD COLUMN IF NOT EXISTS created_by uuid REFERENCES auth.users;
+UPDATE shows SET created_by = '<your-admin-uuid>' WHERE created_by IS NULL;
+CREATE INDEX IF NOT EXISTS shows_created_by_idx ON shows (created_by);
+```
+After migration, `loadShowsFromDB()` filters `WHERE created_by = _currentAdminUid` so each admin only sees their own shows. `showToDbRow()` stamps `created_by` on every upsert. `window._currentAdminUid` is set on admin login and cleared on sign-out.
+
 ## Key Data Structures (in-memory runtime cache)
 ```js
 inventory[]          // [{Seller, 'Card Title', Player, Year, 'Set ', Price, Status, item_type, product_type, _dbId, _shows: Set, ...}]

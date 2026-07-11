@@ -4301,6 +4301,7 @@ async function submitAuth() {
         _setAuthError('This account does not have admin access.');
         return;
       }
+      window._currentAdminUid = data.user.id;
       loginAsAdmin();
     } catch(e) {
       _setAuthError(e.message || 'Something went wrong.');
@@ -7277,8 +7278,9 @@ function initSidebarState() {
 
 async function signOut() {
   await db.auth.signOut().catch(() => {});
-  currentRole   = null;
-  currentSeller = null;
+  currentRole          = null;
+  currentSeller        = null;
+  window._currentAdminUid = null;
   sellerQrMode  = 'table';
   buyerShowId   = null;
   _adminTab     = 'shows';
@@ -11011,15 +11013,18 @@ function updateProfileUI(handle) {
 
 // ── Map shows{} object to DB row ──
 function showToDbRow(show) {
-  return {
-    id:          show.id,
-    name:        show.name,
-    date:        show.date        || null,
-    location:    show.location    || null,
-    status:      show.status      || 'upcoming',
-    access_code: show.accessCode  || null,
+  const row = {
+    id:           show.id,
+    name:         show.name,
+    date:         show.date        || null,
+    location:     show.location    || null,
+    status:       show.status      || 'upcoming',
+    access_code:  show.accessCode  || null,
     published_at: show.publishedAt || null,
   };
+  // Stamp created_by so each admin only sees their own shows.
+  if (window._currentAdminUid) row.created_by = window._currentAdminUid;
+  return row;
 }
 
 // ── Upsert a show to the shows table ──
@@ -11245,11 +11250,11 @@ async function buildShowPageUrlFromDB(showId) {
 async function loadShowsFromDB() {
   if (typeof db === 'undefined') return false;
   try {
-    // Fetch shows
-    const { data: showRows, error: showErr } = await db
-      .from('shows')
-      .select('*')
-      .order('created_at', { ascending: true });
+    // Fetch shows — filtered to the current admin's own shows via created_by.
+    // Falls back to unfiltered if created_by column doesn't exist yet (pre-migration).
+    let showQuery = db.from('shows').select('*').order('created_at', { ascending: true });
+    if (window._currentAdminUid) showQuery = showQuery.eq('created_by', window._currentAdminUid);
+    const { data: showRows, error: showErr } = await showQuery;
     if (showErr) { console.warn('loadShowsFromDB: shows fetch failed:', showErr.message); return false; }
     if (!showRows || !showRows.length) return false;
 
