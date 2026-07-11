@@ -1283,6 +1283,44 @@ async function lookupTCGApi(card) {
   }
 }
 
+// Select the correct price tier from Card Hedge's prices array.
+// Array entries look like: { grade: "PSA 10", price: "470.0" }
+// Tries exact match first, then closest same-grader grade, then Raw.
+function extractCardHedgePrice(prices, card) {
+  if (!prices || !prices.length) return null;
+
+  const gradeNum = parseFloat(card.grade) || 0;
+  const grader   = (card.grader || 'PSA').toUpperCase();
+
+  const targetLabel = gradeNum > 0 ? `${grader} ${gradeNum}` : 'Raw';
+
+  // Exact match
+  let entry = prices.find(p =>
+    (p.grade || '').toLowerCase() === targetLabel.toLowerCase()
+  );
+
+  // Closest grade from same grader
+  if (!entry && gradeNum > 0) {
+    const graderEntries = prices.filter(p =>
+      (p.grade || '').toUpperCase().startsWith(grader)
+    );
+    if (graderEntries.length) {
+      entry = graderEntries.reduce((best, p) => {
+        const pG    = parseFloat((p.grade    || '').replace(/[^\d.]/g, ''));
+        const bestG = parseFloat((best?.grade || '0').replace(/[^\d.]/g, ''));
+        return Math.abs(pG - gradeNum) < Math.abs(bestG - gradeNum) ? p : best;
+      });
+    }
+  }
+
+  // Raw fallback
+  if (!entry) entry = prices.find(p => (p.grade || '').toLowerCase() === 'raw');
+
+  if (!entry) return null;
+  const price = parseFloat(entry.price);
+  return isNaN(price) ? null : price;
+}
+
 // ── CARD HEDGE LOOKUP ──
 // Primary source for sports cards when CARDHEDGE_ENABLED is true.
 // Three-step flow:
@@ -1319,7 +1357,8 @@ async function lookupCardHedge(card) {
 
   try {
     // ── Step 1: card-match ───────────────────────────────────────────────────
-    let cardId = null;
+    let cardId      = null;
+    let matchedCard = null;
 
     const matchRes = await fetch(`${BASE}/v1/cards/card-match`, {
       method: 'POST', headers, body: JSON.stringify({ query: description }),
@@ -1329,8 +1368,82 @@ async function lookupCardHedge(card) {
     if (matchRes.ok) {
       const matchData = await matchRes.json();
       if (process.env.CARDSHOW_DEBUG)
-        console.log('[cardhedge] card-match raw:', JSON.stringify(matchData));
-      cardId = matchData?.card_id ?? matchData?.id ?? matchData?.data?.card_id ?? null;
+        console.log('[cardhedge] card-match raw:', JSON.stringify(matchData, null, 2));
+
+      // Response is nested: { match: { card_id, confidence, player, prices: [...] } }
+      const match = matchData?.match || matchData;
+      cardId      = match?.card_id ?? match?.id ?? match?.cardId ?? null;
+      matchedCard = match?.player ?? match?.description ?? match?.name ?? null;
+
+      if (process.env.CARDSHOW_DEBUG) {
+        console.log('[cardhedge] card_id:', cardId);
+        console.log('[cardhedge] matched:', matchedCard);
+        console.log('[cardhedge] match confidence:', match?.confidence);
+      }
+
+      // prices array is included in the match response — extract correct grade tier now
+      const matchPrices = match?.prices || [];
+      if (process.env.CARDSHOW_DEBUG)
+        console.log('[cardhedge] match prices:', JSON.stringify(matchPrices));
+
+      const matchPrice = extractCardHedgePrice(matchPrices, card);
+      if (process.env.CARDSHOW_DEBUG)
+        console.log('[cardhedge] extracted price:', matchPrice, '| grade:', card.grade, '| grader:', card.grader);
+
+      if (matchPrice && matchPrice > 0) {
+        // Price found in match response — fetch comps for recent sales, then return
+        const rawConfidence = match?.confidence ?? null;
+        const confidenceGrade = rawConfidence !== null
+          ? (rawConfidence >= 0.9 ? 'A' : rawConfidence >= 0.7 ? 'B' : rawConfidence >= 0.5 ? 'C' : 'D')
+          : null;
+
+        // Suppress D-confidence — fall through to CardSight
+        if (confidenceGrade === 'D') {
+          console.log('[cardhedge] suppressed: D confidence (', rawConfidence, ')');
+          return { stub: true };
+        }
+
+        let recentSales = [];
+        if (cardId) {
+          try {
+            const compsRes = await fetch(`${BASE}/v1/cards/comps`, {
+              method: 'POST', headers,
+              body:   JSON.stringify({ card_id: cardId, query: description }),
+              signal: AbortSignal.timeout(3000),
+            });
+            if (compsRes.ok) {
+              const compsJson = await compsRes.json();
+              if (process.env.CARDSHOW_DEBUG)
+                console.log('[cardhedge] comps raw:', JSON.stringify(compsJson));
+              const records = compsJson?.records ?? compsJson?.comps ?? compsJson?.data ?? compsJson?.results ?? [];
+              if (Array.isArray(records)) {
+                recentSales = records.slice(0, 5).map(r => ({
+                  price:  Number(r?.price ?? r?.sale_price ?? r?.amount ?? 0),
+                  date:   r?.date ?? r?.sale_date ?? r?.sold_date ?? null,
+                  source: r?.source ?? r?.marketplace ?? 'Card Hedge',
+                  url:    r?.url ?? r?.listing_url ?? null,
+                  image:  r?.image_url ?? r?.image ?? null,
+                  isBin:  false,
+                })).filter(r => r.price > 0);
+              }
+            }
+          } catch (err) {
+            console.warn('[cardhedge] comps error (non-fatal):', err.message);
+          }
+        }
+
+        return {
+          stub:             false,
+          compPrice:        matchPrice,
+          lowPrice:         null,
+          highPrice:        null,
+          recentSales:      recentSales.slice(0, 3),
+          source:           'cardhedge',
+          matchedCard,
+          confidence:       confidenceGrade,
+          priceExplanation: match?.reasoning ?? null,
+        };
+      }
     } else {
       const errBody = await matchRes.text().catch(() => '');
       console.warn('[cardhedge] card-match failed:', matchRes.status, errBody);
@@ -1338,9 +1451,10 @@ async function lookupCardHedge(card) {
     }
 
     // ── Step 1b: 90day-prices-by-grade fallback ──────────────────────────────
+    // Reached when card-match failed OR match response had no usable price
     if (!cardId) {
       if (process.env.CARDSHOW_DEBUG)
-        console.log('[cardhedge] card-match no id — trying 90day-prices-by-grade');
+        console.log('[cardhedge] trying 90day-prices-by-grade fallback');
       try {
         const fbBody = {
           query:  description,
@@ -1357,12 +1471,12 @@ async function lookupCardHedge(card) {
           const fbData = await fbRes.json();
           if (process.env.CARDSHOW_DEBUG)
             console.log('[cardhedge] 90day raw:', JSON.stringify(fbData, null, 2));
-          const priceRaw = fbData?.price ?? fbData?.fmv ?? fbData?.fair_market_value ?? fbData?.data?.price ?? null;
+          const priceRaw  = fbData?.price ?? fbData?.fmv ?? fbData?.fair_market_value ?? fbData?.data?.price ?? null;
           const compPrice = priceRaw ? Number(priceRaw) : null;
           if (compPrice && compPrice > 0) {
             return {
-              stub: false, compPrice,
-              lowPrice:    Number(fbData?.low_price  ?? fbData?.low  ?? 0) || null,
+              stub:        false, compPrice,
+              lowPrice:    Number(fbData?.low_price ?? fbData?.low ?? 0) || null,
               highPrice:   Number(fbData?.high_price ?? fbData?.high ?? 0) || null,
               recentSales: [], source: 'cardhedge',
               matchedCard: card.player || null, confidence: null,
@@ -1375,7 +1489,7 @@ async function lookupCardHedge(card) {
       return { stub: true };
     }
 
-    // ── Step 2: card-fmv ─────────────────────────────────────────────────────
+    // ── Step 2: card-fmv — only reached when card-match succeeded but prices[] was empty ──
     const fmvRes = await fetch(`${BASE}/v1/cards/card-fmv`, {
       method: 'POST', headers, body: JSON.stringify({ card_id: cardId, query: description }),
       signal: AbortSignal.timeout(4000),
@@ -1391,14 +1505,13 @@ async function lookupCardHedge(card) {
       console.log('[cardhedge] card-fmv raw:', JSON.stringify(fmvData));
 
     const compPrice        = Number(fmvData?.fmv ?? fmvData?.price ?? fmvData?.fair_market_value ?? fmvData?.data?.fmv ?? 0) || null;
-    const confidence       = fmvData?.confidence_grade ?? fmvData?.confidence ?? fmvData?.data?.confidence_grade ?? null;
-    const priceExplanation = fmvData?.price_explanation ?? fmvData?.explanation ?? fmvData?.data?.price_explanation ?? null;
+    const rawConf          = fmvData?.confidence ?? fmvData?.confidence_grade ?? fmvData?.data?.confidence_grade ?? null;
+    const confidence       = typeof rawConf === 'number'
+      ? (rawConf >= 0.9 ? 'A' : rawConf >= 0.7 ? 'B' : rawConf >= 0.5 ? 'C' : 'D')
+      : (rawConf ? String(rawConf).toUpperCase() : null);
+    const priceExplanation = fmvData?.price_explanation ?? fmvData?.reasoning ?? fmvData?.explanation ?? null;
 
-    if (process.env.CARDSHOW_DEBUG)
-      console.log('[cardhedge] fmv:', compPrice, '| confidence:', confidence, '| explanation:', priceExplanation);
-
-    // Suppress D-confidence results — fall through to CardSight
-    if (!compPrice || (confidence && confidence.toUpperCase() === 'D')) {
+    if (!compPrice || confidence === 'D') {
       console.log('[cardhedge] suppressed:', !compPrice ? 'no price' : 'D confidence');
       return { stub: true };
     }
@@ -1438,7 +1551,7 @@ async function lookupCardHedge(card) {
       highPrice:        allPrices.length ? Math.max(...allPrices) : null,
       recentSales:      recentSales.slice(0, 3),
       source:           'cardhedge',
-      matchedCard:      card.player || null,
+      matchedCard:      matchedCard || card.player || null,
       confidence,
       priceExplanation: priceExplanation || null,
     };

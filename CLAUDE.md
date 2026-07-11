@@ -415,9 +415,12 @@ Cancel at each state:
 - `CARDHEDGE_API_KEY` env var (set in Netlify). `CARDHEDGE_ENABLED=false` disables without removing the key.
 - Base URL: `https://api.cardhedger.com`. Auth: `X-API-Key: {key}` (NOT Bearer).
 - **Three-step flow:**
-  - Step 1: `POST /v1/cards/card-match` → `card_id` (4s timeout). Body: `{ query: "year set player parallel grader grade" }` — single free-text string in `query` field (NOT `description`; NOT structured object — 422 if wrong). On failure: `POST /v1/cards/90day-prices-by-grade` with `{ query, grade: float, grader }` → returns price directly (early return, 4s timeout).
-  - Step 2: `POST /v1/cards/card-fmv` with `{ card_id, query }` → `compPrice` (`fmv`/`price`/`fair_market_value` field, optional chaining), `confidence_grade` (A/B/C/D), `price_explanation`. **D confidence is suppressed** — falls through to CardSight. 4s timeout.
+  - Step 1: `POST /v1/cards/card-match` → `card_id` (4s timeout). Body: `{ query: "year set player parallel grader grade" }` — single free-text string in `query` field (NOT `description`; NOT structured object — 422 if wrong). Response: `{ match: { card_id, confidence: 0-1 float, player, prices: [{grade, price}], reasoning } }`. `card_id` and prices are nested under `match`. If `prices[]` has the correct grade tier, price is extracted immediately and `card-fmv` is skipped entirely. On failure: `POST /v1/cards/90day-prices-by-grade` with `{ query, grade: float, grader }` → returns price directly (early return, 4s timeout).
+  - Step 2: `POST /v1/cards/card-fmv` with `{ card_id, query }` → only called when `card-match` succeeded but `prices[]` was empty. `compPrice` from `fmv`/`price`/`fair_market_value` field. 4s timeout.
   - Step 3: `POST /v1/cards/comps` with `{ card_id, query }` → recent sales array (3s timeout, non-fatal). Sales normalised to `{ price, date, source, url, image, isBin }`.
+- Confidence is a 0–1 float from the match response, mapped to A/B/C/D (≥0.9→A, ≥0.7→B, ≥0.5→C, <0.5→D). **D confidence suppressed** — falls through to CardSight.
+- `extractCardHedgePrice(prices, card)` — selects correct grade tier from `prices[]`: exact label match (`"PSA 10"`), then closest same-grader grade, then Raw fallback.
+- `match.reasoning` maps to `priceExplanation` displayed in buyer modal.
 - Source label in buyer modal: `"Market value · Card Hedge (A confidence)"` when confidence A/B/C; `"Market value · Card Hedge"` otherwise.
 - `priceExplanation` rendered as small muted text below source label in buyer modal when present.
 - Returns normalised `{ stub, compPrice, lowPrice, highPrice, recentSales[], source: 'cardhedge', matchedCard, confidence, priceExplanation }`.
