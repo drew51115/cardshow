@@ -1322,7 +1322,7 @@ async function lookupCardHedge(card) {
     let cardId = null;
 
     const matchRes = await fetch(`${BASE}/v1/cards/card-match`, {
-      method: 'POST', headers, body: JSON.stringify({ description }),
+      method: 'POST', headers, body: JSON.stringify({ query: description }),
       signal: AbortSignal.timeout(4000),
     });
 
@@ -1343,7 +1343,7 @@ async function lookupCardHedge(card) {
         console.log('[cardhedge] card-match no id — trying 90day-prices-by-grade');
       try {
         const fbBody = {
-          description,
+          query:  description,
           grade:  parseFloat(card.grade) || undefined,
           grader: card.grader            || undefined,
         };
@@ -1377,7 +1377,7 @@ async function lookupCardHedge(card) {
 
     // ── Step 2: card-fmv ─────────────────────────────────────────────────────
     const fmvRes = await fetch(`${BASE}/v1/cards/card-fmv`, {
-      method: 'POST', headers, body: JSON.stringify({ card_id: cardId, description }),
+      method: 'POST', headers, body: JSON.stringify({ card_id: cardId, query: description }),
       signal: AbortSignal.timeout(4000),
     });
 
@@ -1407,7 +1407,7 @@ async function lookupCardHedge(card) {
     let recentSales = [];
     try {
       const compsRes = await fetch(`${BASE}/v1/cards/comps`, {
-        method: 'POST', headers, body: JSON.stringify({ card_id: cardId, description }),
+        method: 'POST', headers, body: JSON.stringify({ card_id: cardId, query: description }),
         signal: AbortSignal.timeout(3000),
       });
       if (compsRes.ok) {
