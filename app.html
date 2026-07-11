@@ -3924,8 +3924,8 @@
       <div id="modalCompWrap" style="display:none">
         <div class="modal-comp-box">
           <div class="modal-comp-label">
-            <span>Market value</span>
-            <span class="modal-comp-source" id="modalCompSource"></span>
+            <span>Market Value</span>
+            <span class="modal-comp-source"></span>
           </div>
           <div id="modalCompContent"></div>
         </div>
@@ -6059,12 +6059,10 @@ async function openCardModal(idx) {
   // Reset comp section to skeleton before async fetch
   const compWrap    = document.getElementById('modalCompWrap');
   const compContent = document.getElementById('modalCompContent');
-  const compSource  = document.getElementById('modalCompSource');
-  if (compWrap)    compWrap.style.display    = 'block';
-  if (compContent) compContent.innerHTML     =
+  if (compWrap)    compWrap.style.display = 'block';
+  if (compContent) compContent.innerHTML  =
     '<div class="modal-comp-skeleton" style="width:60%"></div>' +
     '<div class="modal-comp-skeleton" style="width:38%"></div>';
-  if (compSource)  compSource.textContent    = '';
 
   const isGraded    = r.Grade && !isNaN(Number(r.Grade));
   const grader      = r.Grader || (isGraded ? 'PSA' : null);
@@ -6245,7 +6243,6 @@ function renderBuyerComp(card, result) {
 
   const wrap    = document.getElementById('modalCompWrap');
   const content = document.getElementById('modalCompContent');
-  const source  = document.getElementById('modalCompSource');
   if (!wrap || !content) return;
 
   if (!result || !result.compPrice) {
@@ -6255,10 +6252,10 @@ function renderBuyerComp(card, result) {
 
   wrap.style.display = 'block';
 
-  const sourceLabel = result.source === 'cardhedge' && result.confidence && result.confidence.toUpperCase() !== 'D'
-    ? `Market value · Card Hedge (${result.confidence.toUpperCase()} confidence)`
+  const sourceText = result.source === 'cardhedge' && result.confidence && result.confidence.toUpperCase() !== 'D'
+    ? `Card Hedge · ${result.confidence.toUpperCase()} confidence`
     : result.source === 'cardhedge'
-    ? 'Market value · Card Hedge'
+    ? 'Card Hedge'
     : result.source === 'cardsight' && result.isBinOnly
     ? 'Current asking prices · CardSight AI'
     : result.source === 'cardsight'
@@ -6270,17 +6267,23 @@ function renderBuyerComp(card, result) {
     : result.source === 'tcgapi'
     ? 'Market avg · TCG API'
     : 'Market average';
-  if (source) source.textContent = sourceLabel;
 
-  // Show Card Hedge price explanation below source label when present
-  const existingExpl = document.getElementById('modalCompExplanation');
-  if (existingExpl) existingExpl.remove();
-  if (result.source === 'cardhedge' && result.priceExplanation) {
-    const expl = document.createElement('div');
-    expl.id = 'modalCompExplanation';
-    expl.style.cssText = 'font-size:0.75rem;color:var(--muted);margin-top:0.25rem;font-family:"DM Sans",sans-serif;';
-    expl.textContent = result.priceExplanation;
-    if (source) source.insertAdjacentElement('afterend', expl);
+  const explanation = result.priceExplanation
+    ? (result.priceExplanation.length > 80
+        ? result.priceExplanation.slice(0, 80).trim() + '…'
+        : result.priceExplanation)
+    : null;
+
+  const labelEl = wrap.querySelector('.modal-comp-label');
+  if (labelEl) {
+    labelEl.innerHTML = '<span>Market Value</span>'
+      + '<span class="modal-comp-source">' + sourceText + '</span>'
+      + (explanation
+          ? '<span style="display:block;font-size:0.6rem;color:var(--muted);'
+            + 'opacity:0.7;text-transform:none;letter-spacing:0;margin-top:3px;'
+            + 'line-height:1.3;font-style:italic;max-width:240px">'
+            + explanation + '</span>'
+          : '');
   }
 
   const gradeNum  = parseFloat(card.Grade) || 0;
