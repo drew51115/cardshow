@@ -1305,28 +1305,25 @@ async function lookupCardHedge(card) {
     'Content-Type': 'application/json',
   };
 
-  const payload = {
-    player:      card.player     || undefined,
-    year:        card.year       ? String(card.year) : undefined,
-    set:         card.cardSet    || undefined,
-    card_number: card.cardNumber || undefined,
-    parallel:    card.parallel   || undefined,
-    grader:      card.grader     || undefined,
-    grade:       card.grade      ? String(card.grade) : undefined,
-    sport:       card.sport      || undefined,
-  };
-  Object.keys(payload).forEach(k => payload[k] === undefined && delete payload[k]);
+  // Build description string for card-match — single free-text query expected by API
+  const description = [
+    card.year,
+    card.cardSet,
+    card.player,
+    card.parallel,
+    card.grader && card.grade ? `${card.grader} ${card.grade}` : '',
+  ].filter(Boolean).join(' ').trim();
 
   if (process.env.CARDSHOW_DEBUG)
-    console.log('[cardhedge] payload:', JSON.stringify(payload));
+    console.log('[cardhedge] card-match description:', description);
 
   try {
     // ── Step 1: card-match ───────────────────────────────────────────────────
     let cardId = null;
 
     const matchRes = await fetch(`${BASE}/v1/cards/card-match`, {
-      method: 'POST', headers, body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(5000),
+      method: 'POST', headers, body: JSON.stringify({ description }),
+      signal: AbortSignal.timeout(4000),
     });
 
     if (matchRes.ok) {
@@ -1335,7 +1332,8 @@ async function lookupCardHedge(card) {
         console.log('[cardhedge] card-match raw:', JSON.stringify(matchData));
       cardId = matchData?.card_id ?? matchData?.id ?? matchData?.data?.card_id ?? null;
     } else {
-      console.warn('[cardhedge] card-match failed:', matchRes.status);
+      const errBody = await matchRes.text().catch(() => '');
+      console.warn('[cardhedge] card-match failed:', matchRes.status, errBody);
       if (matchRes.status === 401 || matchRes.status === 429) return { stub: true };
     }
 
@@ -1344,14 +1342,21 @@ async function lookupCardHedge(card) {
       if (process.env.CARDSHOW_DEBUG)
         console.log('[cardhedge] card-match no id — trying 90day-prices-by-grade');
       try {
+        const fbBody = {
+          description,
+          grade:  parseFloat(card.grade) || undefined,
+          grader: card.grader            || undefined,
+        };
+        Object.keys(fbBody).forEach(k => fbBody[k] === undefined && delete fbBody[k]);
+
         const fbRes = await fetch(`${BASE}/v1/cards/90day-prices-by-grade`, {
-          method: 'POST', headers, body: JSON.stringify(payload),
-          signal: AbortSignal.timeout(5000),
+          method: 'POST', headers, body: JSON.stringify(fbBody),
+          signal: AbortSignal.timeout(4000),
         });
         if (fbRes.ok) {
           const fbData = await fbRes.json();
           if (process.env.CARDSHOW_DEBUG)
-            console.log('[cardhedge] 90day raw:', JSON.stringify(fbData));
+            console.log('[cardhedge] 90day raw:', JSON.stringify(fbData, null, 2));
           const priceRaw = fbData?.price ?? fbData?.fmv ?? fbData?.fair_market_value ?? fbData?.data?.price ?? null;
           const compPrice = priceRaw ? Number(priceRaw) : null;
           if (compPrice && compPrice > 0) {
@@ -1372,8 +1377,8 @@ async function lookupCardHedge(card) {
 
     // ── Step 2: card-fmv ─────────────────────────────────────────────────────
     const fmvRes = await fetch(`${BASE}/v1/cards/card-fmv`, {
-      method: 'POST', headers, body: JSON.stringify({ ...payload, card_id: cardId }),
-      signal: AbortSignal.timeout(5000),
+      method: 'POST', headers, body: JSON.stringify({ card_id: cardId, description }),
+      signal: AbortSignal.timeout(4000),
     });
 
     if (!fmvRes.ok) {
@@ -1402,8 +1407,8 @@ async function lookupCardHedge(card) {
     let recentSales = [];
     try {
       const compsRes = await fetch(`${BASE}/v1/cards/comps`, {
-        method: 'POST', headers, body: JSON.stringify({ ...payload, card_id: cardId }),
-        signal: AbortSignal.timeout(4000),
+        method: 'POST', headers, body: JSON.stringify({ card_id: cardId, description }),
+        signal: AbortSignal.timeout(3000),
       });
       if (compsRes.ok) {
         const compsData = await compsRes.json();

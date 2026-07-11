@@ -415,9 +415,9 @@ Cancel at each state:
 - `CARDHEDGE_API_KEY` env var (set in Netlify). `CARDHEDGE_ENABLED=false` disables without removing the key.
 - Base URL: `https://api.cardhedger.com`. Auth: `X-API-Key: {key}` (NOT Bearer).
 - **Three-step flow:**
-  - Step 1: `POST /v1/cards/card-match` → `card_id` (5s timeout). On failure: `POST /v1/cards/90day-prices-by-grade` → returns price directly (early return).
-  - Step 2: `POST /v1/cards/card-fmv` → `compPrice` (`fmv`/`price`/`fair_market_value` field, optional chaining), `confidence_grade` (A/B/C/D), `price_explanation`. **D confidence is suppressed** — falls through to CardSight.
-  - Step 3: `POST /v1/cards/comps` → recent sales array (4s timeout, non-fatal). Sales normalised to `{ price, date, source, url, image, isBin }`.
+  - Step 1: `POST /v1/cards/card-match` → `card_id` (4s timeout). Body: `{ description: "year set player parallel grader grade" }` — single free-text string, NOT a structured object (422 if structured). On failure: `POST /v1/cards/90day-prices-by-grade` with `{ description, grade: float, grader }` → returns price directly (early return, 4s timeout).
+  - Step 2: `POST /v1/cards/card-fmv` with `{ card_id, description }` → `compPrice` (`fmv`/`price`/`fair_market_value` field, optional chaining), `confidence_grade` (A/B/C/D), `price_explanation`. **D confidence is suppressed** — falls through to CardSight. 4s timeout.
+  - Step 3: `POST /v1/cards/comps` with `{ card_id, description }` → recent sales array (3s timeout, non-fatal). Sales normalised to `{ price, date, source, url, image, isBin }`.
 - Source label in buyer modal: `"Market value · Card Hedge (A confidence)"` when confidence A/B/C; `"Market value · Card Hedge"` otherwise.
 - `priceExplanation` rendered as small muted text below source label in buyer modal when present.
 - Returns normalised `{ stub, compPrice, lowPrice, highPrice, recentSales[], source: 'cardhedge', matchedCard, confidence, priceExplanation }`.
