@@ -174,9 +174,10 @@ async function lookupCardSightCatalog(query) {
 
     return items.map(c => {
       const id         = String(c.id ?? c.uuid ?? c.card_id ?? Math.random());
+      // CardSight catalog: name = player name, releaseName = set, releaseYear = year
       const player     = c.name ?? c.player_name ?? c.player ?? '';
-      const year       = c.year ? String(c.year) : '';
-      const cardSet    = c.release_name ?? c.releaseName ?? c.set_name ?? c.set ?? '';
+      const year       = String(c.releaseYear ?? c.year ?? '');
+      const cardSet    = c.releaseName ?? c.release_name ?? c.set_name ?? c.set ?? '';
       const cardNumber = c.number ?? c.card_number ?? null;
       const parallel   = c.parallel_name ?? c.parallel ?? null;
       const sport      = c.sport ?? c.league ?? null;
