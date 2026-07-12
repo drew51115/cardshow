@@ -141,8 +141,10 @@ async function lookupPokemonTCG(query) {
 // PriceCharting names follow two common patterns:
 //   A) "Baseball Cards 2026 Topps Chrome Aaron Judge Gold Refractor"  (console-name: "Topps Chrome")
 //   B) "Aaron Judge 2026 Topps Chrome Gold Refractor"                  (console-name: "Topps Chrome")
+// console-name often has a sport suffix: "2017 Topps Baseball Cards" → strip to "2017 Topps"
 
-const SPORT_PREFIX_RE = /^(baseball|football|basketball|hockey|soccer|golf|tennis|boxing|mma|wrestling|racing|sports?)\s+cards?\s*/i;
+const SPORT_PREFIX_RE  = /^(baseball|football|basketball|hockey|soccer|golf|tennis|boxing|mma|wrestling|racing|sports?)\s+cards?\s*/i;
+const SPORT_SUFFIX_RE  = /\s*(baseball|football|basketball|hockey|soccer|golf|tennis|boxing|mma|wrestling|racing|sports?)\s+cards?$/i;
 
 const PARALLEL_TERMS = [
   'refractor', 'prizm', 'auto', 'autograph', 'rookie', 'rc',
@@ -159,7 +161,9 @@ function parsePCProduct(product) {
   const consoleName = (product['console-name'] || '').trim();
 
   const fullName = rawName.replace(SPORT_PREFIX_RE, '').trim();
-  const cardSet  = consoleName.replace(SPORT_PREFIX_RE, '').trim();
+  // Strip sport category from both ends of console-name so
+  // "2017 Topps Baseball Cards" → "2017 Topps" (not left as-is or empty).
+  const cardSet  = consoleName.replace(SPORT_PREFIX_RE, '').replace(SPORT_SUFFIX_RE, '').trim();
 
   const yearMatch = fullName.match(/\b(19|20)\d{2}\b/);
   const year      = yearMatch ? yearMatch[0] : '';
@@ -188,8 +192,17 @@ function parsePCProduct(product) {
       const m = afterSet.match(PARALLEL_RE) || [];
       parallel = [...new Set(m.map(t => t.trim()))].join(' ') || null;
       player   = afterSet.replace(PARALLEL_RE, '').replace(/\s+/g, ' ').trim();
+    } else {
+      // Year first + no usable cardSet: skip the first word (likely brand like "Topps")
+      // and treat the rest (minus parallels) as the player name.
+      const words = afterYear.split(/\s+/);
+      const afterBrand = words.slice(1).join(' ').trim();
+      const m = afterBrand.match(PARALLEL_RE) || [];
+      parallel = [...new Set(m.map(t => t.trim()))].join(' ') || null;
+      const candidate = afterBrand.replace(PARALLEL_RE, '').replace(/\s+/g, ' ').trim();
+      // Only use if it looks like a name (2+ chars, no digits except card#)
+      if (candidate.length > 1 && !/^\d+$/.test(candidate)) player = candidate;
     }
-    // Year first + no usable cardSet → can't isolate player; leave empty, rawTitle used as fallback
   } else {
     const m = fullName.match(PARALLEL_RE) || [];
     parallel = [...new Set(m.map(t => t.trim()))].join(' ') || null;

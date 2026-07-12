@@ -10269,17 +10269,24 @@ async function _acDoSearch(q) {
   window._acResults = cards;
 
   const rows = cards.map((card, i) => {
-    const icon   = SPORT_ICON[card.sport] || '🃏';
-    const sport  = card.sport ? `${icon} ${card.sport}` : '';
-    const numStr = card.number ? ` · #${card.number}` : '';
-    const meta   = [card.set, card.parallel].filter(Boolean).join(' · ') + numStr;
+    const icon          = SPORT_ICON[card.sport] || '🃏';
+    const sport         = card.sport ? `${icon} ${card.sport}` : '';
+    const numStr        = card.number ? ` · #${card.number}` : '';
+    // When player is empty (e.g. PriceCharting set-level result), fall back to
+    // the pre-built title so the row always shows a meaningful first line.
+    const displayPlayer = card.player || card.title || '';
+    // Only show year + set meta when the player line doesn't already contain them
+    const showMeta      = !!card.player;
+    const meta          = showMeta
+      ? ([card.set, card.parallel].filter(Boolean).join(' · ') + numStr)
+      : '';
     return `<button class="btn-add-card-result" data-idx="${i}" onclick="acSelect(${i})">
       <div class="acr-header">
-        <span class="acr-player">${_escHtml(card.player)}</span>
-        <span class="acr-year">${_escHtml(card.year)}</span>
+        <span class="acr-player">${_escHtml(displayPlayer)}</span>
+        <span class="acr-year">${_escHtml(card.player ? card.year : '')}</span>
         <span class="acr-sport">${_escHtml(sport)}</span>
       </div>
-      <div class="acr-meta">${_escHtml(meta)}</div>
+      ${meta ? `<div class="acr-meta">${_escHtml(meta)}</div>` : ''}
     </button>`;
   }).join('');
 
