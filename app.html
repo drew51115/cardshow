@@ -3400,7 +3400,7 @@
         <div id="ac_grading_row" style="display:grid;grid-template-columns:1fr 1fr 1.6fr;gap:0.55rem">
           <div>
             <div class="section-label" style="margin-bottom:0.3rem">Grader</div>
-            <select class="show-input" id="ac_grader" style="margin:0" onchange="acToggle()">
+            <select class="show-input" id="ac_grader" style="margin:0" onchange="acToggle(); _acFetchComp()">
               <option value="">Raw</option>
               <option value="PSA">PSA</option>
               <option value="BGS">BGS</option>
@@ -3410,7 +3410,7 @@
           </div>
           <div>
             <div class="section-label" style="margin-bottom:0.3rem">Grade</div>
-            <input class="show-input" id="ac_grade" placeholder="e.g. 10" style="margin:0">
+            <input class="show-input" id="ac_grade" placeholder="e.g. 10" style="margin:0" oninput="_acGradeChanged()">
           </div>
           <div>
             <div class="section-label" style="margin-bottom:0.3rem">Cert #</div>
@@ -3449,6 +3449,12 @@
             <input class="show-input" id="ac_price" placeholder="e.g. 250" style="margin:0">
           </div>
 
+        <!-- Inline market value comp — populated by _acFetchComp() after scan/grade entry -->
+        <div id="ac_comp_row" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:0.55rem 0.75rem;align-items:center;justify-content:space-between;gap:0.5rem">
+          <span style="font-size:0.72rem;color:var(--muted);font-family:'DM Mono',monospace;letter-spacing:0.04em">MARKET VALUE</span>
+          <span id="ac_comp_value" style="font-family:'Bebas Neue',sans-serif;font-size:1.1rem;letter-spacing:0.05em;color:var(--gold)"></span>
+          <span id="ac_comp_source" style="font-size:0.62rem;color:var(--muted);font-family:'DM Mono',monospace;flex:1;text-align:right"></span>
+        </div>
 
         <div>
           <div class="section-label" style="margin-bottom:0.3rem">Status</div>
@@ -5521,8 +5527,8 @@ async function runCompCheck(cards) {
           year:       card.Year            || null,
           cardSet:    card['Set ']         || card.Set || '',
           cardNumber: card['Card #']       || card.Number || '',
-          grade:      card.Grade           || null,
-          grader:     card.Grader          || null,
+          grade:      card.Grade  != null ? card.Grade  : null,
+          grader:     card.Grader != null ? card.Grader : null,
           parallel:   card['Parallel/Variant'] || '',
           sport:      detectCardSport(card),
           cardTitle:  card['Card Title']   || '',
@@ -9165,7 +9171,8 @@ const SPORT_ICON = {Basketball:'🏀',Football:'🏈',Baseball:'⚾',Hockey:'�
 let _acTimer = null;
 let _acLastQuery = '';
 
-let _acItemType = 'card';
+let _acItemType   = 'card';
+let _acGradeTimer = null;
 
 function openAddCard() {
   // Clear all fields
@@ -9177,6 +9184,7 @@ function openAddCard() {
   document.getElementById('ac_sealed_condition').value = 'Factory Sealed';
   document.getElementById('ac_status').value    = 'Available';
   document.getElementById('ac_results').innerHTML = '';
+  _acHideComp();
   acSetType('card');
   document.getElementById('addCardOverlay').classList.add('open');
 }
@@ -9265,12 +9273,83 @@ function closeAddCard() {
   document.getElementById('addCardOverlay').classList.remove('open');
   const banner = document.getElementById('visionConfirmBanner');
   if (banner) banner.remove();
+  _acHideComp();
+  clearTimeout(_acGradeTimer);
 }
 
 function acToggle() {
   if (_acItemType !== 'card') return;
   const graded = !!document.getElementById('ac_grader').value;
   document.getElementById('ac_cond_row').style.display = graded ? 'none' : 'block';
+}
+
+// ── Add Card modal — inline market value comp ─────────────────────────────────
+
+// Called when ac_grade input changes — debounce 800ms then re-fetch comp.
+function _acGradeChanged() {
+  clearTimeout(_acGradeTimer);
+  const grade = document.getElementById('ac_grade').value.trim();
+  if (!grade) return;
+  _acGradeTimer = setTimeout(() => _acFetchComp(), 800);
+}
+
+function _acHideComp() {
+  const row = document.getElementById('ac_comp_row');
+  if (row) row.style.display = 'none';
+}
+
+// Reads current Add Card modal fields and POSTs to comp-lookup.js.
+// Shows market value inline near the price field.
+async function _acFetchComp() {
+  if (_acItemType !== 'card') return;
+  const player  = (document.getElementById('ac_player')?.value  || '').trim();
+  const year    = (document.getElementById('ac_year')?.value    || '').trim();
+  const cardSet = (document.getElementById('ac_set')?.value     || '').trim();
+  const parallel= (document.getElementById('ac_parallel')?.value|| '').trim();
+  const cardNum = (document.getElementById('ac_number')?.value  || '').trim();
+  const grader  = (document.getElementById('ac_grader')?.value  || '');
+  const gradeRaw= (document.getElementById('ac_grade')?.value   || '').trim();
+  const grade   = grader && gradeRaw !== '' ? parseFloat(gradeRaw) : null;
+  const title   = (document.getElementById('ac_title')?.value   || '').trim();
+
+  // Need at least player or title to fetch a comp
+  if (!player && !title) return;
+
+  const row     = document.getElementById('ac_comp_row');
+  const valEl   = document.getElementById('ac_comp_value');
+  const srcEl   = document.getElementById('ac_comp_source');
+  if (!row) return;
+
+  // Show skeleton while fetching
+  row.style.display = 'flex';
+  if (valEl) valEl.textContent = '—';
+  if (srcEl) srcEl.textContent = 'checking…';
+
+  try {
+    const res = await fetch('/.netlify/functions/comp-lookup', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ cards: [{
+        player, year: year || null, cardSet, cardNumber: cardNum,
+        parallel, grade, grader: grader || null,
+        sport: '', cardTitle: title,
+      }] }),
+      signal: AbortSignal.timeout(12000),
+    });
+    if (!res.ok) { _acHideComp(); return; }
+    const data   = await res.json();
+    const result = data.results?.[0];
+    if (!result || result.stub || !result.compPrice) { _acHideComp(); return; }
+
+    if (valEl) valEl.textContent = '$' + Number(result.compPrice).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+    if (srcEl) srcEl.textContent = result.source === 'cardhedge'  ? `Card Hedge${result.confidence ? ' · ' + result.confidence : ''}`
+                                 : result.source === 'cardsight'   ? 'CardSight AI'
+                                 : result.source === 'pricecharting' ? 'PriceCharting'
+                                 : result.source || '';
+    row.style.display = 'flex';
+  } catch {
+    _acHideComp();
+  }
 }
 
 // ── CERT SCANNER ─────────────────────────────────────────────────────────────
@@ -9670,6 +9749,9 @@ function fillFormFromScan(card, cert, grader) {
     itemType:   'card',
     sport:      card.sport     || '',
   });
+
+  // Fetch inline comp for the just-filled form
+  _acFetchComp();
 }
 
 // ── Sprint 2: Vision AI card identification ───────────────────────────────────
@@ -9921,6 +10003,9 @@ function fillFormFromVision(card, result) {
   } else if (filledFields.length > 0) {
     showToast('Card partially identified — review highlighted fields', 'var(--gold)');
   }
+
+  // Fetch inline comp for the just-filled form
+  _acFetchComp();
 }
 
 function _applyVisionConfidence(el, level) {

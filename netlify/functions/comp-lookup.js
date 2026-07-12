@@ -1343,14 +1343,22 @@ async function lookupCardHedge(card) {
     'Content-Type': 'application/json',
   };
 
-  // Build description string for card-match — single free-text query expected by API
-  const description = [
-    card.year,
-    card.cardSet,
-    card.player,
-    card.parallel,
-    card.grader && card.grade ? `${card.grader} ${card.grade}` : '',
-  ].filter(Boolean).join(' ').trim();
+  // Build description string for card-match — single free-text query expected by API.
+  // When cardSet is empty (e.g. seller didn't fill in set field), fall back to
+  // cardTitle which typically contains year + set + player already.
+  const description = card.cardSet
+    ? [
+        card.year,
+        card.cardSet,
+        card.player,
+        card.parallel,
+        card.grader && card.grade ? `${card.grader} ${card.grade}` : '',
+      ].filter(Boolean).join(' ').trim()
+    : [
+        card.cardTitle || [card.year, card.player].filter(Boolean).join(' '),
+        card.parallel,
+        card.grader && card.grade ? `${card.grader} ${card.grade}` : '',
+      ].filter(Boolean).join(' ').trim();
 
   if (process.env.CARDSHOW_DEBUG)
     console.log('[cardhedge] card-match description:', description);
