@@ -4,22 +4,26 @@
 //
 // Routing (in priority order):
 //   1. TRADING_CARD_API_KEY set → Trading Card API (all sports + TCG, 3M+ cards)
-//   2. No TRADING_CARD_API_KEY → Pokémon TCG API + PriceCharting run in PARALLEL,
+//   2. No TRADING_CARD_API_KEY, CARDSIGHT_API_KEY set →
+//      CardSight catalog (sports) + Pokémon TCG API run in PARALLEL,
+//      results merged (sports first). CardSight covers MLB/NFL/NBA/NHL.
+//   3. No CARDSIGHT_API_KEY → Pokémon TCG API + PriceCharting run in PARALLEL,
 //      results merged (Pokémon first). Eliminates fragile keyword detection —
 //      pokemontcg.io returns [] for sports queries; PriceCharting returns [] for TCG.
-//   3. Neither API available → stub (local CARD_DB fallback in client)
+//   4. Neither API available → stub (local CARD_DB fallback in client)
 //
 // Results cached in card_search_cache (Supabase) for 7 days.
-// Cache key prefix: "tradingcardapi:" or "auto:" (parallel mode)
+// Cache key prefix: "tradingcardapi:" / "cardsight:" / "auto:" (parallel mode)
 // Cache writes are non-blocking — a write failure never breaks the response.
 
 const { createClient } = require('@supabase/supabase-js');
 
-const TCG_API_BASE     = 'https://api.tradingcardapi.com/v1/cards';
-const POKEMON_API_BASE = 'https://api.pokemontcg.io/v2/cards';
-const PC_API_BASE      = 'https://www.sportscardspro.com/api/products';
-const TIMEOUT_MS       = 5000;
-const CACHE_TTL_DAYS   = 7;
+const TCG_API_BASE      = 'https://api.tradingcardapi.com/v1/cards';
+const POKEMON_API_BASE  = 'https://api.pokemontcg.io/v2/cards';
+const PC_API_BASE       = 'https://www.sportscardspro.com/api/products';
+const CARDSIGHT_API_BASE = 'https://api.cardsight.ai/v1';
+const TIMEOUT_MS        = 5000;
+const CACHE_TTL_DAYS    = 7;
 
 // Sports that use Trading Card API exclusively when TRADING_CARD_API_KEY is set
 const TCG_SPORTS = new Set([
@@ -133,6 +137,57 @@ async function lookupPokemonTCG(query) {
   } catch (err) {
     clearTimeout(timeoutId);
     console.warn('[trading-card-lookup] Pokémon TCG error:', err.message);
+    return null;
+  }
+}
+
+// ── CARDSIGHT CATALOG SEARCH ──
+// Uses the same catalog endpoint as comp-lookup.js but for autocomplete.
+// Returns normalized card objects for sports cards (MLB/NFL/NBA/NHL).
+// Pokémon/TCG queries naturally return [] — safe to run in parallel with Pokémon TCG API.
+
+async function lookupCardSightCatalog(query) {
+  const apiKey = process.env.CARDSIGHT_API_KEY;
+  if (!apiKey) return null;
+
+  const controller = new AbortController();
+  const timeoutId  = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+  try {
+    const params = new URLSearchParams({ name: query, take: '8' });
+    const res = await fetch(`${CARDSIGHT_API_BASE}/catalog/cards?${params.toString()}`, {
+      signal:  controller.signal,
+      headers: { 'X-API-Key': apiKey, 'Content-Type': 'application/json' },
+    });
+    clearTimeout(timeoutId);
+
+    if (!res.ok) {
+      console.warn('[trading-card-lookup] CardSight catalog error:', res.status);
+      return null;
+    }
+
+    const data  = await res.json();
+    const items = Array.isArray(data?.data) ? data.data
+                : Array.isArray(data?.results) ? data.results
+                : Array.isArray(data) ? data : [];
+    if (!items.length) return [];
+
+    return items.map(c => {
+      const id         = String(c.id ?? c.uuid ?? c.card_id ?? Math.random());
+      const player     = c.name ?? c.player_name ?? c.player ?? '';
+      const year       = c.year ? String(c.year) : '';
+      const cardSet    = c.release_name ?? c.releaseName ?? c.set_name ?? c.set ?? '';
+      const cardNumber = c.number ?? c.card_number ?? null;
+      const parallel   = c.parallel_name ?? c.parallel ?? null;
+      const sport      = c.sport ?? c.league ?? null;
+      const imageUrl   = c.image_url ?? c.image ?? c.front_image ?? null;
+
+      return { id, player, year, cardSet, cardNumber: cardNumber ? String(cardNumber) : null, sport, parallel, imageUrl, rawTitle: null };
+    }).filter(c => c.player); // drop entries with no player name
+
+  } catch (err) {
+    clearTimeout(timeoutId);
+    console.warn('[trading-card-lookup] CardSight catalog error:', err.message);
     return null;
   }
 }
@@ -330,7 +385,39 @@ exports.handler = async (event) => {
     }
   }
 
-  // ── 2. Parallel mode: Pokémon TCG API + PriceCharting run simultaneously ──
+  // ── 2. CardSight catalog (sports) + Pokémon TCG API run simultaneously ──
+  // CardSight covers MLB/NFL/NBA/NHL; pokemontcg.io covers Pokémon.
+  // Each returns [] for the other's domain — safe to merge.
+  if (process.env.CARDSIGHT_API_KEY) {
+    const queryKey = buildQueryKey(q, 'cardsight');
+    const cached   = await readSearchCache(queryKey);
+    if (cached) {
+      return respond({ stub: false, results: cached.results, fromCache: true, source: cached.source });
+    }
+
+    const [csResults, pokemonResults] = await Promise.all([
+      lookupCardSightCatalog(q),
+      lookupPokemonTCG(q),
+    ]);
+
+    // Merge: sports (CardSight) first, then Pokémon, dedupe by id, cap at 8
+    const seen    = new Set();
+    const results = [...(csResults || []), ...(pokemonResults || [])]
+      .filter(r => {
+        if (seen.has(r.id)) return false;
+        seen.add(r.id);
+        return true;
+      })
+      .slice(0, 8);
+
+    if (results.length > 0) {
+      writeSearchCache(queryKey, results, 'cardsight').catch(() => {});
+      return respond({ stub: false, results, fromCache: false, source: 'cardsight' });
+    }
+    // Fall through to PriceCharting if both returned nothing
+  }
+
+  // ── 3. Parallel mode: Pokémon TCG API + PriceCharting run simultaneously ──
   // No keyword detection — pokemontcg.io returns [] for sports queries and
   // PriceCharting returns [] for TCG queries, so merging is safe and correct.
   const queryKey = buildQueryKey(q, 'auto');
@@ -359,7 +446,7 @@ exports.handler = async (event) => {
     return respond({ stub: false, results, fromCache: false, source: 'auto' });
   }
 
-  // Both APIs returned nothing — stub so client falls back to local CARD_DB
+  // All APIs returned nothing — stub so client falls back to local CARD_DB
   return respond({ stub: true, results: [] });
 };
 
