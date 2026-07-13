@@ -147,15 +147,29 @@ async function lookupPokemonTCG(query) {
 // Returns normalized card objects for sports cards (MLB/NFL/NBA/NHL).
 // Pokémon/TCG queries naturally return [] — safe to run in parallel with Pokémon TCG API.
 
+// Strip year and common set/brand tokens from a free-text query to isolate
+// the player name portion for CardSight's name= parameter.
+function extractPlayerQuery(query) {
+  return query
+    .replace(/\b(19|20)\d{2}\b/g, '')        // years
+    .replace(/\b(topps|bowman|panini|prizm|optic|donruss|select|mosaic|chronicles|fleer|upper\s+deck|chrome|refractor|auto|autograph|rookie|rc|holo|gold|silver|base|sp|ssp|insert|patch|relic|jersey|numbered|foil|atomic|superfractor|variation|short\s+print|cracked\s+ice|wave)\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 async function lookupCardSightCatalog(query) {
   const apiKey = process.env.CARDSIGHT_API_KEY;
   if (!apiKey) return null;
+
+  // CardSight name= takes a player name; strip year + set keywords from query
+  const playerQuery = extractPlayerQuery(query);
+  if (!playerQuery) return null;
 
   const controller = new AbortController();
   const timeoutId  = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
   try {
-    const params = new URLSearchParams({ name: query, take: '8' });
+    const params = new URLSearchParams({ name: playerQuery, take: '8' });
     const res = await fetch(`${CARDSIGHT_API_BASE}/catalog/cards?${params.toString()}`, {
       signal:  controller.signal,
       headers: { 'X-API-Key': apiKey, 'Content-Type': 'application/json' },
@@ -424,7 +438,7 @@ exports.handler = async (event) => {
   // CardSight covers MLB/NFL/NBA/NHL; pokemontcg.io covers Pokémon.
   // Each returns [] for the other's domain — safe to merge.
   if (process.env.CARDSIGHT_API_KEY) {
-    const queryKey = buildQueryKey(q, 'cs4');
+    const queryKey = buildQueryKey(q, 'cs5');
     const cached   = await readSearchCache(queryKey);
     if (cached) {
       return respond({ stub: false, results: cached.results, fromCache: true, source: cached.source });
@@ -446,7 +460,7 @@ exports.handler = async (event) => {
       .slice(0, 8);
 
     if (results.length > 0) {
-      writeSearchCache(queryKey, results, 'cs4').catch(() => {});
+      writeSearchCache(queryKey, results, 'cs5').catch(() => {});
       return respond({ stub: false, results, fromCache: false, source: 'cardsight' });
     }
     // Fall through to PriceCharting if both returned nothing
