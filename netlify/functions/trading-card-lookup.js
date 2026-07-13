@@ -168,9 +168,8 @@ async function lookupCardSightCatalog(query) {
     }
 
     const data  = await res.json();
-    const items = Array.isArray(data?.data) ? data.data
-                : Array.isArray(data?.results) ? data.results
-                : Array.isArray(data) ? data : [];
+    // CardSight wraps results under the 'cards' key (confirmed from comp-lookup.js)
+    const items = data?.cards || data?.data || data?.results || [];
     if (!items.length) return [];
 
     // Log first item to diagnose actual field names in CardSight catalog response
