@@ -22,7 +22,8 @@ const TCG_API_BASE      = 'https://api.tradingcardapi.com/v1/cards';
 const POKEMON_API_BASE  = 'https://api.pokemontcg.io/v2/cards';
 const PC_API_BASE       = 'https://www.sportscardspro.com/api/products';
 const CARDSIGHT_API_BASE = 'https://api.cardsight.ai/v1';
-const TIMEOUT_MS        = 5000;
+const TIMEOUT_MS        = 4000;
+const POKEMON_TIMEOUT_MS = 3000; // Pokémon TCG runs in parallel; fail fast if it lags
 const CACHE_TTL_DAYS    = 7;
 
 // Sports that use Trading Card API exclusively when TRADING_CARD_API_KEY is set
@@ -101,7 +102,7 @@ async function lookupPokemonTCG(query) {
   });
 
   const controller = new AbortController();
-  const timeoutId  = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const timeoutId  = setTimeout(() => controller.abort(), POKEMON_TIMEOUT_MS);
 
   try {
     const res = await fetch(`${POKEMON_API_BASE}?${params.toString()}`, {
@@ -450,12 +451,16 @@ exports.handler = async (event) => {
     })
     .slice(0, 8);
 
-  if (results.length > 0) {
-    writeSearchCache(queryKey, results, 'auto').catch(() => {});
-    return respond({ stub: false, results, fromCache: false, source: 'auto' });
+  // Only use these results if at least one entry has a real player name.
+  // PriceCharting often returns set-level products with no extractable player —
+  // in that case stub=true so the client uses the local CARD_DB.
+  const usableResults = results.filter(r => r.player);
+  if (usableResults.length > 0) {
+    writeSearchCache(queryKey, usableResults, 'auto').catch(() => {});
+    return respond({ stub: false, results: usableResults, fromCache: false, source: 'auto' });
   }
 
-  // All APIs returned nothing — stub so client falls back to local CARD_DB
+  // All APIs returned nothing useful — stub so client falls back to local CARD_DB
   return respond({ stub: true, results: [] });
 };
 
