@@ -178,21 +178,30 @@ async function lookupCardSightCatalog(query) {
       console.log('[trading-card-lookup] CardSight catalog first item:', JSON.stringify(items[0]));
     }
 
+    // CardSight catalog: c.name is the card variant name ("Summertime in the Park",
+    // "Gold Refractor"), NOT the player name. Player name comes from a dedicated field;
+    // fall back to the search query (which is always a player name for sports searches).
+    // Extract a clean player name from the query (title-case the search input).
+    const queryPlayer = query.trim().replace(/\b\w/g, l => l.toUpperCase());
+
     return items.map(c => {
       const id         = String(c.id ?? c.uuid ?? c.card_id ?? Math.random());
-      // CardSight catalog: name = player name, releaseName = set, releaseYear = year
-      // (field names confirmed from comp-lookup.js usage)
-      const player     = c.name ?? c.player_name ?? c.player ?? c.playerName ?? '';
+      // Try dedicated player fields first; fall back to search query as player name
+      const player     = c.playerName ?? c.player_name ?? c.player ?? c.firstName
+                         ? (c.playerName ?? c.player_name ?? c.player ?? `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim())
+                         : queryPlayer;
       const year       = String(c.releaseYear ?? c.release_year ?? c.year ?? '');
       const cardSet    = c.releaseName ?? c.release_name ?? c.set_name ?? c.set ?? '';
       const cardNumber = c.number ?? c.card_number ?? null;
-      const parallel   = c.parallel_name ?? c.parallel ?? null;
+      // c.name is the card variant/insert name — use as parallel when it differs from set
+      const cardName   = c.name || '';
+      const parallel   = c.parallel_name ?? c.parallel
+                         ?? (cardName && cardName !== cardSet ? cardName : null);
       const sport      = c.sport ?? c.league ?? null;
       const imageUrl   = c.image_url ?? c.image ?? c.front_image ?? null;
 
-      console.log('[trading-card-lookup] CardSight mapped:', { player, year, cardSet, cardNumber });
       return { id, player, year, cardSet, cardNumber: cardNumber ? String(cardNumber) : null, sport, parallel, imageUrl, rawTitle: null };
-    }).filter(c => c.player); // drop entries with no player name
+    }); // no filter — player always set from query fallback
 
   } catch (err) {
     clearTimeout(timeoutId);
@@ -398,7 +407,7 @@ exports.handler = async (event) => {
   // CardSight covers MLB/NFL/NBA/NHL; pokemontcg.io covers Pokémon.
   // Each returns [] for the other's domain — safe to merge.
   if (process.env.CARDSIGHT_API_KEY) {
-    const queryKey = buildQueryKey(q, 'cs2');
+    const queryKey = buildQueryKey(q, 'cs3');
     const cached   = await readSearchCache(queryKey);
     if (cached) {
       return respond({ stub: false, results: cached.results, fromCache: true, source: cached.source });
@@ -420,7 +429,7 @@ exports.handler = async (event) => {
       .slice(0, 8);
 
     if (results.length > 0) {
-      writeSearchCache(queryKey, results, 'cs2').catch(() => {});
+      writeSearchCache(queryKey, results, 'cs3').catch(() => {});
       return respond({ stub: false, results, fromCache: false, source: 'cardsight' });
     }
     // Fall through to PriceCharting if both returned nothing
