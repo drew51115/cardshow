@@ -151,10 +151,44 @@ async function lookupPokemonTCG(query) {
 // the player name portion for CardSight's name= parameter.
 function extractPlayerQuery(query) {
   return query
-    .replace(/\b(19|20)\d{2}\b/g, '')        // years
+    .replace(/\b(19|20)\d{2}\b/g, '')
     .replace(/\b(topps|bowman|panini|prizm|optic|donruss|select|mosaic|chronicles|fleer|upper\s+deck|chrome|refractor|auto|autograph|rookie|rc|holo|gold|silver|base|sp|ssp|insert|patch|relic|jersey|numbered|foil|atomic|superfractor|variation|short\s+print|cracked\s+ice|wave)\b/gi, '')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+// Extract 4-digit year from query string, if present.
+function extractYear(query) {
+  const m = query.match(/\b(19|20)(\d{2})\b/);
+  return m ? m[0] : null;
+}
+
+// Map a query fragment to a CardSight releaseName keyword (simplified).
+const CS_RELEASE_MAP = [
+  [/bowman\s+chrome\s+draft/i, 'Bowman Chrome Draft'],
+  [/bowman\s+chrome/i,         'Bowman Chrome'],
+  [/bowman\s+sterling/i,       'Bowman Sterling'],
+  [/bowman/i,                  'Bowman'],
+  [/topps\s+chrome\s+update/i, 'Topps Chrome Update'],
+  [/topps\s+chrome/i,          'Topps Chrome'],
+  [/topps\s+heritage/i,        'Topps Heritage'],
+  [/topps\s+finest/i,          'Finest'],
+  [/finest/i,                  'Finest'],
+  [/topps\s+update/i,          'Topps Update'],
+  [/topps\s+series\s+2/i,      'Topps Series 2'],
+  [/topps\s+series\s+1/i,      'Topps Series 1'],
+  [/topps/i,                   'Topps'],
+  [/prizm/i,                   'Prizm'],
+  [/optic/i,                   'Optic'],
+  [/select/i,                  'Select'],
+  [/donruss/i,                 'Donruss'],
+  [/upper\s+deck/i,            'Upper Deck'],
+];
+function extractReleaseName(query) {
+  for (const [re, name] of CS_RELEASE_MAP) {
+    if (re.test(query)) return name;
+  }
+  return null;
 }
 
 async function lookupCardSightCatalog(query) {
@@ -165,11 +199,16 @@ async function lookupCardSightCatalog(query) {
   const playerQuery = extractPlayerQuery(query);
   if (!playerQuery) return null;
 
+  const year        = extractYear(query);
+  const releaseName = extractReleaseName(query);
+
   const controller = new AbortController();
   const timeoutId  = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
   try {
-    const params = new URLSearchParams({ name: playerQuery, take: '8' });
+    const params = new URLSearchParams({ name: playerQuery, take: '12' });
+    if (year)        params.set('year', year);
+    if (releaseName) params.set('releaseName', releaseName);
     const res = await fetch(`${CARDSIGHT_API_BASE}/catalog/cards?${params.toString()}`, {
       signal:  controller.signal,
       headers: { 'X-API-Key': apiKey, 'Content-Type': 'application/json' },
@@ -232,7 +271,10 @@ async function lookupCardSightCatalog(query) {
         imageUrl,
         rawTitle: isMultiPlayer ? cardName : null,
       };
-    }).filter(c => c.player || c.rawTitle);
+    }).filter(c => c.player || c.rawTitle)
+      // Solo player cards first, multi-player combos at the end
+      .sort((a, b) => (a.rawTitle ? 1 : 0) - (b.rawTitle ? 1 : 0))
+      .slice(0, 8);
 
   } catch (err) {
     clearTimeout(timeoutId);
@@ -438,7 +480,7 @@ exports.handler = async (event) => {
   // CardSight covers MLB/NFL/NBA/NHL; pokemontcg.io covers Pokémon.
   // Each returns [] for the other's domain — safe to merge.
   if (process.env.CARDSIGHT_API_KEY) {
-    const queryKey = buildQueryKey(q, 'cs5');
+    const queryKey = buildQueryKey(q, 'cs6');
     const cached   = await readSearchCache(queryKey);
     if (cached) {
       return respond({ stub: false, results: cached.results, fromCache: true, source: cached.source });
@@ -460,7 +502,7 @@ exports.handler = async (event) => {
       .slice(0, 8);
 
     if (results.length > 0) {
-      writeSearchCache(queryKey, results, 'cs5').catch(() => {});
+      writeSearchCache(queryKey, results, 'cs6').catch(() => {});
       return respond({ stub: false, results, fromCache: false, source: 'cardsight' });
     }
     // Fall through to PriceCharting if both returned nothing
