@@ -9422,6 +9422,73 @@ async function _acFetchComp() {
   }
 }
 
+// After vision scan fills basic fields, call CardSight to supplement
+// missing cardNumber and parallel — vision often misses these on Bowman/Topps autos.
+async function _acEnrichFromCardSight() {
+  if (_acItemType !== 'card') return;
+  const player  = (document.getElementById('ac_player')?.value  || '').trim();
+  const year    = (document.getElementById('ac_year')?.value    || '').trim();
+  const cardSet = (document.getElementById('ac_set')?.value     || '').trim();
+  const number  = (document.getElementById('ac_number')?.value  || '').trim();
+  const parallel= (document.getElementById('ac_parallel')?.value|| '').trim();
+
+  // Only enrich if we have player + set but are missing number or parallel
+  if (!player || !cardSet) return;
+  if (number && parallel) return; // already complete
+
+  const query = [player, year, cardSet].filter(Boolean).join(' ');
+
+  try {
+    const res = await fetch('/.netlify/functions/trading-card-lookup', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ query }),
+      signal:  AbortSignal.timeout(6000),
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.stub || !data.results?.length) return;
+
+    // Score each result — prefer exact year match and fewest empty fields
+    const scored = data.results.map(r => {
+      let score = 0;
+      if (year && r.year === year) score += 20;
+      if (r.cardNumber)            score += 10;
+      if (r.parallel)              score += 5;
+      return { r, score };
+    }).sort((a, b) => b.score - a.score);
+
+    const best = scored[0]?.r;
+    if (!best) return;
+
+    let enriched = false;
+    if (!number && best.cardNumber) {
+      const el = document.getElementById('ac_number');
+      if (el) { el.value = best.cardNumber; el.classList.add('db-filled'); setTimeout(() => el.classList.remove('db-filled'), 8000); }
+      enriched = true;
+    }
+    if (!parallel && best.parallel) {
+      const el = document.getElementById('ac_parallel');
+      if (el) { el.value = best.parallel; el.classList.add('db-filled'); setTimeout(() => el.classList.remove('db-filled'), 8000); }
+      enriched = true;
+    }
+
+    // Rebuild card title to include newly enriched parallel
+    if (enriched && typeof buildCardTitle === 'function') {
+      const title = buildCardTitle({
+        player:    document.getElementById('ac_player')?.value  || '',
+        year:      document.getElementById('ac_year')?.value    || '',
+        cardSet:   document.getElementById('ac_set')?.value     || '',
+        cardNumber:document.getElementById('ac_number')?.value  || '',
+        parallel:  document.getElementById('ac_parallel')?.value|| '',
+        sport:     '',
+      });
+      const titleEl = document.getElementById('ac_title');
+      if (titleEl && title) titleEl.value = title;
+    }
+  } catch { /* non-fatal — enrichment is best-effort */ }
+}
+
 // ── CERT SCANNER ─────────────────────────────────────────────────────────────
 // Sprint 1: BarcodeDetector API (Chrome/Android) → ZXing-js fallback (iOS Safari)
 // Sprint 2: vision AI fallback via Take Photo → Claude vision API
@@ -10076,6 +10143,10 @@ function fillFormFromVision(card, result) {
 
   // Fetch inline comp for the just-filled form
   _acFetchComp();
+
+  // CardSight enrichment: fill in missing cardNumber/parallel from catalog
+  // Runs after a short delay so all form fields are fully settled
+  setTimeout(() => _acEnrichFromCardSight(), 400);
 }
 
 function _applyVisionConfidence(el, level) {

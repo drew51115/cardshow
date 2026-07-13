@@ -21,8 +21,8 @@ const PROMPT_SPORTS = `Analyze this trading card image. Return ONLY a valid JSON
   "cardTitle":   "full card title if different from player, else null",
   "year":        1999,
   "cardSet":     "official set/expansion name",
-  "cardNumber":  "e.g. 4/102 or 025 or null",
-  "parallel":    "refractor, holo, prizm, gold, etc. or null",
+  "cardNumber":  "card number exactly as printed — e.g. BCP-196 or BDA-27 or 150 or null",
+  "parallel":    "describe ALL variants visible: Auto, Autograph, Refractor, Holo, Prizm, Gold, Silver, Orange, Blue, Red, Superfractor, etc. Combine if multiple: 'Gold Refractor Auto'. Return null only if base card with no variant.",
   "grader":      "PSA or BGS or CGC or SGC or null if raw",
   "grade":       10,
   "condition":   "Near Mint or Lightly Played or Moderately Played or null",
@@ -31,13 +31,18 @@ const PROMPT_SPORTS = `Analyze this trading card image. Return ONLY a valid JSON
   "itemType":    "card or sealed or lot",
   "productType": "Booster Box or Booster Pack or ETB or null",
   "confidence": {
-    "player":    "high or medium or low",
-    "year":      "high or medium or low",
-    "cardSet":   "high or medium or low",
-    "grade":     "high or medium or low"
+    "player":     "high or medium or low",
+    "year":       "high or medium or low",
+    "cardSet":    "high or medium or low",
+    "cardNumber": "high or medium or low",
+    "parallel":   "high or medium or low",
+    "grade":      "high or medium or low"
   }
 }
 Rules:
+- AUTOGRAPHS: If the card has a signature, sticker auto, or 'AUTO' stamp anywhere on it, ALWAYS include 'Auto' in the parallel field. This is critical — never omit Auto for signed cards.
+- CARD NUMBER: Look at the bottom of the card. Bowman Chrome prospects use formats like BCP-196, BDA-27, BCP196. Topps/Prizm use plain numbers. Return exactly what is printed.
+- PARALLELS: Colored borders (orange, blue, gold, red), foil patterns (refractor, prizm, holo), and print runs (/50, /99, /10) are all parallel indicators — include them all.
 - If a field is not clearly visible, return null — never guess
 - For graded slabs, read the label carefully for player, year, set, grade
 - For raw cards, read the card front for player name, year, set name, card number
