@@ -172,36 +172,53 @@ async function lookupCardSightCatalog(query) {
     const items = data?.cards || data?.data || data?.results || [];
     if (!items.length) return [];
 
-    // Log first item to diagnose actual field names in CardSight catalog response
-    if (items.length > 0) {
-      console.log('[trading-card-lookup] CardSight catalog first item keys:', Object.keys(items[0]));
-      console.log('[trading-card-lookup] CardSight catalog first item:', JSON.stringify(items[0]));
-    }
+    // CardSight c.name = full card title ("Aaron Judge Gold Refractor" or
+    // "2017 AL RBI Leaders (Nelson Cruz / Aaron Judge / Khris Davis)").
+    // No separate player name field. For solo cards, strip known parallel/brand
+    // terms to isolate the player name. For multi-player leader cards (contain ' / ')
+    // use the full card name as rawTitle and leave player blank.
 
-    // CardSight catalog: c.name is the card variant name ("Summertime in the Park",
-    // "Gold Refractor"), NOT the player name. Player name comes from a dedicated field;
-    // fall back to the search query (which is always a player name for sports searches).
-    // Extract a clean player name from the query (title-case the search input).
-    const queryPlayer = query.trim().replace(/\b\w/g, l => l.toUpperCase());
+    const STRIP_RE = /\b(refractor|prizm|auto|autograph|rookie|rc|gold|silver|red|blue|green|orange|purple|black|white|pink|yellow|holo|foil|chrome|wave|atomic|superfractor|variation|short\s+print|sp|ssp|insert|patch|relic|jersey|bat|base|optic|topps|bowman|panini|select|donruss|mosaic)\b/gi;
 
     return items.map(c => {
-      const id         = String(c.id ?? c.uuid ?? c.card_id ?? Math.random());
-      // Try dedicated player fields first; fall back to search query as player name
-      const player     = c.playerName ?? c.player_name ?? c.player ?? c.firstName
-                         ? (c.playerName ?? c.player_name ?? c.player ?? `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim())
-                         : queryPlayer;
-      const year       = String(c.releaseYear ?? c.release_year ?? c.year ?? '');
-      const cardSet    = c.releaseName ?? c.release_name ?? c.set_name ?? c.set ?? '';
+      const id       = String(c.id ?? c.uuid ?? c.card_id ?? Math.random());
+      const cardName = (c.name || '').trim();
+      const year     = String(c.releaseYear ?? c.release_year ?? c.year ?? '');
+      const cardSet  = c.releaseName ?? c.release_name ?? c.set_name ?? c.set ?? '';
       const cardNumber = c.number ?? c.card_number ?? null;
-      // c.name is the card variant/insert name — use as parallel when it differs from set
-      const cardName   = c.name || '';
-      const parallel   = c.parallel_name ?? c.parallel
-                         ?? (cardName && cardName !== cardSet ? cardName : null);
-      const sport      = c.sport ?? c.league ?? null;
-      const imageUrl   = c.image_url ?? c.image ?? c.front_image ?? null;
+      const sport    = c.sport ?? c.league ?? null;
+      const imageUrl = c.image_url ?? c.image ?? c.front_image ?? null;
 
-      return { id, player, year, cardSet, cardNumber: cardNumber ? String(cardNumber) : null, sport, parallel, imageUrl, rawTitle: null };
-    }); // no filter — player always set from query fallback
+      const isMultiPlayer = cardName.includes(' / ');
+      let player  = '';
+      let parallel = c.parallel_name ?? c.parallel ?? null;
+
+      if (isMultiPlayer) {
+        // Leader/multi-player card — show full name as title; seller fills in player
+        player   = '';
+        parallel = parallel ?? cardName;
+      } else {
+        // Strip brand/parallel terms to isolate player name
+        const cleaned = cardName.replace(STRIP_RE, '').replace(/\s+/g, ' ').trim();
+        player = (cleaned.length > 1 && !/^\d/.test(cleaned)) ? cleaned : cardName;
+        if (!parallel && cleaned !== cardName) {
+          const stripped = cardName.replace(cleaned, '').replace(/\s+/g, ' ').trim();
+          parallel = stripped || null;
+        }
+      }
+
+      return {
+        id,
+        player,
+        year,
+        cardSet,
+        cardNumber: cardNumber ? String(cardNumber) : null,
+        sport,
+        parallel,
+        imageUrl,
+        rawTitle: isMultiPlayer ? cardName : null,
+      };
+    }).filter(c => c.player || c.rawTitle);
 
   } catch (err) {
     clearTimeout(timeoutId);
@@ -407,7 +424,7 @@ exports.handler = async (event) => {
   // CardSight covers MLB/NFL/NBA/NHL; pokemontcg.io covers Pokémon.
   // Each returns [] for the other's domain — safe to merge.
   if (process.env.CARDSIGHT_API_KEY) {
-    const queryKey = buildQueryKey(q, 'cs3');
+    const queryKey = buildQueryKey(q, 'cs4');
     const cached   = await readSearchCache(queryKey);
     if (cached) {
       return respond({ stub: false, results: cached.results, fromCache: true, source: cached.source });
@@ -429,7 +446,7 @@ exports.handler = async (event) => {
       .slice(0, 8);
 
     if (results.length > 0) {
-      writeSearchCache(queryKey, results, 'cs3').catch(() => {});
+      writeSearchCache(queryKey, results, 'cs4').catch(() => {});
       return respond({ stub: false, results, fromCache: false, source: 'cardsight' });
     }
     // Fall through to PriceCharting if both returned nothing
