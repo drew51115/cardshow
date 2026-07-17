@@ -11299,20 +11299,29 @@ async function checkOnboardingStatus(handle) {
       .eq('handle', handle)
       .maybeSingle();
 
+    console.log('[onboarding] checkOnboardingStatus', handle, { data, error });
+
     if (error) {
       // Column may not exist yet — treat as onboarding not done
+      console.warn('[onboarding] query error:', error.code, error.message);
       if (error.code === '42703' || error.message?.includes('onboarding_complete')) {
         _openOnboarding();
       }
       return;
     }
 
-    // data.onboarding_complete: false or null → show onboarding; true → skip
-    if (data && data.onboarding_complete !== true) {
+    // No row found — shouldn't happen, but treat as new seller
+    if (!data) {
+      _openOnboarding();
+      return;
+    }
+
+    // onboarding_complete: false or null → show onboarding; true → skip
+    if (data.onboarding_complete !== true) {
       _openOnboarding();
     }
-  } catch (_) {
-    // Network error etc — don't block seller from using the app
+  } catch (e) {
+    console.warn('[onboarding] unexpected error:', e.message);
   }
 }
 
