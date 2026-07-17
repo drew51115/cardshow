@@ -11294,23 +11294,38 @@ const OB_TOTAL_STEPS  = 5; // steps 0–5 (6 screens), progress based on 0–4
 async function checkOnboardingStatus(handle) {
   if (typeof db === 'undefined') return;
   try {
-    const { data } = await db.from('sellers')
+    const { data, error } = await db.from('sellers')
       .select('onboarding_complete')
       .eq('handle', handle)
       .maybeSingle();
-    if (data && !data.onboarding_complete) {
+
+    if (error) {
+      // Column may not exist yet — treat as onboarding not done
+      if (error.code === '42703' || error.message?.includes('onboarding_complete')) {
+        _openOnboarding();
+      }
+      return;
+    }
+
+    // data.onboarding_complete: false or null → show onboarding; true → skip
+    if (data && data.onboarding_complete !== true) {
       _openOnboarding();
     }
-  } catch (_) {}
+  } catch (_) {
+    // Network error etc — don't block seller from using the app
+  }
 }
 
 async function markOnboardingComplete(handle) {
   if (typeof db === 'undefined' || !handle) return;
   try {
-    await db.from('sellers')
+    const { error } = await db.from('sellers')
       .update({ onboarding_complete: true })
       .eq('handle', handle);
-  } catch (_) {}
+    if (error) console.warn('[onboarding] markComplete failed:', error.message);
+  } catch (e) {
+    console.warn('[onboarding] markComplete error:', e.message);
+  }
 }
 
 function _openOnboarding() {
