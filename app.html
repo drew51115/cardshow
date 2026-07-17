@@ -11341,7 +11341,12 @@ function _openOnboarding() {
   _onboardingStep   = 0;
   _onboardingActive = true;
   _obRender();
-  document.getElementById('obOverlay').classList.add('open');
+  const el = document.getElementById('obOverlay');
+  console.log('[onboarding] _openOnboarding — el found:', !!el, 'classes before:', el?.className);
+  if (el) {
+    el.classList.add('open');
+    console.log('[onboarding] classes after:', el.className, 'computed display:', window.getComputedStyle(el).display);
+  }
 }
 
 function _closeOnboarding() {
