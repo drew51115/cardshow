@@ -11432,7 +11432,8 @@ async function _obSaveProfile() {
     if (whatsapp)    row.whatsapp     = whatsapp;
     if (instagram)   row.instagram    = instagram;
     if (Object.keys(row).length > 0) {
-      await db.from('sellers').update(row).eq('handle', handle).catch(() => {});
+      const { error } = await db.from('sellers').update(row).eq('handle', handle);
+      if (error) console.warn('[onboarding] profile save error:', error.message);
     }
   }
 }
