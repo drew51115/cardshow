@@ -2652,6 +2652,137 @@
   .btn-instagram:hover { opacity: 0.88; transform: translateY(-1px); }
 
   /* ── EDIT PROFILE MODAL ── */
+  /* ── ONBOARDING OVERLAY ── */
+  .ob-overlay {
+    position: fixed; inset: 0; z-index: 2000;
+    background: rgba(0,0,0,0.85);
+    display: none; align-items: center; justify-content: center;
+    padding: 1rem;
+  }
+  .ob-overlay.open { display: flex; }
+
+  .ob-modal {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 20px; width: 100%; max-width: 440px;
+    box-shadow: 0 32px 80px rgba(0,0,0,0.7);
+    display: flex; flex-direction: column;
+    overflow: hidden; position: relative;
+  }
+
+  .ob-progress {
+    height: 3px; background: var(--border);
+    position: relative;
+  }
+  .ob-progress-bar {
+    height: 100%; background: var(--accent);
+    transition: width 0.4s ease;
+  }
+
+  .ob-body {
+    padding: 2rem 2rem 1.5rem;
+    display: flex; flex-direction: column; gap: 1.25rem;
+  }
+
+  .ob-icon {
+    font-size: 2.5rem; line-height: 1;
+  }
+
+  .ob-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.75rem; color: var(--text); letter-spacing: 0.02em;
+    line-height: 1.1;
+  }
+
+  .ob-subtitle {
+    color: var(--muted); font-size: 0.875rem; line-height: 1.55;
+  }
+
+  .ob-checklist {
+    list-style: none; display: flex; flex-direction: column; gap: 0.6rem;
+  }
+  .ob-checklist li {
+    display: flex; align-items: flex-start; gap: 0.6rem;
+    font-size: 0.875rem; color: var(--text); line-height: 1.4;
+  }
+  .ob-checklist li::before {
+    content: '✓'; color: var(--accent); font-weight: 700;
+    flex-shrink: 0; margin-top: 1px;
+  }
+
+  .ob-options {
+    display: flex; flex-direction: column; gap: 0.5rem;
+  }
+  .ob-option {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 0.85rem 1rem;
+    cursor: default;
+    display: flex; gap: 0.75rem; align-items: flex-start;
+  }
+  .ob-option-icon { font-size: 1.25rem; flex-shrink: 0; }
+  .ob-option-text strong { display: block; font-size: 0.9rem; color: var(--text); }
+  .ob-option-text span   { font-size: 0.78rem; color: var(--muted); line-height: 1.4; }
+
+  .ob-profile-fields {
+    display: flex; flex-direction: column; gap: 0.6rem;
+  }
+  .ob-field label {
+    display: block; font-size: 0.75rem; color: var(--muted);
+    margin-bottom: 0.25rem; font-family: 'DM Mono', monospace;
+  }
+  .ob-field input {
+    width: 100%; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 0.6rem 0.75rem;
+    color: var(--text); font-size: 0.875rem; font-family: 'DM Sans', sans-serif;
+    outline: none;
+  }
+  .ob-field input:focus { border-color: var(--accent); }
+
+  .ob-footer {
+    padding: 1rem 2rem 1.5rem;
+    display: flex; align-items: center; justify-content: space-between;
+    border-top: 1px solid var(--border);
+  }
+  .ob-step-label {
+    font-size: 0.75rem; color: var(--muted); font-family: 'DM Mono', monospace;
+  }
+  .ob-btn-row { display: flex; gap: 0.5rem; align-items: center; }
+  .ob-skip {
+    background: none; border: none; color: var(--muted);
+    font-size: 0.8rem; cursor: pointer; padding: 0.4rem 0.5rem;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .ob-skip:hover { color: var(--text); }
+  .ob-next {
+    background: var(--accent); color: #07080c;
+    border: none; border-radius: 8px;
+    padding: 0.6rem 1.25rem; font-size: 0.9rem; font-weight: 700;
+    cursor: pointer; font-family: 'DM Sans', sans-serif;
+    transition: opacity 0.15s;
+  }
+  .ob-next:hover { opacity: 0.9; }
+  .ob-next:disabled { opacity: 0.4; cursor: default; }
+
+  .ob-showday-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem;
+  }
+  .ob-tip {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 0.75rem;
+  }
+  .ob-tip-icon { font-size: 1.1rem; }
+  .ob-tip strong { display: block; font-size: 0.8rem; color: var(--text); margin: 0.2rem 0 0.15rem; }
+  .ob-tip span   { font-size: 0.72rem; color: var(--muted); line-height: 1.35; }
+
+  .ob-ready-badge {
+    text-align: center; padding: 0.5rem 0;
+  }
+  .ob-ready-badge .ob-icon { font-size: 3.5rem; display: block; }
+  .ob-ready-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 2rem; color: var(--accent); letter-spacing: 0.04em;
+    margin-top: 0.5rem;
+  }
+
   .profile-overlay {
     position: fixed; inset: 0; z-index: 1000;
     background: rgba(0,0,0,0.7); display: none;
@@ -7167,6 +7298,7 @@ function loginAsSeller(handle) {
         showToast(`✓ ${myCards.length} cards loaded from your inventory`);
       }
     }
+    checkOnboardingStatus(handle);
   });
 
   // Load shows from Supabase so seller can see which shows they're authorized for
@@ -11154,6 +11286,117 @@ function openProfile() {
   document.getElementById('profileOverlay').classList.add('open');
 }
 
+/* ── SELLER ONBOARDING ── */
+let _onboardingStep   = 0;
+let _onboardingActive = false;
+const OB_TOTAL_STEPS  = 5; // steps 0–5 (6 screens), progress based on 0–4
+
+async function checkOnboardingStatus(handle) {
+  if (typeof db === 'undefined') return;
+  try {
+    const { data } = await db.from('sellers')
+      .select('onboarding_complete')
+      .eq('handle', handle)
+      .maybeSingle();
+    if (data && !data.onboarding_complete) {
+      _openOnboarding();
+    }
+  } catch (_) {}
+}
+
+async function markOnboardingComplete(handle) {
+  if (typeof db === 'undefined' || !handle) return;
+  try {
+    await db.from('sellers')
+      .update({ onboarding_complete: true })
+      .eq('handle', handle);
+  } catch (_) {}
+}
+
+function _openOnboarding() {
+  _onboardingStep   = 0;
+  _onboardingActive = true;
+  _obRender();
+  document.getElementById('obOverlay').classList.add('open');
+}
+
+function _closeOnboarding() {
+  _onboardingActive = false;
+  document.getElementById('obOverlay').classList.remove('open');
+}
+
+function _obRender() {
+  const totalScreens = 6; // 0–5
+  const progress = _onboardingStep === 0 ? 0
+    : Math.round((_onboardingStep / (totalScreens - 1)) * 100);
+  document.getElementById('obProgressBar').style.width = progress + '%';
+
+  for (let i = 0; i < totalScreens; i++) {
+    const el = document.getElementById('obStep' + i);
+    if (el) el.style.display = i === _onboardingStep ? '' : 'none';
+  }
+
+  const isLast = _onboardingStep === totalScreens - 1;
+  const nextBtn = document.getElementById('obNextBtn');
+  const skipBtn = document.getElementById('obSkipBtn');
+  const label   = document.getElementById('obStepLabel');
+
+  nextBtn.textContent = _onboardingStep === 0 ? 'Get started →'
+    : isLast ? 'Start adding cards' : 'Next →';
+  skipBtn.style.display = isLast ? 'none' : '';
+  label.textContent = isLast ? 'All done!' : `Step ${_onboardingStep + 1} of ${totalScreens - 1}`;
+}
+
+async function obNext() {
+  const totalScreens = 6;
+
+  // Step 1: save profile fields
+  if (_onboardingStep === 1) {
+    await _obSaveProfile();
+  }
+
+  if (_onboardingStep === totalScreens - 1) {
+    // Final step — mark complete and close
+    await markOnboardingComplete(currentSeller);
+    _closeOnboarding();
+    return;
+  }
+
+  _onboardingStep++;
+  _obRender();
+}
+
+async function obSkip() {
+  await _obSaveProfile();
+  await markOnboardingComplete(currentSeller);
+  _closeOnboarding();
+}
+
+async function _obSaveProfile() {
+  const handle = currentSeller;
+  if (!handle) return;
+  const displayName = (document.getElementById('obDisplayName')?.value || '').trim();
+  const whatsapp    = (document.getElementById('obWhatsapp')?.value    || '').trim();
+  const instagram   = (document.getElementById('obInstagram')?.value   || '').trim();
+  if (!displayName && !whatsapp && !instagram) return;
+
+  if (!sellerProfiles[handle]) sellerProfiles[handle] = {};
+  if (displayName) sellerProfiles[handle].displayName = displayName;
+  if (whatsapp)    sellerProfiles[handle].whatsapp    = whatsapp;
+  if (instagram)   sellerProfiles[handle].instagram   = instagram;
+  updateProfileUI(handle);
+
+  if (typeof db !== 'undefined') {
+    const row = {};
+    if (displayName) row.display_name = displayName;
+    if (whatsapp)    row.whatsapp     = whatsapp;
+    if (instagram)   row.instagram    = instagram;
+    if (Object.keys(row).length > 0) {
+      await db.from('sellers').update(row).eq('handle', handle).catch(() => {});
+    }
+  }
+}
+
 function closeProfile() {
   document.getElementById('profileOverlay').classList.remove('open');
 }
@@ -12013,7 +12256,141 @@ async function upsertCardsToDB(cards) {
 
 </script>
 
+<!-- ── SELLER ONBOARDING OVERLAY ── -->
+<div class="ob-overlay" id="obOverlay">
+  <div class="ob-modal">
+    <div class="ob-progress">
+      <div class="ob-progress-bar" id="obProgressBar" style="width:0%"></div>
+    </div>
 
+    <!-- Step 0: Welcome -->
+    <div id="obStep0" class="ob-body">
+      <div class="ob-icon">👋</div>
+      <div class="ob-title">Welcome to CardShow</div>
+      <div class="ob-subtitle">You're 3 minutes away from having your inventory live at your next card show. Let's get you set up.</div>
+      <ul class="ob-checklist">
+        <li>Set up your seller profile</li>
+        <li>Add your first cards (manual, scan, or CSV)</li>
+        <li>Know what to do on show day</li>
+      </ul>
+    </div>
+
+    <!-- Step 1: Profile -->
+    <div id="obStep1" class="ob-body" style="display:none">
+      <div class="ob-icon">🏷️</div>
+      <div class="ob-title">Your Seller Profile</div>
+      <div class="ob-subtitle">Buyers tap your QR code to browse. Give them a name and a way to reach you.</div>
+      <div class="ob-profile-fields">
+        <div class="ob-field">
+          <label>Display Name</label>
+          <input id="obDisplayName" type="text" placeholder="e.g. Mike's Cards" autocomplete="off">
+        </div>
+        <div class="ob-field">
+          <label>WhatsApp (optional)</label>
+          <input id="obWhatsapp" type="tel" placeholder="+1 555-000-0000">
+        </div>
+        <div class="ob-field">
+          <label>Instagram (optional)</label>
+          <input id="obInstagram" type="text" placeholder="@yourhandle">
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 2: What you'll need -->
+    <div id="obStep2" class="ob-body" style="display:none">
+      <div class="ob-icon">📋</div>
+      <div class="ob-title">Before the Show</div>
+      <div class="ob-subtitle">Here's what to have ready before show day:</div>
+      <ul class="ob-checklist">
+        <li>Your card inventory — graded slabs, raw cards, sealed boxes</li>
+        <li>Prices for each card (you can update right from your phone)</li>
+        <li>A phone or tablet to display your QR code at the table</li>
+        <li>An organizer access code to join the show</li>
+      </ul>
+    </div>
+
+    <!-- Step 3: Upload method -->
+    <div id="obStep3" class="ob-body" style="display:none">
+      <div class="ob-icon">📦</div>
+      <div class="ob-title">Adding Your Inventory</div>
+      <div class="ob-subtitle">Three ways to load your cards — pick whatever fits your workflow:</div>
+      <div class="ob-options">
+        <div class="ob-option">
+          <div class="ob-option-icon">📷</div>
+          <div class="ob-option-text">
+            <strong>Scan a card</strong>
+            <span>Point your camera at any PSA/BGS/CGC slab or raw card. Auto-fills player, set, grade, and parallel.</span>
+          </div>
+        </div>
+        <div class="ob-option">
+          <div class="ob-option-icon">📊</div>
+          <div class="ob-option-text">
+            <strong>Upload a spreadsheet</strong>
+            <span>Drop a CSV or Excel file. Download our template for the correct column layout.</span>
+          </div>
+        </div>
+        <div class="ob-option">
+          <div class="ob-option-icon">✏️</div>
+          <div class="ob-option-text">
+            <strong>Add cards manually</strong>
+            <span>Type in each card one at a time. Great for a quick few cards before a show.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 4: Show day -->
+    <div id="obStep4" class="ob-body" style="display:none">
+      <div class="ob-icon">🎪</div>
+      <div class="ob-title">Show Day Playbook</div>
+      <div class="ob-subtitle">You're at the show. Here's the drill:</div>
+      <div class="ob-showday-grid">
+        <div class="ob-tip">
+          <div class="ob-tip-icon">📲</div>
+          <strong>Share your QR</strong>
+          <span>Tap "My QR Code" and prop your phone up. Buyers scan to browse your table.</span>
+        </div>
+        <div class="ob-tip">
+          <div class="ob-tip-icon">🤝</div>
+          <strong>Mark cards sold</strong>
+          <span>Tap any card → "Mark Sold" → log price and payment method.</span>
+        </div>
+        <div class="ob-tip">
+          <div class="ob-tip-icon">💰</div>
+          <strong>Check comps</strong>
+          <span>Tap "Check Comps" for live market prices before you price a card.</span>
+        </div>
+        <div class="ob-tip">
+          <div class="ob-tip-icon">📊</div>
+          <strong>End-of-day report</strong>
+          <span>Report tab shows revenue, sell-through, and best performers.</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 5: Ready -->
+    <div id="obStep5" class="ob-body" style="display:none">
+      <div class="ob-ready-badge">
+        <span class="ob-icon">🏆</span>
+        <div class="ob-ready-title">You're All Set</div>
+      </div>
+      <div class="ob-subtitle" style="text-align:center">Your profile is saved. Start adding cards whenever you're ready — scan, upload, or type them in.</div>
+      <ul class="ob-checklist">
+        <li>Profile saved</li>
+        <li>Scanner and CSV import ready</li>
+        <li>Reach out via the ? menu if you need help</li>
+      </ul>
+    </div>
+
+    <div class="ob-footer">
+      <span class="ob-step-label" id="obStepLabel">Step 1 of 5</span>
+      <div class="ob-btn-row">
+        <button class="ob-skip" id="obSkipBtn" onclick="obSkip()">Skip setup</button>
+        <button class="ob-next" id="obNextBtn" onclick="obNext()">Get started →</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 </body>
 </html>
