@@ -11342,17 +11342,28 @@ function _openOnboarding() {
   _onboardingActive = true;
   _obRender();
   const el = document.getElementById('obOverlay');
-  console.log('[onboarding] _openOnboarding — el found:', !!el, 'classes before:', el?.className);
-  if (el) {
-    el.classList.add('open');
-    console.log('[onboarding] classes after:', el.className, 'computed display:', window.getComputedStyle(el).display);
-  }
+  if (!el) { console.error('[onboarding] obOverlay element not found'); return; }
+  // Move to end of body to ensure nothing stacks above it
+  document.body.appendChild(el);
+  // Set all display/visibility properties inline — bypasses any CSS specificity issues
+  el.style.cssText = [
+    'position:fixed', 'inset:0', 'top:0', 'left:0', 'right:0', 'bottom:0',
+    'width:100%', 'height:100%',
+    'z-index:99999',
+    'display:flex', 'align-items:center', 'justify-content:center',
+    'padding:1rem',
+    'background:rgba(0,0,0,0.6)',
+    'opacity:1', 'visibility:visible',
+  ].join(';');
+  console.log('[onboarding] opened — cssText set, z-index:99999');
 }
 
 function _closeOnboarding() {
   _onboardingActive = false;
-  document.getElementById('obOverlay').classList.remove('open');
+  const el = document.getElementById('obOverlay');
+  if (el) el.style.cssText = 'display:none';
 }
+
 
 function _obRender() {
   const totalScreens = 6; // 0–5
