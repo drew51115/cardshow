@@ -585,7 +585,6 @@ footer {
   cursor: pointer;
   position: relative; overflow: hidden;
   transition: background 0.3s;
-  min-height: 340px;
   display: flex; flex-direction: column;
 }
 .wiy-card:hover, .wiy-card.open { background: var(--card); }
@@ -609,7 +608,7 @@ footer {
 .wiy-card:hover .wiy-number, .wiy-card.open .wiy-number { opacity: 0; }
 
 .wiy-question {
-  transition: opacity 0.2s, transform 0.2s;
+  /* stays in normal flow */
 }
 .wiy-question-role {
   font-family: 'DM Mono', monospace; font-size: 0.68rem;
@@ -633,20 +632,16 @@ footer {
 }
 
 .wiy-answer {
-  position: absolute; inset: 0;
-  padding: 3rem 2.5rem;
-  opacity: 0; transform: translateY(10px);
-  transition: opacity 0.25s, transform 0.25s;
-  pointer-events: none;
-  display: flex; flex-direction: column;
-  background: var(--card);
+  display: none;
+  flex-direction: column;
+  animation: wiyFadeIn 0.2s ease;
 }
+@keyframes wiyFadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 .wiy-card:hover .wiy-answer, .wiy-card.open .wiy-answer {
-  opacity: 1; transform: translateY(0);
-  pointer-events: auto;
+  display: flex;
 }
 .wiy-card:hover .wiy-question, .wiy-card.open .wiy-question {
-  opacity: 0; transform: translateY(-6px);
+  display: none;
 }
 .wiy-answer-icon { font-size: 2rem; margin-bottom: 0.75rem; }
 .wiy-answer-label {
@@ -695,10 +690,6 @@ footer {
 
 @media (max-width: 900px) {
   .wiy-grid { grid-template-columns: 1fr; }
-  .wiy-card { min-height: auto; }
-  .wiy-answer { position: relative; opacity: 1; transform: none; pointer-events: auto; display: none; }
-  .wiy-card.open .wiy-answer { display: flex; }
-  .wiy-card.open .wiy-question { display: none; }
   .wiy-number { display: none; }
 }
 
