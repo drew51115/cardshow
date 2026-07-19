@@ -611,6 +611,15 @@ Cancel at each state:
   - **ShowVision branding** — All references to "AI vision", "AI reads", "AI scanner", "powered by Claude" replaced with "ShowVision" (proprietary product name). Updated in marquee, section label, feature lists, mockup URL bar, demo tab copy. Do not revert to "AI" or "Claude" in user-facing copy on index.html.
   - **Social sharing copy** — "Instagram" as sole platform replaced with "Instagram, X, Facebook, and group chats" in triptych, How It Works step, shareable show page section, and organizer "Which Is You?" card. Section headline changed to "Share to All Your Socials."
   - **Inline CTAs** — 4 gold "Start for Free" / "Join for Free" strips added at regular scroll intervals with distinct hooks. Hero primary CTA changed from "Try the Live Demo" to "Start for Free."
+- **Show Floor Transaction Data Layer (Step 3, session 2026-07-19)** — 7 surgical changes to app.html only (Supabase migrations pre-run):
+  - `parseShowLocation(locationStr)` — splits freeform "Venue, City, ST" into `{ venue, city, state }`. Used by `showToDbRow()` and `recordShowTransaction()`.
+  - `showToDbRow()` — now stamps `city`, `state`, `venue` derived from `parseShowLocation(show.location)` on every show upsert. Hydration path picks these up automatically via `select('*')`.
+  - `loadShowsFromDB()` — hydrates `city`, `state`, `venue` from DB rows into `shows{}` in-memory cache.
+  - `recordShowTransaction(card)` — new async function inserted after `updateCardInDB()`. Writes one row to `show_floor_transactions` per sale: full card fields, seller UUID + handle, show metadata, table number, `is_test: false`, `api_eligible: true`, `data_version: 1`. Detects sport via `detectCardSport()` (not `detectSport()`). Logs fingerprint to console for price_cache cross-check. All errors caught and console.warn only — never surfaces to seller.
+  - `sdConfirm()` — calls `recordShowTransaction(card)` immediately after `updateCardInDB(card)` with **no await**. Fire-and-forget: sold UI completes instantly regardless of Supabase write latency.
+  - Report HTML — `<div id="rptTxLog"></div>` added immediately after `#rptPayBreakdown` closing tag.
+  - `updateReport()` — renders `"✓ N transactions logged · show floor data synced"` in `#rptTxLog` when `soldCards.length > 0 && activeShowId`; clears otherwise.
+  - **Critical constraints:** `recordShowTransaction` must never be awaited from `sdConfirm`. Table is append-only (INSERT + SELECT RLS only, no UPDATE/DELETE). `card_fingerprint` format: `player|year|set|cardNumber|parallel|grade|grader` (7 fields, lowercased, matches price_cache exactly).
 
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`
