@@ -3328,6 +3328,7 @@
             <div style="color:var(--muted);font-size:13px;padding:12px 0">No transactions yet</div>
           </div>
         </div>
+        <div id="rptTxLog"></div>
         <div class="report-stat-card">
           <div class="report-stat-label">Transaction log</div>
           <div style="overflow-x:auto">
@@ -5294,6 +5295,37 @@ function validateAndNormalizeCard(r) {
   return r;
 }
 
+// ── SHOW LOCATION PARSER ───────────────────────────────────────────
+// Parses a freeform location string into structured city/state/venue.
+// Used by saveShow() when writing to DB and by recordShowTransaction()
+// as a fallback when shows{} city/state are not yet populated.
+//
+// Supported formats:
+//   "Venue Name, City, ST"     → {venue, city, state}
+//   "City, ST"                 → {venue: null, city, state}
+//   "City"                     → {venue: null, city, state: null}
+
+function parseShowLocation(locationStr) {
+  if (!locationStr) return { city: null, state: null, venue: null };
+  const parts = locationStr.split(',').map(s => s.trim()).filter(Boolean);
+
+  if (parts.length >= 3) {
+    return {
+      venue: parts[0],
+      city:  parts[parts.length - 2],
+      state: parts[parts.length - 1].slice(0, 2).toUpperCase(),
+    };
+  } else if (parts.length === 2) {
+    return {
+      venue: null,
+      city:  parts[0],
+      state: parts[1].slice(0, 2).toUpperCase(),
+    };
+  } else {
+    return { venue: null, city: parts[0] || null, state: null };
+  }
+}
+
 // ── COMP CHECK ──
 
 // Routes comp lookup to the right API based on card type.
@@ -6860,6 +6892,7 @@ function sdConfirm() {
 
   closeSellDrawer();
   updateCardInDB(card);
+  recordShowTransaction(card);   // ← fire-and-forget, no await
   syncBuyerView();
   updateStats();
   updateReport();
@@ -6951,6 +6984,18 @@ function updateReport() {
         </div>
       </div>`;
     }).join('');
+  }
+
+  // ── Transaction sync indicator ──
+  const txLogEl = el('rptTxLog');
+  if (txLogEl) {
+    if (soldCards.length > 0 && activeShowId) {
+      txLogEl.innerHTML = `<div style="font-size:11px;color:var(--muted);padding:4px 0 12px;font-family:'DM Mono',monospace">
+        ✓ ${soldCards.length} transaction${soldCards.length !== 1 ? 's' : ''} logged · show floor data synced
+      </div>`;
+    } else {
+      txLogEl.innerHTML = '';
+    }
   }
 
   // ── Best / worst delta callouts ──
@@ -11533,6 +11578,7 @@ function updateProfileUI(handle) {
 
 // ── Map shows{} object to DB row ──
 function showToDbRow(show) {
+  const { city, state, venue } = parseShowLocation(show.location);
   const row = {
     id:           show.id,
     name:         show.name,
@@ -11541,6 +11587,9 @@ function showToDbRow(show) {
     status:       show.status      || 'upcoming',
     access_code:  show.accessCode  || null,
     published_at: show.publishedAt || null,
+    city,
+    state,
+    venue,
   };
   // Stamp created_by so each admin only sees their own shows.
   if (window._currentAdminUid) row.created_by = window._currentAdminUid;
@@ -11819,6 +11868,9 @@ async function loadShowsFromDB() {
         status:      row.status      || 'upcoming',
         accessCode:  row.access_code || '',
         publishedAt: row.published_at || null,
+        city:        row.city        || null,
+        state:       row.state       || null,
+        venue:       row.venue       || null,
         sellers:     sellersByShow[row.id] || new Set(),
         tables:      tablesByShow[row.id]  || {},
       };
@@ -12197,6 +12249,129 @@ async function updateCardInDB(card) {
     if (error) console.warn('Update failed:', error.message);
   } catch(e) {
     console.warn('updateCardInDB error:', e.message);
+  }
+}
+
+// ── SHOW FLOOR TRANSACTION LOGGER ─────────────────────────────────
+// Called from sdConfirm() immediately after updateCardInDB().
+// Records an immutable transaction to show_floor_transactions.
+//
+// FIRE-AND-FORGET — never await this function from sdConfirm().
+// The sold confirmation UI must complete instantly regardless of
+// Supabase write latency. Failures are logged but never surfaced.
+//
+// Only fires when activeShowId is set (seller is in a live show).
+// Uses detectCardSport() (API routing) not detectSport() (UI only).
+
+async function recordShowTransaction(card) {
+  if (typeof db === 'undefined') return;
+  if (!activeShowId)  return;
+  if (!currentSeller) return;
+
+  try {
+    const show = shows[activeShowId];
+    if (!show) return;
+
+    // Prefer DB-populated city/state; fall back to parsing location
+    let city  = show.city  || null;
+    let state = show.state || null;
+    if (!city && show.location) {
+      const parsed = parseShowLocation(show.location);
+      city  = parsed.city;
+      state = parsed.state;
+    }
+
+    // Resolve seller UUID from current Supabase Auth session
+    const { data: { user } } = await db.auth.getUser();
+    const sellerUuid = user?.id || null;
+
+    // Resolve table number for this seller at this show
+    const tableNum = show.tables?.[currentSeller] || null;
+
+    const row = {
+      // Transaction
+      sold_at:        new Date().toISOString(),
+      sold_price:     parseFloat(card.SoldPrice),
+      asking_price:   parseFloat(card.Price) || null,
+      payment_method: card.PaymentMethod     || 'Other',
+
+      // Card snapshot — denormalised at time of sale
+      // These values are captured now so the record is self-describing
+      // even if the inventory row is later edited or deleted.
+      inventory_id: card._dbId                          || null,
+      card_title:   card['Card Title'] || card.card_title || '',
+      player:       card.Player        || card.player      || null,
+      year:         card.Year
+                      ? parseInt(String(card.Year))
+                      : (card.year ? parseInt(String(card.year)) : null),
+      card_set:     card['Set ']       || card['Set']
+                      || card.card_set  || null,
+      card_number:  card.Number        || card['Card #']
+                      || card.card_number || null,
+      parallel:     card['Parallel/Variant'] || card.parallel || null,
+      grader:       card.Grader        || card.grader     || null,
+      grade:        card.Grade  != null
+                      ? parseFloat(card.Grade)
+                      : (card.grade != null
+                          ? parseFloat(card.grade)
+                          : null),
+      cert_number:  card['Cert #']     || card.cert_number || null,
+      condition:    card.Condition     || card.condition   || null,
+      item_type:    card.item_type     || 'card',
+
+      // detectCardSport() is the API-routing function with full TCG
+      // keyword detection. Do NOT use detectSport() here — that is
+      // the UI badge function and returns different values.
+      sport: detectCardSport(card) || null,
+
+      // Seller snapshot
+      seller_id:     sellerUuid,
+      seller_handle: currentSeller,
+
+      // Show snapshot — denormalised so record is self-describing
+      show_id:       activeShowId,
+      show_name:     show.name,
+      show_date:     show.date     || null,
+      show_location: show.location || null,
+      show_city:     city,
+      show_state:    state,
+      table_number:  tableNum,
+
+      // Data quality flags
+      is_test:      false,
+      api_eligible: true,
+      data_version: 1,
+    };
+
+    const { error } = await db
+      .from('show_floor_transactions')
+      .insert(row);
+
+    if (error) {
+      // Non-fatal — log but never surface to seller during a sale
+      console.warn('[transaction] write failed:', error.message, error);
+    } else {
+      console.log(
+        '[transaction] recorded:',
+        row.card_title,
+        '· $' + row.sold_price,
+        '· ' + row.show_name,
+        '· fingerprint check:',
+        [
+          (row.player || '').toLowerCase(),
+          row.year || '',
+          (row.card_set || '').toLowerCase(),
+          (row.card_number || '').toLowerCase(),
+          (row.parallel || '').toLowerCase(),
+          row.grade || '',
+          (row.grader || '').toLowerCase(),
+        ].join('|')
+      );
+    }
+
+  } catch (err) {
+    // Non-fatal catch-all — never let this function throw
+    console.warn('[transaction] unexpected error:', err.message);
   }
 }
 
