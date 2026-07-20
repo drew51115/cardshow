@@ -7799,6 +7799,7 @@ async function saveShow() {
   const name     = document.getElementById('smName').value.trim();
   const date     = document.getElementById('smDate').value.trim();
   const location = document.getElementById('smLocation').value.trim();
+  const { city, state, venue } = parseShowLocation(location);
   const status   = document.getElementById('smStatus').value;
   const code     = document.getElementById('smCode').value.trim().toUpperCase();
 
@@ -7826,7 +7827,8 @@ async function saveShow() {
   const id = editingShowId || genShowId();
   shows[id] = { id, name, date, location, status, accessCode: code, sellers: newSellers,
                 tables: (shows[id] && shows[id].tables) || {},
-                publishedAt: (shows[id] && shows[id].publishedAt) || null };
+                publishedAt: (shows[id] && shows[id].publishedAt) || null,
+                city, state, venue };
 
   closeShowModal();
   if (typeof renderAdminShowsDashboard === 'function' && _adminTab === 'shows') renderAdminShowsDashboard();
