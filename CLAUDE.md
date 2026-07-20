@@ -37,13 +37,28 @@ CLAUDE.md                         → This file
 ```sql
 sellers       — id (uuid PRIMARY KEY = auth.uid()), handle, display_name, whatsapp,
                 instagram, email, created_at
-shows         — id (text), name, date, location, status, access_code, published_at, created_at
+shows         — id (text), name, date, location, status, access_code, published_at, created_at,
+                city (text), state (text), venue (text)
 show_sellers  — show_id, seller_id (uuid → sellers.id), table_number (junction)
 inventory     — id (uuid), seller_id (uuid → sellers.id), card_title, player, year,
                 card_set, parallel, grader, grade, cert_number, condition, price,
                 status, location, item_type, product_type, created_at, updated_at
 show_inventory — show_id, card_id (junction)
 admins        — id (uuid PRIMARY KEY REFERENCES auth.users) — admin identity gate
+show_floor_transactions — id (uuid), created_at, sold_at (timestamptz),
+                sold_price, asking_price, price_delta (generated), payment_method,
+                inventory_id (→ inventory.id nullable), card_title, player, year,
+                card_set, card_number, parallel, grader, grade, cert_number,
+                condition, item_type, sport,
+                card_fingerprint GENERATED (7-field:
+                  lower(player)|year|lower(set)|lower(cardNumber)|lower(parallel)|grade|lower(grader)),
+                seller_id (→ sellers.id nullable), seller_handle,
+                show_id (→ shows.id), show_name, show_date, show_location,
+                show_city, show_state, table_number,
+                is_test (bool default false), api_eligible (bool default true),
+                data_version (int default 1)
+                IMMUTABLE — 4 RLS policies: SELECT permissive, INSERT permissive,
+                UPDATE restrictive (USING false), DELETE restrictive (USING false)
 ```
 
 ## Supabase Persistence Status — All Complete
@@ -144,6 +159,8 @@ Fonts: Bebas Neue (headlines), DM Sans (body), DM Mono (labels/badges), Barlow C
 - `loadShowsFromDB()` — fetch all shows on admin login
 - `refreshSellerHandlesCache()` — fetches all seller handles from DB into `_allSellerHandles`; called on admin login in parallel with loadShowsFromDB
 - `cardToDbRow(card)` / `dbRowToCard(row)` — field mapping helpers (includes item_type, product_type)
+- `parseShowLocation(str)` — parses "Venue, City, ST" → `{ venue, city, state }`. Used by `saveShow()` and `recordShowTransaction()` fallback
+- `recordShowTransaction(card)` — async, fire-and-forget. Called from `sdConfirm()` after `updateCardInDB()`. Only fires when `activeShowId` is set. Uses `detectCardSport()` not `detectSport()`. Non-fatal on any error.
 
 ### Auth Functions (app.html)
 - `submitAuth()` — async; handles seller sign-in/sign-up and admin sign-in via Supabase Auth
@@ -196,6 +213,10 @@ Fonts: Bebas Neue (headlines), DM Sans (body), DM Mono (labels/badges), Barlow C
 25. **Admin sidebar hidden on mobile** — `body.role-admin #mainSidebar { display: none !important }` in `≤599px` media query. Quick Actions (Create New Show, Back to Shows) are redundant with main content on mobile. Admin grid uses `grid-template-columns: 1fr` on mobile so main content fills full width.
 26. **FAB (`#fabAddCard`) is seller-only** — Shown via `style.display=''` in `loginAsSeller()`, hidden in `loginAsAdmin()` and `signOut()`. Only visible at `≤767px` via CSS. Black background + gold border + gold "+" text for maximum contrast against dark UI.
 27. **Comp search includes parallel** — `comp-lookup.js` search query: `[player, year, cardSet, parallel].filter(Boolean).join(' ')`. Cache fingerprint: `player|year|cardSet|cardNumber|parallel|grade|grader`. Both changes ensure autos/variants get correct prices instead of base card prices.
+28. **show_floor_transactions is IMMUTABLE.** Four RLS policies: SELECT + INSERT permissive, UPDATE + DELETE restrictive (USING false). Corrections are new rows, never edits. Never add permissive UPDATE or DELETE policies to this table.
+29. **recordShowTransaction() must never be awaited from sdConfirm().** Fire-and-forget. Sold confirmation UI must complete instantly.
+30. **card_fingerprint on show_floor_transactions is 7-field format** matching `price_cache` exactly — joinable without transformation.
+31. **detectCardSport() used in recordShowTransaction()** — not `detectSport()`. `detectSport()` is UI-only. `detectCardSport()` is API routing with full TCG keyword detection.
 
 ## Cert Scanner — Sprint 1 + 2 Architecture (Shipped)
 
@@ -611,6 +632,7 @@ Cancel at each state:
   - **ShowVision branding** — All references to "AI vision", "AI reads", "AI scanner", "powered by Claude" replaced with "ShowVision" (proprietary product name). Updated in marquee, section label, feature lists, mockup URL bar, demo tab copy. Do not revert to "AI" or "Claude" in user-facing copy on index.html.
   - **Social sharing copy** — "Instagram" as sole platform replaced with "Instagram, X, Facebook, and group chats" in triptych, How It Works step, shareable show page section, and organizer "Which Is You?" card. Section headline changed to "Share to All Your Socials."
   - **Inline CTAs** — 4 gold "Start for Free" / "Join for Free" strips added at regular scroll intervals with distinct hooks. Hero primary CTA changed from "Try the Live Demo" to "Start for Free."
+- **Show floor transaction data layer (2026-07-20)** — `show_floor_transactions` table (immutable append-only), `parseShowLocation()` utility, `recordShowTransaction()` called fire-and-forget from `sdConfirm()`, `city`/`state`/`venue` on shows table (DB + in-memory + `saveShow()`), transaction count indicator in seller Report tab. Cross-reference fingerprint match with `price_cache` confirmed. All 8 verification tests passed.
 - **Show Floor Transaction Data Layer (Step 3, session 2026-07-19)** — 7 surgical changes to app.html only (Supabase migrations pre-run):
   - `parseShowLocation(locationStr)` — splits freeform "Venue, City, ST" into `{ venue, city, state }`. Used by `showToDbRow()` and `recordShowTransaction()`.
   - `showToDbRow()` — now stamps `city`, `state`, `venue` derived from `parseShowLocation(show.location)` on every show upsert. Hydration path picks these up automatically via `select('*')`.
