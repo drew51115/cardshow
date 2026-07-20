@@ -749,6 +749,120 @@ footer {
   .section { padding: 80px 0; }
 }
 
+/* ── SHOW FLOOR DATA SECTION ───────────────────────────────── */
+.data-section {
+  background: var(--card);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 72px 24px;
+}
+
+.data-section-inner {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.data-eyebrow {
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--gold);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 14px;
+}
+
+.data-headline {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: clamp(32px, 5vw, 52px);
+  color: var(--text);
+  line-height: 1.1;
+  margin-bottom: 24px;
+  letter-spacing: 0.02em;
+}
+
+.data-body {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 16px;
+  color: var(--muted);
+  line-height: 1.7;
+  margin-bottom: 16px;
+  max-width: 640px;
+}
+
+.data-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 32px;
+  margin: 40px 0;
+  padding: 32px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+@media (max-width: 600px) {
+  .data-stats {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+}
+
+.data-stat-label {
+  display: block;
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--gold);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+
+.data-stat-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.data-stat-list li {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  color: var(--muted);
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border);
+  line-height: 1.4;
+}
+
+.data-stat-list li:last-child {
+  border-bottom: none;
+}
+
+.data-stat-list li::before {
+  content: 'o  ';
+  color: var(--gold);
+  font-size: 10px;
+  font-family: 'DM Mono', monospace;
+}
+
+.data-cta-line {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 15px;
+  color: var(--muted);
+  margin-top: 8px;
+}
+
+.data-link {
+  color: var(--gold);
+  text-decoration: none;
+  font-weight: 500;
+  margin-left: 6px;
+}
+
+.data-link:hover {
+  text-decoration: underline;
+}
+
 </style>
 </head>
 <body>
@@ -784,6 +898,11 @@ footer {
       </h1>
       <p class="hero-sub reveal reveal-d2">
         The unified inventory platform connecting buyers, sellers and show organizers — before the doors open, during the show, and after the last card sells.
+      </p>
+      <p class="hero-data-badge reveal reveal-d2" style="font-size:13px;font-weight:500;color:var(--gold);
+                letter-spacing:0.08em;text-transform:uppercase;
+                margin-bottom:24px;font-family:'DM Mono',monospace">
+        Show floor prices &nbsp;·&nbsp; Real transactions &nbsp;·&nbsp; Not eBay
       </p>
       <div class="hero-ctas reveal reveal-d3">
         <a href="/app" class="btn btn-gold" style="font-size:1rem;padding:1rem 2.2rem">
@@ -950,6 +1069,7 @@ footer {
             <li>Mark cards sold in real time at the table</li>
             <li>Sales report after the show</li>
           </ul>
+          <p class="wiy-answer-body">Every sale you record in CardShow is saved. Your post-show report is ready the moment doors close.</p>
           <a href="/app" class="wiy-answer-cta">Try seller demo →</a>
         </div>
       </div>
@@ -1037,6 +1157,63 @@ footer {
       </div>
 
     </div>
+  </div>
+</section>
+
+<!-- ── SHOW FLOOR DATA SECTION ─────────────────────────────── -->
+<section class="data-section">
+  <div class="data-section-inner">
+
+    <p class="data-eyebrow">Built for the hobby</p>
+
+    <h2 class="data-headline">
+      The show floor record the hobby never had
+    </h2>
+
+    <p class="data-body">
+      Beckett built the first price guide from what dealers
+      reported selling cards for. CardShow records what dealers
+      actually sell cards for, at shows, across the country.
+    </p>
+
+    <p class="data-body">
+      Every card marked sold on CardShow generates a permanent
+      record. Player, grade, price, show location, date. No
+      estimates. No averages. What cards sell for at the table.
+    </p>
+
+    <div class="data-stats">
+      <div class="data-stat">
+        <span class="data-stat-label">Tracked per sale</span>
+        <ul class="data-stat-list">
+          <li>Player and card details</li>
+          <li>Grade and grading company</li>
+          <li>Sold price and asking price</li>
+          <li>Payment method</li>
+          <li>Show name and location</li>
+          <li>Table number and seller</li>
+          <li>Date and time</li>
+        </ul>
+      </div>
+      <div class="data-stat">
+        <span class="data-stat-label">Why it matters</span>
+        <ul class="data-stat-list">
+          <li>eBay shows what cards sell for online</li>
+          <li>CardShow shows what they sell for at shows</li>
+          <li>Regional price differences, visible for the first time</li>
+          <li>Grade premiums at shows vs online, tracked over time</li>
+          <li>The comp layer the hobby has been missing</li>
+        </ul>
+      </div>
+    </div>
+
+    <p class="data-cta-line">
+      Every show adds to the record.
+      <a href="/#organizers" class="data-link">
+        Run your show on CardShow
+      </a>
+    </p>
+
   </div>
 </section>
 
