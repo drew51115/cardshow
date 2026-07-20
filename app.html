@@ -9006,6 +9006,18 @@ const ALIAS_MAP = [
   [/^type$/i,                      'medium', '__SHOPIFY_TYPE__'],
   [/^image\s*src$/i,               'high',   'Image URL'],
 
+  // ── TCGplayer ──
+  [/^tcgplayer\s*id$/i,             'low',    '__SKIP__'],
+  [/^product\s*line$/i,             'low',    '__SKIP__'],
+  [/^product\s*name$/i,             'high',   'Card Title'],
+  [/^rarity$/i,                     'high',   'Parallel/Variant'],
+  [/^tcg\s*marketplace\s*price$/i,  'high',   'Price'],
+  [/^tcg\s*market\s*price$/i,       'medium', 'Price'],
+  [/^tcg\s*direct\s*low$/i,         'low',    '__SKIP__'],
+  [/^tcg\s*low\s*price(\s*with\s*shipping)?$/i, 'low', '__SKIP__'],
+  [/^total\s*quantity$/i,           'low',    '__SKIP__'],
+  [/^add\s*to\s*quantity$/i,        'low',    '__SKIP__'],
+
   // ── Generic spreadsheet catch-alls ──
   [/^#$/,                       'low',    'Number'],
   [/^no\.?$/i,                  'low',    'Number'],
@@ -9022,6 +9034,7 @@ const SOURCE_SIGNATURES = {
   'Ludex':           ['Card #', 'Manufacturer', 'Quantity'],
   'CardShow Native': ['Card Title', 'Player', 'Parallel/Variant', 'Grader'],
   'Shopify':         ['Handle', 'Title', 'Vendor', 'Variant Price', 'Variant SKU', 'Variant Inventory Qty'],
+  'TCGplayer':       ['TCGplayer Id', 'Product Line', 'Product Name', 'TCG Market Price', 'Photo URL'],
 };
 
 const SHOPIFY_REQUIRED = ['Handle', 'Title', 'Vendor', 'Variant Price'];
