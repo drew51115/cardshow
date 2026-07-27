@@ -8628,9 +8628,16 @@ async function loadShowSellersAndTables(showId) {
     if (!ssRows || !ssRows.length) return;
 
     const sellerIds = ssRows.map(r => r.seller_id).filter(Boolean);
-    const { data: sellerRows } = await db.from('sellers').select('id, handle').in('id', sellerIds);
+    const { data: sellerRows } = await db.from('sellers')
+      .select('id, handle, display_name, whatsapp, instagram').in('id', sellerIds);
     const idToHandle = {};
-    (sellerRows || []).forEach(r => { idToHandle[r.id] = r.handle; });
+    (sellerRows || []).forEach(r => {
+      idToHandle[r.id] = r.handle;
+      if (!sellerProfiles[r.handle]) sellerProfiles[r.handle] = {};
+      if (r.display_name) sellerProfiles[r.handle].displayName = r.display_name;
+      if (r.whatsapp)     sellerProfiles[r.handle].whatsapp    = r.whatsapp;
+      if (r.instagram)    sellerProfiles[r.handle].instagram   = r.instagram;
+    });
 
     const sellersSet = new Set();
     const tables = {};
