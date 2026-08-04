@@ -863,6 +863,132 @@ footer {
   text-decoration: underline;
 }
 
+/* ── SOCIAL PROOF — AS SEEN AT ─────────────────────────────── */
+#social-proof {
+  padding: 4rem 1.5rem;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+.sp-eyebrow {
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--gold);
+  margin-bottom: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.sp-eyebrow::before {
+  content: '';
+  display: block;
+  width: 3px;
+  height: 18px;
+  background: var(--gold);
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+.sp-featured-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 2rem;
+  display: flex;
+  gap: 2rem;
+  align-items: flex-start;
+  margin-bottom: 1.5rem;
+}
+.sp-featured-img {
+  width: 140px;
+  max-width: 180px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  object-fit: cover;
+}
+.sp-featured-content { flex: 1; }
+.sp-featured-eyebrow {
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--gold);
+  margin-bottom: 8px;
+}
+.sp-featured-headline {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 32px;
+  color: var(--text);
+  line-height: 1;
+  margin-bottom: 4px;
+}
+.sp-featured-sub {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+.sp-featured-body {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.65;
+  margin-bottom: 16px;
+}
+.sp-partner-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.sp-pill {
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 10px;
+}
+.sp-logo-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.sp-logo-tile {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 14px 20px;
+  transition: border-color 200ms ease;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 140px;
+}
+.sp-logo-tile:hover {
+  border-color: rgba(245, 200, 66, 0.4);
+}
+.sp-tile-name {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 18px;
+  color: var(--text);
+  line-height: 1;
+}
+.sp-tile-sub {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 11px;
+  color: var(--muted);
+}
+@media (max-width: 640px) {
+  .sp-featured-card {
+    flex-direction: column;
+  }
+  .sp-featured-img {
+    width: 100%;
+    max-width: 220px;
+  }
+}
+
 </style>
 </head>
 <body>
@@ -2164,6 +2290,77 @@ footer {
         </div>
       </div>
     </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════
+     SOCIAL PROOF — AS SEEN AT
+     Add more tiles to .sp-logo-strip as CardShow
+     gets press mentions, show partnerships, and
+     industry features. Each tile is one <div class="sp-logo-tile">.
+═══════════════════════════════════════════════ -->
+<section id="social-proof">
+  <div class="sp-eyebrow">As seen at</div>
+
+  <!-- Featured event badge -->
+  <div class="sp-featured-card">
+    <img
+      class="sp-featured-img"
+      src="/assets/enter-the-inferno-promo.png"
+      alt="CardShow at Enter the Inferno — NSCC 2026"
+      loading="lazy"
+    >
+    <div class="sp-featured-content">
+      <div class="sp-featured-eyebrow">Featured Event</div>
+      <div class="sp-featured-headline">Enter the Inferno</div>
+      <div class="sp-featured-sub">
+        Hobby Tech Pitch Competition &nbsp;&middot;&nbsp;
+        National Sports Collectors Convention &nbsp;&middot;&nbsp;
+        August 1, 2026
+      </div>
+      <div class="sp-featured-body">
+        CardShow was selected to pitch on the Main Stage at the 46th National
+        Sports Collectors Convention in front of judges including Dr. James
+        Beckett, Scott Lock (InfernoRed Technology), and Jeremy Lee
+        (Sports Cards Live).
+      </div>
+      <div class="sp-partner-pills">
+        <span class="sp-pill">InfernoRed Technology</span>
+        <span class="sp-pill">Sports Cards Live</span>
+        <span class="sp-pill">The National &middot; NSCC 2026</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Logo strip — add tiles here as CardShow scales -->
+  <div class="sp-logo-strip">
+    <div class="sp-logo-tile">
+      <span class="sp-tile-name">THE NATIONAL</span>
+      <span class="sp-tile-sub">Sports Collectors Convention</span>
+    </div>
+    <div class="sp-logo-tile">
+      <span class="sp-tile-name">ENTER THE INFERNO</span>
+      <span class="sp-tile-sub">NSCC 2026 &middot; Pitch Competition</span>
+    </div>
+    <div class="sp-logo-tile">
+      <span class="sp-tile-name">INFERNORED</span>
+      <span class="sp-tile-sub">Technology</span>
+    </div>
+    <div class="sp-logo-tile">
+      <span class="sp-tile-name">SPORTS CARDS LIVE</span>
+      <span class="sp-tile-sub">Jeremy Lee</span>
+    </div>
+    <!--
+      FUTURE TILES — uncomment and fill in as you add partners:
+      <div class="sp-logo-tile">
+        <span class="sp-tile-name">PUBLICATION NAME</span>
+        <span class="sp-tile-sub">Article title or context</span>
+      </div>
+      <div class="sp-logo-tile">
+        <img src="/assets/partner-logo.png" alt="Partner name" style="height:28px; width:auto;">
+        <span class="sp-tile-sub">Partner context</span>
+      </div>
+    -->
   </div>
 </section>
 

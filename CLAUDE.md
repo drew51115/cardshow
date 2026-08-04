@@ -672,6 +672,29 @@ Cancel at each state:
 - Beta test at organizer's next show — respond with concrete proposal
 - Card Ladder partnership outreach — co-marketing deal for comp data access
 
+## Social Proof Section (#social-proof)
+Location: index.html, between the CSV-format stat row and the Final CTA / footer.
+Purpose: Grows over time as CardShow gets press, show partnerships, and industry features.
+
+Current entries (as of August 2026):
+- Enter the Inferno pitch competition, NSCC 2026 (featured badge + logo tile)
+- The National Sports Collectors Convention (logo tile)
+- InfernoRed Technology (logo tile)
+- Sports Cards Live / Jeremy Lee (logo tile)
+
+To add a new entry:
+1. Add a `<div class="sp-logo-tile">` block to `.sp-logo-strip` in index.html
+2. If the partner has a logo PNG, use an `<img>` tag inside the tile instead of `.sp-tile-name` text
+3. Update this CLAUDE.md entry with the new partner and date added
+
+Featured badge: update `.sp-featured-card` content when a more prominent featured event
+supersedes Enter the Inferno (e.g., a major press feature or named partnership). Keep
+Enter the Inferno as a logo tile even after the featured badge is updated.
+
+`.sp-featured-img` references `/assets/enter-the-inferno-promo.png`, which is now committed
+to the repo (`assets/` is the first image asset directory in this codebase — everything
+else prior to this section is emoji + CSS mockups).
+
 ## Show Configuration (Demo Data)
 - **MLP Card Show** — Oct 17-18, 2026 · Grand Hyatt Tampa Bay, FL · Code: MLPTPA (primary demo, shown to buyers without code)
 - **Chicago Sports Card Expo** — Nov 8, 2026 · Navy Pier, Chicago, IL · CHI2026
