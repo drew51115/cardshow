@@ -691,11 +691,9 @@ Featured badge: update `.sp-featured-card` content when a more prominent feature
 supersedes Enter the Inferno (e.g., a major press feature or named partnership). Keep
 Enter the Inferno as a logo tile even after the featured badge is updated.
 
-**⚠ Asset pending:** `.sp-featured-img` references `/assets/enter-the-inferno-promo.png`,
-which does not exist in the repo yet — this codebase has no `/assets/` directory or image
-convention prior to this section (everything else is emoji + CSS mockups). The promo PNG
-needs to be added to the repo (e.g. via `git add assets/enter-the-inferno-promo.png`) before
-this image will render; until then it will show as a broken image on the live site.
+`.sp-featured-img` references `/assets/enter-the-inferno-promo.png`, which is now committed
+to the repo (`assets/` is the first image asset directory in this codebase — everything
+else prior to this section is emoji + CSS mockups).
 
 ## Show Configuration (Demo Data)
 - **MLP Card Show** — Oct 17-18, 2026 · Grand Hyatt Tampa Bay, FL · Code: MLPTPA (primary demo, shown to buyers without code)
