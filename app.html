@@ -12,8 +12,9 @@
 <script src="/xlsx.full.min.js" defer></script>
 <script>
   const { createClient } = supabase;
+  const SUPABASE_URL = 'SUPABASE_URL_PLACEHOLDER';
   const db = createClient(
-    'SUPABASE_URL_PLACEHOLDER',
+    SUPABASE_URL,
     'SUPABASE_ANON_KEY_PLACEHOLDER'
   );
 </script>
@@ -3060,6 +3061,9 @@
           <strong>Drop your spreadsheet here</strong>
           <p>Supports CSV & XLSX · CardShow, Shopify, Flipwise, Ludex &amp; more<br>Columns auto-detected on import</p>
         </div>
+
+        <input type="file" id="bulkScanInput" accept="image/*" capture="environment" style="display:none" onchange="handleBulkScanFile(this)">
+        <button class="btn btn-ghost" style="width:100%;justify-content:center;font-size:0.78rem;margin-top:0.5rem" onclick="document.getElementById('bulkScanInput').click()">📸 Bulk Scan Showcase</button>
       </div>
 
 
@@ -5165,6 +5169,63 @@ function handleFileUpload(input) {
       readXLSX(file);
     }
   }
+}
+
+// ── BULK SCAN (Phase 1 — Edge Function call only; review UI lands in Phase 2) ──
+async function handleBulkScanFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  input.value = '';
+
+  showToast('Scanning your showcase…', 'var(--muted)');
+
+  const controller = new AbortController();
+  let timedOut = false;
+  const timeoutId = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+    showToast('Scan timed out — please try again', 'var(--danger)');
+  }, 30000);
+
+  try {
+    const { data: { session } } = await db.auth.getSession();
+    if (!session) {
+      clearTimeout(timeoutId);
+      showToast('Please sign in again to use Bulk Scan', 'var(--danger)');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('image', file);
+
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/bulk-scan`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${session.access_token}` },
+      body: formData,
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    const result = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      showToast(result.message || result.error || 'Bulk scan failed', 'var(--danger)');
+      return;
+    }
+
+    renderBulkScanReview(result.cards || []);
+
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (timedOut) return; // already toasted above
+    showToast('Bulk scan failed — ' + err.message, 'var(--danger)');
+  }
+}
+
+// Phase 2 integration point: replace with the review UI + inventory write path.
+function renderBulkScanReview(cards) {
+  console.log('[bulkScan] identified cards:', cards);
 }
 
 function handleShopifyUpload(input) {

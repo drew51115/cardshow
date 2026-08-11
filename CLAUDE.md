@@ -568,6 +568,47 @@ Cancel at each state:
 - `netlify/functions/sync-pricecharting.mjs` — cancelled; API-only approach used instead
 - `pricecharting_prices` Supabase table — not needed; only `price_cache` is used
 
+## Bulk Scan — Supabase Edge Function (Phase 1)
+
+Lets a seller photograph an entire showcase/tray and get every visible card identified in one Claude vision call, instead of scanning cards one at a time via the cert scanner. This is a **separate feature from the Cert Scanner** (which stays as-is) — it lives in a Supabase Edge Function, not a Netlify function, because it needs the seller's Supabase Auth JWT validated server-side before the image is ever touched.
+
+### Endpoint
+- **Path:** `supabase/functions/bulk-scan/index.ts` (Deno). Local: `supabase functions serve bulk-scan`. Deployed: `{SUPABASE_URL}/functions/v1/bulk-scan`.
+- **Method:** `POST`, `multipart/form-data` with a single `image` field (the photo file).
+- **Auth:** `Authorization: Bearer <supabase session.access_token>` — validated via `createClient(...).auth.getUser()` inside the function. Unauthenticated requests are rejected with 401 before the image is read.
+- **Request limits:** raw file > 10MB → 413. Base64-encoded payload > ~6.7M chars (~5MB encoded) → 413 with message "Image too large — please use a photo under 4MB or split your showcase into two shots". Only `image/jpeg`, `image/png`, `image/webp` are accepted (415 otherwise).
+- **Response (200):** `{ cards: [...], count: N }` — each card has a generated `id` (`crypto.randomUUID()`) plus `player, year, set, cardNumber, parallel, grade, grader, confidence, notes` (all lowercase strings per the vision prompt).
+- **Error responses:** 401 unauthenticated, 413 file too large, 415 unsupported media type, 422 vision response wasn't parseable/valid JSON array (includes `rawResponse` for debugging), 502 Anthropic API error, 500 sanitized internal error (no stack traces).
+- **CORS:** allows `localhost`/`127.0.0.1` (any port), `getcardshow.com`/`www.getcardshow.com`, and `*.netlify.app` (including deploy-preview subdomains); OPTIONS preflight handled.
+
+### Fields map directly to the 7-field fingerprint schema
+`player|year|set|cardNumber|parallel|grade|grader` (lowercase) — matches `price_cache` and `show_floor_transactions` exactly, so bulk-scanned cards can be cross-referenced/cached the same way single-scanned cards are.
+
+### Secrets required (Supabase project secrets, not Netlify env vars)
+- `ANTHROPIC_API_KEY` — same key family used by `vision-scan.js`, but must also be set as a **Supabase** secret (`supabase secrets set ANTHROPIC_API_KEY=...`) since this runs as an Edge Function, not a Netlify function.
+- `SUPABASE_URL` / `SUPABASE_ANON_KEY` — auto-injected into Edge Functions by the Supabase runtime; do not set manually.
+
+### app.html integration (Phase 1 — call only, no review UI yet)
+- **"📸 Bulk Scan Showcase"** button in `#sellerUploadSection`, below the CSV/XLSX drop zone. Triggers hidden `#bulkScanInput` (`accept="image/*" capture="environment"`).
+- `handleBulkScanFile(input)` — reads `db.auth.getSession()` for the JWT, POSTs `FormData` to `${SUPABASE_URL}/functions/v1/bulk-scan`, shows `showToast('Scanning your showcase…')` while in flight, aborts via `AbortController` after 30s (dismissible — toasts "Scan timed out" and stops waiting). Errors show the response body's `message`/`error` in a toast.
+- **`renderBulkScanReview(cards)`** — stub, currently just `console.log`s the identified cards. **This is the Phase 2 integration point** — the review/edit UI (prototyped in `CardShow_BulkScan_POC.html`) and the actual inventory write path (`insertCardToDB` per confirmed card) both hang off this function. Do not build either in a session that only touches the Edge Function.
+
+### Testing
+```bash
+# Local (after `supabase start` / `supabase functions serve bulk-scan --env-file .env.local`
+# with ANTHROPIC_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY set):
+curl -i --location --request POST 'http://localhost:54321/functions/v1/bulk-scan' \
+  --header "Authorization: Bearer $SUPABASE_USER_JWT" \
+  --form 'image=@/path/to/showcase.jpg;type=image/jpeg'
+
+# Deploy to production:
+supabase functions deploy bulk-scan --project-ref qtnqawqlmttogwnjieky
+
+# Set the required secret once (per project, not per deploy):
+supabase secrets set ANTHROPIC_API_KEY=sk-ant-... --project-ref qtnqawqlmttogwnjieky
+```
+No new Netlify env vars are needed — this function is deployed and configured entirely through the Supabase CLI/dashboard, separate from the `netlify/functions/*` deploy path.
+
 ## Backlog Priority
 
 ### Shipped ✅
