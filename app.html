@@ -1972,6 +1972,25 @@
   }
   .unmapped-warning.visible { display: block; }
 
+  /* ── BULK SCAN REVIEW MODAL ── */
+  .bulkscan-modal { max-width: 760px; }
+  .bulkscan-summary {
+    display: flex; gap: 0.75rem; flex-wrap: wrap;
+    margin-top: 0.5rem; font-size: 0.72rem; font-family: 'DM Mono', monospace;
+  }
+  .bulkscan-card-block {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 0.9rem 1rem; margin-bottom: 0.75rem;
+    transition: opacity 0.15s ease;
+  }
+  .bulkscan-card-block.excluded { opacity: 0.45; }
+  .bulkscan-card-header { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.6rem; }
+  .bulkscan-card-header .bs-include-checkbox { width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent); }
+  .bulkscan-card-idx { font-size: 0.7rem; color: var(--muted); font-family: 'DM Mono', monospace; margin-left: auto; }
+  .bulkscan-field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.55rem; margin-bottom: 0.55rem; }
+  .bulkscan-notes { font-size: 0.72rem; color: var(--muted); font-style: italic; margin-top: 0.3rem; }
+  .bulkscan-field-invalid { border: 1px solid var(--danger) !important; }
+
 
   /* ── MANAGE SELLERS INLINE PANEL ── */
   .show-sellers-panel {
@@ -4323,6 +4342,23 @@
   </div>
 </div>
 
+<!-- ═══════════════ BULK SCAN REVIEW MODAL ═══════════════ -->
+<div class="mapper-overlay" id="bulkScanReviewOverlay">
+  <div class="mapper-modal bulkscan-modal">
+    <div class="mapper-header">
+      <div class="mapper-title">Review Scanned Cards</div>
+      <div class="mapper-sub">Edit any field, uncheck cards to exclude, then add to inventory.</div>
+      <div id="bulkScanSummary" class="bulkscan-summary"></div>
+    </div>
+    <div class="mapper-body"><div id="bulkScanReviewBody"></div></div>
+    <div class="mapper-footer">
+      <div class="mapper-stats" id="bulkScanReviewStats"></div>
+      <button class="btn-modal-close" onclick="closeBulkScanReview()">Cancel</button>
+      <button class="btn btn-primary" id="bulkScanReviewConfirmBtn" onclick="confirmBulkScanReview()">Add Cards to Inventory</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // ── STATE ──
 let inventory = [];
@@ -5223,10 +5259,242 @@ async function handleBulkScanFile(input) {
   }
 }
 
-// Phase 2 integration point: replace with the review UI + inventory write path.
+// ── BULK SCAN REVIEW MODAL (Phase 2) ──
+let bulkScanReviewCards = [];
+
 function renderBulkScanReview(cards) {
-  console.log('[bulkScan] identified cards:', cards);
+  if (!cards.length) {
+    showToast('No cards identified — try a clearer photo', 'var(--gold)');
+    return;
+  }
+
+  bulkScanReviewCards = cards.map(c => ({
+    ...c,
+    title: buildCardTitle({
+      player:   c.player,
+      year:     c.year,
+      cardSet:  c.set,
+      parallel: c.parallel,
+      cardNum:  c.cardNumber,
+      sport:    '',
+      rawTitle: '',
+    }),
+  }));
+
+  _renderBulkScanSummary(bulkScanReviewCards);
+  _renderBulkScanRows(bulkScanReviewCards);
+
+  document.getElementById('bulkScanReviewOverlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
 }
+
+function _renderBulkScanSummary(cards) {
+  const high   = cards.filter(c => c.confidence === 'high').length;
+  const medium = cards.filter(c => c.confidence === 'medium').length;
+  const low    = cards.filter(c => c.confidence === 'low').length;
+
+  const parts = [`<strong style="color:var(--text)">${cards.length}</strong> card${cards.length === 1 ? '' : 's'} found`];
+  if (high)   parts.push(`<span style="color:rgba(22,163,74,0.9)">■ ${high} high confidence</span>`);
+  if (medium) parts.push(`<span style="color:rgba(245,158,11,0.9)">■ ${medium} medium</span>`);
+  if (low)    parts.push(`<span style="color:rgba(239,68,68,0.9)">■ ${low} low</span>`);
+
+  document.getElementById('bulkScanSummary').innerHTML = parts.join(' &nbsp;·&nbsp; ');
+}
+
+function _renderBulkScanRows(cards) {
+  document.getElementById('bulkScanReviewBody').innerHTML = cards.map(bulkScanCardBlockHTML).join('');
+  _updateBulkScanReviewStats();
+}
+
+function _bsEsc(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function bulkScanCardBlockHTML(c, idx) {
+  const knownGraders = ['PSA', 'BGS', 'CGC', 'SGC'];
+  const graderNorm = (c.grader || '').toString().trim().toUpperCase();
+  const graderVal  = knownGraders.includes(graderNorm) ? graderNorm : '';
+  const graderOptions = ['', ...knownGraders].map(g =>
+    `<option value="${g}" ${g === graderVal ? 'selected' : ''}>${g || 'Raw'}</option>`
+  ).join('');
+  const condOptions = ['', 'Gem Mint', 'Near Mint', 'Good', 'Fair', 'Poor'].map(opt =>
+    `<option value="${_bsEsc(opt)}">${opt || 'Select condition'}</option>`
+  ).join('');
+  const condHidden = graderVal ? 'style="display:none"' : '';
+  const notesHtml = c.notes
+    ? `<div class="bulkscan-notes">📝 ${_bsEsc(c.notes)} — not saved, review only</div>`
+    : '';
+
+  return `
+    <div class="bulkscan-card-block" data-card-id="${_bsEsc(c.id)}">
+      <div class="bulkscan-card-header">
+        <input type="checkbox" class="bs-include-checkbox" data-field="included" checked onchange="bsToggleInclude(this)">
+        <div class="mapper-confidence ${_bsEsc(c.confidence)}">${_bsEsc(c.confidence)}</div>
+        <div class="bulkscan-card-idx">Card ${idx + 1}</div>
+      </div>
+      <div style="margin-bottom:0.55rem">
+        <div class="section-label" style="margin-bottom:0.3rem">Card Title</div>
+        <input class="show-input" data-field="title" value="${_bsEsc(c.title)}" style="margin:0" oninput="this.classList.remove('bulkscan-field-invalid')">
+      </div>
+      <div class="bulkscan-field-grid">
+        <div>
+          <div class="section-label" style="margin-bottom:0.3rem">Player</div>
+          <input class="show-input" data-field="player" value="${_bsEsc(c.player)}" style="margin:0">
+        </div>
+        <div>
+          <div class="section-label" style="margin-bottom:0.3rem">Year</div>
+          <input class="show-input" data-field="year" value="${_bsEsc(c.year)}" style="margin:0">
+        </div>
+      </div>
+      <div class="bulkscan-field-grid">
+        <div>
+          <div class="section-label" style="margin-bottom:0.3rem">Set</div>
+          <input class="show-input" data-field="set" value="${_bsEsc(c.set)}" style="margin:0">
+        </div>
+        <div>
+          <div class="section-label" style="margin-bottom:0.3rem">Card #</div>
+          <input class="show-input" data-field="cardNumber" value="${_bsEsc(c.cardNumber)}" style="margin:0">
+        </div>
+      </div>
+      <div style="margin-bottom:0.55rem">
+        <div class="section-label" style="margin-bottom:0.3rem">Parallel / Variant</div>
+        <input class="show-input" data-field="parallel" value="${_bsEsc(c.parallel)}" style="margin:0">
+      </div>
+      <div class="bulkscan-field-grid">
+        <div>
+          <div class="section-label" style="margin-bottom:0.3rem">Grader</div>
+          <select class="show-input" data-field="grader" style="margin:0" onchange="bsToggleGraderRow(this)">${graderOptions}</select>
+        </div>
+        <div>
+          <div class="section-label" style="margin-bottom:0.3rem">Grade</div>
+          <input class="show-input" data-field="grade" value="${_bsEsc(c.grade)}" placeholder="e.g. 10" style="margin:0">
+        </div>
+      </div>
+      <div class="bulkscan-field-grid">
+        <div data-cond-row ${condHidden}>
+          <div class="section-label" style="margin-bottom:0.3rem">Condition</div>
+          <select class="show-input" data-field="condition" style="margin:0">${condOptions}</select>
+        </div>
+        <div>
+          <div class="section-label" style="margin-bottom:0.3rem">Price ($)</div>
+          <input class="show-input" data-field="price" placeholder="e.g. 25" style="margin:0">
+        </div>
+      </div>
+      ${notesHtml}
+    </div>
+  `;
+}
+
+function bsToggleInclude(checkboxEl) {
+  const block = checkboxEl.closest('.bulkscan-card-block');
+  block.classList.toggle('excluded', !checkboxEl.checked);
+  _updateBulkScanReviewStats();
+}
+
+function bsToggleGraderRow(selectEl) {
+  const block = selectEl.closest('.bulkscan-card-block');
+  const condRow = block.querySelector('[data-cond-row]');
+  if (condRow) condRow.style.display = selectEl.value ? 'none' : '';
+}
+
+function _updateBulkScanReviewStats() {
+  const total    = document.querySelectorAll('#bulkScanReviewBody .bulkscan-card-block').length;
+  const selected = document.querySelectorAll('#bulkScanReviewBody .bs-include-checkbox:checked').length;
+  document.getElementById('bulkScanReviewStats').innerHTML =
+    `<strong>${total}</strong> card${total === 1 ? '' : 's'} · <strong>${selected}</strong> selected`;
+  document.getElementById('bulkScanReviewConfirmBtn').disabled = selected === 0;
+}
+
+function closeBulkScanReview() {
+  document.getElementById('bulkScanReviewOverlay').classList.remove('open');
+  document.body.style.overflow = '';
+  document.getElementById('bulkScanReviewBody').innerHTML = '';
+  bulkScanReviewCards = [];
+}
+
+async function confirmBulkScanReview() {
+  const allBlocks = Array.from(document.querySelectorAll('#bulkScanReviewBody .bulkscan-card-block'));
+  const includedBlocks = allBlocks.filter(b => b.querySelector('.bs-include-checkbox').checked);
+
+  if (!includedBlocks.length) {
+    showToast('Select at least one card to add', 'var(--danger)');
+    return;
+  }
+
+  // Re-validate titles on every attempt; clear stale markers first
+  includedBlocks.forEach(b => b.querySelector('[data-field="title"]').classList.remove('bulkscan-field-invalid'));
+  const invalidBlocks = includedBlocks.filter(b => !b.querySelector('[data-field="title"]').value.trim());
+  if (invalidBlocks.length) {
+    invalidBlocks.forEach(b => b.querySelector('[data-field="title"]').classList.add('bulkscan-field-invalid'));
+    invalidBlocks[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+    showToast(
+      `${invalidBlocks.length} card${invalidBlocks.length === 1 ? '' : 's'} need${invalidBlocks.length === 1 ? 's' : ''} a title before you can add ${invalidBlocks.length === 1 ? 'it' : 'them'} — fix or uncheck ${invalidBlocks.length === 1 ? 'it' : 'them'}`,
+      'var(--danger)'
+    );
+    return;
+  }
+
+  const btn = document.getElementById('bulkScanReviewConfirmBtn');
+  const originalLabel = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Adding…';
+
+  const rawCards = includedBlocks.map(block => {
+    const val = (field) => block.querySelector(`[data-field="${field}"]`)?.value.trim() || '';
+    const grader   = val('grader');
+    const gradeVal = val('grade');
+    return {
+      'Card Title':       val('title'),
+      Player:             val('player'),
+      Year:               val('year') || null,
+      'Set ':             val('set'),
+      Number:             val('cardNumber'),
+      'Parallel/Variant': val('parallel'),
+      Grader:             grader || null,
+      Grade:              grader && gradeVal !== '' ? parseFloat(gradeVal) : null,
+      'Cert #':           null,
+      Condition:          !grader ? (val('condition') || null) : null,
+      Price:              parseFloat(val('price')) || 0,
+      Status:             'Available',
+      Location:           null,
+      Seller:             currentSeller,
+      item_type:          'card',
+    };
+  });
+
+  const normalized = rawCards.map(r => {
+    const c = validateAndNormalizeCard(r);
+    c._shows = new Set();
+    return c;
+  });
+  normalized.forEach(c => inventory.push(c));
+
+  const dbIds = await bulkScanInsertMany(normalized);
+  normalized.forEach((c, i) => { if (dbIds[i]) c._dbId = dbIds[i]; });
+
+  closeBulkScanReview();
+  renderSellerTable(getSellerInventory());
+  updateStats();
+
+  btn.disabled = false;
+  btn.textContent = originalLabel;
+
+  const failCount = dbIds.filter(id => !id).length;
+  if (failCount) {
+    showToast(`${normalized.length - failCount} of ${normalized.length} cards synced — ${failCount} saved locally only`, 'var(--gold)');
+  } else {
+    showToast(`${normalized.length} card${normalized.length === 1 ? '' : 's'} added to inventory`);
+  }
+}
+
+// Keyboard close
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && document.getElementById('bulkScanReviewOverlay').classList.contains('open')) {
+    closeBulkScanReview();
+  }
+});
 
 function handleShopifyUpload(input) {
   const file = input.files[0];
@@ -12278,15 +12546,21 @@ async function fetchSellerInventoryFromDB(sellerHandle) {
 }
 
 // ── Insert a single card to Supabase ──
-async function insertCardToDB(card) {
+// sellerIdOverride skips the per-call seller lookup — used by bulkScanInsertMany
+// to look up the seller UUID once and reuse it across N inserts.
+async function insertCardToDB(card, sellerIdOverride) {
   if (typeof db === 'undefined') return null;
 
   try {
-    const { data: seller } = await db
-      .from('sellers').select('id').eq('handle', currentSeller).maybeSingle();
-    if (!seller) return null;
+    let sellerId = sellerIdOverride;
+    if (!sellerId) {
+      const { data: seller } = await db
+        .from('sellers').select('id').eq('handle', currentSeller).maybeSingle();
+      if (!seller) return null;
+      sellerId = seller.id;
+    }
 
-    const row = { ...cardToDbRow(card), seller_id: seller.id };
+    const row = { ...cardToDbRow(card), seller_id: sellerId };
     const { data, error } = await db
       .from('inventory').insert(row).select('id').maybeSingle();
 
@@ -12296,6 +12570,17 @@ async function insertCardToDB(card) {
     console.warn('insertCardToDB error:', e.message);
     return null;
   }
+}
+
+// ── Insert many cards to Supabase in one seller lookup + N parallel inserts ──
+// Used by the bulk-scan review modal. Returns an array of UUIDs (or null per
+// failed card) in the same order as the input `cards` array.
+async function bulkScanInsertMany(cards) {
+  if (typeof db === 'undefined') return cards.map(() => null);
+  const { data: seller } = await db
+    .from('sellers').select('id').eq('handle', currentSeller).maybeSingle();
+  if (!seller) return cards.map(() => null);
+  return Promise.all(cards.map(c => insertCardToDB(c, seller.id)));
 }
 
 // ── Update an existing card in Supabase ──
