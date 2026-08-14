@@ -1990,6 +1990,7 @@
   .bulkscan-field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.55rem; margin-bottom: 0.55rem; }
   .bulkscan-notes { font-size: 0.72rem; color: var(--muted); font-style: italic; margin-top: 0.3rem; }
   .bulkscan-field-invalid { border: 1px solid var(--danger) !important; }
+  #bulkScanBtn:disabled { opacity: 0.6; cursor: default; }
 
 
   /* ── MANAGE SELLERS INLINE PANEL ── */
@@ -3082,7 +3083,7 @@
         </div>
 
         <input type="file" id="bulkScanInput" accept="image/*" capture="environment" style="display:none" onchange="handleBulkScanFile(this)">
-        <button class="btn btn-ghost" style="width:100%;justify-content:center;font-size:0.78rem;margin-top:0.5rem" onclick="document.getElementById('bulkScanInput').click()">📸 Bulk Scan Showcase</button>
+        <button class="btn btn-ghost" id="bulkScanBtn" style="width:100%;justify-content:center;font-size:0.78rem;margin-top:0.5rem" onclick="document.getElementById('bulkScanInput').click()">📸 Bulk Scan Showcase</button>
       </div>
 
 
@@ -5207,13 +5208,22 @@ function handleFileUpload(input) {
   }
 }
 
-// ── BULK SCAN (Phase 1 — Edge Function call only; review UI lands in Phase 2) ──
+// ── BULK SCAN (Phase 1 — Edge Function call; Phase 2 — review UI) ──
 async function handleBulkScanFile(input) {
   const file = input.files[0];
   if (!file) return;
   input.value = '';
 
   showToast('Scanning your showcase…', 'var(--muted)');
+
+  // The vision call on a multi-card photo can take well over the toast's
+  // fixed 3s auto-dismiss — keep a persistent, visible indicator on the
+  // button itself for the full duration so it doesn't look like nothing
+  // is happening once the toast fades.
+  const btn = document.getElementById('bulkScanBtn');
+  const originalBtnLabel = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Scanning… (up to 30s)';
 
   const controller = new AbortController();
   let timedOut = false;
@@ -5226,7 +5236,6 @@ async function handleBulkScanFile(input) {
   try {
     const { data: { session } } = await db.auth.getSession();
     if (!session) {
-      clearTimeout(timeoutId);
       showToast('Please sign in again to use Bulk Scan', 'var(--danger)');
       return;
     }
@@ -5241,8 +5250,6 @@ async function handleBulkScanFile(input) {
       signal: controller.signal,
     });
 
-    clearTimeout(timeoutId);
-
     const result = await res.json().catch(() => ({}));
 
     if (!res.ok) {
@@ -5253,9 +5260,11 @@ async function handleBulkScanFile(input) {
     renderBulkScanReview(result.cards || []);
 
   } catch (err) {
+    if (!timedOut) showToast('Bulk scan failed — ' + err.message, 'var(--danger)');
+  } finally {
     clearTimeout(timeoutId);
-    if (timedOut) return; // already toasted above
-    showToast('Bulk scan failed — ' + err.message, 'var(--danger)');
+    btn.disabled = false;
+    btn.textContent = originalBtnLabel;
   }
 }
 
