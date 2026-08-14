@@ -4346,10 +4346,13 @@
 <!-- ═══════════════ BULK SCAN REVIEW MODAL ═══════════════ -->
 <div class="mapper-overlay" id="bulkScanReviewOverlay">
   <div class="mapper-modal bulkscan-modal">
-    <div class="mapper-header">
-      <div class="mapper-title">Review Scanned Cards</div>
-      <div class="mapper-sub">Edit any field, uncheck cards to exclude, then add to inventory.</div>
-      <div id="bulkScanSummary" class="bulkscan-summary"></div>
+    <div class="mapper-header" style="display:flex;align-items:flex-start;justify-content:space-between;gap:1rem">
+      <div>
+        <div class="mapper-title">Review Scanned Cards</div>
+        <div class="mapper-sub">Edit any field, uncheck cards to exclude, then add to inventory.</div>
+        <div id="bulkScanSummary" class="bulkscan-summary"></div>
+      </div>
+      <div id="bulkScanSourceImageWrap"></div>
     </div>
     <div class="mapper-body"><div id="bulkScanReviewBody"></div></div>
     <div class="mapper-footer">
@@ -4357,6 +4360,14 @@
       <button class="btn-modal-close" onclick="closeBulkScanReview()">Cancel</button>
       <button class="btn btn-primary" id="bulkScanReviewConfirmBtn" onclick="confirmBulkScanReview()">Add Cards to Inventory</button>
     </div>
+  </div>
+</div>
+
+<!-- Lightbox for the original bulk-scan showcase photo — click the header thumbnail to open -->
+<div class="modal-overlay" id="bulkScanImageLightbox" onclick="if(event.target===this)_closeBulkScanImageLightbox()">
+  <div style="max-width:92vw;max-height:92vh;position:relative">
+    <img id="bulkScanImageLightboxImg" src="" alt="Original showcase photo" style="max-width:92vw;max-height:92vh;border-radius:10px;display:block">
+    <button class="modal-close" style="position:absolute;top:-14px;right:-14px" onclick="_closeBulkScanImageLightbox()">✕</button>
   </div>
 </div>
 
@@ -5209,10 +5220,30 @@ function handleFileUpload(input) {
 }
 
 // ── BULK SCAN (Phase 1 — Edge Function call; Phase 2 — review UI) ──
+
+// Kept around so the review modal can show the original photo for reference
+// while the seller validates each identified card against it.
+let _bulkScanSourceImage = null;
+
+function _readFileAsDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload  = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 async function handleBulkScanFile(input) {
   const file = input.files[0];
   if (!file) return;
   input.value = '';
+
+  // Near-instant (local, no network) — fires alongside the upload rather
+  // than blocking it. Non-critical: if it fails, the review modal just
+  // won't show a reference image.
+  _bulkScanSourceImage = null;
+  _readFileAsDataURL(file).then(dataUrl => { _bulkScanSourceImage = dataUrl; }).catch(() => {});
 
   showToast('Scanning your showcase…', 'var(--muted)');
 
@@ -5316,12 +5347,36 @@ function renderBulkScanReview(cards) {
 
   _renderBulkScanSummary(bulkScanReviewCards);
   _renderBulkScanRows(bulkScanReviewCards);
+  _renderBulkScanSourceImage();
 
   document.getElementById('bulkScanReviewOverlay').classList.add('open');
   document.body.style.overflow = 'hidden';
 
   _autoVerifyPsaCards(bulkScanReviewCards); // fire-and-forget, runs in the background while the seller reviews
   _runCorrectionPass(bulkScanReviewCards);  // fire-and-forget, raw-card player-name correction via catalog cross-check
+}
+
+// Shows the original uploaded photo as a small clickable thumbnail in the
+// modal header, so the seller can cross-reference it while validating each
+// card's fields below. Click opens it full-size in a lightbox.
+function _renderBulkScanSourceImage() {
+  const wrap = document.getElementById('bulkScanSourceImageWrap');
+  if (!wrap) return;
+  wrap.innerHTML = _bulkScanSourceImage
+    ? `<img src="${_bulkScanSourceImage}" alt="Original showcase photo"
+         style="width:88px;height:88px;object-fit:cover;border-radius:8px;border:1px solid var(--border);cursor:pointer;flex-shrink:0"
+         onclick="_openBulkScanImageLightbox()" title="Click to enlarge">`
+    : '';
+}
+
+function _openBulkScanImageLightbox() {
+  if (!_bulkScanSourceImage) return;
+  document.getElementById('bulkScanImageLightboxImg').src = _bulkScanSourceImage;
+  document.getElementById('bulkScanImageLightbox').classList.add('open');
+}
+
+function _closeBulkScanImageLightbox() {
+  document.getElementById('bulkScanImageLightbox').classList.remove('open');
 }
 
 // Auto-verifies the first N PSA-graded cards per scan against
@@ -5735,6 +5790,10 @@ function closeBulkScanReview() {
   document.body.style.overflow = '';
   document.getElementById('bulkScanReviewBody').innerHTML = '';
   bulkScanReviewCards = [];
+  // Release the (potentially several-MB) base64 photo now that review is done
+  _bulkScanSourceImage = null;
+  const imgWrap = document.getElementById('bulkScanSourceImageWrap');
+  if (imgWrap) imgWrap.innerHTML = '';
 }
 
 async function confirmBulkScanReview() {
@@ -5814,7 +5873,10 @@ async function confirmBulkScanReview() {
 
 // Keyboard close
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape' && document.getElementById('bulkScanReviewOverlay').classList.contains('open')) {
+  if (e.key !== 'Escape') return;
+  if (document.getElementById('bulkScanImageLightbox').classList.contains('open')) {
+    _closeBulkScanImageLightbox(); // lightbox takes priority — close it first, not the modal underneath
+  } else if (document.getElementById('bulkScanReviewOverlay').classList.contains('open')) {
     closeBulkScanReview();
   }
 });
