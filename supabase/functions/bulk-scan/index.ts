@@ -12,6 +12,7 @@ import { createClient } from "@supabase/supabase-js";
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MODEL = "claude-sonnet-4-6";
 const MAX_TOKENS = 4000;
+const ANTHROPIC_TIMEOUT_MS = 45000; // showcase photos with many cards take longer than a single-card scan
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10MB — raw upload size
 const MAX_BASE64_CHARS = 5 * 1024 * 1024 * (4 / 3); // ~6.7M chars, roughly 5MB of encoded data
@@ -159,9 +160,12 @@ async function handleScan(req: Request, origin: string | null): Promise<Response
   }
 
   let rawText = "";
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), ANTHROPIC_TIMEOUT_MS);
   try {
     const anthropicRes = await fetch(ANTHROPIC_API_URL, {
       method: "POST",
+      signal: controller.signal,
       headers: {
         "x-api-key": anthropicApiKey,
         "anthropic-version": "2023-06-01",
@@ -183,6 +187,8 @@ async function handleScan(req: Request, origin: string | null): Promise<Response
       }),
     });
 
+    clearTimeout(timeoutId);
+
     if (!anthropicRes.ok) {
       const detail = await anthropicRes.text().catch(() => "");
       console.error("[bulk-scan] Anthropic API error", anthropicRes.status, detail);
@@ -195,6 +201,11 @@ async function handleScan(req: Request, origin: string | null): Promise<Response
       .map((block: { text: string }) => block.text)
       .join("\n");
   } catch (err) {
+    clearTimeout(timeoutId);
+    if (err instanceof Error && err.name === "AbortError") {
+      console.error("[bulk-scan] Anthropic call timed out after", ANTHROPIC_TIMEOUT_MS, "ms");
+      return json({ error: "timeout", message: "Vision API timed out — try a clearer photo or fewer cards per shot" }, 504, origin);
+    }
     console.error("[bulk-scan] Anthropic call failed:", err instanceof Error ? err.message : err);
     return json({ error: "api_error", message: "Failed to reach Anthropic API" }, 502, origin);
   }

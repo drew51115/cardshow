@@ -5223,15 +5223,18 @@ async function handleBulkScanFile(input) {
   const btn = document.getElementById('bulkScanBtn');
   const originalBtnLabel = btn.textContent;
   btn.disabled = true;
-  btn.textContent = 'Scanning… (up to 30s)';
+  btn.textContent = 'Scanning… (up to 60s)';
 
+  // Server-side (bulk-scan Edge Function) times out its Anthropic call at 45s
+  // and returns a clean 504; this client timeout is a longer safety net for
+  // total network hangs, not the primary timeout — it should rarely fire.
   const controller = new AbortController();
   let timedOut = false;
   const timeoutId = setTimeout(() => {
     timedOut = true;
     controller.abort();
     showToast('Scan timed out — please try again', 'var(--danger)');
-  }, 30000);
+  }, 60000);
 
   try {
     const { data: { session } } = await db.auth.getSession();
