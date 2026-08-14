@@ -5496,12 +5496,12 @@ async function bsVerifyGrader(buttonEl) {
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      showToast(
-        res.status === 429
-          ? 'PSA rate limit reached — try again in a moment'
-          : (err.error || `Verification failed (${res.status})`),
-        'var(--danger)'
-      );
+      const base = res.status === 429
+        ? 'PSA rate limit reached — try again in a moment'
+        : (err.error || `Verification failed (${res.status})`);
+      const detail = err.detail ? ' — ' + String(err.detail).slice(0, 140) : '';
+      showToast(base + detail, 'var(--danger)');
+      console.warn('[bsVerifyGrader] lookup failed', res.status, err);
       return;
     }
 
