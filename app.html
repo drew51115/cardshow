@@ -5319,6 +5319,40 @@ function renderBulkScanReview(cards) {
 
   document.getElementById('bulkScanReviewOverlay').classList.add('open');
   document.body.style.overflow = 'hidden';
+
+  _autoVerifyPsaCards(bulkScanReviewCards); // fire-and-forget, runs in the background while the seller reviews
+}
+
+// Auto-verifies the first N PSA-graded cards per scan against
+// /.netlify/functions/psa-lookup, capped to protect PSA's ~10 req/hr free
+// tier from being exhausted by one busy showcase photo. Any card beyond the
+// cap (or with no certNumber to verify against) keeps its manual Verify
+// button. Stops early on a 429 so the rest fall back to manual too.
+const BULK_SCAN_AUTO_VERIFY_LIMIT = 5;
+
+async function _autoVerifyPsaCards(cards) {
+  const targets = cards
+    .filter(c => (c.grader || '').toString().trim().toUpperCase() === 'PSA' && (c.certNumber || '').toString().trim())
+    .slice(0, BULK_SCAN_AUTO_VERIFY_LIMIT);
+
+  if (!targets.length) return;
+
+  showToast(`Auto-verifying ${targets.length} PSA card${targets.length > 1 ? 's' : ''}…`, 'var(--muted)');
+
+  for (const c of targets) {
+    // The modal may have been closed, or this card excluded/edited, by the
+    // time we get here — always re-check the live DOM, never assume.
+    const block = document.querySelector(`.bulkscan-card-block[data-card-id="${CSS.escape(c.id)}"]`);
+    const btn = block?.querySelector('[data-cert-row] button');
+    if (!btn || btn.disabled) continue;
+
+    const result = await bsVerifyGrader(btn);
+    if (result && result.status === 429) {
+      showToast('PSA rate limit reached — remaining cards left for manual verify', 'var(--gold)');
+      break;
+    }
+    await new Promise(r => setTimeout(r, 600)); // brief stagger between calls
+  }
 }
 
 function _renderBulkScanSummary(cards) {
@@ -5471,8 +5505,8 @@ async function bsVerifyGrader(buttonEl) {
   const cert = block.querySelector('[data-field="certNumber"]')?.value.trim();
   const grader = block.querySelector('[data-field="grader"]')?.value;
 
-  if (!cert) { showToast('Enter a cert number first', 'var(--danger)'); return; }
-  if (!grader) { showToast('Select a grader first', 'var(--danger)'); return; }
+  if (!cert) { showToast('Enter a cert number first', 'var(--danger)'); return { success: false }; }
+  if (!grader) { showToast('Select a grader first', 'var(--danger)'); return { success: false }; }
 
   const originalLabel = buttonEl.textContent;
   buttonEl.disabled = true;
@@ -5502,7 +5536,7 @@ async function bsVerifyGrader(buttonEl) {
       const detail = err.detail ? ' — ' + String(err.detail).slice(0, 140) : '';
       showToast(base + detail, 'var(--danger)');
       console.warn('[bsVerifyGrader] lookup failed', res.status, err);
-      return;
+      return { success: false, status: res.status };
     }
 
     const card = await res.json();
@@ -5527,8 +5561,10 @@ async function bsVerifyGrader(buttonEl) {
     }
 
     showToast(`✓ ${grader} #${cert} verified — fields updated`);
+    return { success: true };
   } catch (err) {
     showToast('Verification failed — ' + err.message, 'var(--danger)');
+    return { success: false };
   } finally {
     buttonEl.disabled = false;
     buttonEl.textContent = originalLabel;
