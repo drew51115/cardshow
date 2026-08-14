@@ -5364,6 +5364,8 @@ function bulkScanCardBlockHTML(c, idx) {
     `<option value="${_bsEsc(opt)}">${opt || 'Select condition'}</option>`
   ).join('');
   const condHidden = graderVal ? 'style="display:none"' : '';
+  const psaLookupSupported = ['PSA', 'CGC', 'SGC'].includes(graderVal); // psa-lookup.js doesn't support BGS
+  const certHidden = psaLookupSupported ? '' : 'style="display:none"';
   const notesHtml = c.notes
     ? `<div class="bulkscan-notes">📝 ${_bsEsc(_capFirst(c.notes))} — not saved, review only</div>`
     : '';
@@ -5413,6 +5415,15 @@ function bulkScanCardBlockHTML(c, idx) {
           <input class="show-input" data-field="grade" value="${_bsEsc(_numericGrade(c.grade))}" placeholder="e.g. 10" style="margin:0" inputmode="decimal">
         </div>
       </div>
+      <div class="bulkscan-field-grid" data-cert-row ${certHidden}>
+        <div>
+          <div class="section-label" style="margin-bottom:0.3rem">Cert #</div>
+          <input class="show-input" data-field="certNumber" value="${_bsEsc(c.certNumber)}" placeholder="e.g. 12345678" style="margin:0">
+        </div>
+        <div style="display:flex;align-items:flex-end">
+          <button class="btn btn-xs" style="width:100%;justify-content:center;padding:0.55rem;background:#1a1f2e;color:var(--gold);border:1px solid var(--gold)" onclick="bsVerifyGrader(this)">🔍 Verify with ${graderVal || 'Grader'}</button>
+        </div>
+      </div>
       <div class="bulkscan-field-grid">
         <div data-cond-row ${condHidden}>
           <div class="section-label" style="margin-bottom:0.3rem">Condition</div>
@@ -5436,8 +5447,92 @@ function bsToggleInclude(checkboxEl) {
 
 function bsToggleGraderRow(selectEl) {
   const block = selectEl.closest('.bulkscan-card-block');
+  const grader = selectEl.value;
+
   const condRow = block.querySelector('[data-cond-row]');
-  if (condRow) condRow.style.display = selectEl.value ? 'none' : '';
+  if (condRow) condRow.style.display = grader ? 'none' : '';
+
+  const certRow = block.querySelector('[data-cert-row]');
+  if (certRow) {
+    const psaLookupSupported = ['PSA', 'CGC', 'SGC'].includes(grader); // psa-lookup.js doesn't support BGS
+    certRow.style.display = psaLookupSupported ? '' : 'none';
+    const verifyBtn = certRow.querySelector('button');
+    if (verifyBtn) verifyBtn.textContent = `🔍 Verify with ${grader || 'Grader'}`;
+  }
+}
+
+// On-demand lookup against the same /.netlify/functions/psa-lookup used by
+// the single-card cert scanner. Deliberately seller-initiated per card
+// rather than automatic per scan — PSA's free tier is ~10 req/hr, and an
+// automatic lookup per graded card in a busy showcase photo would burn
+// through that in one scan.
+async function bsVerifyGrader(buttonEl) {
+  const block = buttonEl.closest('.bulkscan-card-block');
+  const cert = block.querySelector('[data-field="certNumber"]')?.value.trim();
+  const grader = block.querySelector('[data-field="grader"]')?.value;
+
+  if (!cert) { showToast('Enter a cert number first', 'var(--danger)'); return; }
+  if (!grader) { showToast('Select a grader first', 'var(--danger)'); return; }
+
+  const originalLabel = buttonEl.textContent;
+  buttonEl.disabled = true;
+  buttonEl.textContent = 'Verifying…';
+
+  const fill = (field, value) => {
+    if (value === undefined || value === null || value === '') return;
+    const el = block.querySelector(`[data-field="${field}"]`);
+    if (!el) return;
+    el.value = value;
+    el.classList.add('db-filled');
+    setTimeout(() => el.classList.remove('db-filled'), 8000);
+  };
+
+  try {
+    const res = await fetch('/.netlify/functions/psa-lookup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cert, grader }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      showToast(
+        res.status === 429
+          ? 'PSA rate limit reached — try again in a moment'
+          : (err.error || `Verification failed (${res.status})`),
+        'var(--danger)'
+      );
+      return;
+    }
+
+    const card = await res.json();
+    const player   = _titleCase(card.player);
+    const set      = _titleCase(card.cardSet);
+    const parallel = _titleCase(card.parallel);
+
+    fill('player', player);
+    fill('year', card.year);
+    fill('set', set);
+    fill('cardNumber', card.cardNum);
+    fill('parallel', parallel);
+    fill('grade', _numericGrade(card.grade));
+
+    const titleEl = block.querySelector('[data-field="title"]');
+    if (titleEl) {
+      const newTitle = buildCardTitle({ ...card, player, cardSet: set, parallel }) || titleEl.value;
+      titleEl.value = newTitle;
+      titleEl.classList.remove('bulkscan-field-invalid');
+      titleEl.classList.add('db-filled');
+      setTimeout(() => titleEl.classList.remove('db-filled'), 8000);
+    }
+
+    showToast(`✓ ${grader} #${cert} verified — fields updated`);
+  } catch (err) {
+    showToast('Verification failed — ' + err.message, 'var(--danger)');
+  } finally {
+    buttonEl.disabled = false;
+    buttonEl.textContent = originalLabel;
+  }
 }
 
 function _updateBulkScanReviewStats() {
@@ -5495,7 +5590,7 @@ async function confirmBulkScanReview() {
       'Parallel/Variant': val('parallel'),
       Grader:             grader || null,
       Grade:              grader && gradeVal !== '' ? parseFloat(gradeVal) : null,
-      'Cert #':           null,
+      'Cert #':           grader ? (val('certNumber') || null) : null,
       Condition:          !grader ? (val('condition') || null) : null,
       Price:              parseFloat(val('price')) || 0,
       Status:             'Available',
