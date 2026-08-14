@@ -5345,6 +5345,14 @@ function _bsEsc(s) {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
+// Grade must always be a plain number (e.g. '10', '9.5') — vision
+// occasionally returns a condition word ('nm', 'mint') instead. Strip
+// anything that isn't a valid number rather than showing/saving garbage.
+function _numericGrade(g) {
+  const s = String(g ?? '').trim();
+  return /^\d+(\.\d+)?$/.test(s) ? s : '';
+}
+
 function bulkScanCardBlockHTML(c, idx) {
   const knownGraders = ['PSA', 'BGS', 'CGC', 'SGC'];
   const graderNorm = (c.grader || '').toString().trim().toUpperCase();
@@ -5402,7 +5410,7 @@ function bulkScanCardBlockHTML(c, idx) {
         </div>
         <div>
           <div class="section-label" style="margin-bottom:0.3rem">Grade</div>
-          <input class="show-input" data-field="grade" value="${_bsEsc(c.grade)}" placeholder="e.g. 10" style="margin:0">
+          <input class="show-input" data-field="grade" value="${_bsEsc(_numericGrade(c.grade))}" placeholder="e.g. 10" style="margin:0" inputmode="decimal">
         </div>
       </div>
       <div class="bulkscan-field-grid">
@@ -5477,7 +5485,7 @@ async function confirmBulkScanReview() {
   const rawCards = includedBlocks.map(block => {
     const val = (field) => block.querySelector(`[data-field="${field}"]`)?.value.trim() || '';
     const grader   = val('grader');
-    const gradeVal = val('grade');
+    const gradeVal = _numericGrade(val('grade'));
     return {
       'Card Title':       val('title'),
       Player:             val('player'),
