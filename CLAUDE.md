@@ -624,6 +624,11 @@ Lets a seller photograph an entire showcase/tray and get every visible card iden
 - Toast on completion: `"N card(s) added to inventory"` on full success; `"N of M cards synced — K saved locally only"` in gold if any DB insert returned `null` (mirrors the pattern of surfacing partial failure rather than the single-card flow's silent `console.warn`-only swallow — a partial failure across a batch is both more likely and worse to hide).
 - `CardShow_BulkScan_POC.html` referenced in earlier planning was never actually committed to this repo — Phase 2 was designed fresh from Add Card / CSV Mapper / vision-confidence conventions instead.
 
+### Source photo reference (review modal)
+- `_bulkScanSourceImage` (app.html) — the uploaded photo's data URL, captured client-side via `_readFileAsDataURL()` in parallel with the upload request (near-instant, local, doesn't block the scan). Rendered as an 88×88 clickable thumbnail pinned in `#bulkScanSourceImageWrap` inside the review modal's header (`.mapper-header`, not the scrollable `.mapper-body`) so it stays visible while scrolling through card entries. Click opens `#bulkScanImageLightbox` (reuses the generic `.modal-overlay` system) full-size; Escape/click-outside closes it, and the global Escape handler checks the lightbox before the review modal so the two don't both close on one keypress.
+- Released (`_bulkScanSourceImage = null` + wrapper cleared) in `closeBulkScanReview()` — a photo's data URL can be several MB, no reason to hold it after the modal closes.
+- **This shows the whole original photo, not per-card cropped thumbnails.** Per-card crops would need Claude to return a bounding box per identified card, then client-side Canvas cropping — deferred because Claude isn't a dedicated object-detection model and box precision on a busy/overlapping showcase photo is a real accuracy risk, not just more work. Revisit if the whole-photo reference proves insufficient in practice.
+
 ### Testing
 ```bash
 # Local (after `supabase start` / `supabase functions serve bulk-scan --env-file .env.local`
