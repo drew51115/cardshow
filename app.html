@@ -5347,8 +5347,11 @@ async function _autoVerifyPsaCards(cards) {
     if (!btn || btn.disabled) continue;
 
     const result = await bsVerifyGrader(btn);
-    if (result && result.status === 429) {
-      showToast('PSA rate limit reached — remaining cards left for manual verify', 'var(--gold)');
+    if (!result || !result.success) {
+      // Whatever failed (rate limit, access denied, network) will almost
+      // certainly fail identically for the rest of this batch — stop
+      // instead of repeating the same error toast per remaining card.
+      // bsVerifyGrader() already toasted the specific reason.
       break;
     }
     await new Promise(r => setTimeout(r, 600)); // brief stagger between calls
