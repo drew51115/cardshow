@@ -5321,6 +5321,7 @@ function renderBulkScanReview(cards) {
   document.body.style.overflow = 'hidden';
 
   _autoVerifyPsaCards(bulkScanReviewCards); // fire-and-forget, runs in the background while the seller reviews
+  _runCorrectionPass(bulkScanReviewCards);  // fire-and-forget, raw-card player-name correction via catalog cross-check
 }
 
 // Auto-verifies the first N PSA-graded cards per scan against
@@ -5355,6 +5356,153 @@ async function _autoVerifyPsaCards(cards) {
       break;
     }
     await new Promise(r => setTimeout(r, 600)); // brief stagger between calls
+  }
+}
+
+// ── RAW-CARD CORRECTION PASS ──
+// Cross-checks year+set+cardNumber for raw (ungraded) cards against
+// CardSight/PriceCharting catalogs via /.netlify/functions/card-correction,
+// and corrects the player name when a confident match is found (catches
+// vision OCR misreads like "Cam Abrams" -> "CJ Abrams" — the card number
+// usually identifies the exact card regardless of a misread name). Unlike
+// PSA auto-verify (rare graded slabs, silent background, capped at 5), this
+// applies to most cards in a scan, so it gets a visible progress bar +
+// cancel button (matching runCompCheck's pattern) rather than running silently.
+const BULK_SCAN_CORRECTION_LIMIT = 10;
+
+window._correctionPassCancelled = false;
+
+function cancelCorrectionPass() {
+  window._correctionPassCancelled = true;
+  const btn = document.getElementById('correctionCancelBtn');
+  if (btn) btn.textContent = 'Cancelling…';
+}
+
+function _showCorrectionProgress(current, total, cardName) {
+  let wrap = document.getElementById('correctionProgressWrap');
+  if (!wrap) {
+    wrap = document.createElement('div');
+    wrap.id = 'correctionProgressWrap';
+    wrap.style.cssText = 'margin:0 0 0.75rem;';
+    wrap.innerHTML = `
+      <div style="height:3px;background:var(--border);border-radius:2px;overflow:hidden;margin-bottom:0.45rem">
+        <div id="correctionProgressFill" style="height:100%;background:var(--gold);width:0%;transition:width 0.3s ease"></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap">
+        <span id="correctionProgressText" style="font-size:0.78rem;color:var(--muted);font-family:'DM Mono',monospace"></span>
+        <button id="correctionCancelBtn" onclick="cancelCorrectionPass()"
+          style="font-size:0.72rem;padding:0.2rem 0.55rem;border-radius:5px;
+            border:1px solid var(--border);background:transparent;
+            color:var(--muted);cursor:pointer;font-family:'DM Sans',sans-serif">
+          Cancel
+        </button>
+      </div>`;
+    const body = document.getElementById('bulkScanReviewBody');
+    if (body && body.parentElement) body.parentElement.insertBefore(wrap, body);
+  }
+
+  const fill = document.getElementById('correctionProgressFill');
+  const txt  = document.getElementById('correctionProgressText');
+  const pct  = total > 0 ? Math.round((current / total) * 100) : 0;
+  if (fill) fill.style.width = pct + '%';
+
+  let label = `Checking player names… ${current} of ${total}`;
+  if (cardName) label += ` · ${cardName.slice(0, 32)}${cardName.length > 32 ? '…' : ''}`;
+  if (txt) txt.textContent = label;
+}
+
+function _hideCorrectionProgress() {
+  const wrap = document.getElementById('correctionProgressWrap');
+  if (wrap) wrap.remove();
+}
+
+function _applyCorrectionToBlock(block, tier, correctedPlayer) {
+  const el = block.querySelector('[data-field="player"]');
+  if (!el) return;
+  el.value = correctedPlayer;
+  el.classList.add('db-filled');
+  setTimeout(() => el.classList.remove('db-filled'), 8000);
+
+  if (tier === 'medium') {
+    let notesEl = block.querySelector('.bulkscan-notes');
+    if (!notesEl) {
+      notesEl = document.createElement('div');
+      notesEl.className = 'bulkscan-notes';
+      block.appendChild(notesEl);
+    }
+    notesEl.innerHTML = `📝 ${_bsEsc('Player name corrected from a catalog match — please verify before saving')}`;
+  }
+}
+
+async function _runCorrectionPass(cards) {
+  const targets = cards
+    .filter(c => !(c.grader || '').toString().trim() && (c.cardNumber || '').toString().trim())
+    .slice(0, BULK_SCAN_CORRECTION_LIMIT);
+
+  if (!targets.length) return;
+
+  window._correctionPassCancelled = false;
+  _showCorrectionProgress(0, targets.length, null);
+
+  let corrected = 0;
+  let checked = 0;
+  let skipCardSight = false;
+
+  for (const c of targets) {
+    if (window._correctionPassCancelled) {
+      window._correctionPassCancelled = false;
+      _hideCorrectionProgress();
+      showToast(`Correction pass cancelled — ${checked} of ${targets.length} cards checked`, 'var(--muted)');
+      return;
+    }
+
+    // Re-check live DOM, not the stale scan snapshot — the seller may have
+    // already edited this card while the pass works through earlier ones.
+    const block = document.querySelector(`.bulkscan-card-block[data-card-id="${CSS.escape(c.id)}"]`);
+    if (!block) { checked++; continue; }
+
+    const val = (field) => block.querySelector(`[data-field="${field}"]`)?.value.trim() || '';
+    // Grader may have been set by the seller (or by PSA auto-verify) since
+    // this card was queued — skip it now rather than double-correct a card
+    // that has a more authoritative grading-company source available.
+    if (val('grader')) { checked++; continue; }
+
+    const player = val('player');
+    _showCorrectionProgress(checked, targets.length, player);
+
+    try {
+      const res = await fetch('/.netlify/functions/card-correction', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          player,
+          year:       val('year'),
+          set:        val('set'),
+          cardNumber: val('cardNumber'),
+          parallel:   val('parallel'),
+          skipCardSight,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.cardSightRateLimited) skipCardSight = true;
+        if (data.success && data.tier !== 'none' && data.correction?.player) {
+          _applyCorrectionToBlock(block, data.tier, _titleCase(data.correction.player));
+          corrected++;
+        }
+      }
+    } catch (err) {
+      console.warn('[correctionPass] lookup failed for card', c.id, err.message);
+    }
+
+    checked++;
+    await new Promise(r => setTimeout(r, 700)); // stagger — this endpoint may hit PriceCharting's rate-limited search
+  }
+
+  _hideCorrectionProgress();
+  if (corrected > 0) {
+    showToast(`${corrected} of ${checked} card${checked === 1 ? '' : 's'} had a player name correction — review before saving`, 'var(--gold)');
   }
 }
 
