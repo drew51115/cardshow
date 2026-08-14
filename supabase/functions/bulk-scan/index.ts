@@ -28,11 +28,16 @@ For each card include these fields (all string values, all lowercase):
 - year: 4-digit year
 - set: set name (e.g. 'topps chrome', 'bowman chrome', 'prizm')
 - cardNumber: card number if visible, else empty string
-- parallel: parallel or variation (e.g. 'base', 'refractor', 'gold refractor auto')
+- parallel: parallel or variation, including any visible serial number or print run (e.g. 'base', 'refractor', 'gold refractor auto /50', 'green refractor auto #'d/99')
 - grade: numeric grade if graded slab, else empty string
 - grader: grading company if graded (psa/bgs/sgc/cgc), else empty string
 - confidence: 'high', 'medium', or 'low'
 - notes: brief note on anything the seller should verify, else empty string
+
+Rules:
+- PARALLELS AND SERIAL NUMBERS: colored borders, foil patterns (refractor, prizm, holo), and print runs are all parallel indicators. If a serial number or print run is visible anywhere on the card (e.g. '/50', '/99', '#'d/25'), always append it to the parallel field exactly as printed — e.g. 'gold refractor auto /50', not just 'gold refractor auto'.
+- GRADED SLABS: if the card is in a graded slab (PSA, BGS, CGC, or SGC label visible), always read the grade number directly off the label and populate both grade and grader — never leave grade empty for a visibly graded slab.
+- If a field is not clearly visible or identifiable, return an empty string — do not guess.
 
 If no cards are visible, return an empty array: []`;
 

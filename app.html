@@ -5274,24 +5274,45 @@ async function handleBulkScanFile(input) {
 // ── BULK SCAN REVIEW MODAL (Phase 2) ──
 let bulkScanReviewCards = [];
 
+// Vision response fields come back all-lowercase; title-case the free-text
+// ones for display/editing. Capitalizes the first letter after the start of
+// string, a space, hyphen, or slash — handles "green refractor auto" and
+// "yu-gi-oh" reasonably without a dictionary of exceptions.
+function _titleCase(s) {
+  return String(s ?? '').toLowerCase().replace(/(^|[\s\-/])([a-z])/g, (m, sep, ch) => sep + ch.toUpperCase());
+}
+
+function _capFirst(s) {
+  const str = String(s ?? '');
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
 function renderBulkScanReview(cards) {
   if (!cards.length) {
     showToast('No cards identified — try a clearer photo', 'var(--gold)');
     return;
   }
 
-  bulkScanReviewCards = cards.map(c => ({
-    ...c,
-    title: buildCardTitle({
-      player:   c.player,
-      year:     c.year,
-      cardSet:  c.set,
-      parallel: c.parallel,
-      cardNum:  c.cardNumber,
-      sport:    '',
-      rawTitle: '',
-    }),
-  }));
+  bulkScanReviewCards = cards.map(c => {
+    const player   = _titleCase(c.player);
+    const set      = _titleCase(c.set);
+    const parallel = _titleCase(c.parallel);
+    return {
+      ...c,
+      player,
+      set,
+      parallel,
+      title: buildCardTitle({
+        player,
+        year:     c.year,
+        cardSet:  set,
+        parallel,
+        cardNum:  c.cardNumber,
+        sport:    '',
+        rawTitle: '',
+      }),
+    };
+  });
 
   _renderBulkScanSummary(bulkScanReviewCards);
   _renderBulkScanRows(bulkScanReviewCards);
@@ -5336,7 +5357,7 @@ function bulkScanCardBlockHTML(c, idx) {
   ).join('');
   const condHidden = graderVal ? 'style="display:none"' : '';
   const notesHtml = c.notes
-    ? `<div class="bulkscan-notes">📝 ${_bsEsc(c.notes)} — not saved, review only</div>`
+    ? `<div class="bulkscan-notes">📝 ${_bsEsc(_capFirst(c.notes))} — not saved, review only</div>`
     : '';
 
   return `
