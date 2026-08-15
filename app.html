@@ -4377,6 +4377,17 @@
   </div>
 </div>
 
+<!-- Full-screen loading overlay while the bulk-scan photo is being analyzed —
+     visible regardless of sidebar/mobile state, unlike the old toast+button approach -->
+<div class="modal-overlay" id="bulkScanLoadingOverlay" onclick="if(event.target===this)_cancelBulkScanLoading()">
+  <div class="modal" style="max-width:340px;text-align:center;padding:2.2rem 1.75rem">
+    <div style="width:44px;height:44px;margin:0 auto 1.1rem;border:3px solid var(--border);border-top-color:var(--gold);border-radius:50%;animation:spin 0.8s linear infinite"></div>
+    <div id="bulkScanLoadingStatus" style="font-family:'Bebas Neue',sans-serif;font-size:1.3rem;letter-spacing:0.04em;color:var(--text);margin-bottom:0.4rem">Uploading your photo…</div>
+    <div style="font-size:0.75rem;color:var(--muted);font-family:'DM Mono',monospace;margin-bottom:1.4rem">This can take up to 60 seconds</div>
+    <button class="btn-modal-close" onclick="_cancelBulkScanLoading()">Cancel</button>
+  </div>
+</div>
+
 <script>
 // ── STATE ──
 let inventory = [];
@@ -5240,6 +5251,42 @@ function _readFileAsDataURL(file) {
   });
 }
 
+// Rotates through these while the scan is in flight so a 30-60s wait doesn't
+// feel static. Cycles to the last message and holds there if the scan runs
+// longer than the sequence.
+const BULK_SCAN_STATUS_MESSAGES = [
+  'Uploading your photo…',
+  'Analyzing your showcase…',
+  'Identifying cards…',
+  'Reading player names and sets…',
+  'Almost done…',
+];
+
+let _bulkScanAbortController = null;
+let _bulkScanStatusInterval  = null;
+
+function _showBulkScanLoading() {
+  document.getElementById('bulkScanLoadingStatus').textContent = BULK_SCAN_STATUS_MESSAGES[0];
+  document.getElementById('bulkScanLoadingOverlay').classList.add('open');
+  let i = 0;
+  _bulkScanStatusInterval = setInterval(() => {
+    i = Math.min(i + 1, BULK_SCAN_STATUS_MESSAGES.length - 1);
+    document.getElementById('bulkScanLoadingStatus').textContent = BULK_SCAN_STATUS_MESSAGES[i];
+  }, 6000);
+}
+
+function _hideBulkScanLoading() {
+  document.getElementById('bulkScanLoadingOverlay').classList.remove('open');
+  if (_bulkScanStatusInterval) {
+    clearInterval(_bulkScanStatusInterval);
+    _bulkScanStatusInterval = null;
+  }
+}
+
+function _cancelBulkScanLoading() {
+  if (_bulkScanAbortController) _bulkScanAbortController.abort('cancelled');
+}
+
 async function handleBulkScanFile(input) {
   const file = input.files[0];
   if (!file) return;
@@ -5251,27 +5298,24 @@ async function handleBulkScanFile(input) {
   _bulkScanSourceImage = null;
   _readFileAsDataURL(file).then(dataUrl => { _bulkScanSourceImage = dataUrl; }).catch(() => {});
 
-  showToast('Scanning your showcase…', 'var(--muted)');
-
-  // The vision call on a multi-card photo can take well over the toast's
-  // fixed 3s auto-dismiss — keep a persistent, visible indicator on the
-  // button itself for the full duration so it doesn't look like nothing
-  // is happening once the toast fades.
+  // Full-screen overlay is the primary "this is working" signal — visible
+  // regardless of sidebar/mobile state, unlike a toast (fades in 3s) or a
+  // button label (invisible if the seller triggered this from inside a
+  // collapsed mobile sidebar or a modal that's already closed). Disabling
+  // the sidebar button too is just a cheap secondary guard against a second
+  // tap; the overlay itself already blocks interaction with the rest of the page.
   const btn = document.getElementById('bulkScanBtn');
   const originalBtnLabel = btn.textContent;
   btn.disabled = true;
-  btn.textContent = 'Scanning… (up to 60s)';
+  btn.textContent = 'Scanning…';
+  _showBulkScanLoading();
 
   // Server-side (bulk-scan Edge Function) times out its Anthropic call at 45s
   // and returns a clean 504; this client timeout is a longer safety net for
   // total network hangs, not the primary timeout — it should rarely fire.
   const controller = new AbortController();
-  let timedOut = false;
-  const timeoutId = setTimeout(() => {
-    timedOut = true;
-    controller.abort();
-    showToast('Scan timed out — please try again', 'var(--danger)');
-  }, 60000);
+  _bulkScanAbortController = controller;
+  const timeoutId = setTimeout(() => controller.abort('timeout'), 60000);
 
   try {
     const { data: { session } } = await db.auth.getSession();
@@ -5300,9 +5344,18 @@ async function handleBulkScanFile(input) {
     renderBulkScanReview(result.cards || []);
 
   } catch (err) {
-    if (!timedOut) showToast('Bulk scan failed — ' + err.message, 'var(--danger)');
+    const reason = controller.signal.reason;
+    if (reason === 'timeout') {
+      showToast('Scan timed out — please try again', 'var(--danger)');
+    } else if (reason === 'cancelled') {
+      showToast('Scan cancelled', 'var(--muted)');
+    } else {
+      showToast('Bulk scan failed — ' + err.message, 'var(--danger)');
+    }
   } finally {
     clearTimeout(timeoutId);
+    _bulkScanAbortController = null;
+    _hideBulkScanLoading();
     btn.disabled = false;
     btn.textContent = originalBtnLabel;
   }
@@ -5882,6 +5935,8 @@ document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
   if (document.getElementById('bulkScanImageLightbox').classList.contains('open')) {
     _closeBulkScanImageLightbox(); // lightbox takes priority — close it first, not the modal underneath
+  } else if (document.getElementById('bulkScanLoadingOverlay').classList.contains('open')) {
+    _cancelBulkScanLoading();
   } else if (document.getElementById('bulkScanReviewOverlay').classList.contains('open')) {
     closeBulkScanReview();
   }
