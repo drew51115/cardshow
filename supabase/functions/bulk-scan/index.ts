@@ -29,7 +29,7 @@ For each card include these fields (all string values, all lowercase):
 - set: set name (e.g. 'topps chrome', 'bowman chrome', 'prizm')
 - cardNumber: card number if visible, else empty string
 - parallel: parallel or variation, including any visible serial number or print run (e.g. 'base', 'refractor', 'gold refractor auto /50', 'green refractor auto #'d/99')
-- grade: numeric grade if graded slab, else empty string
+- grade: numeric grade ONLY if graded slab (e.g. '9', '9.5', '10') — never include label text like 'mint' or 'gem mt', just the number itself; else empty string
 - grader: grading company if graded (psa/bgs/sgc/cgc), else empty string
 - certNumber: the cert/serial number printed on a graded slab's label (usually a 7-10 digit number, sometimes with a barcode above it), else empty string
 - confidence: 'high', 'medium', or 'low'

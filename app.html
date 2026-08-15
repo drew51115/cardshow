@@ -5644,12 +5644,17 @@ function _bsEsc(s) {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-// Grade must always be a plain number (e.g. '10', '9.5') — vision
-// occasionally returns a condition word ('nm', 'mint') instead. Strip
-// anything that isn't a valid number rather than showing/saving garbage.
+// Grade must always be a plain number (e.g. '10', '9.5') for saving/comps.
+// Vision sometimes echoes the label's own text alongside the number (PSA
+// slabs literally print grade descriptions like 'MINT 9' or 'GEM MT 10'),
+// so extract the first embedded number rather than requiring an exact
+// match — that requirement was wiping out real grades like 'mint 9',
+// leaving a blank field even though the note confirmed the label was read.
+// A condition word with no digit at all ('nm') still correctly yields ''.
 function _numericGrade(g) {
   const s = String(g ?? '').trim();
-  return /^\d+(\.\d+)?$/.test(s) ? s : '';
+  const match = s.match(/\d+(?:\.\d+)?/);
+  return match ? match[0] : '';
 }
 
 function bulkScanCardBlockHTML(c, idx) {
