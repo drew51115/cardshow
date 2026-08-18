@@ -651,6 +651,55 @@ supabase secrets set ANTHROPIC_API_KEY=sk-ant-... --project-ref qtnqawqlmttogwnj
 ```
 No new Netlify env vars are needed — this function is deployed and configured entirely through the Supabase CLI/dashboard, separate from the `netlify/functions/*` deploy path.
 
+## Trading Card API Integration
+
+`TRADING_CARD_API_KEY` went live partway through this build (previously pending early-access approval — see `trading-card-lookup.js`'s original routing comment). Building against the real, now-working key surfaced two things worth knowing before touching this area again:
+
+1. **`filter[x]=` query params are effectively non-functional on this API today**, on both `/v1/cards` and `/v1/sets`, for both attribute filters (`filter[name]`) and relationship filters (`filter[player_id]`) — every one silently falls back to the full unfiltered collection instead of erroring. This is a *live production bug*, not just a concern for new code: `trading-card-lookup.js`'s `filter[name]` search (used by the old `#ac_search` box, now removed) was verified broken the same way, returning essentially random catalog entries for real player searches. It went unnoticed because the key wasn't live until this session.
+2. **`filter[player_id]` on `/v1/cards` is real and correctly documented** in the API's own OpenAPI spec (`https://tradingcardapi.com/openapi.json`) — "Returns every card the player appears on, both directly and via a player-team" — but it does not return within Netlify's ~10s synchronous function ceiling, tested repeatedly (6s and 9s proxy timeouts, both exhausted; the player resource itself also has no `relationships` block in its schema to side-load as a faster alternative). **There is no fast player → cards/sets path on this API.** Any future feature that wants "cards/sets for a given player" needs to route around this the same way both features below do — via `/v1/sets?name=` (plain param, not bracketed — confirmed fast) or `/v2/sets/{id}/checklist` (confirmed fast, client-side filter by player name substring), never `filter[player_id]`.
+
+Confirmed-fast, confirmed-real endpoints (verified directly against `https://tradingcardapi.com/openapi.json`, not just the API's behavior):
+- `GET /v1/players?full_name=` — plain param, correctly filters
+- `GET /v1/sets?name=` — plain param (not `filter[name]`), correctly filters but wants an exact-ish set name
+- `GET /v1/sets?parent_id=` — plain param, returns child/parallel sets of a given set
+- `GET /v2/sets/{id}/checklist?format=compact&per_page=N` — fast, side-loads set metadata via `included`
+- `GET /v1/cards?filter[set_id]=` — documented but not exercised by either feature below (checklist covers the same need)
+
+### Architecture
+All calls are proxied through `netlify/functions/tcapi.js` — a generic `GET ?path=/v1/whatever` passthrough that adds `Authorization: Bearer TRADING_CARD_API_KEY` server-side. 9s internal timeout (`AbortController`), just under Netlify's ~10s synchronous function ceiling (matches `vision-scan.js`'s 10s convention) so our own clean timeout response wins the race against the platform killing the function outright.
+
+Client-side helper: `tcapiGet(path)` (app.html, top of the main `<script>` block, alongside `STATE`) — takes a full API path+querystring, proxies through `tcapi.js`, returns parsed JSON or `null` on any non-2xx/network error.
+
+This is unrelated to `netlify/functions/trading-card-lookup.js`, which still exists and still owns its own key handling, `card_search_cache` table, and CardSight/PriceCharting/Pokémon TCG fallback chain for **comp pricing** (`comp-lookup.js` is the actual comp-check consumer, not this). `trading-card-lookup.js`'s free-text search *consumer* — the old `#ac_search` box — is what got replaced below; the function itself was left alone.
+
+### Add Card Modal — Guided Picker (replaces #ac_search)
+The old free-text "Search Card" box, its dropdown, spinner, debug note, and the ~120-entry local `CARD_DB` stub it fell back to have all been removed. In their place, the Player/Set/Card #/Parallel fields themselves now carry a 4-step guided picker:
+
+- **Step 1 — Player typeahead** (`#ac_player`, `tcPlayerTypeahead()`): 3+ chars, 400ms debounce, `GET /v1/players?full_name=`. Selecting a result fills Player + `acPlayerUUID`, clears all downstream UUIDs, and focuses the Set field.
+- **Step 2 — Manual set search** (`#ac_set`, `tcSetSearch()`): **not auto-scoped to the selected player** — see the API constraint above. Independent 3+/400ms typeahead against `GET /v1/sets?name=`. Selecting a result fills Set (lowercase) + `acSetUUID`, clears Card#/Parallel + their UUIDs, and fires Step 3 automatically.
+- **Step 3 — Checklist/card picker** (`#ac_number`, auto-fires after Step 2): `GET /v2/sets/{id}/checklist?format=compact&per_page=100`, filtered client-side to entries whose `name` contains the selected player (falls back to the full checklist if nothing matches or no player is set yet — still useful for picking a card number). Selecting a result fills Card # + `acCardUUID`, fires Step 4.
+- **Step 4 — Parallel picker** (`#ac_parallel`, auto-fires after Step 3): `GET /v1/sets?parent_id={setId}&per_page=100`. Selecting a result fills Parallel (lowercase) + `acParallelSetUUID`.
+
+Every step is fully skippable — typing directly into any of the four fields works unmodified (`saveAddCard()` already read raw `.value` regardless of picker state, so no changes were needed there), each populated dropdown ends with an "Enter manually" link that just clears that dropdown's container, and empty results show "No matches — enter manually" instead of blocking. Manually editing a field after a selection clears that field's hidden UUID (`oninput` on each of the four inputs) so a stale UUID never lingers attached to now-different text.
+
+Hidden fields `acPlayerUUID` / `acSetUUID` / `acCardUUID` / `acParallelSetUUID` store the picked UUIDs for future use (fingerprint validation, image lookup) — not persisted to Supabase this sprint. Cleared in both `openAddCard()` (via `tcClearPickerState()`) and `closeAddCard()`.
+
+`.tc-dropdown` / `.tc-dropdown-item` / `.tc-item-sub` / `.tc-loading` / `.tc-dropdown-skip` (styles block) use the app's actual live `:root` CSS variables (`--card`, `--border`, `--text`, `--muted`, `--accent`) rather than the hex literals in the original design spec — those hex values matched this file's own "Brand System" doc section above, not what's actually declared in `:root` (e.g. live `--muted` is `#6b7280`, not the documented `#5A6585`). Using the real variables keeps the picker visually consistent with the rest of the modal; the doc/`:root` mismatch itself is pre-existing and out of scope here.
+
+`scanFallbackToSearch()` (cert scanner's "Search by name" fallback) now focuses `#ac_player` instead of the removed `#ac_search`.
+
+### Bulk Scan Validation Layer
+`renderBulkScanReview(cards)` already rendered a full review grid before this change (confidence badges, source-photo thumbnail, PSA verify, raw-card correction pass, etc.) — it was never the stub the original task spec described, and `CardShow_BulkScan_POC.html` still doesn't exist in this repo (see the note earlier in this file). This feature adds a validation pass *on top of* the existing grid, not a replacement.
+
+`_runTcapiValidation(cards)` fires fire-and-forget from `renderBulkScanReview()`, alongside the existing `_autoVerifyPsaCards()` and `_runCorrectionPass()` calls. For every card with `confidence !== 'low'`, `_tcapiValidateOneCard()` runs via `Promise.allSettled` (never blocks the already-rendered grid):
+1. `GET /v1/players?full_name=` on the live Player field value — a match sets the VERIFIED badge and is the *only* condition for `tcapi_validated`-equivalent status, matching the spec's "tied to player match" rule. No match → UNVERIFIED, nothing further attempted.
+2. Best-effort enrichment once a player matches (adapted from the spec's broken `filter[player_id]` approach): `GET /v1/sets?name={year} {set}` to resolve a canonical set → `GET /v2/sets/{id}/checklist` (fills Card # if empty, matched by player-name substring) and `GET /v1/sets?parent_id={id}` in parallel (fuzzy-matches and normalizes the Parallel field). Any failure here is silent/non-fatal and never downgrades an already-VERIFIED badge.
+3. Field updates reuse the existing `.db-filled` green-highlight convention (`bsVerifyGrader`, `_applyCorrectionToBlock`) via `_bsApplyValidatedField()`.
+
+Badge states (`.tc-verify-badge`, injected into `.bulkscan-card-header` next to the confidence badge): `VERIFYING` (spinner, muted) while in flight → `✓ VERIFIED` (`#1BAF7A`) or `UNVERIFIED` (muted) on resolution. Low-confidence cards are skipped entirely — no badge element is ever created for them, satisfying "show nothing" for free.
+
+Fingerprint preview: `data-fingerprint` elements are **debug-only** (`window.CARDSHOW_DEBUG`), not shown to sellers — a raw pipe-delimited fingerprint string has no seller-facing value and 10-15 of them per scan would just be clutter. `_bulkScanFingerprintFromBlock()` reads live DOM values (matching the correction pass's own "read live DOM, not the original vision snapshot" convention) rather than tracking canonical values separately on the card object — since validated fields are written straight into the same `[data-field]` inputs `confirmBulkScanReview()` already reads at save time, canonical values flow through to the saved fingerprint automatically with no extra plumbing. Updated once on initial render (debug mode only) and again whenever validation resolves for that card.
+
 ## Backlog Priority
 
 ### Shipped ✅
@@ -725,6 +774,7 @@ No new Netlify env vars are needed — this function is deployed and configured 
   - Report HTML — `<div id="rptTxLog"></div>` added immediately after `#rptPayBreakdown` closing tag.
   - `updateReport()` — renders `"✓ N transactions logged · show floor data synced"` in `#rptTxLog` when `soldCards.length > 0 && activeShowId`; clears otherwise.
   - **Critical constraints:** `recordShowTransaction` must never be awaited from `sdConfirm`. Table is append-only (INSERT + SELECT RLS only, no UPDATE/DELETE). `card_fingerprint` format: `player|year|set|cardNumber|parallel|grade|grader` (7 fields, lowercased, matches price_cache exactly).
+- **Trading Card API integration (session 2026-08-18)** — `TRADING_CARD_API_KEY` went live; see "Trading Card API Integration" section above for full detail. `netlify/functions/tcapi.js` (generic proxy) + `tcapiGet()` helper. Add Card modal's old `#ac_search` free-text box replaced with a 4-step guided picker (player → set → card# → parallel) wired directly to the Player/Set/Card#/Parallel fields. Bulk scan review grid gained a background Trading Card API validation pass (VERIFYING/VERIFIED/UNVERIFIED badge per card, best-effort set/card#/parallel enrichment). Discovered along the way: `filter[x]=` query params are non-functional on this API today (silently return the unfiltered collection) on both `/v1/cards` and `/v1/sets`, and `filter[player_id]` on `/v1/cards` — while real and documented — is too slow for interactive use (10s+, no fast alternative exists). `trading-card-lookup.js`'s old `filter[name]` search was confirmed broken the same way, meaning `#ac_search` had been silently returning wrong results since the key went live; removing it fixed that exposure as a side effect.
 
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`
