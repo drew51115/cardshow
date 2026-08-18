@@ -1992,6 +1992,53 @@
   .bulkscan-field-invalid { border: 1px solid var(--danger) !important; }
   #bulkScanBtn:disabled { opacity: 0.6; cursor: default; }
 
+  /* Trading Card API guided picker (player -> set -> card# -> parallel), Add Card modal */
+  .tc-dropdown {
+    position: absolute;
+    z-index: 100;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    width: 100%;
+    max-height: 220px;
+    overflow-y: auto;
+    margin-top: 4px;
+  }
+  .tc-dropdown-item {
+    padding: 10px 14px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    color: var(--text);
+    cursor: pointer;
+    border-bottom: 1px solid var(--border);
+  }
+  .tc-dropdown-item:last-child { border-bottom: none; }
+  .tc-dropdown-item:hover { background: var(--surface); }
+  .tc-dropdown-item .tc-item-sub {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+    margin-top: 2px;
+  }
+  .tc-loading {
+    padding: 10px 14px;
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+  }
+  .tc-dropdown-skip {
+    cursor: pointer;
+    color: var(--accent);
+    text-align: center;
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    padding: 8px 14px;
+  }
+  .tc-dropdown-skip:hover { text-decoration: underline; }
+  .tc-verify-badge { font-family: 'DM Mono', monospace; font-size: 9px; letter-spacing: 0.08em; }
+
 
   /* ── MANAGE SELLERS INLINE PANEL ── */
   .show-sellers-panel {
@@ -3468,21 +3515,6 @@
           </button>
         </div>
 
-        <!-- Search (card only) -->
-        <div id="ac_search_row">
-          <div class="section-label" style="margin-bottom:0.3rem">Search Card</div>
-          <div style="position:relative">
-            <input class="show-input" id="ac_search"
-              placeholder="e.g. Cooper Flagg 2025, Luka Doncic RC Silver…"
-              style="margin:0;padding-right:2rem" autocomplete="off"
-              oninput="acSearch(this.value)"
-              onkeydown="acKeyNav(event)">
-            <div id="ac_search_spinner" style="display:none;position:absolute;right:0.6rem;top:50%;transform:translateY(-50%);width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--gold);border-radius:50%;animation:spin 0.7s linear infinite"></div>
-          </div>
-          <div id="ac_results"></div>
-          <div id="ac_debug_note" style="display:none;font-size:0.62rem;color:var(--muted);font-family:'DM Mono',monospace;margin-top:0.25rem">Using local card database — Trading Card API key not yet configured</div>
-        </div>
-
         <!-- Divider with Scan button -->
         <div style="display:flex;align-items:center;gap:0.6rem;margin:0.1rem 0">
           <div style="flex:1;height:1px;background:var(--border)"></div>
@@ -3512,9 +3544,10 @@
         </div>
 
         <div id="ac_player_row" style="display:grid;grid-template-columns:1fr 1fr;gap:0.55rem">
-          <div>
+          <div style="position:relative">
             <div class="section-label" style="margin-bottom:0.3rem">Player</div>
-            <input class="show-input" id="ac_player" placeholder="Player name" style="margin:0">
+            <input class="show-input" id="ac_player" placeholder="Player name" style="margin:0" autocomplete="off" oninput="tcPlayerTypeahead(this.value)">
+            <div id="tc_player_dd"></div>
           </div>
           <div>
             <div class="section-label" style="margin-bottom:0.3rem">Year</div>
@@ -3527,20 +3560,29 @@
         </div>
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.55rem">
-          <div>
+          <div style="position:relative">
             <div class="section-label" style="margin-bottom:0.3rem" id="ac_set_label">Set</div>
-            <input class="show-input" id="ac_set" placeholder="e.g. Topps Chrome" style="margin:0">
+            <input class="show-input" id="ac_set" placeholder="e.g. Topps Chrome" style="margin:0" autocomplete="off" oninput="tcSetSearch(this.value)">
+            <div id="tc_set_dd"></div>
           </div>
-          <div id="ac_number_col">
+          <div id="ac_number_col" style="position:relative">
             <div class="section-label" style="margin-bottom:0.3rem">Card #</div>
-            <input class="show-input" id="ac_number" placeholder="e.g. 101" style="margin:0;text-transform:uppercase">
+            <input class="show-input" id="ac_number" placeholder="e.g. 101" style="margin:0;text-transform:uppercase" oninput="document.getElementById('acCardUUID').value=''">
+            <div id="tc_card_dd"></div>
           </div>
         </div>
 
-        <div id="ac_parallel_row">
+        <div id="ac_parallel_row" style="position:relative">
           <div class="section-label" style="margin-bottom:0.3rem">Parallel / Variant</div>
-          <input class="show-input" id="ac_parallel" placeholder="e.g. Gold Refractor /50, Sapphire" style="margin:0">
+          <input class="show-input" id="ac_parallel" placeholder="e.g. Gold Refractor /50, Sapphire" style="margin:0" oninput="document.getElementById('acParallelSetUUID').value=''">
+          <div id="tc_parallel_dd"></div>
         </div>
+
+        <!-- Trading Card API picker UUIDs — internal use only, cleared on close -->
+        <input type="hidden" id="acPlayerUUID" value="">
+        <input type="hidden" id="acSetUUID" value="">
+        <input type="hidden" id="acCardUUID" value="">
+        <input type="hidden" id="acParallelSetUUID" value="">
 
         <!-- Sealed: product type dropdown -->
         <div id="ac_product_type_row" style="display:none">
@@ -10094,148 +10136,9 @@ document.addEventListener('keydown', e => {
 
 
 // ══════════════════════════════════════════════
-//  ADD CARD — Option 3: Search Autocomplete
+//  ADD CARD MODAL
 // ══════════════════════════════════════════════
 
-// Card database — ~120 high-demand modern cards for autocomplete
-// Format: { title, player, year, set, number, parallel, sport }
-const CARD_DB = [
-  // ── Basketball ──
-  {title:'2025-26 Topps Chrome Cooper Flagg RC Auto',player:'Cooper Flagg',year:'2025',set:'Topps Chrome',number:'1',parallel:'',sport:'Basketball'},
-  {title:'2025-26 Topps Chrome Cooper Flagg Sapphire RC',player:'Cooper Flagg',year:'2025',set:'Topps Chrome',number:'1',parallel:'Sapphire',sport:'Basketball'},
-  {title:'2025-26 Prizm Cooper Flagg RC Silver Prizm',player:'Cooper Flagg',year:'2025',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Basketball'},
-  {title:'2023-24 Topps Chrome Victor Wembanyama RC Auto',player:'Victor Wembanyama',year:'2023',set:'Topps Chrome',number:'1',parallel:'',sport:'Basketball'},
-  {title:'2023-24 Prizm Victor Wembanyama RC Silver Prizm',player:'Victor Wembanyama',year:'2023',set:'Prizm',number:'1',parallel:'Silver Prizm',sport:'Basketball'},
-  {title:'2023-24 Optic Victor Wembanyama RC Rated Rookie',player:'Victor Wembanyama',year:'2023',set:'Optic',number:'',parallel:'',sport:'Basketball'},
-  {title:'2018-19 Prizm Luka Doncic RC Silver Prizm',player:'Luka Doncic',year:'2018',set:'Prizm',number:'280',parallel:'Silver Prizm',sport:'Basketball'},
-  {title:'2018-19 Optic Luka Doncic Rated Rookie',player:'Luka Doncic',year:'2018',set:'Optic',number:'177',parallel:'',sport:'Basketball'},
-  {title:'2018-19 Topps Chrome Luka Doncic RC Auto',player:'Luka Doncic',year:'2018',set:'Topps Chrome',number:'',parallel:'',sport:'Basketball'},
-  {title:'2019-20 Prizm Ja Morant RC Silver Prizm',player:'Ja Morant',year:'2019',set:'Prizm',number:'249',parallel:'Silver Prizm',sport:'Basketball'},
-  {title:'2019-20 Prizm Zion Williamson RC Silver Prizm',player:'Zion Williamson',year:'2019',set:'Prizm',number:'248',parallel:'Silver Prizm',sport:'Basketball'},
-  {title:'2020-21 Topps Chrome LaMelo Ball RC Auto',player:'LaMelo Ball',year:'2020',set:'Topps Chrome',number:'',parallel:'',sport:'Basketball'},
-  {title:'2020-21 Prizm LaMelo Ball RC Silver Prizm',player:'LaMelo Ball',year:'2020',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Basketball'},
-  {title:'2020-21 Prizm Anthony Edwards RC Silver Prizm',player:'Anthony Edwards',year:'2020',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Basketball'},
-  {title:'2020-21 Optic Anthony Edwards RC Rated Rookie',player:'Anthony Edwards',year:'2020',set:'Optic',number:'',parallel:'',sport:'Basketball'},
-  {title:'2021-22 Prizm Scottie Barnes RC Silver Prizm',player:'Scottie Barnes',year:'2021',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Basketball'},
-  {title:'2021-22 Prizm Cade Cunningham RC Silver Prizm',player:'Cade Cunningham',year:'2021',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Basketball'},
-  {title:'2021-22 Topps Chrome Evan Mobley RC Auto',player:'Evan Mobley',year:'2021',set:'Topps Chrome',number:'',parallel:'',sport:'Basketball'},
-  {title:'2022-23 Prizm Paolo Banchero RC Silver Prizm',player:'Paolo Banchero',year:'2022',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Basketball'},
-  {title:'2022-23 Prizm Nikola Jokic Silver Prizm',player:'Nikola Jokic',year:'2022',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Basketball'},
-  {title:'2022-23 Prizm Jabari Smith Jr RC Silver Prizm',player:'Jabari Smith Jr',year:'2022',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Basketball'},
-  {title:'2016-17 Prizm Jayson Tatum RC Silver Prizm',player:'Jayson Tatum',year:'2016',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Basketball'},
-  {title:'2016-17 Topps Chrome Jayson Tatum RC Auto',player:'Jayson Tatum',year:'2016',set:'Topps Chrome',number:'',parallel:'',sport:'Basketball'},
-  {title:'2003-04 Topps Chrome LeBron James RC',player:'LeBron James',year:'2003',set:'Topps Chrome',number:'111',parallel:'',sport:'Basketball'},
-  {title:'2003-04 Topps Chrome LeBron James RC Refractor',player:'LeBron James',year:'2003',set:'Topps Chrome',number:'111',parallel:'Refractor',sport:'Basketball'},
-  {title:'1986-87 Fleer Michael Jordan RC',player:'Michael Jordan',year:'1986',set:'Fleer',number:'57',parallel:'',sport:'Basketball'},
-  {title:'2013-14 Topps Chrome Giannis Antetokounmpo RC',player:'Giannis Antetokounmpo',year:'2013',set:'Topps Chrome',number:'',parallel:'',sport:'Basketball'},
-  {title:'2013-14 Prizm Giannis Antetokounmpo RC Silver Prizm',player:'Giannis Antetokounmpo',year:'2013',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Basketball'},
-  {title:'2009-10 Topps Chrome Steph Curry RC',player:'Steph Curry',year:'2009',set:'Topps Chrome',number:'101',parallel:'',sport:'Basketball'},
-  {title:'2007-08 Topps Chrome Kevin Durant RC',player:'Kevin Durant',year:'2007',set:'Topps Chrome',number:'131',parallel:'',sport:'Basketball'},
-  {title:'2024-25 Topps Chrome Cooper Flagg RPA /99',player:'Cooper Flagg',year:'2024',set:'Topps Chrome',number:'',parallel:'/99',sport:'Basketball'},
-  {title:'2023-24 Prizm Shai Gilgeous-Alexander Silver Prizm',player:'Shai Gilgeous-Alexander',year:'2023',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Basketball'},
-  {title:'2018-19 Prizm Shai Gilgeous-Alexander RC Silver Prizm',player:'Shai Gilgeous-Alexander',year:'2018',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Basketball'},
-  {title:'2023-24 Prizm Joel Embiid Silver Prizm',player:'Joel Embiid',year:'2023',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Basketball'},
-  {title:'2023-24 Prizm Tyrese Haliburton Silver Prizm',player:'Tyrese Haliburton',year:'2023',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Basketball'},
-  {title:'2020-21 Prizm Tyrese Haliburton RC Silver Prizm',player:'Tyrese Haliburton',year:'2020',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Basketball'},
-  {title:'2023-24 Prizm Victor Wembanyama Silver Prizm',player:'Victor Wembanyama',year:'2023',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Basketball'},
-  {title:'2022-23 Prizm Jaylen Brown Silver Prizm',player:'Jaylen Brown',year:'2022',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Basketball'},
-  {title:'2020-21 Prizm Tyrese Maxey RC Silver Prizm',player:'Tyrese Maxey',year:'2020',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Basketball'},
-  {title:'2019-20 Prizm Darius Garland RC Silver Prizm',player:'Darius Garland',year:'2019',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Basketball'},
-  // ── Football ──
-  {title:'2024 Prizm Jayden Daniels RC Silver Prizm',player:'Jayden Daniels',year:'2024',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Football'},
-  {title:'2024 Optic Jayden Daniels RC Rated Rookie',player:'Jayden Daniels',year:'2024',set:'Optic',number:'',parallel:'',sport:'Football'},
-  {title:'2024 Prizm Marvin Harrison Jr RC Silver Prizm',player:'Marvin Harrison Jr',year:'2024',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Football'},
-  {title:'2024 Prizm Drake Maye RC Silver Prizm',player:'Drake Maye',year:'2024',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Football'},
-  {title:'2024 Prizm Patrick Mahomes Silver Prizm',player:'Patrick Mahomes',year:'2024',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Football'},
-  {title:'2018 Prizm Patrick Mahomes RC Silver Prizm',player:'Patrick Mahomes',year:'2018',set:'Prizm',number:'195',parallel:'Silver Prizm',sport:'Football'},
-  {title:'2018 Optic Patrick Mahomes RC Rated Rookie',player:'Patrick Mahomes',year:'2018',set:'Optic',number:'',parallel:'',sport:'Football'},
-  {title:'2020 Prizm Justin Herbert RC Silver Prizm',player:'Justin Herbert',year:'2020',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Football'},
-  {title:'2021 Prizm Trevor Lawrence RC Silver Prizm',player:'Trevor Lawrence',year:'2021',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Football'},
-  {title:'2018 Optic Lamar Jackson RC Holo',player:'Lamar Jackson',year:'2018',set:'Optic',number:'',parallel:'Holo',sport:'Football'},
-  {title:'2018 Prizm Lamar Jackson RC Silver Prizm',player:'Lamar Jackson',year:'2018',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Football'},
-  {title:'2019 Prizm Justin Jefferson RC Silver Prizm',player:'Justin Jefferson',year:'2019',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Football'},
-  {title:'2000 Playoff Contenders Tom Brady RC Auto',player:'Tom Brady',year:'2000',set:'Playoff Contenders',number:'144',parallel:'',sport:'Football'},
-  {title:'2024 Optic Marvin Harrison Jr RC Rated Rookie',player:'Marvin Harrison Jr',year:'2024',set:'Optic',number:'',parallel:'',sport:'Football'},
-  {title:'2024 Prizm Malik Nabers RC Silver Prizm',player:'Malik Nabers',year:'2024',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Football'},
-  {title:'2018 Prizm Josh Allen RC Silver Prizm',player:'Josh Allen',year:'2018',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Football'},
-  {title:'2018 Optic Josh Allen RC Rated Rookie',player:'Josh Allen',year:'2018',set:'Optic',number:'',parallel:'',sport:'Football'},
-  {title:'2020 Prizm CeeDee Lamb RC Silver Prizm',player:'CeeDee Lamb',year:'2020',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Football'},
-  {title:'2020 Prizm Tua Tagovailoa RC Silver Prizm',player:'Tua Tagovailoa',year:'2020',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Football'},
-  {title:'2021 Prizm Mac Jones RC Silver Prizm',player:'Mac Jones',year:'2021',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Football'},
-  {title:'2021 Prizm Najee Harris RC Silver Prizm',player:'Najee Harris',year:'2021',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Football'},
-  {title:'2022 Prizm Brock Purdy RC Silver Prizm',player:'Brock Purdy',year:'2022',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Football'},
-  {title:'2022 Prizm Breece Hall RC Silver Prizm',player:'Breece Hall',year:'2022',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Football'},
-  {title:'2023 Prizm CJ Stroud RC Silver Prizm',player:'CJ Stroud',year:'2023',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Football'},
-  {title:'2023 Prizm Bryce Young RC Silver Prizm',player:'Bryce Young',year:'2023',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Football'},
-  {title:'2023 Prizm Puka Nacua RC Silver Prizm',player:'Puka Nacua',year:'2023',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Football'},
-  {title:'2024 Prizm Bo Nix RC Silver Prizm',player:'Bo Nix',year:'2024',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Football'},
-  {title:'2024 Prizm Rome Odunze RC Silver Prizm',player:'Rome Odunze',year:'2024',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Football'},
-  {title:'2016 Prizm Josh Jacobs RC Silver Prizm',player:'Josh Jacobs',year:'2019',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Football'},
-  {title:'2022 Prizm Sauce Gardner RC Silver Prizm',player:'Sauce Gardner',year:'2022',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Football'},
-  {title:'2021 Prizm Joe Burrow RC Silver Prizm',player:'Joe Burrow',year:'2020',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Football'},
-  {title:'2021 Prizm Micah Parsons RC Silver Prizm',player:'Micah Parsons',year:'2021',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Football'},
-  {title:'2020 Prizm Stefon Diggs Silver Prizm',player:'Stefon Diggs',year:'2020',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Football'},
-  {title:'2023 Prizm Sam LaPorta RC Silver Prizm',player:'Sam LaPorta',year:'2023',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'Football'},
-  // ── Baseball ──
-  {title:'2024 Topps Chrome Paul Skenes RC Auto',player:'Paul Skenes',year:'2024',set:'Topps Chrome',number:'',parallel:'',sport:'Baseball'},
-  {title:'2024 Bowman Chrome Paul Skenes Auto',player:'Paul Skenes',year:'2024',set:'Bowman Chrome',number:'',parallel:'',sport:'Baseball'},
-  {title:'2024 Topps Chrome Elly De La Cruz RC Auto',player:'Elly De La Cruz',year:'2024',set:'Topps Chrome',number:'',parallel:'',sport:'Baseball'},
-  {title:'2024 Topps Chrome Bobby Witt Jr Auto',player:'Bobby Witt Jr',year:'2024',set:'Topps Chrome',number:'',parallel:'',sport:'Baseball'},
-  {title:'2022 Bowman Chrome Bobby Witt Jr Auto',player:'Bobby Witt Jr',year:'2022',set:'Bowman Chrome',number:'',parallel:'',sport:'Baseball'},
-  {title:'2024 Topps Shohei Ohtani 50/50 Gold Auto /50',player:'Shohei Ohtani',year:'2024',set:'Topps',number:'',parallel:'Gold /50',sport:'Baseball'},
-  {title:'2018 Topps Update Shohei Ohtani RC',player:'Shohei Ohtani',year:'2018',set:'Topps Update',number:'',parallel:'',sport:'Baseball'},
-  {title:'2023 Topps Chrome Gunnar Henderson RC Auto',player:'Gunnar Henderson',year:'2023',set:'Topps Chrome',number:'',parallel:'',sport:'Baseball'},
-  {title:'2022 Topps Chrome Julio Rodriguez RC Auto',player:'Julio Rodriguez',year:'2022',set:'Topps Chrome',number:'',parallel:'',sport:'Baseball'},
-  {title:'2024 Topps Chrome Yoshinobu Yamamoto RC Auto',player:'Yoshinobu Yamamoto',year:'2024',set:'Topps Chrome',number:'',parallel:'',sport:'Baseball'},
-  {title:'2024 Topps Chrome Roki Sasaki RC Auto',player:'Roki Sasaki',year:'2024',set:'Topps Chrome',number:'',parallel:'',sport:'Baseball'},
-  {title:'2011 Bowman Chrome Mike Trout Prospect Auto',player:'Mike Trout',year:'2011',set:'Bowman Chrome',number:'',parallel:'',sport:'Baseball'},
-  {title:'2011 Topps Chrome Mike Trout RC Auto',player:'Mike Trout',year:'2011',set:'Topps Chrome',number:'',parallel:'',sport:'Baseball'},
-  {title:'1989 Upper Deck Ken Griffey Jr RC',player:'Ken Griffey Jr',year:'1989',set:'Upper Deck',number:'1',parallel:'',sport:'Baseball'},
-  {title:'1993 SP Derek Jeter RC',player:'Derek Jeter',year:'1993',set:'SP',number:'279',parallel:'',sport:'Baseball'},
-  {title:'2022 Bowman Chrome Elly De La Cruz Auto',player:'Elly De La Cruz',year:'2022',set:'Bowman Chrome',number:'',parallel:'',sport:'Baseball'},
-  {title:'2024 Bowman Atomic Paul Skenes Prospect',player:'Paul Skenes',year:'2024',set:'Bowman',number:'',parallel:'Atomic',sport:'Baseball'},
-  {title:'2019 Topps Chrome Vladimir Guerrero Jr RC Auto',player:'Vladimir Guerrero Jr',year:'2019',set:'Topps Chrome',number:'',parallel:'',sport:'Baseball'},
-  {title:'2019 Topps Chrome Fernando Tatis Jr RC Auto',player:'Fernando Tatis Jr',year:'2019',set:'Topps Chrome',number:'',parallel:'',sport:'Baseball'},
-  {title:'2022 Topps Chrome Adley Rutschman RC Auto',player:'Adley Rutschman',year:'2022',set:'Topps Chrome',number:'',parallel:'',sport:'Baseball'},
-  {title:'2022 Topps Chrome Adley Rutschman RC',player:'Adley Rutschman',year:'2022',set:'Topps Chrome',number:'',parallel:'',sport:'Baseball'},
-  {title:'2021 Topps Chrome Wander Franco RC Auto',player:'Wander Franco',year:'2021',set:'Topps Chrome',number:'',parallel:'',sport:'Baseball'},
-  {title:'2021 Topps Chrome Ke\'Bryan Hayes RC Auto',player:"Ke'Bryan Hayes",year:'2021',set:'Topps Chrome',number:'',parallel:'',sport:'Baseball'},
-  {title:'2025 Topps Chrome Jackson Holliday RC Auto',player:'Jackson Holliday',year:'2025',set:'Topps Chrome',number:'',parallel:'',sport:'Baseball'},
-  {title:'2023 Topps Chrome Jackson Holliday Auto',player:'Jackson Holliday',year:'2023',set:'Topps Chrome',number:'',parallel:'',sport:'Baseball'},
-  {title:'2024 Topps Chrome Jackson Holliday RC',player:'Jackson Holliday',year:'2024',set:'Topps Chrome',number:'',parallel:'',sport:'Baseball'},
-  {title:'2024 Topps Chrome Wyatt Langford RC Auto',player:'Wyatt Langford',year:'2024',set:'Topps Chrome',number:'',parallel:'',sport:'Baseball'},
-  {title:'2024 Topps Chrome Jackson Chourio RC Auto',player:'Jackson Chourio',year:'2024',set:'Topps Chrome',number:'',parallel:'',sport:'Baseball'},
-  {title:'2023 Topps Chrome Corbin Carroll RC Auto',player:'Corbin Carroll',year:'2023',set:'Topps Chrome',number:'',parallel:'',sport:'Baseball'},
-  {title:'2022 Topps Chrome Spencer Torkelson RC Auto',player:'Spencer Torkelson',year:'2022',set:'Topps Chrome',number:'',parallel:'',sport:'Baseball'},
-  {title:'2016 Bowman Chrome Yordan Alvarez Auto',player:'Yordan Alvarez',year:'2016',set:'Bowman Chrome',number:'',parallel:'',sport:'Baseball'},
-  {title:'2024 Topps Chrome Aaron Judge',player:'Aaron Judge',year:'2024',set:'Topps Chrome',number:'',parallel:'',sport:'Baseball'},
-  {title:'2024 Topps Chrome Ronald Acuna Jr',player:'Ronald Acuna Jr',year:'2024',set:'Topps Chrome',number:'',parallel:'',sport:'Baseball'},
-  {title:'2013 Bowman Chrome Kris Bryant Auto',player:'Kris Bryant',year:'2013',set:'Bowman Chrome',number:'',parallel:'',sport:'Baseball'},
-  {title:'2022 Topps Chrome Jeremy Pena RC Auto',player:'Jeremy Pena',year:'2022',set:'Topps Chrome',number:'',parallel:'',sport:'Baseball'},
-  {title:'2024 Topps Chrome Colton Cowser RC Auto',player:'Colton Cowser',year:'2024',set:'Topps Chrome',number:'',parallel:'',sport:'Baseball'},
-  {title:'2023 Topps Chrome Francisco Alvarez RC Auto',player:'Francisco Alvarez',year:'2023',set:'Topps Chrome',number:'',parallel:'',sport:'Baseball'},
-  // ── Hockey ──
-  {title:'2023-24 Upper Deck Connor Bedard Young Guns',player:'Connor Bedard',year:'2023',set:'Upper Deck',number:'',parallel:'Young Guns',sport:'Hockey'},
-  {title:'2023-24 Upper Deck Connor Bedard Young Guns Exclusives',player:'Connor Bedard',year:'2023',set:'Upper Deck',number:'',parallel:'Young Guns Exclusives',sport:'Hockey'},
-  {title:'2015-16 Upper Deck Connor McDavid Young Guns',player:'Connor McDavid',year:'2015',set:'Upper Deck',number:'',parallel:'Young Guns',sport:'Hockey'},
-  {title:'2019-20 Upper Deck Cale Makar Young Guns',player:'Cale Makar',year:'2019',set:'Upper Deck',number:'',parallel:'Young Guns',sport:'Hockey'},
-  {title:'1979 O-Pee-Chee Wayne Gretzky RC',player:'Wayne Gretzky',year:'1979',set:'O-Pee-Chee',number:'18',parallel:'',sport:'Hockey'},
-  {title:'2024-25 Upper Deck Macklin Celebrini Young Guns',player:'Macklin Celebrini',year:'2024',set:'Upper Deck',number:'',parallel:'Young Guns',sport:'Hockey'},
-  {title:'2021-22 Upper Deck Trevor Zegras Young Guns',player:'Trevor Zegras',year:'2021',set:'Upper Deck',number:'',parallel:'Young Guns',sport:'Hockey'},
-  {title:'2022-23 Upper Deck Juraj Slafkovsky Young Guns',player:'Juraj Slafkovsky',year:'2022',set:'Upper Deck',number:'',parallel:'Young Guns',sport:'Hockey'},
-  {title:'2020-21 Upper Deck Alexis Lafreniere Young Guns',player:'Alexis Lafreniere',year:'2020',set:'Upper Deck',number:'',parallel:'Young Guns',sport:'Hockey'},
-  // ── WNBA ──
-  {title:'2024 Optic Caitlin Clark WNBA RC Holo',player:'Caitlin Clark',year:'2024',set:'Optic',number:'',parallel:'Holo',sport:'WNBA'},
-  {title:'2024 Prizm Caitlin Clark WNBA RC Silver Prizm',player:'Caitlin Clark',year:'2024',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'WNBA'},
-  {title:'2024 Optic Angel Reese WNBA RC Holo',player:'Angel Reese',year:'2024',set:'Optic',number:'',parallel:'Holo',sport:'WNBA'},
-  {title:'2024 Prizm Paige Bueckers WNBA RC Silver Prizm',player:'Paige Bueckers',year:'2025',set:'Prizm',number:'',parallel:'Silver Prizm',sport:'WNBA'},
-];
-
-// Sport icons for display
-const SPORT_ICON = {Basketball:'🏀',Football:'🏈',Baseball:'⚾',Hockey:'🏒',WNBA:'🏀'};
-
-// Debounce timer
-let _acTimer = null;
 let _acLastQuery = '';
 
 let _acItemType   = 'card';
@@ -10243,14 +10146,14 @@ let _acGradeTimer = null;
 
 function openAddCard() {
   // Clear all fields
-  ['ac_search','ac_title','ac_player','ac_year','ac_year_sealed','ac_set',
+  ['ac_title','ac_player','ac_year','ac_year_sealed','ac_set',
    'ac_number','ac_parallel','ac_grade','ac_cert','ac_price','ac_location','ac_lot_desc']
     .forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
   document.getElementById('ac_grader').value    = '';
   document.getElementById('ac_condition').value = '';
   document.getElementById('ac_sealed_condition').value = 'Factory Sealed';
   document.getElementById('ac_status').value    = 'Available';
-  document.getElementById('ac_results').innerHTML = '';
+  tcClearPickerState();
   _acHideComp();
   acSetType('card');
   document.getElementById('addCardOverlay').classList.add('open');
@@ -10300,7 +10203,6 @@ function acSetType(type) {
   document.getElementById('ac_set_label').textContent = isCard ? 'Set' : 'Series / Brand';
 
   // Show/hide rows
-  _acShow('ac_search_row', isCard);
   _acShow('ac_scan_row',   isCard);
   _acShow('ac_player_row', isCard);
   _acShow('ac_year_only_row', !isCard);
@@ -10325,7 +10227,7 @@ function _acShow(id, show) {
 
 // One-time: persist each ac_ element's intended display value so _acShow can restore it
 (function initAcDisplayVals() {
-  ['ac_search_row','ac_scan_row','ac_player_row','ac_year_only_row',
+  ['ac_scan_row','ac_player_row','ac_year_only_row',
    'ac_number_col','ac_parallel_row','ac_product_type_row',
    'ac_grading_row','ac_cond_row','ac_sealed_cond_row','ac_lot_desc_row']
     .forEach(id => {
@@ -10342,6 +10244,7 @@ function closeAddCard() {
   if (banner) banner.remove();
   _acHideComp();
   clearTimeout(_acGradeTimer);
+  tcClearPickerState();
 }
 
 function acToggle() {
@@ -11038,11 +10941,11 @@ function _handleVisionFailure(result) {
 
 function scanFallbackToSearch() {
   closeCertScanner();
-  // Focus the live search input — Sprint 3 live search activates on first keystroke
-  const searchInput = document.getElementById('ac_search');
-  if (searchInput) {
-    searchInput.focus();
-    showToast('Type the card name to search our database', 'var(--muted)');
+  // Focus the Player field — the guided picker's typeahead activates at 3+ characters
+  const playerInput = document.getElementById('ac_player');
+  if (playerInput) {
+    playerInput.focus();
+    showToast('Type the player name to search', 'var(--muted)');
   }
 }
 
@@ -11312,197 +11215,173 @@ function setScanStatus(msg, isError) {
   }
 }
 
-// ── Sprint 3: Live card database search (Trading Card API + local CARD_DB fallback) ──
-
-let _acFocusIdx = -1;   // keyboard nav index in results dropdown
-let _acCacheHit  = null; // set by _acDoSearch when response is fromCache; read by renderer
-
-function acSearch(q) {
-  clearTimeout(_acTimer);
-  const resultsEl  = document.getElementById('ac_results');
-  const spinnerEl  = document.getElementById('ac_search_spinner');
-  _acFocusIdx = -1;
-
-  if (!q || q.length < 3) {
-    resultsEl.innerHTML = '';
-    if (spinnerEl) spinnerEl.style.display = 'none';
-    return;
-  }
-
-  if (spinnerEl) spinnerEl.style.display = 'block';
-  _acTimer = setTimeout(() => _acDoSearch(q), 250);
-}
-
-async function _acDoSearch(q) {
-  const resultsEl = document.getElementById('ac_results');
-  const spinnerEl = document.getElementById('ac_search_spinner');
-
-  let useStub = false;
-  let cards   = [];
-
-  try {
-    const res  = await fetch('/.netlify/functions/trading-card-lookup', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: q }),
-    });
-    const data = await res.json();
-
-    if (data.stub) {
-      useStub = true;
-    } else {
-      // Normalize API results to the same shape as CARD_DB entries
-      cards = (data.results || []).map(r => ({
-        // Use rawTitle (sport-prefix-stripped full name) as display fallback
-        // when PriceCharting returns set-level results with no extractable player
-        title:   r.player
-          ? [r.year, r.cardSet, r.player, r.parallel].filter(Boolean).join(' ')
-          : (r.rawTitle || [r.year, r.cardSet, r.parallel].filter(Boolean).join(' ')),
-        player:  r.player || r.rawTitle || '',
-        year:    r.player ? (r.year || '') : '',  // suppress year when showing rawTitle as player
-        set:     r.cardSet,
-        number:  r.cardNumber || '',
-        parallel: r.parallel || '',
-        sport:   r.sport || '',
-      }));
-      if (window.CARDSHOW_DEBUG && data.fromCache) {
-        _acCacheHit = { source: data.source || 'tradingcardapi' };
-      } else {
-        _acCacheHit = null;
-      }
-    }
-  } catch {
-    useStub = true;
-  }
-
-  if (useStub) {
-    // Silent fallback to local CARD_DB
-    const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
-    const scored = CARD_DB.map(card => {
-      const haystack = [card.title, card.player, card.year, card.set, card.parallel]
-        .join(' ').toLowerCase();
-      const hits = terms.filter(t => haystack.includes(t)).length;
-      return { card, hits };
-    }).filter(r => r.hits > 0)
-      .sort((a, b) => b.hits - a.hits)
-      .slice(0, 8);
-    cards = scored.map(r => r.card);
-
-    // Show debug note only when window.CARDSHOW_DEBUG is set
-    const debugEl = document.getElementById('ac_debug_note');
-    if (debugEl && window.CARDSHOW_DEBUG) debugEl.style.display = 'block';
-  } else {
-    const debugEl = document.getElementById('ac_debug_note');
-    if (debugEl) debugEl.style.display = 'none';
-  }
-
-  if (spinnerEl) spinnerEl.style.display = 'none';
-
-  if (!cards.length) {
-    window._acResults = [];
-    resultsEl.innerHTML = `<div class="ac-results-wrap"><div class="ac-empty">No matches found — enter details manually</div></div>`;
-    return;
-  }
-
-  window._acResults = cards;
-
-  const rows = cards.map((card, i) => {
-    const icon          = SPORT_ICON[card.sport] || '🃏';
-    const sport         = card.sport ? `${icon} ${card.sport}` : '';
-    const numStr        = card.number ? ` · #${card.number}` : '';
-    // When player is empty (e.g. PriceCharting set-level result), fall back to
-    // the pre-built title so the row always shows a meaningful first line.
-    const displayPlayer = card.player || card.title || '';
-    // Only show year + set meta when the player line doesn't already contain them
-    const showMeta      = !!card.player;
-    const meta          = showMeta
-      ? ([card.set, card.parallel].filter(Boolean).join(' · ') + numStr)
-      : '';
-    return `<button class="btn-add-card-result" data-idx="${i}" onclick="acSelect(${i})">
-      <div class="acr-header">
-        <span class="acr-player">${_escHtml(displayPlayer)}</span>
-        <span class="acr-year">${_escHtml(card.player ? card.year : '')}</span>
-        <span class="acr-sport">${_escHtml(sport)}</span>
-      </div>
-      ${meta ? `<div class="acr-meta">${_escHtml(meta)}</div>` : ''}
-    </button>`;
-  }).join('');
-
-  resultsEl.innerHTML = `<div class="ac-results-wrap">${rows}</div>`;
-
-  if (window.CARDSHOW_DEBUG && window._acCacheHit) {
-    const note = document.createElement('div');
-    note.textContent = `⚡ from cache · ${window._acCacheHit.source}`;
-    note.style.cssText = 'font-size:9px;color:var(--muted);text-align:right;' +
-      'padding:3px 10px;border-top:1px solid var(--border);font-family:var(--font-mono)';
-    resultsEl.querySelector('.ac-results-wrap').appendChild(note);
-    window._acCacheHit = null;
-  }
-}
-
-function acKeyNav(e) {
-  const btns = document.querySelectorAll('#ac_results .btn-add-card-result');
-  if (!btns.length) return;
-
-  if (e.key === 'ArrowDown') {
-    e.preventDefault();
-    _acFocusIdx = Math.min(_acFocusIdx + 1, btns.length - 1);
-    _acUpdateFocus(btns);
-  } else if (e.key === 'ArrowUp') {
-    e.preventDefault();
-    _acFocusIdx = Math.max(_acFocusIdx - 1, 0);
-    _acUpdateFocus(btns);
-  } else if (e.key === 'Enter' && _acFocusIdx >= 0) {
-    e.preventDefault();
-    acSelect(_acFocusIdx);
-  } else if (e.key === 'Escape') {
-    document.getElementById('ac_results').innerHTML = '';
-    _acFocusIdx = -1;
-  }
-}
-
-function _acUpdateFocus(btns) {
-  btns.forEach((b, i) => b.classList.toggle('ac-focused', i === _acFocusIdx));
-  if (_acFocusIdx >= 0) btns[_acFocusIdx].scrollIntoView({ block: 'nearest' });
-}
-
 function _escHtml(str) {
   return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-function acSelect(idx) {
-  const card = (window._acResults || [])[idx];
-  if (!card) return;
+// ── Trading Card API guided picker (player → set → card# → parallel) ──
+// Replaces the old free-text #ac_search box (removed) — see CLAUDE.md
+// "Trading Card API Integration" for why: filter[player_id] on /v1/cards is
+// real but too slow for interactive use, so Step 2 is a manual set search
+// rather than auto-scoped to the selected player.
+let _tcPlayerTimer   = null;
+let _tcSetTimer      = null;
+let _tcPlayerResults = [];
+let _tcSetResults     = [];
+let _tcCardResults    = [];
+let _tcParallelResults = [];
 
-  // Populate form fields
-  const fills = {
-    ac_title:   card.title   || [card.year, card.set, card.player, card.parallel].filter(Boolean).join(' '),
-    ac_player:  card.player  || '',
-    ac_year:    card.year    || '',
-    ac_set:     card.set     || '',
-    ac_number:  card.number  || '',
-    ac_parallel: card.parallel || '',
-  };
+function _tcSkip(containerId) {
+  return `<div class="tc-dropdown-skip" onclick="document.getElementById('${containerId}').innerHTML=''">Enter manually</div>`;
+}
+function _tcNoResults() {
+  return `<div class="tc-dropdown"><div class="tc-dropdown-item" style="cursor:default;color:var(--muted)">No matches — enter manually</div></div>`;
+}
+function _tcLoading(label) {
+  return `<div class="tc-dropdown"><div class="tc-loading">${label}</div></div>`;
+}
 
-  Object.entries(fills).forEach(([id, val]) => {
+function tcClearPickerState() {
+  ['acPlayerUUID', 'acSetUUID', 'acCardUUID', 'acParallelSetUUID'].forEach(id => {
     const el = document.getElementById(id);
-    if (!el) return;
-    el.value = val;
-    if (val) {
-      el.classList.add('db-filled');
-      setTimeout(() => el.classList.remove('db-filled'), 8000);
-    }
+    if (el) el.value = '';
   });
+  ['tc_player_dd', 'tc_set_dd', 'tc_card_dd', 'tc_parallel_dd'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = '';
+  });
+}
 
-  document.getElementById('ac_search').value   = card.player || card.title || '';
-  document.getElementById('ac_results').innerHTML = '';
-  _acFocusIdx = -1;
+// -- Step 1: player typeahead --
+function tcPlayerTypeahead(q) {
+  document.getElementById('acPlayerUUID').value = '';
+  clearTimeout(_tcPlayerTimer);
+  const dd = document.getElementById('tc_player_dd');
+  if (!q || q.trim().length < 3) { dd.innerHTML = ''; return; }
+  dd.innerHTML = _tcLoading('SEARCHING…');
+  _tcPlayerTimer = setTimeout(() => _tcDoPlayerSearch(q.trim()), 400);
+}
 
-  showToast('Card details filled in — add grade and price');
+async function _tcDoPlayerSearch(q) {
+  const dd = document.getElementById('tc_player_dd');
+  const data = await tcapiGet(`/v1/players?full_name=${encodeURIComponent(q)}&limit=8`);
+  _tcPlayerResults = data?.data || [];
+  if (!_tcPlayerResults.length) { dd.innerHTML = _tcNoResults(); return; }
 
-  // Focus price input
-  const priceEl = document.getElementById('ac_price');
-  if (priceEl) setTimeout(() => priceEl.focus(), 80);
+  const rows = _tcPlayerResults.map((p, i) => {
+    const name = `${p.attributes?.first_name || ''} ${p.attributes?.last_name || ''}`.trim();
+    const sub  = p.attributes?.position ? `<div class="tc-item-sub">${_escHtml(p.attributes.position)}</div>` : '';
+    return `<div class="tc-dropdown-item" onclick="tcSelectPlayer(${i})"><div>${_escHtml(name)}</div>${sub}</div>`;
+  }).join('');
+  dd.innerHTML = `<div class="tc-dropdown">${rows}${_tcSkip('tc_player_dd')}</div>`;
+}
+
+function tcSelectPlayer(i) {
+  const p = _tcPlayerResults[i];
+  if (!p) return;
+  const name = `${p.attributes?.first_name || ''} ${p.attributes?.last_name || ''}`.trim();
+  document.getElementById('ac_player').value = name;
+  document.getElementById('acPlayerUUID').value = p.id;
+  document.getElementById('tc_player_dd').innerHTML = '';
+  // A new player invalidates any downstream picks
+  document.getElementById('acSetUUID').value = '';
+  document.getElementById('acCardUUID').value = '';
+  document.getElementById('acParallelSetUUID').value = '';
+  const setInput = document.getElementById('ac_set');
+  if (setInput) setInput.focus();
+}
+
+// -- Step 2: manual set search (see note above — not auto-filtered by player) --
+function tcSetSearch(q) {
+  document.getElementById('acSetUUID').value = '';
+  clearTimeout(_tcSetTimer);
+  const dd = document.getElementById('tc_set_dd');
+  if (!q || q.trim().length < 3) { dd.innerHTML = ''; return; }
+  dd.innerHTML = _tcLoading('SEARCHING…');
+  _tcSetTimer = setTimeout(() => _tcDoSetSearch(q.trim()), 400);
+}
+
+async function _tcDoSetSearch(q) {
+  const dd = document.getElementById('tc_set_dd');
+  const data = await tcapiGet(`/v1/sets?name=${encodeURIComponent(q)}&per_page=8`);
+  _tcSetResults = data?.data || [];
+  if (!_tcSetResults.length) { dd.innerHTML = _tcNoResults(); return; }
+
+  const rows = _tcSetResults.map((s, i) => {
+    return `<div class="tc-dropdown-item" onclick="tcSelectSet(${i})"><div>${_escHtml(s.attributes?.name || '')}</div></div>`;
+  }).join('');
+  dd.innerHTML = `<div class="tc-dropdown">${rows}${_tcSkip('tc_set_dd')}</div>`;
+}
+
+function tcSelectSet(i) {
+  const s = _tcSetResults[i];
+  if (!s) return;
+  document.getElementById('ac_set').value = (s.attributes?.name || '').toLowerCase();
+  document.getElementById('acSetUUID').value = s.id;
+  document.getElementById('tc_set_dd').innerHTML = '';
+  // Clear downstream fields — a new set invalidates any card/parallel already picked
+  document.getElementById('ac_number').value = '';
+  document.getElementById('ac_parallel').value = '';
+  document.getElementById('acCardUUID').value = '';
+  document.getElementById('acParallelSetUUID').value = '';
+  document.getElementById('tc_parallel_dd').innerHTML = '';
+  _tcLoadChecklist(s.id);
+}
+
+// -- Step 3: checklist, filtered client-side to the selected player --
+async function _tcLoadChecklist(setId) {
+  const dd = document.getElementById('tc_card_dd');
+  dd.innerHTML = _tcLoading('LOADING CHECKLIST…');
+  const data = await tcapiGet(`/v2/sets/${setId}/checklist?format=compact&per_page=100`);
+  const allCards = data?.data || [];
+  const playerName = document.getElementById('ac_player').value.trim().toLowerCase();
+  const filtered = playerName
+    ? allCards.filter(c => (c.attributes?.name || '').toLowerCase().includes(playerName))
+    : allCards;
+  // Fall back to the full checklist if no player is set yet, or none matched
+  _tcCardResults = filtered.length ? filtered : allCards;
+  if (!_tcCardResults.length) { dd.innerHTML = _tcNoResults(); return; }
+
+  const rows = _tcCardResults.slice(0, 30).map((c, i) => {
+    const num  = c.attributes?.number || '';
+    const name = c.attributes?.name || '';
+    return `<div class="tc-dropdown-item" onclick="tcSelectCard(${i})"><div>#${_escHtml(num)} — ${_escHtml(name)}</div></div>`;
+  }).join('');
+  dd.innerHTML = `<div class="tc-dropdown">${rows}${_tcSkip('tc_card_dd')}</div>`;
+}
+
+function tcSelectCard(i) {
+  const c = _tcCardResults[i];
+  if (!c) return;
+  document.getElementById('ac_number').value = c.attributes?.number || '';
+  document.getElementById('acCardUUID').value = c.id;
+  document.getElementById('tc_card_dd').innerHTML = '';
+  document.getElementById('ac_parallel').value = '';
+  document.getElementById('acParallelSetUUID').value = '';
+  const setId = document.getElementById('acSetUUID').value;
+  if (setId) _tcLoadParallels(setId);
+}
+
+// -- Step 4: parallels for the selected set --
+async function _tcLoadParallels(setId) {
+  const dd = document.getElementById('tc_parallel_dd');
+  dd.innerHTML = _tcLoading('LOADING PARALLELS…');
+  const data = await tcapiGet(`/v1/sets?parent_id=${setId}&per_page=100`);
+  _tcParallelResults = data?.data || [];
+  if (!_tcParallelResults.length) { dd.innerHTML = _tcNoResults(); return; }
+
+  const rows = _tcParallelResults.map((s, i) => {
+    return `<div class="tc-dropdown-item" onclick="tcSelectParallel(${i})"><div>${_escHtml((s.attributes?.name || '').toLowerCase())}</div></div>`;
+  }).join('');
+  dd.innerHTML = `<div class="tc-dropdown">${rows}${_tcSkip('tc_parallel_dd')}</div>`;
+}
+
+function tcSelectParallel(i) {
+  const s = _tcParallelResults[i];
+  if (!s) return;
+  document.getElementById('ac_parallel').value = (s.attributes?.name || '').toLowerCase();
+  document.getElementById('acParallelSetUUID').value = s.id;
+  document.getElementById('tc_parallel_dd').innerHTML = '';
 }
 
 function saveAddCard() {
