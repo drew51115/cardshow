@@ -7,7 +7,12 @@
 // #ac_search box — that function has its own key handling and cache table.
 
 const TCG_API_ORIGIN = 'https://api.tradingcardapi.com';
-const TIMEOUT_MS = 6000;
+// filter[player_id] on /v1/cards is a real join (direct + via player-team) across a
+// 1.7M+ card catalog and can run noticeably slower than a simple attribute lookup —
+// give it real headroom, but stay under Netlify's ~10s synchronous function ceiling
+// (matches vision-scan.js's 10s convention elsewhere in this repo) so our own abort
+// fires with a clean response instead of the platform hard-killing the function first.
+const TIMEOUT_MS = 9000;
 
 exports.handler = async (event) => {
   if (event.httpMethod !== 'GET') {
