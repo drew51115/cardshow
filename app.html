@@ -5465,11 +5465,16 @@ function renderBulkScanReview(cards) {
   _renderBulkScanRows(bulkScanReviewCards);
   _renderBulkScanSourceImage();
 
+  if (window.CARDSHOW_DEBUG) {
+    document.querySelectorAll('.bulkscan-card-block').forEach(_bsUpdateFingerprintPreview);
+  }
+
   document.getElementById('bulkScanReviewOverlay').classList.add('open');
   document.body.style.overflow = 'hidden';
 
   _autoVerifyPsaCards(bulkScanReviewCards); // fire-and-forget, runs in the background while the seller reviews
   _runCorrectionPass(bulkScanReviewCards);  // fire-and-forget, raw-card player-name correction via catalog cross-check
+  _runTcapiValidation(bulkScanReviewCards); // fire-and-forget, per-card VERIFIED/UNVERIFIED badge + fingerprint refresh
 }
 
 // Shows the original uploaded photo as a small clickable thumbnail in the
@@ -5677,6 +5682,128 @@ async function _runCorrectionPass(cards) {
   }
 }
 
+// ── Trading Card API validation layer (bulk scan review) ──
+// filter[player_id] on /v1/cards is real but too slow for interactive use
+// (same constraint discovered building the Add Card modal's guided picker —
+// see CLAUDE.md), so this validates via /v1/players (confirms the player
+// exists) then /v1/sets?name= + that set's checklist for canonical
+// set/card#/parallel, instead of the documented-but-impractical
+// player -> cards filter.
+function _bulkScanFingerprintFromBlock(block) {
+  const val = (field) => block.querySelector(`[data-field="${field}"]`)?.value.trim() || '';
+  return [
+    val('player').toLowerCase(),
+    val('year'),
+    val('set').toLowerCase(),
+    val('cardNumber').toLowerCase(),
+    val('parallel').toLowerCase(),
+    _numericGrade(val('grade')),
+    val('grader').toLowerCase(),
+  ].join('|');
+}
+
+function _bsUpdateFingerprintPreview(block) {
+  const el = block?.querySelector('[data-fingerprint]');
+  if (el) el.textContent = _bulkScanFingerprintFromBlock(block);
+}
+
+function _bsSetVerifyBadge(block, state) {
+  const header = block?.querySelector('.bulkscan-card-header');
+  if (!header) return;
+  let badge = header.querySelector('.tc-verify-badge');
+  if (!badge) {
+    badge = document.createElement('div');
+    badge.className = 'tc-verify-badge';
+    header.insertBefore(badge, header.querySelector('.bulkscan-card-idx') || null);
+  }
+  if (state === 'verifying') {
+    badge.innerHTML = `<span style="display:inline-flex;align-items:center;gap:4px;color:var(--muted)"><span style="width:8px;height:8px;border:1.5px solid var(--border);border-top-color:var(--muted);border-radius:50%;display:inline-block;animation:spin 0.7s linear infinite"></span>VERIFYING</span>`;
+  } else if (state === 'verified') {
+    badge.innerHTML = `<span style="color:#1BAF7A">✓ VERIFIED</span>`;
+  } else {
+    badge.innerHTML = `<span style="color:var(--muted)">UNVERIFIED</span>`;
+  }
+}
+
+function _bsApplyValidatedField(block, field, value) {
+  const el = block.querySelector(`[data-field="${field}"]`);
+  if (!el) return;
+  el.value = value;
+  el.classList.add('db-filled');
+  setTimeout(() => el.classList.remove('db-filled'), 8000);
+}
+
+// Runs in parallel for every non-low-confidence card via Promise.allSettled —
+// never blocks the review grid, which is already rendered by the time this fires.
+async function _runTcapiValidation(cards) {
+  const targets = cards.filter(c => (c.confidence || '').toLowerCase() !== 'low');
+  if (!targets.length) return;
+  await Promise.allSettled(targets.map(c => _tcapiValidateOneCard(c)));
+}
+
+async function _tcapiValidateOneCard(card) {
+  const block = document.querySelector(`.bulkscan-card-block[data-card-id="${CSS.escape(card.id)}"]`);
+  if (!block) return; // excluded/removed before this resolved
+  _bsSetVerifyBadge(block, 'verifying');
+
+  let validated = false;
+  try {
+    const playerQ = block.querySelector('[data-field="player"]')?.value.trim() || '';
+    if (!playerQ) return;
+
+    const playerData = await tcapiGet(`/v1/players?full_name=${encodeURIComponent(playerQ)}&limit=3`);
+    if (!(playerData?.data || []).length) return;
+    validated = true; // tied to player match only, per spec — later steps are best-effort enrichment
+
+    const yearVal = block.querySelector('[data-field="year"]')?.value.trim() || '';
+    const setVal  = block.querySelector('[data-field="set"]')?.value.trim() || '';
+    const setQ    = [yearVal, setVal].filter(Boolean).join(' ');
+    if (!setQ) return;
+
+    const setData    = await tcapiGet(`/v1/sets?name=${encodeURIComponent(setQ)}&per_page=3`);
+    const matchedSet = (setData?.data || [])[0];
+    if (!matchedSet) return;
+
+    const canonicalSet = matchedSet.attributes?.name || '';
+    if (canonicalSet && canonicalSet.toLowerCase() !== setVal.toLowerCase()) {
+      _bsApplyValidatedField(block, 'set', canonicalSet.toLowerCase());
+    }
+
+    const [checklistData, parallelData] = await Promise.all([
+      tcapiGet(`/v2/sets/${matchedSet.id}/checklist?format=compact&per_page=100`),
+      tcapiGet(`/v1/sets?parent_id=${matchedSet.id}&per_page=100`),
+    ]);
+
+    const cardNumVal = block.querySelector('[data-field="cardNumber"]')?.value.trim() || '';
+    if (!cardNumVal) {
+      const playerLower   = playerQ.toLowerCase();
+      const matchedCard   = (checklistData?.data || [])
+        .find(cc => (cc.attributes?.name || '').toLowerCase().includes(playerLower));
+      if (matchedCard?.attributes?.number) {
+        _bsApplyValidatedField(block, 'cardNumber', matchedCard.attributes.number);
+      }
+    }
+
+    const parallelVal = block.querySelector('[data-field="parallel"]')?.value.trim() || '';
+    const parallels    = parallelData?.data || [];
+    if (parallelVal && parallels.length) {
+      const parallelLower = parallelVal.toLowerCase();
+      const fuzzy = parallels.find(p => {
+        const n = (p.attributes?.name || '').toLowerCase();
+        return n === parallelLower || n.includes(parallelLower) || parallelLower.includes(n);
+      });
+      if (fuzzy && (fuzzy.attributes?.name || '').toLowerCase() !== parallelLower) {
+        _bsApplyValidatedField(block, 'parallel', fuzzy.attributes.name.toLowerCase());
+      }
+    }
+  } catch (err) {
+    console.warn('[tcapiValidation] lookup failed for card', card.id, err.message);
+  } finally {
+    _bsSetVerifyBadge(block, validated ? 'verified' : 'unverified');
+    _bsUpdateFingerprintPreview(block);
+  }
+}
+
 function _renderBulkScanSummary(cards) {
   const high   = cards.filter(c => c.confidence === 'high').length;
   const medium = cards.filter(c => c.confidence === 'medium').length;
@@ -5738,6 +5865,7 @@ function bulkScanCardBlockHTML(c, idx) {
         <div class="mapper-confidence ${_bsEsc(c.confidence)}">${_bsEsc(c.confidence)}</div>
         <div class="bulkscan-card-idx">Card ${idx + 1}</div>
       </div>
+      ${window.CARDSHOW_DEBUG ? `<div data-fingerprint style="font-size:0.62rem;color:var(--muted);font-family:'DM Mono',monospace;margin-bottom:0.4rem;word-break:break-all"></div>` : ''}
       <div style="margin-bottom:0.55rem">
         <div class="section-label" style="margin-bottom:0.3rem">Card Title</div>
         <input class="show-input" data-field="title" value="${_bsEsc(c.title)}" style="margin:0" oninput="this.classList.remove('bulkscan-field-invalid')">
