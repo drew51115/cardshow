@@ -4393,6 +4393,21 @@
 let inventory = [];
 let sellerSearch = '';
 
+// ── TRADING CARD API PROXY HELPER ──
+// path is a full Trading Card API path + querystring, e.g. '/v1/players?full_name=paul+skenes'.
+// Routed through netlify/functions/tcapi.js so TRADING_CARD_API_KEY never reaches the browser.
+// Returns parsed JSON, or null on any non-2xx response or network error.
+async function tcapiGet(path) {
+  try {
+    const encoded = encodeURIComponent(path);
+    const res = await fetch(`/.netlify/functions/tcapi?path=${encoded}`);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
 // ── AUTH FUNCTIONS — hoisted to top so HTML onclick handlers always find them ──
 var authRoleSelected = 'seller';
 var authMode = 'signin'; // 'signin' | 'signup'
