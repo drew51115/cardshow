@@ -5786,15 +5786,41 @@ async function _tcapiValidateOneCard(card) {
       (s.attributes?.name?.length || 0) < (best.attributes?.name?.length || 0) ? s : best
     );
 
-    const canonicalSet = matchedSet.attributes?.name || '';
-    if (canonicalSet && canonicalSet.toLowerCase() !== setVal.toLowerCase()) {
-      _bsApplyValidatedField(block, 'set', canonicalSet.toLowerCase());
-    }
-
+    // Fetch checklist + parallels BEFORE writing anything to the Set field —
+    // a real failure showed why: "Upper Deck" + "2022" matched only one
+    // candidate, "2022-23 Upper Deck Black Diamond /349" (its name literally
+    // contains "Upper Deck", it's a real year match), but Black Diamond is an
+    // entirely different physical product from the plain Upper Deck set a
+    // "Young Guns" card actually belongs to -- two siblings sharing a brand
+    // name, not the same product. When the matched set DOES have real
+    // catalogued subsets (confirmed: Black Diamond has 40), require the
+    // card's stated parallel to plausibly be one of them before trusting the
+    // match at all. If the catalog has real data here and none of it lines
+    // up, that's a genuine signal the match is wrong, not just an unlucky
+    // substring collision — treat it as no match rather than apply it. A set
+    // with no subset data at all (e.g. 2025 Bowman Chrome, subset_count: 0)
+    // has nothing to cross-check against, so it's given the benefit of the
+    // doubt as before.
     const [checklistData, parallelData] = await Promise.all([
       tcapiGet(`/v2/sets/${matchedSet.id}/checklist?format=compact&per_page=100`),
       tcapiGet(`/v1/sets?parent_id=${matchedSet.id}&per_page=100`),
     ]);
+    const parallels = parallelData?.data || [];
+
+    const parallelVal = block.querySelector('[data-field="parallel"]')?.value.trim() || '';
+    if (parallelVal && parallels.length) {
+      const parallelLower = parallelVal.toLowerCase();
+      const parallelConfirmed = parallels.some(p => {
+        const n = (p.attributes?.name || '').toLowerCase();
+        return n.includes(parallelLower) || parallelLower.includes(n);
+      });
+      if (!parallelConfirmed) return;
+    }
+
+    const canonicalSet = matchedSet.attributes?.name || '';
+    if (canonicalSet && canonicalSet.toLowerCase() !== setVal.toLowerCase()) {
+      _bsApplyValidatedField(block, 'set', canonicalSet.toLowerCase());
+    }
 
     const cardNumVal = block.querySelector('[data-field="cardNumber"]')?.value.trim() || '';
     if (!cardNumVal) {
@@ -5806,8 +5832,6 @@ async function _tcapiValidateOneCard(card) {
       }
     }
 
-    const parallelVal = block.querySelector('[data-field="parallel"]')?.value.trim() || '';
-    const parallels    = parallelData?.data || [];
     if (parallelVal && parallels.length) {
       const parallelLower = parallelVal.toLowerCase();
       const fuzzy = parallels.find(p => {
