@@ -5751,7 +5751,7 @@ async function _tcapiValidateOneCard(card) {
     const playerQ = block.querySelector('[data-field="player"]')?.value.trim() || '';
     if (!playerQ) return;
 
-    const playerData = await tcapiGet(`/v1/players?full_name=${encodeURIComponent(playerQ)}&limit=3`);
+    const playerData = await tcapiGet(`/v1/players?full_name=${playerQ}&limit=3`);
     if (!(playerData?.data || []).length) return;
     validated = true; // tied to player match only, per spec — later steps are best-effort enrichment
 
@@ -5760,7 +5760,7 @@ async function _tcapiValidateOneCard(card) {
     const setQ    = [yearVal, setVal].filter(Boolean).join(' ');
     if (!setQ) return;
 
-    const setData    = await tcapiGet(`/v1/sets?name=${encodeURIComponent(setQ)}&per_page=3`);
+    const setData    = await tcapiGet(`/v1/sets?name=${setQ}&per_page=3`);
     const matchedSet = (setData?.data || [])[0];
     if (!matchedSet) return;
 
@@ -11392,7 +11392,7 @@ function tcPlayerTypeahead(q) {
 
 async function _tcDoPlayerSearch(q) {
   const dd = document.getElementById('tc_player_dd');
-  const data = await tcapiGet(`/v1/players?full_name=${encodeURIComponent(q)}&limit=8`);
+  const data = await tcapiGet(`/v1/players?full_name=${q}&limit=8`);
   _tcPlayerResults = data?.data || [];
   if (!_tcPlayerResults.length) { dd.innerHTML = _tcNoResults(); return; }
 
@@ -11431,7 +11431,7 @@ function tcSetSearch(q) {
 
 async function _tcDoSetSearch(q) {
   const dd = document.getElementById('tc_set_dd');
-  const data = await tcapiGet(`/v1/sets?name=${encodeURIComponent(q)}&per_page=8`);
+  const data = await tcapiGet(`/v1/sets?name=${q}&per_page=8`);
   _tcSetResults = data?.data || [];
   if (!_tcSetResults.length) { dd.innerHTML = _tcNoResults(); return; }
 
