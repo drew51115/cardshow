@@ -3546,7 +3546,7 @@
         <div id="ac_player_row" style="display:grid;grid-template-columns:1fr 1fr;gap:0.55rem">
           <div style="position:relative">
             <div class="section-label" style="margin-bottom:0.3rem">Player</div>
-            <input class="show-input" id="ac_player" placeholder="Player name" style="margin:0" autocomplete="off" oninput="tcPlayerTypeahead(this.value)">
+            <input class="show-input" id="ac_player" placeholder="Player name" style="margin:0" autocomplete="off" oninput="tcPlayerTypeahead(this.value)" onblur="_tcDismissDropdown('tc_player_dd')">
             <div id="tc_player_dd"></div>
           </div>
           <div>
@@ -3562,19 +3562,19 @@
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.55rem">
           <div style="position:relative">
             <div class="section-label" style="margin-bottom:0.3rem" id="ac_set_label">Set</div>
-            <input class="show-input" id="ac_set" placeholder="e.g. Topps Chrome" style="margin:0" autocomplete="off" oninput="tcSetSearch(this.value)">
+            <input class="show-input" id="ac_set" placeholder="e.g. Topps Chrome" style="margin:0" autocomplete="off" oninput="tcSetSearch(this.value)" onblur="_tcDismissDropdown('tc_set_dd')">
             <div id="tc_set_dd"></div>
           </div>
           <div id="ac_number_col" style="position:relative">
             <div class="section-label" style="margin-bottom:0.3rem">Card #</div>
-            <input class="show-input" id="ac_number" placeholder="e.g. 101" style="margin:0;text-transform:uppercase" oninput="document.getElementById('acCardUUID').value=''">
+            <input class="show-input" id="ac_number" placeholder="e.g. 101" style="margin:0;text-transform:uppercase" oninput="document.getElementById('acCardUUID').value=''" onblur="_tcDismissDropdown('tc_card_dd')">
             <div id="tc_card_dd"></div>
           </div>
         </div>
 
         <div id="ac_parallel_row" style="position:relative">
           <div class="section-label" style="margin-bottom:0.3rem">Parallel / Variant</div>
-          <input class="show-input" id="ac_parallel" placeholder="e.g. Gold Refractor /50, Sapphire" style="margin:0" oninput="document.getElementById('acParallelSetUUID').value=''">
+          <input class="show-input" id="ac_parallel" placeholder="e.g. Gold Refractor /50, Sapphire" style="margin:0" oninput="document.getElementById('acParallelSetUUID').value=''" onblur="_tcDismissDropdown('tc_parallel_dd')">
           <div id="tc_parallel_dd"></div>
         </div>
 
@@ -11369,6 +11369,18 @@ let _tcParallelResults = [];
 
 function _tcSkip(containerId) {
   return `<div class="tc-dropdown-skip" onclick="document.getElementById('${containerId}').innerHTML=''">Enter manually</div>`;
+}
+// Closes a dropdown when its input loses focus — typing a name manually and
+// tabbing away (without clicking a result or "Enter manually") otherwise left
+// the last-rendered dropdown on screen indefinitely. Delayed so a click on a
+// dropdown item (which fires after this blur) still registers first — the
+// item's own onclick handler already clears the same container, so firing
+// both is harmless.
+function _tcDismissDropdown(containerId) {
+  setTimeout(() => {
+    const el = document.getElementById(containerId);
+    if (el) el.innerHTML = '';
+  }, 200);
 }
 function _tcNoResults() {
   return `<div class="tc-dropdown"><div class="tc-dropdown-item" style="cursor:default;color:var(--muted)">No matches — enter manually</div></div>`;
