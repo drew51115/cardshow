@@ -5757,20 +5757,34 @@ async function _tcapiValidateOneCard(card) {
 
     const yearVal = block.querySelector('[data-field="year"]')?.value.trim() || '';
     const setVal  = block.querySelector('[data-field="set"]')?.value.trim() || '';
-    if (!setVal) return;
+    // A bare set name like "Bowman Chrome" with no year is genuinely ambiguous —
+    // it substring-matches base sets, exhibits, university/draft spin-offs, and
+    // convention one-offs across many years, with no way to tell which one a
+    // seller's card is actually from. A real failure: "Bowman Chrome" with a
+    // blank Year matched "2019 Topps NSCC Bowman Chrome National Convention" —
+    // wrong, and only "won" because it happens to sort first alphabetically.
+    // Require a year to anchor the match; without one, skip enrichment rather
+    // than guess (the player-match VERIFIED badge is unaffected either way).
+    if (!setVal || !yearVal) return;
 
     // /v1/sets?name= requires an exact full match (confirmed empirically — even
     // a single whole word like "Bowman" alone returns nothing), so a set name
     // Claude read off a card is very unlikely to match server-side. Filter the
     // small (273-set) catalog client-side instead, same as the Add Card picker.
     const allSets = await _tcGetAllSets();
-    const setLower = setVal.toLowerCase();
+    const setLower  = setVal.toLowerCase();
     const yearLower = yearVal.toLowerCase();
-    const matchedSet = allSets.find(s => {
+    const candidates = allSets.filter(s => {
       const n = (s.attributes?.name || '').toLowerCase();
-      return n.includes(setLower) && (!yearLower || n.includes(yearLower));
-    }) || allSets.find(s => (s.attributes?.name || '').toLowerCase().includes(setLower));
-    if (!matchedSet) return;
+      return n.includes(setLower) && n.includes(yearLower);
+    });
+    if (!candidates.length) return;
+    // Prefer the shortest matching name when several sets share the year and
+    // substring — the base/mainline product name is virtually always a prefix
+    // of longer exhibit, insert, or regional-variant names, never the reverse.
+    const matchedSet = candidates.reduce((best, s) =>
+      (s.attributes?.name?.length || 0) < (best.attributes?.name?.length || 0) ? s : best
+    );
 
     const canonicalSet = matchedSet.attributes?.name || '';
     if (canonicalSet && canonicalSet.toLowerCase() !== setVal.toLowerCase()) {
