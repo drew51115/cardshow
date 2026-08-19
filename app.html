@@ -5751,17 +5751,25 @@ async function _tcapiValidateOneCard(card) {
     const playerQ = block.querySelector('[data-field="player"]')?.value.trim() || '';
     if (!playerQ) return;
 
-    const playerData = await tcapiGet(`/v1/players?full_name=${playerQ}&limit=3`);
-    if (!(playerData?.data || []).length) return;
+    const players = await _tcSearchPlayers(playerQ);
+    if (!players.length) return;
     validated = true; // tied to player match only, per spec — later steps are best-effort enrichment
 
     const yearVal = block.querySelector('[data-field="year"]')?.value.trim() || '';
     const setVal  = block.querySelector('[data-field="set"]')?.value.trim() || '';
-    const setQ    = [yearVal, setVal].filter(Boolean).join(' ');
-    if (!setQ) return;
+    if (!setVal) return;
 
-    const setData    = await tcapiGet(`/v1/sets?name=${setQ}&per_page=3`);
-    const matchedSet = (setData?.data || [])[0];
+    // /v1/sets?name= requires an exact full match (confirmed empirically — even
+    // a single whole word like "Bowman" alone returns nothing), so a set name
+    // Claude read off a card is very unlikely to match server-side. Filter the
+    // small (273-set) catalog client-side instead, same as the Add Card picker.
+    const allSets = await _tcGetAllSets();
+    const setLower = setVal.toLowerCase();
+    const yearLower = yearVal.toLowerCase();
+    const matchedSet = allSets.find(s => {
+      const n = (s.attributes?.name || '').toLowerCase();
+      return n.includes(setLower) && (!yearLower || n.includes(yearLower));
+    }) || allSets.find(s => (s.attributes?.name || '').toLowerCase().includes(setLower));
     if (!matchedSet) return;
 
     const canonicalSet = matchedSet.attributes?.name || '';
@@ -11380,6 +11388,23 @@ function tcClearPickerState() {
   });
 }
 
+// full_name= matches whole words per token, not a prefix — "paul sk" (still
+// mid-typing "skenes") returns zero results even though "paul" and "skenes"
+// both match individually. Falls back to just the first word so the dropdown
+// still shows useful matches while the seller is mid-word on the last name.
+// Confirmed empirically: full_name=paul alone prefix-matches (583 results),
+// but any second token must be a complete word or the whole query returns 0.
+async function _tcSearchPlayers(q) {
+  let data = await tcapiGet(`/v1/players?full_name=${q}&limit=8`);
+  if (!(data?.data || []).length) {
+    const firstWord = q.trim().split(/\s+/)[0];
+    if (firstWord && firstWord !== q.trim()) {
+      data = await tcapiGet(`/v1/players?full_name=${firstWord}&limit=8`);
+    }
+  }
+  return data?.data || [];
+}
+
 // -- Step 1: player typeahead --
 function tcPlayerTypeahead(q) {
   document.getElementById('acPlayerUUID').value = '';
@@ -11392,8 +11417,7 @@ function tcPlayerTypeahead(q) {
 
 async function _tcDoPlayerSearch(q) {
   const dd = document.getElementById('tc_player_dd');
-  const data = await tcapiGet(`/v1/players?full_name=${q}&limit=8`);
-  _tcPlayerResults = data?.data || [];
+  _tcPlayerResults = await _tcSearchPlayers(q);
   if (!_tcPlayerResults.length) { dd.innerHTML = _tcNoResults(); return; }
 
   const rows = _tcPlayerResults.map((p, i) => {
@@ -11419,6 +11443,35 @@ function tcSelectPlayer(i) {
   if (setInput) setInput.focus();
 }
 
+// GET /v1/sets?name= requires an exact, complete match — even a single whole
+// word ("Bowman") returns zero results against "2025 Bowman Chrome". There is
+// no partial-match parameter on this endpoint at all. The catalog is small
+// (273 sets total, confirmed empirically), so instead of relying on the
+// server to filter, fetch the whole thing once per session and filter
+// client-side — the same approach Step 3's checklist already uses. Shared
+// with the bulk-scan validation layer's set lookup below.
+let _tcAllSetsCache   = null;
+let _tcAllSetsPromise = null;
+
+function _tcGetAllSets() {
+  if (_tcAllSetsCache) return Promise.resolve(_tcAllSetsCache);
+  if (_tcAllSetsPromise) return _tcAllSetsPromise;
+  _tcAllSetsPromise = (async () => {
+    const first = await tcapiGet('/v1/sets?per_page=100&page=1');
+    let all = first?.data || [];
+    const totalPages = first?.meta?.pagination?.total_pages || 1;
+    if (totalPages > 1) {
+      const rest = await Promise.all(
+        Array.from({ length: totalPages - 1 }, (_, i) => tcapiGet(`/v1/sets?per_page=100&page=${i + 2}`))
+      );
+      rest.forEach(d => { all = all.concat(d?.data || []); });
+    }
+    _tcAllSetsCache = all;
+    return all;
+  })();
+  return _tcAllSetsPromise;
+}
+
 // -- Step 2: manual set search (see note above — not auto-filtered by player) --
 function tcSetSearch(q) {
   document.getElementById('acSetUUID').value = '';
@@ -11431,8 +11484,11 @@ function tcSetSearch(q) {
 
 async function _tcDoSetSearch(q) {
   const dd = document.getElementById('tc_set_dd');
-  const data = await tcapiGet(`/v1/sets?name=${q}&per_page=8`);
-  _tcSetResults = data?.data || [];
+  const allSets = await _tcGetAllSets();
+  const qLower  = q.toLowerCase();
+  _tcSetResults = allSets
+    .filter(s => (s.attributes?.name || '').toLowerCase().includes(qLower))
+    .slice(0, 8);
   if (!_tcSetResults.length) { dd.innerHTML = _tcNoResults(); return; }
 
   const rows = _tcSetResults.map((s, i) => {
