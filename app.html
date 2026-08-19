@@ -5751,7 +5751,7 @@ async function _tcapiValidateOneCard(card) {
     const playerQ = block.querySelector('[data-field="player"]')?.value.trim() || '';
     if (!playerQ) return;
 
-    const players = await _tcSearchPlayers(playerQ);
+    const { results: players } = await _tcSearchPlayers(playerQ);
     if (!players.length) return;
     validated = true; // tied to player match only, per spec — later steps are best-effort enrichment
 
@@ -11388,21 +11388,21 @@ function tcClearPickerState() {
   });
 }
 
-// full_name= matches whole words per token, not a prefix — "paul sk" (still
-// mid-typing "skenes") returns zero results even though "paul" and "skenes"
-// both match individually. Falls back to just the first word so the dropdown
-// still shows useful matches while the seller is mid-word on the last name.
-// Confirmed empirically: full_name=paul alone prefix-matches (583 results),
-// but any second token must be a complete word or the whole query returns 0.
+// full_name= matches whole words per token, not a prefix. First-name tokens
+// DO prefix-match on their own (full_name=paul -> 583 results) — but a
+// last-name token never does, at any length short of complete: confirmed
+// full_name=skene (one letter short of "skenes") still returns zero, same as
+// full_name=sk or full_name=ske. So a multi-word query with a still-typing
+// last name can never usefully match server-side, and falling back to a
+// broader single-word search (e.g. every other "Paul") is actively
+// misleading, not helpful — there's no way to tell those apart from a real
+// match for what was actually typed. Report that state back explicitly
+// (stillTyping) instead of silently substituting a wrong candidate list.
 async function _tcSearchPlayers(q) {
-  let data = await tcapiGet(`/v1/players?full_name=${q}&limit=8`);
-  if (!(data?.data || []).length) {
-    const firstWord = q.trim().split(/\s+/)[0];
-    if (firstWord && firstWord !== q.trim()) {
-      data = await tcapiGet(`/v1/players?full_name=${firstWord}&limit=8`);
-    }
-  }
-  return data?.data || [];
+  const data = await tcapiGet(`/v1/players?full_name=${q}&limit=8`);
+  const results = data?.data || [];
+  const isMultiWord = q.trim().split(/\s+/).filter(Boolean).length > 1;
+  return { results, stillTyping: isMultiWord && results.length === 0 };
 }
 
 // -- Step 1: player typeahead --
@@ -11417,8 +11417,14 @@ function tcPlayerTypeahead(q) {
 
 async function _tcDoPlayerSearch(q) {
   const dd = document.getElementById('tc_player_dd');
-  _tcPlayerResults = await _tcSearchPlayers(q);
-  if (!_tcPlayerResults.length) { dd.innerHTML = _tcNoResults(); return; }
+  const { results, stillTyping } = await _tcSearchPlayers(q);
+  _tcPlayerResults = results;
+  if (!_tcPlayerResults.length) {
+    dd.innerHTML = stillTyping
+      ? `<div class="tc-dropdown"><div class="tc-dropdown-item" style="cursor:default;color:var(--muted)">Finish the last name to match — it can't narrow down while typing</div>${_tcSkip('tc_player_dd')}</div>`
+      : _tcNoResults();
+    return;
+  }
 
   const rows = _tcPlayerResults.map((p, i) => {
     const name = `${p.attributes?.first_name || ''} ${p.attributes?.last_name || ''}`.trim();
