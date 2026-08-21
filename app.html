@@ -9814,30 +9814,16 @@ function closeShowAccessQr() {
 }
 
 function downloadShowQr() {
-  const canvasId = _saqTab === 'signage' ? 'saqCanvasSignage' : 'saqCanvas';
-
-  // We need to capture the full preview card, not just the QR canvas
-  const previewEl = document.getElementById(
-    _saqTab === 'signage' ? 'saqPreviewSignage' : 'saqPreviewMarketing'
-  );
-
-  // Use html2canvas if available, otherwise fall back to just QR canvas
   const show = _saqShowId ? shows[_saqShowId] : null;
   const slug = show ? show.name.replace(/\s+/g,'-').toLowerCase() : 'show';
   const suffix = _saqTab;
 
-  if (window.html2canvas) {
-    html2canvas(previewEl.firstElementChild, { scale: 2, backgroundColor: null }).then(c => {
-      const link = document.createElement('a');
-      link.download = `cardshow-qr-${slug}-${suffix}.png`;
-      link.href = c.toDataURL('image/png');
-      link.click();
-    });
+  if (_saqTab === 'signage') {
+    _downloadSignageComposite(slug);
   } else {
-    // Load html2canvas dynamically for high-quality export
-    const script = document.createElement('script');
-    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
-    script.onload = () => {
+    // Marketing tab: html2canvas of the marketing preview (no canvas element, safe)
+    const previewEl = document.getElementById('saqPreviewMarketing');
+    const doExport = () => {
       html2canvas(previewEl.firstElementChild, { scale: 2, backgroundColor: null }).then(c => {
         const link = document.createElement('a');
         link.download = `cardshow-qr-${slug}-${suffix}.png`;
@@ -9845,17 +9831,186 @@ function downloadShowQr() {
         link.click();
       });
     };
-    // Fallback: just download the QR canvas while html2canvas loads
-    script.onerror = () => {
-      const canvas = document.getElementById(canvasId);
-      const link = document.createElement('a');
-      link.download = `cardshow-qr-${slug}-${suffix}.png`;
-      link.href = canvas.toDataURL('image/png');
-      link.click();
-    };
-    document.head.appendChild(script);
-    showToast('Preparing high-res export…');
+    if (window.html2canvas) {
+      doExport();
+    } else {
+      const script = document.createElement('script');
+      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+      script.onload = doExport;
+      script.onerror = () => {
+        const canvas = document.getElementById('saqCanvas');
+        const link = document.createElement('a');
+        link.download = `cardshow-qr-${slug}-${suffix}.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+      };
+      document.head.appendChild(script);
+      showToast('Preparing high-res export…');
+    }
   }
+}
+
+function _downloadSignageComposite(slug) {
+  // Composite the signage card entirely on an offscreen canvas so the QR
+  // (which lives in a <canvas> element and is invisible to html2canvas) is
+  // always included in the downloaded PNG.
+  const qrCanvas = document.getElementById('saqCanvasSignage');
+  if (!qrCanvas) return;
+
+  const show = _saqShowId ? shows[_saqShowId] : null;
+  const showName = (document.getElementById('saqSgnName') || {}).textContent || (show ? show.name : 'SHOW NAME');
+  const meta     = (document.getElementById('saqSgnMeta') || {}).textContent || '';
+  const code     = (document.getElementById('saqSgnCode') || {}).textContent || '';
+  const cards    = (document.getElementById('saqSgnCardCount') || {}).textContent || '0';
+  const sellers  = (document.getElementById('saqSgnSellerCount') || {}).textContent || '0';
+
+  const SCALE = 2;
+  const W = 480, PAD = 48;
+  const QR_SIZE = 200 * SCALE;
+  const QR_PAD  = 10 * SCALE;
+
+  // Measure show name to decide line-wrapping height
+  const tmpC = document.createElement('canvas');
+  const tmpX = tmpC.getContext('2d');
+  tmpX.font = `bold ${44 * SCALE}px 'Bebas Neue', sans-serif`;
+  const nameLines = [];
+  const nameWords = showName.split(' ');
+  let line = '';
+  for (const w of nameWords) {
+    const test = line ? line + ' ' + w : w;
+    if (tmpX.measureText(test).width > (W * SCALE - PAD * SCALE * 2)) {
+      if (line) nameLines.push(line);
+      line = w;
+    } else { line = test; }
+  }
+  if (line) nameLines.push(line);
+  const nameH = nameLines.length * 50 * SCALE;
+
+  const totalH = PAD * SCALE              // top pad
+    + 14 * SCALE                          // "WELCOME TO" label
+    + 8 * SCALE                           // gap
+    + nameH                               // show name
+    + 8 * SCALE                           // gap
+    + 18 * SCALE                          // meta line
+    + 20 * SCALE                          // gap before QR
+    + QR_SIZE + QR_PAD * 2 + 20 * SCALE  // white QR box + bottom margin
+    + 22 * SCALE                          // "SCAN TO BROWSE" label
+    + 12 * SCALE                          // gap
+    + 32 * SCALE                          // access code pill
+    + 20 * SCALE                          // gap before stats
+    + 1  * SCALE                          // divider
+    + 16 * SCALE                          // gap
+    + 40 * SCALE                          // stat numbers
+    + 14 * SCALE                          // stat labels
+    + PAD * SCALE;                        // bottom pad
+
+  const oc = document.createElement('canvas');
+  oc.width  = W * SCALE;
+  oc.height = totalH;
+  const ctx = oc.getContext('2d');
+
+  // Background
+  ctx.fillStyle = '#0a0a0a';
+  ctx.beginPath();
+  ctx.roundRect(0, 0, oc.width, oc.height, 14 * SCALE);
+  ctx.fill();
+
+  // Gold top bar
+  const grad = ctx.createLinearGradient(0, 0, oc.width, 0);
+  grad.addColorStop(0, '#f5c842');
+  grad.addColorStop(1, '#f0c030');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, oc.width, 6 * SCALE);
+
+  let y = PAD * SCALE;
+
+  // "WELCOME TO"
+  ctx.fillStyle = '#f5c842';
+  ctx.font = `${12 * SCALE}px 'Bebas Neue', sans-serif`;
+  ctx.letterSpacing = `${0.18 * 12 * SCALE}px`;
+  ctx.textAlign = 'center';
+  ctx.fillText('WELCOME TO', oc.width / 2, y + 12 * SCALE);
+  y += 14 * SCALE + 8 * SCALE;
+
+  // Show name (possibly multi-line)
+  ctx.fillStyle = '#ffffff';
+  ctx.font = `bold ${44 * SCALE}px 'Bebas Neue', sans-serif`;
+  ctx.letterSpacing = `${0.06 * 44 * SCALE}px`;
+  for (const nl of nameLines) {
+    ctx.fillText(nl, oc.width / 2, y + 44 * SCALE);
+    y += 50 * SCALE;
+  }
+  y += 8 * SCALE;
+
+  // Meta line
+  ctx.fillStyle = '#aaaaaa';
+  ctx.font = `${14 * SCALE}px 'DM Mono', monospace`;
+  ctx.letterSpacing = '0';
+  ctx.fillText(meta, oc.width / 2, y + 14 * SCALE);
+  y += 18 * SCALE + 20 * SCALE;
+
+  // White QR box
+  const qrBoxW = QR_SIZE + QR_PAD * 2;
+  const qrBoxX = (oc.width - qrBoxW) / 2;
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.roundRect(qrBoxX, y, qrBoxW, qrBoxW, 10 * SCALE);
+  ctx.fill();
+  ctx.drawImage(qrCanvas, qrBoxX + QR_PAD, y + QR_PAD, QR_SIZE, QR_SIZE);
+  y += qrBoxW + 20 * SCALE;
+
+  // "SCAN TO BROWSE ALL INVENTORY"
+  ctx.fillStyle = '#f5c842';
+  ctx.font = `${18 * SCALE}px 'Bebas Neue', sans-serif`;
+  ctx.letterSpacing = `${0.06 * 18 * SCALE}px`;
+  ctx.fillText('SCAN TO BROWSE ALL INVENTORY', oc.width / 2, y + 18 * SCALE);
+  y += 22 * SCALE + 12 * SCALE;
+
+  // Access code pill
+  const pillW = ctx.measureText(code).width + 32 * SCALE;
+  const pillH = 28 * SCALE;
+  const pillX = (oc.width - pillW) / 2;
+  ctx.fillStyle = '#1a1a1a';
+  ctx.beginPath();
+  ctx.roundRect(pillX, y, pillW, pillH, 6 * SCALE);
+  ctx.fill();
+  ctx.fillStyle = '#f5c842';
+  ctx.font = `bold ${14 * SCALE}px 'DM Mono', monospace`;
+  ctx.letterSpacing = `${0.14 * 14 * SCALE}px`;
+  ctx.fillText(code, oc.width / 2, y + 20 * SCALE);
+  y += 32 * SCALE + 20 * SCALE;
+
+  // Divider
+  ctx.strokeStyle = '#222222';
+  ctx.lineWidth = 1 * SCALE;
+  ctx.beginPath();
+  ctx.moveTo(PAD * SCALE, y);
+  ctx.lineTo(oc.width - PAD * SCALE, y);
+  ctx.stroke();
+  y += 16 * SCALE;
+
+  // Stats: Cards | Sellers
+  const statCols = [
+    { val: cards,   label: 'CARDS'   },
+    { val: sellers, label: 'SELLERS' },
+  ];
+  statCols.forEach((s, i) => {
+    const cx = (oc.width / 2) + (i === 0 ? -80 * SCALE : 80 * SCALE);
+    ctx.fillStyle = '#f5c842';
+    ctx.font = `${32 * SCALE}px 'Bebas Neue', sans-serif`;
+    ctx.letterSpacing = '0';
+    ctx.fillText(s.val, cx, y + 32 * SCALE);
+    ctx.fillStyle = '#777777';
+    ctx.font = `${10 * SCALE}px 'DM Mono', monospace`;
+    ctx.letterSpacing = `${0.06 * 10 * SCALE}px`;
+    ctx.fillText(s.label, cx, y + 32 * SCALE + 16 * SCALE);
+  });
+
+  const link = document.createElement('a');
+  link.download = `cardshow-qr-${slug || 'show'}-signage.png`;
+  link.href = oc.toDataURL('image/png');
+  link.click();
+  showToast('Signage PNG downloaded');
 }
 
 function copyShowQrLink() {
