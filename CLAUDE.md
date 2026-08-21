@@ -831,6 +831,127 @@ Enter the Inferno as a logo tile even after the featured badge is updated.
 to the repo (`assets/` is the first image asset directory in this codebase — everything
 else prior to this section is emoji + CSS mockups).
 
+## Scan-to-Sell POS — Photo-First (shipped)
+
+Lets a seller record a walk-up table sale for a card that was never pre-uploaded
+to inventory: photograph the card, review the auto-filled details, then hand off
+to the *existing* Sell Drawer (`openSellDrawer()` / `sdConfirm()`, unchanged) to
+capture price/payment and mark it sold. This replaced an earlier multi-session
+build-out of a custom scan → barcode → payment-grid POS modal (manual entry,
+BarcodeDetector/ZXing barcode scan, PSA cert lookup, then Claude-vision single-card
+scan) — that design was fully reverted before shipping (see "Notable deviations"
+below) in favor of this smaller design that reuses the sell drawer instead of
+duplicating its price/payment UI.
+
+### Flow
+```
+#fabScanToSell (mobile only, seller view) → posOpenPhotoSheet()
+  └─ #posOverlay/#posSheet bottom sheet opens, #posPhotoPhase shown
+       ├─ "Take Photo" → posTriggerCamera() → hidden #posFileInput (capture="environment")
+       │    └─ posHandlePhoto(inputEl)
+       │         ├─ _posCompressImage(file) — canvas resize, max 1024px, JPEG 85%
+       │         │    (same compression convention as scanTakePhoto())
+       │         └─ POST /.netlify/functions/vision-scan { image, mediaType }
+       │              directly via fetch() — NOT through _callVisionScan(), which
+       │              is hard-coupled to the Add Card modal's cert-scanner overlay
+       │              and would drive the wrong UI entirely if reused here
+       │              ├─ success            → posShowReview(card, result)
+       │              └─ !success / low_confidence → _posShowLowConfidence(result)
+       │                   (vision-scan.js returns no `card` at all on this path —
+       │                   nothing to pre-fill, so this just restores the photo UI)
+       └─ "Enter card details manually" → posShowManualPhase()
+            (skips the photo/vision step entirely, opens #posReviewPhase blank)
+
+#posReviewPhase — Player/Year/Set/Card#/Parallel/Grade/Grader/Cert#/Asking Price,
+  confidence badge (high/medium/low, computed as the worst of vision's per-field
+  confidence ratings — see "Confidence" below), "Retake" link, Cancel button
+       └─ "Looks Good — Record Sale →" → posInsertAndOpenDrawer()
+            ├─ blocks with a toast if Player is empty — no insert attempted
+            ├─ builds a card object with the CardShow-standard field names
+            │    ('Card Title', Player, Year, 'Set ', Number, 'Parallel/Variant',
+            │    Grader, Grade, 'Cert #', Price, Status:'Available', Seller,
+            │    item_type:'card') — same shape saveAddCard()'s card branch uses
+            ├─ runs it through validateAndNormalizeCard() (grader/grade normalization),
+            │    same as every other card-creation path in the app
+            ├─ await insertCardToDB(card); card._dbId = <returned uuid>
+            │    (insertCardToDB() does not mutate its argument — the caller must
+            │    capture and assign _dbId itself, or later updateCardInDB() calls
+            │    — which sdConfirm() makes when the seller completes the sale —
+            │    silently no-op forever; see Critical Note 3)
+            ├─ inventory.push(card)
+            └─ openSellDrawer(cardIdx) — the *existing*, unmodified Sell Drawer.
+                 Seller enters price/payment there; sdConfirm() (unmodified) does
+                 the rest: Status→'Sold', updateCardInDB(), recordShowTransaction()
+                 fire-and-forget, syncBuyerView(), updateStats(), updateReport().
+```
+
+### Field-name / confidence mapping (why this isn't a copy-paste of vision-scan callers)
+`vision-scan.js`'s success response is `{ success, card, isTCG, promptVariant, rawResponse }`
+where `card.cardSet` (not `card.set`) and `card.cardNumber` (not `card.cardNum`) are the
+real field names, and `card.confidence` is a **nested object** —
+`{ player, year, cardSet, cardNumber, parallel, grade }`, each `'high'|'medium'|'low'` —
+not a flat top-level rating. `posShowReview()` reads these exact nested names.
+`_posOverallConfidence(card)` derives one badge level as the worst of those six ratings
+(`low` if any field is low, else `medium` if any is medium, else `high`) — matching how
+`fillFormFromVision()` treats the same nested shape elsewhere in the app. Grader values
+from vision are lowercase; `posShowReview()` uppercases them before assigning to the
+`<select>`, whose option values are `PSA`/`BGS`/`CGC`/`SGC`.
+
+### Card Title
+Built via the real `buildCardTitle({player, year, cardSet, cardNum, parallel, sport, rawTitle})`
+call shape (same one `fillFormFromVision()` uses) — note `buildCardTitle()` never reads
+grader/grade at all, for either the sports or TCG title branches, so they're correctly
+omitted from this call rather than passed in and silently ignored.
+
+### Cancellation
+`_posVisionAbort` holds the in-flight vision `fetch()`'s `AbortController`. `posCancelVision()`
+and `posClose()` both abort it before touching UI state, so a slow vision response can never
+land after the seller has already cancelled, retaken, or closed the sheet.
+
+### Does not change
+Sell Drawer / `sdConfirm()` / `openSellDrawer()`, `vision-scan.js`, `_callVisionScan()`,
+`fillFormFromVision()`, Add Card modal, RLS policies. No barcode scanning, no PSA cert API
+integration, no new Supabase tables or migrations — POS writes to the same `inventory` table
+(and, via the unmodified sell-drawer confirm path, `show_floor_transactions`) the rest of the
+app already uses.
+
+### FAB visibility
+`#fabScanToSell` (mobile only, `≤767px`, fixed bottom, stacked above the circular
+`#fabAddCard` "+" button via `bottom: calc(5.75rem + env(safe-area-inset-bottom,0px))`)
+follows the exact same show/hide pattern as `#fabAddCard`: cleared (`style.display=''`)
+in `loginAsSeller()`, set to `'none'` in `loginAsAdmin()` and `signOut()`. `enterAsBuyer()`
+doesn't need to touch it — like `#fabAddCard`, it starts hidden by default and is only ever
+shown from `loginAsSeller()`, never reached from a fresh anonymous buyer session. Mobile
+`.toast` bottom offset raised to `9.5rem` to clear both stacked FABs. `--gold` is not a real
+CSS variable (see the Critical Note in the Trading Card API section below) — all new POS
+CSS uses the real `var(--accent)` token instead.
+
+### Notable deviations from the original design drafts (and why)
+An earlier build-out across several sessions added a materially different design on this
+same branch — a custom Phase 1 (manual entry) / Phase 2 (payment grid) POS modal with its
+own barcode-scan camera stack (BarcodeDetector + ZXing fallback) and, briefly, a PSA cert
+API lookup (removed once PSA API access turned out not to be available — barcode scan was
+cert-number extraction only from that point on), then a Claude-vision single-card scan
+bolted onto the *bulk-scan Supabase Edge Function* via a new `mode=single` param. That
+whole design was fully reverted (`git checkout origin/main -- app.html
+supabase/functions/bulk-scan/index.ts CLAUDE.md`) before ever merging, in favor of this
+photo-first design, because the newer spec's element IDs (`#posOverlay`/`#posSheet`) and
+overall architecture directly collided with what was already built, and duplicating
+price/payment capture in a new custom UI was redundant with the sell drawer that already
+does exactly that job. `supabase/functions/bulk-scan/index.ts` is untouched by this
+feature — single-card identification goes straight to `vision-scan.js` instead.
+
+Cross-referencing the actual `vision-scan.js`/`insertCardToDB()`/`buildCardTitle()`/
+`cardToDbRow()` source before implementing (rather than trusting the draft spec's
+inline code samples verbatim) caught six concrete bugs before they shipped: two
+field-name typos (`Parallel`/`Cert` instead of the real `'Parallel/Variant'`/`'Cert #'`),
+a missing `Number` field on the saved card object, a missing `card._dbId` capture
+(would have silently broken every later `updateCardInDB()` call for a POS-created
+card), a broken confidence-badge derivation (scanned card values for literal
+`"high"/"medium"/"low"` strings instead of reading the real nested `confidence` object),
+and a `buildCardTitle()` call using the wrong field names (`set`/`cardNumber` instead
+of `cardSet`/`cardNum`). All six are fixed in the shipped implementation.
+
 ## Show Configuration (Demo Data)
 - **MLP Card Show** — Oct 17-18, 2026 · Grand Hyatt Tampa Bay, FL · Code: MLPTPA (primary demo, shown to buyers without code)
 - **Chicago Sports Card Expo** — Nov 8, 2026 · Navy Pier, Chicago, IL · CHI2026
