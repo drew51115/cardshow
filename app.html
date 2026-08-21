@@ -3455,6 +3455,112 @@
     margin-top: 6px;
   }
 
+  /* ════════════════════════════════════════════════
+     SCAN-TO-SELL POS — Session 3: single-card image scan
+  ════════════════════════════════════════════════ */
+
+  .pos-image-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    height: 52px;
+    background: var(--card);
+    border: 1.5px solid var(--border);
+    border-radius: 10px;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text);
+    cursor: pointer;
+    transition: border-color 140ms, background 140ms;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    margin-bottom: 10px;
+  }
+  .pos-image-btn:active { border-color: var(--accent); background: var(--surface); }
+  .pos-image-btn svg { color: var(--accent); flex-shrink: 0; }
+
+  .pos-vision-loading {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 32px 20px;
+    text-align: center;
+    margin-bottom: 14px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+  }
+  .pos-vision-spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: posVisionSpin 0.8s linear infinite;
+  }
+  @keyframes posVisionSpin { to { transform: rotate(360deg); } }
+  .pos-vision-msg {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+  .pos-vision-cancel {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 20px;
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Pre-fill indicator on populated fields */
+  .pos-input.pos-prefilled {
+    border-color: rgba(245, 200, 66, 0.4);
+    background: #13180a;
+  }
+
+  /* Confidence badge in manual entry when vision-populated */
+  .pos-vision-confidence {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    border-radius: 4px;
+    margin-bottom: 14px;
+  }
+  .pos-vision-confidence.high {
+    background: rgba(27,175,122,0.1);
+    color: #1baf7a;
+    border: 1px solid rgba(27,175,122,0.3);
+  }
+  .pos-vision-confidence.medium {
+    background: rgba(245,166,35,0.1);
+    color: #f5a623;
+    border: 1px solid rgba(245,166,35,0.3);
+  }
+  .pos-vision-confidence.low {
+    background: rgba(224,92,92,0.1);
+    color: #e05c5c;
+    border: 1px solid rgba(224,92,92,0.3);
+  }
+
 </style>
 </head>
 <body>
@@ -4553,6 +4659,40 @@
               Looking up cert…
             </div>
           </div>
+
+          <!-- Identify from photo — Session 3 (Claude vision) -->
+          <button class="pos-image-btn" id="posImageBtn"
+            onclick="posStartImageCapture()" type="button">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <rect x="3" y="3" width="18" height="18" rx="2"/>
+              <circle cx="8.5" cy="8.5" r="1.5"/>
+              <polyline points="21 15 16 10 5 21"/>
+            </svg>
+            Identify from photo
+          </button>
+
+          <!-- Vision loading overlay — replaces the viewfinder while Claude runs -->
+          <div class="pos-vision-loading" id="posVisionLoading" style="display:none">
+            <div class="pos-vision-spinner"></div>
+            <div class="pos-vision-msg" id="posVisionMsg">
+              Identifying card…
+            </div>
+            <button class="pos-vision-cancel" onclick="posVisionCancel()"
+              type="button">
+              Cancel
+            </button>
+          </div>
+
+          <!-- Hidden file input — capture=environment opens the rear camera on mobile -->
+          <input
+            type="file"
+            id="posImageInput"
+            accept="image/*"
+            capture="environment"
+            style="display:none"
+            onchange="posSubmitCardImage(this)"
+          >
 
           <!-- Manual entry toggle -->
           <button class="pos-manual-toggle" id="posManualToggle"
@@ -13975,6 +14115,7 @@ let _posSetResults      = [];
 let _posCameraStream  = null;   // active MediaStream — stopped on exit
 let _posBarcodeReader = null;   // ZXing reader instance
 let _posScanActive    = false;  // guard against concurrent scan frames
+let _posVisionAbortController = null; // Session 3: in-flight image-scan request, aborted on cancel/reset
 
 function openPOS() {
   posReset();
@@ -14014,6 +14155,26 @@ function posReset() {
   if (scanLine) scanLine.classList.remove('paused');
   const certNote = document.getElementById('posCertNote');
   if (certNote) certNote.style.display = 'none';
+
+  // Session 3: abort any in-flight image scan and clear its UI additions
+  if (_posVisionAbortController) {
+    _posVisionAbortController.abort('cancelled');
+    _posVisionAbortController = null;
+  }
+  const visionBadge = document.getElementById('posVisionConfidenceBadge');
+  if (visionBadge) visionBadge.remove();
+  document.querySelectorAll('#posManualEntry .pos-vision-note').forEach(el => el.remove());
+  document.querySelectorAll('.pos-input.pos-prefilled').forEach(el => el.classList.remove('pos-prefilled'));
+  const viewfinderWrap = document.getElementById('posViewfinderWrap');
+  const visionLoading  = document.getElementById('posVisionLoading');
+  const imageBtn       = document.getElementById('posImageBtn');
+  const manualToggleBtn = document.getElementById('posManualToggle');
+  if (viewfinderWrap)   viewfinderWrap.style.display = 'block';
+  if (visionLoading)    visionLoading.style.display  = 'none';
+  if (imageBtn)          imageBtn.style.display       = 'flex';
+  if (manualToggleBtn)  manualToggleBtn.style.display = 'block';
+  const imageInput = document.getElementById('posImageInput');
+  if (imageInput) imageInput.value = '';
 
   ['posPlayer','posYear','posSet','posCardNum','posParallel',
    'posGrade','posCertNum','posSoldPrice','posSaleNotes']
@@ -14079,7 +14240,7 @@ async function posShowScanMode() {
   await posStartCamera();
 }
 
-function posShowManualEntry(prefillCert) {
+function posShowManualEntry(prefillCert, skipFocus) {
   // Stop camera before switching — conserve battery
   posStopCamera();
 
@@ -14092,11 +14253,17 @@ function posShowManualEntry(prefillCert) {
     if (certField) certField.value = prefillCert;
   }
 
-  // Cert alone isn't enough to advance — Player is required — so always
-  // land there regardless of whether the cert field is pre-filled.
-  setTimeout(() => {
-    document.getElementById('posPlayer')?.focus();
-  }, 100);
+  // Cert alone isn't enough to advance — Player is required — so land
+  // there regardless of whether the cert field is pre-filled, UNLESS the
+  // caller asks to skip it (posPopulateFromVision does: auto-focusing
+  // Player here would immediately fire its one-time focus listener and
+  // strip the .pos-prefilled review highlight before the seller ever
+  // looks at it, since Player already has a value from vision).
+  if (!skipFocus) {
+    setTimeout(() => {
+      document.getElementById('posPlayer')?.focus();
+    }, 100);
+  }
 }
 
 async function posStartCamera() {
@@ -14297,6 +14464,207 @@ function posUpdateScanStatus(message, isGood) {
   if (!el) return;
   el.textContent = message;
   el.style.color = isGood ? '#1baf7a' : 'var(--muted)';
+}
+
+// ════════════════════════════════════════════════════════
+// SCAN-TO-SELL POS — Session 3 (single-card image scan, Claude vision)
+// Reuses the bulk-scan Edge Function with mode=single rather than a new
+// function — same auth, same image handling, just a tighter prompt.
+// ════════════════════════════════════════════════════════
+
+// Taking a photo does NOT stop the camera stream — only the barcode
+// detection loop pauses (_posScanActive = false). This lets Cancel (or a
+// vision failure) resume scanning instantly on the same stream instead of
+// re-requesting camera permission. The stream is stopped the normal way
+// once posShowManualEntry() is reached, same as the barcode-success path.
+function posStartImageCapture() {
+  _posScanActive = false;
+  const input = document.getElementById('posImageInput');
+  if (input) input.click();
+}
+
+async function posSubmitCardImage(inputEl) {
+  const file = inputEl.files?.[0];
+  if (!file) return;
+  inputEl.value = ''; // allow retrying with the same image
+
+  const viewfinderWrap = document.getElementById('posViewfinderWrap');
+  const visionLoading  = document.getElementById('posVisionLoading');
+  const imageBtn       = document.getElementById('posImageBtn');
+  const manualToggle   = document.getElementById('posManualToggle');
+  const scanResult     = document.getElementById('posScanResult');
+
+  if (viewfinderWrap) viewfinderWrap.style.display = 'none';
+  if (scanResult)     scanResult.style.display     = 'none';
+  if (imageBtn)        imageBtn.style.display       = 'none';
+  if (manualToggle)   manualToggle.style.display   = 'none';
+  if (visionLoading)  visionLoading.style.display  = 'flex';
+
+  posVisionSetMsg('Sending photo to Claude…');
+  _posScanActive = false;
+
+  const controller = new AbortController();
+  _posVisionAbortController = controller;
+
+  try {
+    const { data: { session } } = await db.auth.getSession();
+    if (!session) throw new Error('Session expired — please log in again');
+
+    const formData = new FormData();
+    formData.append('image', file, file.name || 'card.jpg');
+
+    posVisionSetMsg('Identifying card…');
+
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/bulk-scan?mode=single`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${session.access_token}` },
+      body: formData,
+      signal: controller.signal,
+    });
+
+    const result = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(result.message || result.error || `Error ${response.status}`);
+    }
+
+    const card = result.cards?.[0];
+    if (!card) throw new Error('No card identified in response');
+
+    posVisionSetMsg('Card identified — review details');
+    await new Promise(r => setTimeout(r, 600));
+
+    posPopulateFromVision(card);
+
+  } catch (err) {
+    // Cancel (or posReset()/closePOS() firing mid-request) already
+    // restored the UI and cleared the controller — nothing more to do.
+    if (controller.signal.aborted) return;
+
+    console.error('[POS Vision]', err);
+
+    if (viewfinderWrap) viewfinderWrap.style.display = 'block';
+    if (imageBtn)        imageBtn.style.display       = 'flex';
+    if (manualToggle)   manualToggle.style.display   = 'block';
+    if (visionLoading)  visionLoading.style.display  = 'none';
+
+    const scanStatus = document.getElementById('posScanStatus');
+    if (scanStatus) {
+      scanStatus.textContent = `Could not identify — ${String(err.message || '').slice(0, 60)}`;
+      setTimeout(() => {
+        if (scanStatus) scanStatus.textContent = 'Align barcode within the frame';
+      }, 3000);
+    }
+
+    // Camera was never stopped during capture — just resume detection.
+    const video = document.getElementById('posCameraFeed');
+    if (video && _posCameraStream) {
+      await posStartBarcodeDetection(video);
+    }
+  } finally {
+    _posVisionAbortController = null;
+  }
+}
+
+// card is one entry from bulk-scan's {cards:[...]} response, mode=single:
+// {player, year, set, cardNumber, parallel, grade, grader, certNumber,
+//  confidence, notes} — same shape the multi-card path already produces.
+function posPopulateFromVision(card) {
+  const visionLoading = document.getElementById('posVisionLoading');
+  if (visionLoading) visionLoading.style.display = 'none';
+
+  const fieldMap = {
+    posPlayer:   _titleCase(card.player)   || '',
+    posYear:     String(card.year ?? '').trim(),
+    posSet:      _titleCase(card.set)      || '',
+    posCardNum:  String(card.cardNumber ?? '').trim(),
+    posParallel: _titleCase(card.parallel) || '',
+    posGrade:    String(card.grade ?? '').trim(),
+    // certNumber is populated when the photo caught a graded slab's label —
+    // same field the barcode-scan path pre-fills, purely informational
+    // (no lookup happens against it, same as everywhere else in POS).
+    posCertNum:  String(card.certNumber ?? '').trim(),
+  };
+
+  Object.entries(fieldMap).forEach(([id, value]) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.value = value;
+    if (value) {
+      el.classList.add('pos-prefilled');
+      el.addEventListener('focus', () => el.classList.remove('pos-prefilled'), { once: true });
+    }
+  });
+
+  // Grader select values are uppercase (PSA/BGS/CGC/SGC) to match
+  // VALID_GRADERS — the vision response comes back lowercase.
+  const graderEl = document.getElementById('posGrader');
+  if (graderEl && card.grader) graderEl.value = card.grader.toUpperCase();
+
+  posShowManualEntry(undefined, /* skipFocus */ true);
+  posShowVisionConfidence(card.confidence, card.notes);
+
+  const scroll = document.getElementById('posScrollArea');
+  if (scroll) scroll.scrollTop = 0;
+}
+
+function posShowVisionConfidence(confidence, notes) {
+  const existing = document.getElementById('posVisionConfidenceBadge');
+  if (existing) existing.remove();
+  document.querySelectorAll('#posManualEntry .pos-cert-note.pos-vision-note')
+    .forEach(el => el.remove());
+
+  const level = (confidence || 'low').toLowerCase();
+  const labels = {
+    high:   '✓ High confidence identification',
+    medium: '⚠ Medium confidence — review all fields',
+    low:    '✗ Low confidence — fill in details manually',
+  };
+
+  const badge = document.createElement('div');
+  badge.id        = 'posVisionConfidenceBadge';
+  badge.className = `pos-vision-confidence ${level}`;
+  badge.textContent = labels[level] || labels.low;
+
+  const manualEntry = document.getElementById('posManualEntry');
+  const firstField  = manualEntry?.querySelector('.pos-field');
+  if (manualEntry && firstField) manualEntry.insertBefore(badge, firstField);
+
+  if (notes) {
+    const noteEl = document.createElement('div');
+    noteEl.className     = 'pos-cert-note pos-vision-note';
+    noteEl.style.display = 'block';
+    noteEl.style.color   = '#f5a623';
+    noteEl.textContent   = `Note: ${_capFirst(notes)}`;
+    badge.insertAdjacentElement('afterend', noteEl);
+  }
+}
+
+function posVisionSetMsg(msg) {
+  const el = document.getElementById('posVisionMsg');
+  if (el) el.textContent = msg;
+}
+
+function posVisionCancel() {
+  if (_posVisionAbortController) {
+    _posVisionAbortController.abort('cancelled');
+    _posVisionAbortController = null;
+  }
+
+  const viewfinderWrap = document.getElementById('posViewfinderWrap');
+  const visionLoading  = document.getElementById('posVisionLoading');
+  const imageBtn       = document.getElementById('posImageBtn');
+  const manualToggle   = document.getElementById('posManualToggle');
+
+  if (viewfinderWrap) viewfinderWrap.style.display = 'block';
+  if (visionLoading)  visionLoading.style.display  = 'none';
+  if (imageBtn)        imageBtn.style.display       = 'flex';
+  if (manualToggle)   manualToggle.style.display   = 'block';
+
+  const video = document.getElementById('posCameraFeed');
+  if (video && _posCameraStream) {
+    posStartBarcodeDetection(video);
+  }
 }
 
 function posShowPhase(n) {

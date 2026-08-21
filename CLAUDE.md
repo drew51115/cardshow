@@ -987,7 +987,88 @@ calls `posShowScanMode()` after the 300ms sheet-in animation instead.
 ZXing reader before doing anything else, then reset the scan UI back to
 its default (scan mode visible, manual entry hidden, scan line unpaused).
 
-### Session 3 — image scan (single-card Claude vision)
+### Session 3 — single-card image scan (Claude vision, shipped)
+
+"Identify from photo" button in `#posScanMode`, above the manual-entry
+toggle. Taps the hidden `#posImageInput` file input
+(`capture="environment"`, opens the rear camera on mobile) rather than a
+custom capture UI — matches the existing Bulk Scan Showcase upload
+pattern already used elsewhere in the sidebar.
+
+- **No new Edge Function.** Reuses `supabase/functions/bulk-scan/index.ts`
+  (the same one Bulk Scan Showcase calls) with a `?mode=single` query
+  param instead of building a separate function. `handleScan()` reads
+  `mode` once at the top and picks between two prompt constants —
+  `MULTI_CARD_PROMPT` (renamed from the original unnamed `SYSTEM_PROMPT`,
+  content otherwise untouched) and the new `SINGLE_CARD_PROMPT`, tuned for
+  exactly one card and returning a single JSON object instead of an
+  array. The response-handling step normalizes either shape into the same
+  `cardList` array before mapping to `{cards, count}`, so `mode=single`
+  callers never have to branch on response shape.
+- **`certNumber` is included in `SINGLE_CARD_PROMPT`**, unlike the
+  original session draft (which omitted it and hardcoded the client's
+  cert field to blank). `MULTI_CARD_PROMPT` already extracts it carefully
+  for graded slabs — a single-card photo is if anything an easier shot to
+  read a label from, so dropping the field in the sibling prompt would
+  have been a regression for no reason. `posPopulateFromVision()` fills
+  `#posCertNum` from it when present. Still purely informational client
+  side — Session 3 has no cert lookup, same as the barcode-scan path.
+- **`posSubmitCardImage()` calls `${SUPABASE_URL}/functions/v1/bulk-scan`
+  directly** (the same URL construction `handleBulkScanFile()` already
+  uses for the multi-card path, via the build-time-injected `SUPABASE_URL`
+  constant), not a hardcoded project URL — keeps this working across
+  environments the same way the existing bulk-scan caller does.
+- **Taking a photo does not stop the camera stream** — only the barcode
+  detection loop pauses (`_posScanActive = false` in
+  `posStartImageCapture()`). This lets Cancel, or a vision failure, resume
+  barcode scanning instantly on the same `MediaStream` instead of
+  re-requesting camera permission. The stream is stopped the normal way
+  once `posShowManualEntry()` is reached on a successful identification,
+  same as the barcode-success path.
+- **In-flight vision requests are actually cancellable.** `_posVisionAbortController`
+  holds the `AbortController` for the current `fetch()`; `posVisionCancel()`,
+  and `posReset()` (so `closePOS()` and re-opening the modal also cover
+  it), both call `.abort('cancelled')` before touching any UI. Without
+  this, tapping Cancel only reset the *UI* — the request kept running in
+  the background, and its eventual response would call
+  `posPopulateFromVision()` or the error-recovery path against whatever
+  state the seller had since moved to (manual entry they'd already
+  started filling out, or a closed modal), silently clobbering it. The
+  catch block checks `controller.signal.aborted` first and returns
+  early — cancellation already restored the UI, so it must not restore
+  it a second time.
+- **Grader select values are uppercase** (`PSA`/`BGS`/`CGC`/`SGC`, matching
+  `VALID_GRADERS`) — `posPopulateFromVision()` uppercases
+  `card.grader` before assigning it. The original session draft did
+  `.toLowerCase()`, which would have silently failed to select any option
+  (the `<select>`'s values are uppercase) every time vision identified a
+  graded slab.
+- **`posShowManualEntry(prefillCert, skipFocus)` gained a second
+  parameter.** Its default behavior (used by the barcode-scan path)
+  auto-focuses `#posPlayer` 100ms after switching, since that path leaves
+  Player empty. `posPopulateFromVision()` passes `skipFocus: true` —
+  verified via a headless-browser test that without this, the auto-focus
+  fires the one-time `focus` listener that clears a field's
+  `.pos-prefilled` review highlight, stripping Player's highlight
+  immediately after `posPopulateFromVision()` had just applied it, before
+  the seller ever saw it.
+- Player/Set/Parallel are run through the existing `_titleCase()` helper
+  (already used by the Bulk Scan review grid for the identical
+  vision-returns-all-lowercase reason) rather than left lowercase.
+- Confidence badge (`posShowVisionConfidence()`) and any Claude `notes`
+  are injected at the top of `#posManualEntry`, both cleared in
+  `posReset()` alongside the `.pos-prefilled` highlights and the restored
+  scan-mode panel visibility (viewfinder/vision-loading/image-button/
+  manual-toggle).
+
+#### New functions (Session 3)
+`posStartImageCapture()`, `posSubmitCardImage(inputEl)`,
+`posPopulateFromVision(card)`, `posShowVisionConfidence(confidence, notes)`,
+`posVisionSetMsg(msg)`, `posVisionCancel()`
+
+#### New state (Session 3)
+`_posVisionAbortController` — the in-flight `fetch()`'s `AbortController`;
+aborted (not just UI-reset) by `posVisionCancel()` and `posReset()`
 
 ### Key functions (app.html)
 - `openPOS()` / `closePOS()` / `posReset()` / `posShowPhase(n)`
