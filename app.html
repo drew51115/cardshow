@@ -3020,6 +3020,270 @@
     input, select, textarea { font-size: 16px !important; }
   }
 
+  /* ════════════════════════════════════════════════
+     SCAN-TO-SELL POS — Mobile-first styles
+     Bottom sheet on mobile, centered modal on desktop
+  ════════════════════════════════════════════════ */
+
+  /* ── FLOATING ACTION BUTTON (mobile) ── */
+  .pos-fab {
+    display: none; /* shown only on mobile via media query below, and only when JS clears the inline style="display:none" on login */
+  }
+  @media (max-width: 767px) {
+    .pos-fab {
+      display: flex;
+      position: fixed;
+      /* Stacks above the existing circular Add Card FAB (56px + 1.5rem bottom + gap) so the two never overlap */
+      bottom: calc(env(safe-area-inset-bottom, 0px) + 5.75rem);
+      left: 50%;
+      transform: translateX(-50%);
+      width: calc(100% - 32px);
+      max-width: 360px;
+      height: 56px;
+      background: var(--accent);
+      color: var(--black);
+      border: none;
+      border-radius: 14px;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 17px;
+      font-weight: 700;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      cursor: pointer;
+      z-index: 489;
+      box-shadow: 0 4px 20px rgba(245, 200, 66, 0.3);
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+    }
+    .pos-fab:active { opacity: 0.85; transform: translateX(-50%) scale(0.98); }
+    /* push toast above both stacked FABs on mobile */
+    .toast { bottom: 9.5rem; }
+  }
+
+  /* ── INLINE TRIGGER (desktop sidebar) ── */
+  .pos-trigger-btn { display: none; }
+  @media (min-width: 768px) {
+    .pos-trigger-btn { display: flex; }
+  }
+
+  /* ── OVERLAY ── */
+  #posOverlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(7, 8, 12, 0.72);
+    z-index: 500;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    align-items: stretch;
+    animation: posOverlayIn 200ms ease;
+  }
+  @keyframes posOverlayIn {
+    from { background: rgba(7,8,12,0); }
+    to   { background: rgba(7,8,12,0.72); }
+  }
+
+  /* ── BOTTOM SHEET ── */
+  #posSheet {
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    border-radius: 20px 20px 0 0;
+    width: 100%;
+    max-height: 92dvh;
+    max-height: 92vh;
+    display: flex;
+    flex-direction: column;
+    animation: posSheetIn 280ms cubic-bezier(0.32, 0.72, 0, 1);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @keyframes posSheetIn {
+    from { transform: translateY(100%); }
+    to   { transform: translateY(0); }
+  }
+  @media (min-width: 640px) {
+    #posOverlay { justify-content: center; align-items: center; padding: 1rem; }
+    #posSheet {
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      max-width: 480px;
+      max-height: 90vh;
+      width: 100%;
+    }
+  }
+
+  .pos-drag-handle {
+    width: 40px; height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    margin: 12px auto 4px;
+    flex-shrink: 0;
+    cursor: grab;
+  }
+  @media (min-width: 640px) { .pos-drag-handle { display: none; } }
+
+  .pos-scroll-area {
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 0 20px 8px;
+    flex: 1;
+    scroll-padding-bottom: 120px;
+  }
+
+  .pos-phases {
+    display: flex; align-items: center; gap: 0;
+    padding: 16px 0 12px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 20px;
+  }
+  .pos-phase { display: flex; align-items: center; gap: 8px; flex: 1; justify-content: center; opacity: 0.35; transition: opacity 180ms; }
+  .pos-phase.active { opacity: 1; }
+  .pos-phase-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--border); border: 2px solid var(--border); transition: background 180ms, border-color 180ms; flex-shrink: 0; }
+  .pos-phase.active .pos-phase-dot { background: var(--accent); border-color: var(--accent); }
+  .pos-phase-label { font-family: 'DM Mono', monospace; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+  .pos-phase.active .pos-phase-label { color: var(--text); }
+  .pos-phase-line { width: 32px; height: 1px; background: var(--border); flex-shrink: 0; }
+
+  .pos-section-head { margin-bottom: 20px; }
+  .pos-section-title { font-family: 'Bebas Neue', sans-serif; font-size: 24px; letter-spacing: 0.04em; color: var(--text); line-height: 1; margin-bottom: 4px; }
+  .pos-section-sub { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--muted); letter-spacing: 0.08em; }
+
+  .pos-field { margin-bottom: 16px; }
+  .pos-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .pos-row-2 .pos-field { margin-bottom: 16px; }
+  .pos-label { display: block; font-family: 'DM Mono', monospace; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+  .pos-optional { font-size: 9px; letter-spacing: 0.1em; color: var(--border); text-transform: uppercase; }
+  .pos-input {
+    display: block; width: 100%;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 14px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 16px;
+    color: var(--text);
+    outline: none;
+    transition: border-color 140ms;
+    -webkit-appearance: none; appearance: none;
+    box-sizing: border-box;
+  }
+  .pos-input:focus { border-color: var(--accent); }
+  .pos-input.error { border-color: #e05c5c; }
+  .pos-select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%235a6585' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 14px center;
+    padding-right: 36px;
+    cursor: pointer;
+  }
+
+  .pos-price-field { margin-bottom: 20px; }
+  .pos-price-wrap { position: relative; display: flex; align-items: center; }
+  .pos-currency { position: absolute; left: 16px; font-family: 'DM Mono', monospace; font-size: 22px; color: var(--muted); pointer-events: none; user-select: none; }
+  .pos-price-input { padding-left: 36px; font-size: 32px; font-weight: 700; font-family: 'Bebas Neue', sans-serif; letter-spacing: 0.03em; height: 68px; border-radius: 10px; }
+
+  .pos-payment-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .pos-pay-btn {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px;
+    background: var(--card);
+    border: 1.5px solid var(--border);
+    border-radius: 10px;
+    min-height: 68px;
+    padding: 12px 8px;
+    cursor: pointer;
+    transition: border-color 140ms, background 140ms;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+  .pos-pay-btn span:not(.pos-pay-icon) { font-family: 'DM Mono', monospace; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); transition: color 140ms; }
+  .pos-pay-icon { font-size: 20px; line-height: 1; }
+  .pos-pay-btn:hover, .pos-pay-btn:active { border-color: var(--accent); }
+  .pos-pay-btn.selected { background: rgba(245, 200, 66, 0.12); border-color: var(--accent); border-width: 2px; }
+  .pos-pay-btn.selected span:not(.pos-pay-icon) { color: var(--accent); font-weight: 700; }
+  .pos-payment-error { font-family: 'DM Mono', monospace; font-size: 11px; color: #e05c5c; letter-spacing: 0.08em; margin-top: 8px; }
+
+  .pos-notes-toggle { background: none; border: none; font-family: 'DM Mono', monospace; font-size: 11px; letter-spacing: 0.1em; color: var(--muted); cursor: pointer; padding: 8px 0; text-decoration: underline; -webkit-tap-highlight-color: transparent; }
+  .pos-notes-input { margin-top: 10px; font-size: 15px; }
+
+  .pos-show-ctx { display: flex; align-items: center; gap: 7px; background: var(--black); border: 1px solid var(--border); border-radius: 6px; padding: 10px 14px; font-family: 'DM Mono', monospace; font-size: 11px; color: var(--muted); letter-spacing: 0.08em; margin-bottom: 16px; }
+  .pos-show-ctx svg { flex-shrink: 0; }
+
+  .pos-card-summary { background: var(--card); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 8px; padding: 14px 16px; margin-bottom: 20px; }
+  .pos-summary-title { font-family: 'DM Sans', sans-serif; font-size: 16px; font-weight: 600; color: var(--text); line-height: 1.3; }
+  .pos-summary-sub { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--muted); letter-spacing: 0.08em; margin-top: 5px; }
+
+  .pos-actions {
+    display: flex; flex-direction: column; gap: 10px;
+    padding: 20px 0 12px;
+    position: sticky; bottom: 0;
+    background: var(--surface);
+    box-shadow: 0 -16px 20px 4px var(--surface);
+  }
+  .pos-btn-next {
+    width: 100%; height: 54px;
+    background: var(--accent); color: var(--black);
+    border: none; border-radius: 12px;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 18px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase;
+    cursor: pointer;
+    transition: opacity 150ms;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+  .pos-btn-next:active { opacity: 0.85; }
+  .pos-btn-next:disabled { opacity: 0.4; cursor: not-allowed; }
+  .pos-btn-save.saving { background: var(--border); color: var(--muted); }
+  .pos-btn-cancel {
+    width: 100%; height: 46px;
+    background: transparent; color: var(--muted);
+    border: 1px solid var(--border); border-radius: 10px;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase;
+    cursor: pointer;
+    transition: border-color 140ms, color 140ms;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+  .pos-btn-cancel:active { border-color: var(--muted); color: var(--text); }
+
+  #posConfirmation { min-height: 60vh; display: none; flex-direction: column; justify-content: space-between; }
+  .pos-confirm-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 32px 0; gap: 10px; }
+  .pos-confirm-check { width: 72px; height: 72px; border-radius: 50%; background: rgba(27, 175, 122, 0.12); border: 2px solid #1baf7a; color: #1baf7a; font-size: 32px; display: flex; align-items: center; justify-content: center; margin-bottom: 8px; }
+  .pos-confirm-label { font-family: 'DM Mono', monospace; font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: #1baf7a; }
+  .pos-confirm-card { font-family: 'DM Sans', sans-serif; font-size: 18px; font-weight: 600; color: var(--text); line-height: 1.3; max-width: 280px; }
+  .pos-confirm-price { font-family: 'Bebas Neue', sans-serif; font-size: 56px; color: #1baf7a; line-height: 1; letter-spacing: 0.02em; }
+  .pos-confirm-method { font-family: 'DM Mono', monospace; font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+  .pos-countdown { text-align: center; font-family: 'DM Mono', monospace; font-size: 10px; color: var(--border); letter-spacing: 0.1em; padding-bottom: 8px; }
+
+  .pos-dropdown {
+    position: absolute; z-index: 600;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    width: 100%;
+    max-height: 240px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    top: calc(100% + 4px); left: 0;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+  .pos-dropdown-item {
+    padding: 14px 16px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 15px;
+    color: var(--text);
+    cursor: pointer;
+    border-bottom: 1px solid var(--border);
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+  .pos-dropdown-item:last-child { border-bottom: none; }
+  .pos-dropdown-item:active { background: var(--card); }
+  .pos-dropdown-item .pos-dd-sub { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--muted); letter-spacing: 0.08em; margin-top: 3px; }
+  .pos-dd-loading { padding: 14px 16px; font-family: 'DM Mono', monospace; font-size: 11px; color: var(--muted); letter-spacing: 0.1em; }
+
 </style>
 </head>
 <body>
@@ -3131,6 +3395,22 @@
 
         <input type="file" id="bulkScanInput" accept="image/*" capture="environment" style="display:none" onchange="handleBulkScanFile(this)">
         <button class="btn btn-ghost" id="bulkScanBtn" style="width:100%;justify-content:center;font-size:0.78rem;margin-top:0.5rem" onclick="document.getElementById('bulkScanInput').click()">📸 Bulk Scan Showcase</button>
+
+        <!-- Scan to Sell — desktop inline trigger; mobile uses the full-width FAB (#scanToSellFab) instead -->
+        <button
+          id="scanToSellBtn"
+          onclick="openPOS()"
+          style="display:none;width:100%;justify-content:center;font-size:0.8rem;margin-top:0.5rem"
+          class="btn btn-primary pos-trigger-btn"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8
+                     a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+            <circle cx="12" cy="13" r="4"/>
+          </svg>
+          Scan to Sell
+        </button>
       </div>
 
 
@@ -4011,6 +4291,263 @@
 
 <!-- FAB — mobile Add Card button, seller view only -->
 <button class="fab-add" id="fabAddCard" onclick="openAddCard()" style="display:none" aria-label="Add card">+</button>
+
+<!-- Scan to Sell — mobile FAB, full-width bottom-pinned. Desktop uses #scanToSellBtn in the sidebar instead. -->
+<button
+  id="scanToSellFab"
+  onclick="openPOS()"
+  style="display:none"
+  class="pos-fab"
+  aria-label="Scan to Sell"
+>
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+    stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8
+             a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+    <circle cx="12" cy="13" r="4"/>
+  </svg>
+  <span>Scan to Sell</span>
+</button>
+
+<!-- ═══════════════════════════════════════════════
+     SCAN-TO-SELL POS MODAL — Mobile-first bottom sheet
+     Session 1: manual entry + Trading Card API typeahead
+     Sessions 2-3: barcode scan + image scan (not yet built)
+═══════════════════════════════════════════════ -->
+<div id="posOverlay" style="display:none" role="dialog"
+  aria-modal="true" aria-label="Scan to Sell">
+
+  <div id="posSheet">
+
+    <div class="pos-drag-handle" id="posDragHandle"></div>
+
+    <div class="pos-scroll-area" id="posScrollArea">
+
+      <div class="pos-phases" id="posPhases">
+        <div class="pos-phase active" id="posPhase1Tab">
+          <div class="pos-phase-dot"></div>
+          <span class="pos-phase-label">Card</span>
+        </div>
+        <div class="pos-phase-line"></div>
+        <div class="pos-phase" id="posPhase2Tab">
+          <div class="pos-phase-dot"></div>
+          <span class="pos-phase-label">Sale</span>
+        </div>
+      </div>
+
+      <!-- ── PHASE 1: Card identity ── -->
+      <div id="posPhase1">
+
+        <div class="pos-section-head">
+          <div class="pos-section-title">Card Details</div>
+          <div class="pos-section-sub">
+            Camera scan coming soon — enter details below
+          </div>
+        </div>
+
+        <div class="pos-field" style="position:relative">
+          <label class="pos-label" for="posPlayer">Player</label>
+          <input
+            id="posPlayer"
+            class="pos-input"
+            type="text"
+            inputmode="text"
+            autocomplete="off"
+            autocorrect="off"
+            spellcheck="false"
+            placeholder="e.g. Paul Skenes"
+            oninput="posTcapiPlayerSearch(this.value)"
+          >
+          <div id="posPlayerDropdown" class="pos-dropdown"
+            style="display:none"></div>
+        </div>
+
+        <div class="pos-row-2">
+          <div class="pos-field">
+            <label class="pos-label" for="posYear">Year</label>
+            <input id="posYear" class="pos-input" type="text"
+              inputmode="numeric" pattern="[0-9]*"
+              placeholder="2024" maxlength="4">
+          </div>
+          <div class="pos-field" style="position:relative">
+            <label class="pos-label" for="posSet">Set</label>
+            <input id="posSet" class="pos-input" type="text"
+              inputmode="text" autocomplete="off" autocorrect="off"
+              placeholder="topps chrome"
+              oninput="posTcapiSetSearch(this.value)">
+            <div id="posSetDropdown" class="pos-dropdown"
+              style="display:none"></div>
+          </div>
+        </div>
+
+        <div class="pos-row-2">
+          <div class="pos-field">
+            <label class="pos-label" for="posCardNum">Card #</label>
+            <input id="posCardNum" class="pos-input" type="text"
+              inputmode="text" placeholder="101">
+          </div>
+          <div class="pos-field">
+            <label class="pos-label" for="posParallel">Parallel</label>
+            <input id="posParallel" class="pos-input" type="text"
+              inputmode="text" placeholder="refractor">
+          </div>
+        </div>
+
+        <div class="pos-row-2">
+          <div class="pos-field">
+            <label class="pos-label" for="posGrade">Grade</label>
+            <input id="posGrade" class="pos-input" type="text"
+              inputmode="decimal" placeholder="10">
+          </div>
+          <div class="pos-field">
+            <label class="pos-label" for="posGrader">Grader</label>
+            <select id="posGrader" class="pos-input pos-select">
+              <option value="">Raw</option>
+              <option value="PSA">PSA</option>
+              <option value="BGS">BGS</option>
+              <option value="CGC">CGC</option>
+              <option value="SGC">SGC</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="pos-field">
+          <label class="pos-label" for="posCertNum">
+            Cert # <span class="pos-optional">optional</span>
+          </label>
+          <input id="posCertNum" class="pos-input" type="text"
+            inputmode="numeric" placeholder="PSA / BGS cert number">
+        </div>
+
+        <input type="hidden" id="posPlayerUUID" value="">
+        <input type="hidden" id="posSetUUID" value="">
+        <input type="hidden" id="posCardUUID" value="">
+
+        <div class="pos-actions">
+          <button class="pos-btn-next" onclick="posAdvanceToPhase2()">
+            Next: Sale Amount
+          </button>
+          <button class="pos-btn-cancel" onclick="closePOS()">Cancel</button>
+        </div>
+
+      </div><!-- /posPhase1 -->
+
+      <!-- ── PHASE 2: Transaction details ── -->
+      <div id="posPhase2" style="display:none">
+
+        <div class="pos-card-summary" id="posCardSummary"></div>
+
+        <div class="pos-field pos-price-field">
+          <label class="pos-label" for="posSoldPrice">Sold For</label>
+          <div class="pos-price-wrap">
+            <span class="pos-currency">$</span>
+            <input
+              id="posSoldPrice"
+              class="pos-input pos-price-input"
+              type="number"
+              inputmode="decimal"
+              step="0.01"
+              min="0"
+              placeholder="0.00"
+            >
+          </div>
+        </div>
+
+        <div class="pos-field">
+          <label class="pos-label">Payment Method</label>
+          <div class="pos-payment-grid" id="posPaymentGrid">
+            <button class="pos-pay-btn" onclick="posSelectPayment('Cash')"
+              data-method="Cash">
+              <span class="pos-pay-icon">💵</span>
+              <span>Cash</span>
+            </button>
+            <button class="pos-pay-btn" onclick="posSelectPayment('Venmo')"
+              data-method="Venmo">
+              <span class="pos-pay-icon">💙</span>
+              <span>Venmo</span>
+            </button>
+            <button class="pos-pay-btn" onclick="posSelectPayment('Zelle')"
+              data-method="Zelle">
+              <span class="pos-pay-icon">⚡</span>
+              <span>Zelle</span>
+            </button>
+            <button class="pos-pay-btn" onclick="posSelectPayment('PayPal')"
+              data-method="PayPal">
+              <span class="pos-pay-icon">🅿️</span>
+              <span>PayPal</span>
+            </button>
+            <button class="pos-pay-btn" onclick="posSelectPayment('Square')"
+              data-method="Square">
+              <span class="pos-pay-icon">⬛</span>
+              <span>Square</span>
+            </button>
+            <button class="pos-pay-btn" onclick="posSelectPayment('Other')"
+              data-method="Other">
+              <span class="pos-pay-icon">···</span>
+              <span>Other</span>
+            </button>
+          </div>
+          <input type="hidden" id="posPaymentMethod" value="">
+          <div class="pos-payment-error" id="posPaymentError"
+            style="display:none">
+            Select a payment method
+          </div>
+        </div>
+
+        <div class="pos-field">
+          <button class="pos-notes-toggle" onclick="posToggleNotes(this)"
+            type="button">
+            + Add note (optional)
+          </button>
+          <input id="posSaleNotes" class="pos-input pos-notes-input"
+            style="display:none" type="text" inputmode="text"
+            placeholder="e.g. bundle deal, trade-in, autograph...">
+        </div>
+
+        <div class="pos-show-ctx" id="posShowCtx" style="display:none">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+            <circle cx="12" cy="10" r="3"/>
+          </svg>
+          <span id="posShowName"></span>
+        </div>
+
+        <div class="pos-actions">
+          <button class="pos-btn-next pos-btn-save" id="posSaveBtn"
+            onclick="posSaveSale()">
+            Save Sale
+          </button>
+          <button class="pos-btn-cancel" onclick="posBackToPhase1()">
+            ← Back
+          </button>
+        </div>
+
+      </div><!-- /posPhase2 -->
+
+      <!-- ── CONFIRMATION — full-sheet success state ── -->
+      <div id="posConfirmation" style="display:none">
+        <div class="pos-confirm-wrap">
+          <div class="pos-confirm-check">✓</div>
+          <div class="pos-confirm-label">Sale Recorded</div>
+          <div class="pos-confirm-card" id="posConfirmCard"></div>
+          <div class="pos-confirm-price" id="posConfirmPrice"></div>
+          <div class="pos-confirm-method" id="posConfirmMethod"></div>
+        </div>
+        <div class="pos-actions">
+          <button class="pos-btn-next" onclick="posReset()">
+            Record Next Sale
+          </button>
+          <button class="pos-btn-cancel" onclick="closePOS()">Done</button>
+        </div>
+        <div class="pos-countdown" id="posCountdown" style="display:none">
+          Auto-resetting in <span id="posCountNum">5</span>s
+        </div>
+      </div><!-- /posConfirmation -->
+
+    </div><!-- /pos-scroll-area -->
+  </div><!-- /posSheet -->
+</div><!-- /posOverlay -->
 
 <!-- ═══════════════ BUYER VIEW ═══════════════ -->
 <div id="view-buyer" class="view">
@@ -8313,6 +8850,10 @@ function loginAsSeller(handle) {
   if (compBtn) compBtn.style.display = '';
   const fabAdd = document.getElementById('fabAddCard');
   if (fabAdd) fabAdd.style.display = '';
+  const scanToSellFab = document.getElementById('scanToSellFab');
+  if (scanToSellFab) scanToSellFab.style.display = '';
+  const scanToSellBtn = document.getElementById('scanToSellBtn');
+  if (scanToSellBtn) scanToSellBtn.style.display = '';
 
   // Show Select All for seller, hide admin-only buttons
   const selectAllBtn = document.getElementById('selectAllBtn');
@@ -8425,6 +8966,10 @@ function loginAsAdmin() {
   if (compBtnAdm) compBtnAdm.style.display = 'none';
   const fabAddAdm = document.getElementById('fabAddCard');
   if (fabAddAdm) fabAddAdm.style.display = 'none';
+  const scanToSellFabAdm = document.getElementById('scanToSellFab');
+  if (scanToSellFabAdm) scanToSellFabAdm.style.display = 'none';
+  const scanToSellBtnAdm = document.getElementById('scanToSellBtn');
+  if (scanToSellBtnAdm) scanToSellBtnAdm.style.display = 'none';
   const sellerTabBarAdm = document.getElementById('sellerTabBar');
   if (sellerTabBarAdm) sellerTabBarAdm.style.display = 'none';
 
@@ -8511,6 +9056,10 @@ async function signOut() {
   if (compBtnSO) compBtnSO.style.display = 'none';
   const fabAddSO = document.getElementById('fabAddCard');
   if (fabAddSO) fabAddSO.style.display = 'none';
+  const scanToSellFabSO = document.getElementById('scanToSellFab');
+  if (scanToSellFabSO) scanToSellFabSO.style.display = 'none';
+  const scanToSellBtnSO = document.getElementById('scanToSellBtn');
+  if (scanToSellBtnSO) scanToSellBtnSO.style.display = 'none';
   const sellerTabBarSO = document.getElementById('sellerTabBar');
   if (sellerTabBarSO) { sellerTabBarSO.style.display = 'none'; switchSellerTab('inventory'); }
 
@@ -13167,6 +13716,416 @@ async function bulkScanInsertMany(cards) {
   if (!seller) return cards.map(() => null);
   return Promise.all(cards.map(c => insertCardToDB(c, seller.id)));
 }
+
+// ════════════════════════════════════════════════════════
+// SCAN-TO-SELL POS — Session 1 (manual entry, mobile-first)
+// A walk-up-table sale: one INSERT creates the card already Sold,
+// unlike Add Card (Available) → Sell Drawer (Sold) which are two steps.
+// ════════════════════════════════════════════════════════
+
+let _posCountdownTimer  = null;
+let _posSelectedPayment = '';
+let _posPlayerResults   = [];
+let _posSetResults      = [];
+
+function openPOS() {
+  posReset();
+  const overlay = document.getElementById('posOverlay');
+  overlay.style.display = 'flex';
+  setTimeout(() => {
+    const playerInput = document.getElementById('posPlayer');
+    if (playerInput) playerInput.focus();
+  }, 300);
+  document.body.style.overflow = 'hidden';
+}
+
+function closePOS() {
+  document.getElementById('posOverlay').style.display = 'none';
+  document.body.style.overflow = '';
+  if (_posCountdownTimer) { clearInterval(_posCountdownTimer); _posCountdownTimer = null; }
+  posReset();
+}
+
+function posReset() {
+  ['posPlayer','posYear','posSet','posCardNum','posParallel',
+   'posGrade','posCertNum','posSoldPrice','posSaleNotes']
+    .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+
+  const grader = document.getElementById('posGrader');
+  if (grader) grader.value = '';
+
+  ['posPlayerUUID','posSetUUID','posCardUUID'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+
+  _posSelectedPayment = '';
+  const pm = document.getElementById('posPaymentMethod');
+  if (pm) pm.value = '';
+  document.querySelectorAll('.pos-pay-btn').forEach(b => b.classList.remove('selected'));
+  const pmErr = document.getElementById('posPaymentError');
+  if (pmErr) pmErr.style.display = 'none';
+
+  ['posPlayerDropdown','posSetDropdown'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.style.display = 'none'; el.innerHTML = ''; }
+  });
+  _posPlayerResults = [];
+  _posSetResults    = [];
+
+  const notesInput = document.getElementById('posSaleNotes');
+  if (notesInput) notesInput.style.display = 'none';
+  const notesToggle = document.querySelector('.pos-notes-toggle');
+  if (notesToggle) notesToggle.textContent = '+ Add note (optional)';
+
+  document.querySelectorAll('.pos-input.error').forEach(el => el.classList.remove('error'));
+
+  const saveBtn = document.getElementById('posSaveBtn');
+  if (saveBtn) {
+    saveBtn.disabled = false;
+    saveBtn.textContent = 'Save Sale';
+    saveBtn.classList.remove('saving');
+  }
+
+  if (_posCountdownTimer) { clearInterval(_posCountdownTimer); _posCountdownTimer = null; }
+  const countdown = document.getElementById('posCountdown');
+  if (countdown) countdown.style.display = 'none';
+
+  posShowPhase(1);
+}
+
+function posShowPhase(n) {
+  document.getElementById('posPhase1').style.display = n === 1 ? 'block' : 'none';
+  document.getElementById('posPhase2').style.display = n === 2 ? 'block' : 'none';
+
+  const confirm = document.getElementById('posConfirmation');
+  confirm.style.display = n === 3 ? 'flex' : 'none';
+
+  const phases = document.getElementById('posPhases');
+  if (phases) phases.style.display = n === 3 ? 'none' : 'flex';
+
+  document.getElementById('posPhase1Tab').classList.toggle('active', n === 1);
+  document.getElementById('posPhase2Tab').classList.toggle('active', n === 2);
+
+  const scroll = document.getElementById('posScrollArea');
+  if (scroll) scroll.scrollTop = 0;
+}
+
+function posAdvanceToPhase2() {
+  const player = document.getElementById('posPlayer').value.trim();
+  if (!player) {
+    const input = document.getElementById('posPlayer');
+    input.classList.add('error');
+    input.focus();
+    input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
+  }
+  document.getElementById('posPlayer').classList.remove('error');
+
+  const year     = document.getElementById('posYear').value.trim();
+  const set      = document.getElementById('posSet').value.trim();
+  const cardNum  = document.getElementById('posCardNum').value.trim();
+  const parallel = document.getElementById('posParallel').value.trim();
+  const grade    = document.getElementById('posGrade').value.trim();
+  const grader   = document.getElementById('posGrader').value;
+
+  const titleParts = [year, set, player].filter(Boolean);
+  const subParts = [
+    cardNum  ? `#${cardNum}` : '',
+    parallel || '',
+    grade && grader ? `${grader} ${grade}` : (grade ? `Grade ${grade}` : '')
+  ].filter(Boolean);
+
+  const summary = document.getElementById('posCardSummary');
+  summary.innerHTML =
+    `<div class="pos-summary-title">${_escHtml(titleParts.join(' '))}</div>` +
+    (subParts.length ? `<div class="pos-summary-sub">${_escHtml(subParts.join(' · '))}</div>` : '');
+
+  const showCtx  = document.getElementById('posShowCtx');
+  const showName = document.getElementById('posShowName');
+  if (activeShowId && shows[activeShowId]) {
+    showCtx.style.display = 'flex';
+    showName.textContent  = shows[activeShowId].name || activeShowId;
+  } else {
+    showCtx.style.display = 'none';
+  }
+
+  posShowPhase(2);
+  setTimeout(() => {
+    const price = document.getElementById('posSoldPrice');
+    if (price) price.focus();
+  }, 100);
+}
+
+function posBackToPhase1() {
+  posShowPhase(1);
+  setTimeout(() => {
+    const player = document.getElementById('posPlayer');
+    if (player) player.focus();
+  }, 100);
+}
+
+function posSelectPayment(method) {
+  _posSelectedPayment = method;
+  document.getElementById('posPaymentMethod').value = method;
+  document.querySelectorAll('.pos-pay-btn').forEach(btn => {
+    btn.classList.toggle('selected', btn.dataset.method === method);
+  });
+  const err = document.getElementById('posPaymentError');
+  if (err) err.style.display = 'none';
+}
+
+function posToggleNotes(btn) {
+  const input = document.getElementById('posSaleNotes');
+  const isHidden = input.style.display === 'none';
+  input.style.display = isHidden ? 'block' : 'none';
+  btn.textContent = isHidden ? '− Remove note' : '+ Add note (optional)';
+  if (isHidden) setTimeout(() => input.focus(), 50);
+}
+
+// Builds a CardShow-shaped card, already Sold, and inserts it in one shot.
+// Field names (Status/SoldPrice/PaymentMethod/'Parallel/Variant'/'Cert #')
+// match saveAddCard()'s card branch + sdConfirm()'s sold fields exactly —
+// see cardToDbRow()/dbRowToCard() and updateReport()'s PaymentMethod usage.
+async function posSaveSale() {
+  const soldPriceRaw = document.getElementById('posSoldPrice').value.trim();
+  const soldPrice    = parseFloat(soldPriceRaw);
+  let hasError = false;
+
+  if (!soldPriceRaw || isNaN(soldPrice) || soldPrice <= 0) {
+    document.getElementById('posSoldPrice').classList.add('error');
+    document.getElementById('posSoldPrice').focus();
+    hasError = true;
+  } else {
+    document.getElementById('posSoldPrice').classList.remove('error');
+  }
+
+  if (!_posSelectedPayment) {
+    const pmErr = document.getElementById('posPaymentError');
+    if (pmErr) pmErr.style.display = 'block';
+    const grid = document.getElementById('posPaymentGrid');
+    if (grid) grid.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    hasError = true;
+  }
+
+  if (hasError) return;
+
+  const saveBtn = document.getElementById('posSaveBtn');
+  saveBtn.disabled = true;
+  saveBtn.textContent = 'Saving…';
+  saveBtn.classList.add('saving');
+
+  const player   = document.getElementById('posPlayer').value.trim();
+  const year     = document.getElementById('posYear').value.trim() || null;
+  const cardSet  = document.getElementById('posSet').value.trim();
+  const cardNum  = document.getElementById('posCardNum').value.trim();
+  const parallel = document.getElementById('posParallel').value.trim();
+  const grader   = document.getElementById('posGrader').value;
+  const gradeVal = document.getElementById('posGrade').value.trim();
+  const certNum  = document.getElementById('posCertNum').value.trim();
+  const notes    = document.getElementById('posSaleNotes').value.trim();
+
+  const cardTitle = [year, cardSet, player].filter(Boolean).join(' ') +
+    (grader && gradeVal ? ` ${grader} ${gradeVal}` : '');
+
+  const rawCard = {
+    'Card Title':       cardTitle,
+    Player:             player,
+    Year:               year,
+    'Set ':             cardSet,
+    Number:             cardNum,
+    'Parallel/Variant': parallel,
+    Grader:             grader || null,
+    Grade:              grader && gradeVal !== '' ? parseFloat(gradeVal) : null,
+    'Cert #':           grader ? certNum : null,
+    Condition:          null,
+    Price:              soldPrice,
+    Status:             'Sold',
+    Location:           null,
+    Seller:             currentSeller,
+    item_type:          'card',
+    SoldPrice:          soldPrice,
+    PaymentMethod:      _posSelectedPayment,
+    SaleNotes:          notes || null,
+    SoldTime:           new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+  };
+
+  const card = validateAndNormalizeCard(rawCard);
+  card._shows = new Set(activeShowId ? [activeShowId] : []);
+  inventory.push(card);
+
+  const dbId = await insertCardToDB(card);
+  if (dbId) {
+    card._dbId = dbId;
+    if (activeShowId) {
+      db.from('show_inventory')
+        .upsert({ show_id: activeShowId, card_id: dbId }, { onConflict: 'show_id,card_id' })
+        .then(({ error }) => { if (error) console.warn('[POS] show_inventory error:', error.message); });
+    }
+  } else {
+    showToast('⚠️ Saved locally — sync to server failed', 'var(--danger)');
+  }
+
+  // Fire-and-forget, same rule as sdConfirm() — never await this, the
+  // confirmation screen must not wait on show_floor_transactions latency.
+  recordShowTransaction(card);
+
+  updateStats();
+  renderSellerTable(getSellerInventory());
+  updateReport();
+
+  document.getElementById('posConfirmCard').textContent = card['Card Title'];
+  document.getElementById('posConfirmPrice').textContent =
+    '$' + soldPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  document.getElementById('posConfirmMethod').textContent = _posSelectedPayment;
+
+  saveBtn.disabled = false;
+  saveBtn.textContent = 'Save Sale';
+  saveBtn.classList.remove('saving');
+
+  posShowPhase(3);
+  posStartCountdown(5);
+}
+
+function posStartCountdown(seconds) {
+  let remaining = seconds;
+  const countdown = document.getElementById('posCountdown');
+  const countNum  = document.getElementById('posCountNum');
+
+  if (countdown) {
+    countdown.style.display = 'block';
+    if (countNum) countNum.textContent = remaining;
+  }
+
+  _posCountdownTimer = setInterval(() => {
+    remaining -= 1;
+    if (countNum) countNum.textContent = remaining;
+    if (remaining <= 0) {
+      clearInterval(_posCountdownTimer);
+      _posCountdownTimer = null;
+      posReset();
+    }
+  }, 1000);
+}
+
+// ── Trading Card API typeahead — reuses the same shared helpers as the
+// Add Card guided picker (_tcSearchPlayers / _tcGetAllSets) rather than
+// calling tcapiGet() directly, so POS inherits the same fixes already
+// worked out there: full_name= only prefix-matches a first-name token
+// (a still-typing last name reports stillTyping instead of a wrong
+// candidate list), and name= has no partial match at all so the full
+// set catalog is fetched once and filtered client-side. ──
+
+let _posTcapiPlayerTimer = null;
+let _posTcapiSetTimer    = null;
+
+function posTcapiPlayerSearch(query) {
+  document.getElementById('posPlayerUUID').value = '';
+  clearTimeout(_posTcapiPlayerTimer);
+  const dd = document.getElementById('posPlayerDropdown');
+  if (!query || query.trim().length < 3) { dd.style.display = 'none'; dd.innerHTML = ''; return; }
+  dd.style.display = 'block';
+  dd.innerHTML = '<div class="pos-dd-loading">SEARCHING…</div>';
+  _posTcapiPlayerTimer = setTimeout(() => _posDoPlayerSearch(query.trim()), 400);
+}
+
+async function _posDoPlayerSearch(q) {
+  const dd = document.getElementById('posPlayerDropdown');
+  const { results, stillTyping } = await _tcSearchPlayers(q);
+  _posPlayerResults = results;
+  if (!results.length) {
+    dd.innerHTML = stillTyping
+      ? `<div class="pos-dropdown-item" style="cursor:default;color:var(--muted)">Finish the last name to match</div>`
+      : `<div class="pos-dropdown-item" style="cursor:default;color:var(--muted)">No matches — enter manually</div>`;
+    return;
+  }
+  dd.innerHTML = results.map((p, i) => {
+    const name = `${p.attributes?.first_name || ''} ${p.attributes?.last_name || ''}`.trim();
+    const sub  = p.attributes?.position ? `<div class="pos-dd-sub">${_escHtml(p.attributes.position)}</div>` : '';
+    return `<div class="pos-dropdown-item" onclick="posTcapiSelectPlayer(${i})"><div>${_escHtml(name)}</div>${sub}</div>`;
+  }).join('');
+}
+
+function posTcapiSelectPlayer(i) {
+  const p = _posPlayerResults[i];
+  if (!p) return;
+  const name = `${p.attributes?.first_name || ''} ${p.attributes?.last_name || ''}`.trim();
+  document.getElementById('posPlayer').value = name;
+  document.getElementById('posPlayerUUID').value = p.id;
+  document.getElementById('posPlayerDropdown').style.display = 'none';
+  // A new player invalidates any downstream set/card picks
+  document.getElementById('posSetUUID').value = '';
+  document.getElementById('posCardUUID').value = '';
+  const setInput = document.getElementById('posSet');
+  if (setInput) setInput.focus();
+}
+
+function posTcapiSetSearch(query) {
+  document.getElementById('posSetUUID').value = '';
+  clearTimeout(_posTcapiSetTimer);
+  const dd = document.getElementById('posSetDropdown');
+  if (!query || query.trim().length < 3) { dd.style.display = 'none'; dd.innerHTML = ''; return; }
+  dd.style.display = 'block';
+  dd.innerHTML = '<div class="pos-dd-loading">SEARCHING…</div>';
+  _posTcapiSetTimer = setTimeout(() => _posDoSetSearch(query.trim()), 400);
+}
+
+async function _posDoSetSearch(q) {
+  const dd = document.getElementById('posSetDropdown');
+  const allSets = await _tcGetAllSets();
+  const qLower  = q.toLowerCase();
+  _posSetResults = allSets
+    .filter(s => (s.attributes?.name || '').toLowerCase().includes(qLower))
+    .slice(0, 8);
+  if (!_posSetResults.length) {
+    dd.innerHTML = `<div class="pos-dropdown-item" style="cursor:default;color:var(--muted)">No matches — enter manually</div>`;
+    return;
+  }
+  dd.innerHTML = _posSetResults.map((s, i) =>
+    `<div class="pos-dropdown-item" onclick="posTcapiSelectSet(${i})">${_escHtml(s.attributes?.name || '')}</div>`
+  ).join('');
+}
+
+function posTcapiSelectSet(i) {
+  const s = _posSetResults[i];
+  if (!s) return;
+  document.getElementById('posSet').value = (s.attributes?.name || '').toLowerCase();
+  document.getElementById('posSetUUID').value = s.id;
+  document.getElementById('posSetDropdown').style.display = 'none';
+  const yearField = document.getElementById('posYear');
+  if (yearField && !yearField.value && s.attributes?.year) yearField.value = s.attributes.year;
+}
+
+// Close either dropdown on an outside tap/click
+document.addEventListener('click', e => {
+  if (!e.target.closest('#posPlayer') && !e.target.closest('#posPlayerDropdown')) {
+    const dd = document.getElementById('posPlayerDropdown');
+    if (dd) dd.style.display = 'none';
+  }
+  if (!e.target.closest('#posSet') && !e.target.closest('#posSetDropdown')) {
+    const dd = document.getElementById('posSetDropdown');
+    if (dd) dd.style.display = 'none';
+  }
+}, true);
+
+// Swipe down on the sheet to close — mobile gesture, matches the
+// bottom-sheet convention (drag handle is a visual affordance only).
+(function posSwipeInit() {
+  let startY = 0;
+  const sheet = document.getElementById('posSheet');
+  if (!sheet) return;
+  sheet.addEventListener('touchstart', e => { startY = e.touches[0].clientY; }, { passive: true });
+  sheet.addEventListener('touchend', e => {
+    const delta = e.changedTouches[0].clientY - startY;
+    if (delta > 80) closePOS();
+  }, { passive: true });
+})();
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && document.getElementById('posOverlay').style.display === 'flex') {
+    closePOS();
+  }
+});
 
 // ── Update an existing card in Supabase ──
 // ── Delete a single card from Supabase ──

@@ -836,6 +836,121 @@ else prior to this section is emoji + CSS mockups).
 - **Chicago Sports Card Expo** — Nov 8, 2026 · Navy Pier, Chicago, IL · CHI2026
 - **NYC Collectors Fair** — Dec 6, 2026 · Javits Center, New York · NYC2026
 
+## Scan-to-Sell POS Modal — Session 1 (Mobile-First)
+
+Point-of-sale workflow for sellers who complete a table sale on the spot,
+without pre-uploading inventory first. One Supabase INSERT creates the card
+already `Status: 'Sold'` — unlike Add Card (creates `Available`) → Sell
+Drawer (`sdConfirm()` flips it to `Sold`), which is two separate steps for
+inventory that was listed ahead of time.
+
+### Mobile-first design
+- Bottom sheet (`#posSheet`) slides up from the screen bottom on mobile;
+  centered `max-width:480px` modal on desktop (`≥640px`).
+- `#scanToSellFab` — full-width gold bar FAB, fixed bottom, mobile only
+  (`≤767px`, matching the codebase's existing mobile breakpoint rather than
+  the 640px the original design draft used). Positioned to stack **above**
+  the existing circular `#fabAddCard` "+" button (`bottom: calc(env(safe-area-inset-bottom,0px) + 5.75rem)`)
+  so the two never visually overlap — both are shown together for sellers on
+  mobile. The mobile `.toast` bottom offset was raised from `5.5rem` to
+  `9.5rem` to clear both stacked FABs.
+- `#scanToSellBtn` — inline sidebar button, desktop only (`≥768px`), placed
+  in `#sellerUploadSection` directly below the "📸 Bulk Scan Showcase" button.
+- All `.pos-input` fields are `font-size:16px` (prevents iOS auto-zoom on
+  focus, matching the existing global mobile input rule), inputs are
+  minimum 48px tall, and `.pos-btn-next`/`.pos-btn-cancel` are full-width
+  with generous height for one-thumb tapping.
+- Swipe-down-on-sheet gesture closes the modal (`touchstart`/`touchend`,
+  80px threshold); Escape key also closes it when open; `body` overflow is
+  hidden while the sheet is open.
+- `viewport-fit=cover` was already present in the `<meta name="viewport">`
+  tag — no change needed there.
+
+### ⚠ `--gold` is not a real CSS variable — use `var(--accent)`
+The `:root` block (top of the main `<style>` block) defines `--accent:
+#f5c842`, not `--gold`. `var(--gold)` appears in ~40 pre-existing places
+across app.html and is a long-standing, silent no-op everywhere it's used
+(computes to nothing — those elements have always rendered with a
+transparent/unset color, not gold). This was already flagged once before
+in the Trading Card API picker section above. The POS CSS uses
+`var(--accent)` throughout so its primary buttons and highlights actually
+render gold. **Do not copy `var(--gold)` from older code in this file when
+touching POS styles** — check `:root` first.
+
+### Session 1 — manual entry
+Two-phase flow: Card Details (Player/Year/Set/Card#/Parallel/Grade/Grader/Cert#)
+→ Sale Amount (price, payment method grid, optional note) → full-screen
+green confirmation with a 5-second auto-reset countdown ("Record Next Sale"
+or "Done" also available immediately).
+
+- Payment methods are **Cash / Venmo / Zelle / PayPal / Square / Other** —
+  matching the existing Sell Drawer's `sdSelPay()` options and
+  `updateReport()`'s hardcoded `methods` array exactly. (The original design
+  draft used "CashApp" instead of "Square" — that would have silently
+  vanished from the seller's Report tab payment breakdown, since
+  `updateReport()` filters `methods.filter(m => totals[m])` against a fixed
+  list that doesn't include "CashApp".)
+- Grader select uses the same uppercase values as Add Card's `#ac_grader`
+  (`PSA`/`BGS`/`CGC`/`SGC`, matching `VALID_GRADERS`).
+- The saved card object mirrors `saveAddCard()`'s card-branch field names
+  exactly (`'Card Title'`, `Player`, `Year`, `'Set '`, `Number`,
+  `'Parallel/Variant'`, `Grader`, `Grade`, `'Cert #'`, `Condition`, `Price`,
+  `Status`, `Location`, `Seller`, `item_type`) plus the sold fields
+  `sdConfirm()` uses (`SoldPrice`, `PaymentMethod`, `SaleNotes`, `SoldTime`)
+  — `Status: 'Sold'` (capitalized), not lowercase `'sold'`. Runs through
+  `validateAndNormalizeCard()` before being pushed to `inventory[]`, same as
+  every other card-creation path.
+- Persists via `insertCardToDB(card)` (not a hand-built `db.from('inventory').insert()`
+  call) so it inherits the same seller-UUID lookup and `cardToDbRow()`
+  mapping as Add Card / Bulk Scan, and returns the UUID stored as `card._dbId`
+  per Critical Note 3.
+- When `activeShowId` is set: the new card's `_shows` Set is seeded with
+  `activeShowId` (so it's correctly scoped in the seller's own Report tab
+  this session — `_shows` is in-memory only, not rehydrated from
+  `show_inventory` on login for a seller's own inventory view), and a
+  `show_inventory` row is upserted fire-and-forget
+  (`{show_id, card_id}`, `onConflict: 'show_id,card_id'`), matching
+  `publishShowInventoryToDB()`'s row shape.
+- `recordShowTransaction(card)` is called fire-and-forget (never awaited),
+  same rule as `sdConfirm()` — the confirmation screen must not wait on
+  `show_floor_transactions` write latency.
+- Player/Set typeahead (`posTcapiPlayerSearch()` / `posTcapiSetSearch()`)
+  calls the same shared, DOM-decoupled helpers the Add Card guided picker
+  uses (`_tcSearchPlayers()`, `_tcGetAllSets()`) rather than hitting
+  `tcapiGet()` directly, so POS inherits the same Trading Card API fixes
+  already worked out there (`full_name=` only prefix-matches a first-name
+  token; a still-typing last name reports `stillTyping` instead of a
+  misleading unrelated candidate list; `/v1/sets?name=` has no partial
+  match at all, so the full ~273-set catalog is fetched once per session
+  and filtered client-side).
+
+### Session 2 (next) — barcode scan
+### Session 3 — image scan (single-card Claude vision)
+
+### Key functions (app.html)
+- `openPOS()` / `closePOS()` / `posReset()` / `posShowPhase(n)`
+- `posAdvanceToPhase2()` / `posBackToPhase1()`
+- `posSelectPayment(method)` / `posToggleNotes(btn)`
+- `posSaveSale()` — async; builds the card, calls `insertCardToDB()`,
+  fires `show_inventory` upsert + `recordShowTransaction()`, shows the
+  confirmation phase
+- `posStartCountdown(seconds)`
+- `posTcapiPlayerSearch()` / `_posDoPlayerSearch()` / `posTcapiSelectPlayer(i)`
+- `posTcapiSetSearch()` / `_posDoSetSearch()` / `posTcapiSelectSet(i)`
+
+### Button IDs
+`scanToSellFab` — mobile FAB; `scanToSellBtn` — desktop sidebar button.
+Both start `style="display:none"` and are toggled the same way as
+`#fabAddCard`: cleared (`style.display=''`) in `loginAsSeller()`, set to
+`'none'` in `loginAsAdmin()` and `signOut()`. `enterAsBuyer()` doesn't need
+to touch them — like `#fabAddCard`, it's only ever called from a fresh
+anonymous state, never from an active seller session.
+
+### Does not change
+Add Card modal, Sell Drawer / mark-sold flow, RLS policies. No Supabase
+migrations required — POS writes to the same `inventory`, `show_inventory`,
+and `show_floor_transactions` tables the rest of the app already uses.
+
 ## Context Maintenance
 Update this file at the end of each Claude Code session:
 ```
