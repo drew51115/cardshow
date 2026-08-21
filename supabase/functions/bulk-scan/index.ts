@@ -6,13 +6,6 @@
 //
 // Phase 1 of the bulk showcase scan feature. renderBulkScanReview(cards) in
 // app.html is the Phase 2 integration point (review UI + inventory write path).
-//
-// mode=single (?mode=single query param, POS Session 3): same auth, same
-// image handling, same response shape — only the prompt changes, tuned for
-// exactly one card (a seller's own POS photo) instead of a showcase tray.
-// Claude still returns a single JSON object in this mode; it's wrapped in
-// a one-element array before responding so callers never have to branch
-// on shape.
 
 import { createClient } from "@supabase/supabase-js";
 
@@ -26,7 +19,7 @@ const MAX_BASE64_CHARS = 5 * 1024 * 1024 * (4 / 3); // ~6.7M chars, roughly 5MB 
 
 const SUPPORTED_MEDIA_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
-const MULTI_CARD_PROMPT = `You are a sports card identification expert. Analyze the image and
+const SYSTEM_PROMPT = `You are a sports card identification expert. Analyze the image and
 identify every individual trading card visible. Return ONLY a valid
 JSON array — no markdown, no explanation, no preamble.
 
@@ -48,44 +41,6 @@ Rules:
 - If a field is not clearly visible or identifiable, return an empty string — do not guess.
 
 If no cards are visible, return an empty array: []`;
-
-// certNumber is included here too, unlike the original POS session-3 draft
-// spec which omitted it and hardcoded the client's cert field to blank.
-// The multi-card prompt above already extracts it carefully for graded
-// slabs (see its GRADED SLABS rule) and a single-card photo is if anything
-// an easier shot to read a label from — dropping the field here would be
-// a regression against the sibling prompt for no real reason. It's still
-// purely informational client-side: POS Session 3 has no cert lookup.
-const SINGLE_CARD_PROMPT = `You are an expert sports card identifier.
-A seller at a card show just photographed one card to identify it.
-The card may be raw (no slab) or graded (in a PSA, BGS, SGC, or CGC slab).
-
-Identify the card and return ONLY a valid JSON object — no markdown,
-no explanation, no preamble. One object, not an array.
-
-Return these fields (all strings, all lowercase except where noted):
-{
-  "player":     "full player name",
-  "year":       "4-digit year",
-  "set":        "set name (e.g. topps chrome, bowman chrome, prizm)",
-  "cardNumber": "card number if visible, else empty string",
-  "parallel":   "parallel or variation, including any visible serial number or print run (e.g. base, refractor, gold refractor auto /50)",
-  "grade":      "numeric grade if graded slab (e.g. 10, 9.5), else empty",
-  "grader":     "grading company if graded (psa/bgs/sgc/cgc), else empty",
-  "certNumber": "the cert/serial number printed on a graded slab's label, read carefully digit by digit, else empty string",
-  "confidence": "high, medium, or low",
-  "notes":      "brief note on anything the seller should verify, else empty"
-}
-
-Focus on accuracy over speed. If the card is in a graded slab, read the
-label text carefully — player name, year, set, card number, grade,
-grading company, and cert number are all printed on the label. For raw
-cards, focus on the card face text and any visible set or year markings.
-
-If you cannot identify the card at all, return:
-{"player":"","year":"","set":"","cardNumber":"","parallel":"",
- "grade":"","grader":"","certNumber":"","confidence":"low",
- "notes":"Card not identifiable from this image"}`;
 
 const ALLOWED_ORIGIN_PATTERNS = [
   /^https?:\/\/localhost(:\d+)?$/i,
@@ -143,9 +98,6 @@ Deno.serve(async (req: Request) => {
 });
 
 async function handleScan(req: Request, origin: string | null): Promise<Response> {
-  const url = new URL(req.url);
-  const mode = url.searchParams.get("mode") === "single" ? "single" : "multi";
-
   // ── AUTH — reject before touching the image ──
   const authHeader = req.headers.get("Authorization") ?? "";
   if (!authHeader.toLowerCase().startsWith("bearer ")) {
@@ -228,18 +180,13 @@ async function handleScan(req: Request, origin: string | null): Promise<Response
       body: JSON.stringify({
         model: MODEL,
         max_tokens: MAX_TOKENS,
-        system: mode === "single" ? SINGLE_CARD_PROMPT : MULTI_CARD_PROMPT,
+        system: SYSTEM_PROMPT,
         messages: [
           {
             role: "user",
             content: [
               { type: "image", source: { type: "base64", media_type: mediaType, data: base64Image } },
-              {
-                type: "text",
-                text: mode === "single"
-                  ? "Identify this card and return the JSON object."
-                  : "Identify every trading card in this image and return the JSON array.",
-              },
+              { type: "text", text: "Identify every trading card in this image and return the JSON array." },
             ],
           },
         ],
@@ -284,24 +231,15 @@ async function handleScan(req: Request, origin: string | null): Promise<Response
     );
   }
 
-  // mode=single asks Claude for one JSON object rather than an array;
-  // normalize to an array either way so the response shape below (and
-  // every caller reading result.cards) never has to branch on mode.
-  let cardList: unknown[];
-  if (mode === "single") {
-    cardList = Array.isArray(parsed) ? parsed : [parsed];
-  } else {
-    if (!Array.isArray(parsed)) {
-      return json(
-        { error: "parse_error", message: "Vision response was not a JSON array", rawResponse: rawText },
-        422,
-        origin,
-      );
-    }
-    cardList = parsed;
+  if (!Array.isArray(parsed)) {
+    return json(
+      { error: "parse_error", message: "Vision response was not a JSON array", rawResponse: rawText },
+      422,
+      origin,
+    );
   }
 
-  const cards = cardList.map((card) => ({ id: crypto.randomUUID(), ...(card as Record<string, unknown>) }));
+  const cards = parsed.map((card) => ({ id: crypto.randomUUID(), ...card }));
 
   return json({ cards, count: cards.length }, 200, origin);
 }
