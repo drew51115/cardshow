@@ -3348,13 +3348,13 @@
   }
   .pos-btn-primary {
     width: 100%;
-    height: 52px;
+    height: 64px;
     background: var(--accent);
     color: var(--black);
     border: none;
     border-radius: 12px;
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 18px;
+    font-size: 19px;
     font-weight: 700;
     letter-spacing: 0.07em;
     text-transform: uppercase;
@@ -8464,6 +8464,11 @@ function closeSellDrawer() {
 let _posVisionAbort = null;   // AbortController for in-flight vision fetch
 let _posLastResult  = null;   // last vision result { card, result }
 
+// Insert must never hang the Confirm button forever on a slow/stalled
+// connection at a show — race it against this timeout and fall through
+// to the existing "saved locally" degradation path if it fires.
+const POS_INSERT_TIMEOUT_MS = 8000;
+
 function posOpenPhotoSheet() {
   _posReset();
   document.getElementById('posOverlay').style.display = 'flex';
@@ -8501,6 +8506,12 @@ function _posReset() {
 
   const badge = document.getElementById('posConfidenceBadge');
   if (badge) { badge.className = 'pos-confidence-badge'; badge.style.display = 'none'; badge.textContent = ''; }
+
+  // Restore the Confirm button — posInsertAndOpenDrawer() disables it and
+  // swaps its label to "Saving…" while the insert is in flight; without
+  // this, the next time the sheet opens it would still show that state.
+  const confirmBtn = document.querySelector('#posReviewPhase .pos-btn-primary');
+  if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Looks Good — Record Sale →'; }
 
   const fi = document.getElementById('posFileInput');
   if (fi) fi.value = '';
@@ -8771,7 +8782,14 @@ async function posInsertAndOpenDrawer() {
     // insertCardToDB() returns the new UUID but does not mutate `card` —
     // it must be captured and assigned to _dbId here, or updateCardInDB()
     // (called later by sdConfirm()) will silently no-op on this card forever.
-    const dbId = await insertCardToDB(card);
+    // Raced against a timeout so a stalled connection (common at a show)
+    // can never leave the Confirm button stuck on "Saving…" — the insert
+    // request itself is left running; if it does complete later, we've
+    // simply already moved on with dbId=null, same as any other sync failure.
+    const dbId = await Promise.race([
+      insertCardToDB(card),
+      new Promise(resolve => setTimeout(() => resolve(null), POS_INSERT_TIMEOUT_MS)),
+    ]);
     if (dbId) {
       card._dbId = dbId;
     } else {
