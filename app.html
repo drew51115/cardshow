@@ -3447,15 +3447,13 @@
     -webkit-tap-highlight-color: transparent;
   }
 
-  .pos-cert-lookup-status {
+  .pos-cert-note {
     font-family: 'DM Mono', monospace;
     font-size: 10px;
-    letter-spacing: 0.1em;
-    color: var(--muted);
+    color: var(--border);
+    letter-spacing: 0.08em;
     margin-top: 6px;
   }
-  .pos-cert-lookup-status.found { color: #1baf7a; }
-  .pos-cert-lookup-status.notfound { color: #e05c5c; }
 
 </style>
 </head>
@@ -4515,9 +4513,9 @@
         <div id="posScanMode">
 
           <div class="pos-section-head">
-            <div class="pos-section-title">Scan Cert Barcode</div>
+            <div class="pos-section-title">Scan Card Barcode</div>
             <div class="pos-section-sub">
-              Point camera at the barcode on the PSA, BGS, SGC, or CGC label
+              Point camera at the barcode on a graded slab or card back
             </div>
           </div>
 
@@ -4559,7 +4557,7 @@
           <!-- Manual entry toggle -->
           <button class="pos-manual-toggle" id="posManualToggle"
             onclick="posShowManualEntry()" type="button">
-            Enter cert number or card details manually
+            Enter card details manually
           </button>
 
         </div><!-- /posScanMode -->
@@ -4581,20 +4579,23 @@
             </button>
           </div>
 
-          <!-- Cert number (pre-filled if barcode was partially read) -->
+          <!-- Cert # — pre-filled by barcode scan when available.
+               No auto-fill from the number yet: PSA API access isn't
+               currently available, so this is a plain field until a
+               future session wires posLookupCert() back in. -->
           <div class="pos-field">
             <label class="pos-label" for="posCertNum">
               Cert # <span class="pos-optional">optional</span>
             </label>
             <input id="posCertNum" class="pos-input" type="text"
-              inputmode="numeric" placeholder="PSA / BGS cert number"
-              oninput="posManualCertLookup(this.value)">
-            <div class="pos-cert-lookup-status" id="posCertLookupStatus"
-              style="display:none"></div>
+              inputmode="numeric" placeholder="PSA / BGS / SGC cert number">
+            <div class="pos-cert-note" id="posCertNote" style="display:none">
+              Auto-fill from cert coming soon
+            </div>
           </div>
 
           <div class="pos-field" style="position:relative">
-            <label class="pos-label" for="posPlayer">Player</label>
+            <label class="pos-label" for="posPlayer">Player *</label>
             <input
               id="posPlayer"
               class="pos-input"
@@ -13974,7 +13975,6 @@ let _posSetResults      = [];
 let _posCameraStream  = null;   // active MediaStream — stopped on exit
 let _posBarcodeReader = null;   // ZXing reader instance
 let _posScanActive    = false;  // guard against concurrent scan frames
-let _posCertTimer     = null;   // debounce for manual cert input
 
 function openPOS() {
   posReset();
@@ -14012,6 +14012,8 @@ function posReset() {
   if (manualMode) manualMode.style.display = 'none';
   const scanLine = document.getElementById('posReticleLine');
   if (scanLine) scanLine.classList.remove('paused');
+  const certNote = document.getElementById('posCertNote');
+  if (certNote) certNote.style.display = 'none';
 
   ['posPlayer','posYear','posSet','posCardNum','posParallel',
    'posGrade','posCertNum','posSoldPrice','posSaleNotes']
@@ -14077,23 +14079,23 @@ async function posShowScanMode() {
   await posStartCamera();
 }
 
-function posShowManualEntry() {
+function posShowManualEntry(prefillCert) {
   // Stop camera before switching — conserve battery
   posStopCamera();
 
   document.getElementById('posScanMode').style.display = 'none';
   document.getElementById('posManualEntry').style.display = 'block';
 
-  // Focus cert number first (seller may have a partial cert to enter);
-  // fall back to player field if cert is already filled
+  // Pre-fill cert number if a barcode scan provided one
+  if (prefillCert) {
+    const certField = document.getElementById('posCertNum');
+    if (certField) certField.value = prefillCert;
+  }
+
+  // Cert alone isn't enough to advance — Player is required — so always
+  // land there regardless of whether the cert field is pre-filled.
   setTimeout(() => {
-    const cert = document.getElementById('posCertNum');
-    const player = document.getElementById('posPlayer');
-    if (cert && !cert.value) {
-      cert.focus();
-    } else {
-      player?.focus();
-    }
+    document.getElementById('posPlayer')?.focus();
   }, 100);
 }
 
@@ -14251,6 +14253,17 @@ function posStartZXingScan(video) {
 // URL-embedded-cert fallback. Reusing it means one heuristic to maintain,
 // not two, and it already knows how to tell PSA/SGC/CGC certs apart —
 // something a "just strip to the longest numeric run" fallback cannot do.
+// PSA API access isn't currently available, so a barcode read only
+// extracts and pre-fills the cert number — no lookup call is made. The
+// architecture stays ready for it: a future session only needs to add
+// posLookupCert() and call it here instead of going straight to
+// posShowManualEntry(certNumber).
+//
+// Cert-number extraction reuses parseCertBarcode() — the digit-length
+// heuristic (PSA 8-9 digits, CGC 10, SGC 7, URL-embedded fallback)
+// already shipped for the single-card cert scanner — rather than
+// duplicating that heuristic here. The grader half of its return value
+// goes unused for now since nothing calls out to an API with it.
 function posOnBarcodeDetected(rawValue) {
   if (!_posScanActive) return;
 
@@ -14260,152 +14273,23 @@ function posOnBarcodeDetected(rawValue) {
   const line = document.getElementById('posReticleLine');
   if (line) line.classList.add('paused');
 
-  const { cert: certNumber, grader } = parseCertBarcode(rawValue);
-
-  if (!certNumber) {
-    posUpdateScanStatus('Could not read cert — enter manually', false);
-    setTimeout(() => posShowManualEntry(), 1200);
-    return;
-  }
+  const { cert: certNumber } = parseCertBarcode(rawValue);
 
   const resultPanel = document.getElementById('posScanResult');
   const certDisplay = document.getElementById('posScanResultCert');
   const statusEl    = document.getElementById('posScanResultStatus');
 
-  certDisplay.textContent   = `${grader} #${certNumber}`;
-  statusEl.textContent      = 'Looking up cert…';
-  statusEl.className        = 'pos-scan-result-status';
-  resultPanel.style.display = 'block';
+  if (resultPanel) resultPanel.style.display = 'block';
 
-  posLookupCert(certNumber, grader);
-}
-
-// Reuses the existing /.netlify/functions/psa-lookup endpoint (POST
-// {cert, grader}) built for the single-card cert scanner — it already
-// routes PSA/SGC vs CGC to the right API, retries on 429 with backoff, and
-// returns a normalized {player, cardSet, year, cardNum, parallel, grade,
-// grader, certNum, sport, rawTitle} shape. A separate psa-cert.js proxy
-// with a guessed PSA response shape would duplicate that work and risk
-// getting the field mapping wrong with no way to verify it from here.
-async function posLookupCert(certNumber, grader) {
-  const statusEl = document.getElementById('posScanResultStatus');
-
-  try {
-    const response = await fetch('/.netlify/functions/psa-lookup', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ cert: certNumber, grader }),
-    });
-
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      throw new Error(err.error || `HTTP ${response.status}`);
-    }
-
-    const card = await response.json();
-    posPopulateFromCert(card, certNumber, grader);
-
-  } catch (err) {
-    console.warn('[POS Cert lookup]', err.message);
-
-    if (statusEl) {
-      statusEl.textContent = 'Cert not found — fill in details below';
-      statusEl.className   = 'pos-scan-result-status error';
-    }
-
-    setTimeout(() => {
-      posShowManualEntry();
-      const certField = document.getElementById('posCertNum');
-      if (certField) {
-        certField.value = certNumber;
-        document.getElementById('posPlayer')?.focus();
-      }
-    }, 1000);
+  if (certNumber) {
+    if (certDisplay) certDisplay.textContent = `Cert #${certNumber}`;
+    if (statusEl)    statusEl.textContent    = 'Barcode read — fill in card details';
+    setTimeout(() => posShowManualEntry(certNumber), 900);
+  } else {
+    if (certDisplay) certDisplay.textContent = 'Barcode read';
+    if (statusEl)    statusEl.textContent    = 'Could not extract cert — enter manually';
+    setTimeout(() => posShowManualEntry(), 900);
   }
-}
-
-// card is the normalized shape returned by /.netlify/functions/psa-lookup:
-// {player, cardSet, year, cardNum, parallel, grade, grader, certNum, sport, rawTitle}
-function posPopulateFromCert(card, certNumber, grader) {
-  const statusEl = document.getElementById('posScanResultStatus');
-
-  const player  = card.player  || '';
-  const year    = card.year    || '';
-  const cardSet = card.cardSet || '';
-  const cardNum = card.cardNum || '';
-  const parallel = card.parallel || '';
-
-  if (player)     document.getElementById('posPlayer').value    = player.trim();
-  if (year)       document.getElementById('posYear').value      = String(year).trim();
-  if (cardSet)    document.getElementById('posSet').value       = cardSet.toLowerCase().trim();
-  if (cardNum)    document.getElementById('posCardNum').value   = cardNum.toLowerCase().trim();
-  if (parallel)   document.getElementById('posParallel').value  = parallel.toLowerCase().trim();
-  document.getElementById('posCertNum').value = card.certNum || certNumber;
-
-  if (card.grade != null) document.getElementById('posGrade').value = card.grade;
-
-  const graderEl = document.getElementById('posGrader');
-  if (graderEl) graderEl.value = (card.grader || grader || 'PSA').toUpperCase();
-
-  if (statusEl) {
-    statusEl.textContent = player
-      ? `Found: ${player.trim()}`
-      : 'Cert found — review details below';
-    statusEl.className = 'pos-scan-result-status';
-  }
-
-  // Let the seller see the populated result briefly, then advance —
-  // or fall back to manual entry if the cert response was too sparse to trust.
-  setTimeout(() => {
-    const hasMinimumData = player || cardSet || cardNum;
-    if (hasMinimumData) {
-      posAdvanceToPhase2();
-    } else {
-      posShowManualEntry();
-    }
-  }, 1200);
-}
-
-function posManualCertLookup(value) {
-  clearTimeout(_posCertTimer);
-  const statusEl = document.getElementById('posCertLookupStatus');
-  if (!statusEl) return;
-
-  const cert = value.trim().replace(/\D/g, '');
-
-  if (cert.length < 6) {
-    statusEl.style.display = 'none';
-    return;
-  }
-
-  statusEl.textContent   = 'Looking up cert…';
-  statusEl.className     = 'pos-cert-lookup-status';
-  statusEl.style.display = 'block';
-
-  // Grader isn't known from a manually-typed cert number the way it is from
-  // a barcode's digit-length heuristic — use whatever's currently selected
-  // in the Grader dropdown; psa-lookup.js defaults to PSA when it's blank.
-  const grader = document.getElementById('posGrader')?.value || '';
-
-  _posCertTimer = setTimeout(async () => {
-    try {
-      const response = await fetch('/.netlify/functions/psa-lookup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cert, grader }),
-      });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const card = await response.json();
-
-      posPopulateFromCert(card, cert, grader);
-      statusEl.textContent = '✓ Cert found — fields populated';
-      statusEl.className   = 'pos-cert-lookup-status found';
-
-    } catch {
-      statusEl.textContent = 'Cert not found — fill in details manually';
-      statusEl.className   = 'pos-cert-lookup-status notfound';
-    }
-  }, 600);
 }
 
 function posUpdateScanStatus(message, isGood) {

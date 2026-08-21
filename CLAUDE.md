@@ -942,54 +942,43 @@ background.
   permission, no camera, sandboxed/headless environment) falls through to
   `#posNoCamera` — the modal stays fully usable via the manual entry
   toggle, it never dead-ends.
-- **Cert lookup reuses the existing cert-scanner pipeline instead of a new
-  endpoint.** The original session plan called for a brand-new
-  `netlify/functions/psa-cert.js` GET proxy with a hand-guessed PSA
-  response shape (`data.PSACert.Subject` etc.) — but this codebase already
-  has a production PSA/CGC/SGC pipeline built for the single-card cert
-  scanner (see "Cert Scanner — Sprint 1 + 2 Architecture" above):
-  `parseCertBarcode(raw)` (digit-length heuristic: PSA 8-9 digits, CGC
-  10 digits, SGC 7 digits, plus a URL-embedded-cert fallback) and
-  `POST /.netlify/functions/psa-lookup` `{cert, grader}` → normalized
-  `{player, cardSet, year, cardNum, parallel, grade, grader, certNum,
-  sport, rawTitle}` — already routes PSA/SGC vs CGC to the right API and
-  retries on 429 with backoff. `posOnBarcodeDetected()` calls
-  `parseCertBarcode()` directly (pure function, no DOM coupling, safe to
-  share); `posLookupCert()` / `posManualCertLookup()` POST to the same
-  `psa-lookup` endpoint the existing scanner uses. **No new Netlify
-  function was added.** This avoids maintaining two barcode-parsing
-  heuristics and two PSA response-shape guesses for the same underlying
-  API — the existing mapping was already shipped and is far more
-  trustworthy than a fresh, unverifiable guess.
-- `posPopulateFromCert(card, certNumber, grader)` maps the already-clean
-  `psa-lookup` response straight onto the Phase 1 fields (Set/Card#/
-  Parallel lowercased to match the rest of POS's field conventions;
-  Grader forced uppercase to match `VALID_GRADERS`). Auto-advances to
-  Phase 2 after a 1.2s pause if `player`/`cardSet`/`cardNum` came back
-  non-empty; falls back to `posShowManualEntry()` with the cert number
-  pre-filled otherwise, or on a failed/not-found lookup.
-- **BGS is not supported by this path** — `parseCertBarcode()` and
-  `psa-lookup.js` only recognize PSA, SGC, and CGC cert formats (a
-  pre-existing limitation of the reused pipeline, not new to this
-  session). A BGS slab falls through to manual entry.
-- Manual cert entry (`posManualCertLookup()`, debounced 600ms on
-  `#posCertNum` input in manual mode) reads whatever grader is currently
-  selected in `#posGrader` and passes it along; `psa-lookup.js` defaults
-  to PSA when grader is blank.
+- **No PSA cert lookup — PSA API access is not currently available.**
+  A successful barcode read only extracts and pre-fills the cert number;
+  no network call is made. `posOnBarcodeDetected()` still reuses the
+  existing `parseCertBarcode(raw)` heuristic (digit-length per grader:
+  PSA 8-9 digits, CGC 10, SGC 7, plus a URL-embedded-cert fallback —
+  already shipped for the single-card cert scanner, see "Cert Scanner —
+  Sprint 1 + 2 Architecture" above) purely for cert-number extraction,
+  so there's still only one barcode-parsing heuristic in the codebase —
+  it just discards the `grader` half of that function's return value for
+  now, since nothing calls out to an API with it. `posShowManualEntry()`
+  takes an optional `prefillCert` argument and always focuses `#posPlayer`
+  after switching (a cert number alone can't advance to Phase 2 — Player
+  is required — so landing on Player is correct whether or not a cert
+  was pre-filled). An earlier draft of this session called
+  `/.netlify/functions/psa-lookup` directly (the same endpoint the
+  single-card cert scanner uses) — that was pulled back out once PSA API
+  access turned out not to be available yet. **No new Netlify function
+  was added, and no existing one is called from POS.** The architecture
+  stays ready for it: a future session only needs to add `posLookupCert()`
+  and call it from `posOnBarcodeDetected()` in place of the direct
+  `posShowManualEntry(certNumber)` call.
+- `#posCertNote` ("Auto-fill from cert coming soon") exists in the manual
+  entry Cert # field but stays `display:none` — nothing currently sets it
+  visible. It's a placeholder for when cert auto-fill ships, not active UI.
 
 #### Key new functions (Session 2)
-`posShowScanMode()` / `posShowManualEntry()`
+`posShowScanMode()` / `posShowManualEntry(prefillCert)`
 `posStartCamera()` / `posStopCamera()`
 `posStartBarcodeDetection(video)` / `posLoadZXing()` / `posStartZXingScan(video)`
 `posOnBarcodeDetected(rawValue)` — calls the shared `parseCertBarcode()`
-`posLookupCert(certNumber, grader)` / `posPopulateFromCert(card, certNumber, grader)`
-`posManualCertLookup(value)` / `posUpdateScanStatus(msg, isGood)`
+for cert-number extraction only, no lookup
+`posUpdateScanStatus(msg, isGood)`
 
 #### New state variables (Session 2)
 `_posCameraStream` — active MediaStream; stopped on every exit path
 `_posBarcodeReader` — ZXing reader instance (only set on the fallback path)
 `_posScanActive` — guards concurrent scan frames / a stale scan resolving after exit
-`_posCertTimer` — debounce timer for manual cert input
 
 #### `openPOS()` / `closePOS()` / `posReset()` updated
 `openPOS()` no longer focuses `#posPlayer` (it's hidden by default now) —
