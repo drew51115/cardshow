@@ -3020,6 +3020,365 @@
     input, select, textarea { font-size: 16px !important; }
   }
 
+  /* ════════════════════════════════════════════════
+     SCAN-TO-SELL POS — photo-first identification
+     Chains into the existing sell drawer for price/payment.
+  ════════════════════════════════════════════════ */
+
+  /* Scan-to-Sell FAB — mobile only, stacks above the circular Add Card FAB */
+  .fab-scan-to-sell { display: none; }
+  @media (max-width: 767px) {
+    .fab-scan-to-sell {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: fixed;
+      bottom: calc(5.75rem + env(safe-area-inset-bottom, 0px));
+      left: 50%;
+      transform: translateX(-50%);
+      width: calc(100% - 2rem);
+      max-width: 340px;
+      height: 52px;
+      background: var(--accent);
+      color: var(--black);
+      border: none;
+      border-radius: 14px;
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 17px;
+      font-weight: 700;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      cursor: pointer;
+      z-index: 90;
+      box-shadow: 0 4px 20px rgba(245, 200, 66, 0.28);
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+    }
+    .fab-scan-to-sell:active { opacity: 0.85; transform: translateX(-50%) scale(0.98); }
+    /* push toast above both stacked FABs on mobile */
+    .toast { bottom: 9.5rem; }
+  }
+
+  /* Overlay */
+  .pos-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(7, 8, 12, 0.72);
+    z-index: 800; /* above inventory table, below cert scanner (9500) */
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    align-items: stretch;
+    animation: posOverlayIn 180ms ease;
+  }
+  @keyframes posOverlayIn {
+    from { background: rgba(7,8,12,0); }
+    to   { background: rgba(7,8,12,0.72); }
+  }
+
+  /* Sheet */
+  .pos-sheet {
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    border-radius: 20px 20px 0 0;
+    max-height: 92dvh;
+    max-height: 92vh;
+    display: flex;
+    flex-direction: column;
+    animation: posSheetIn 280ms cubic-bezier(0.32, 0.72, 0, 1);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @keyframes posSheetIn {
+    from { transform: translateY(100%); }
+    to   { transform: translateY(0); }
+  }
+  @media (min-width: 640px) {
+    .pos-overlay { justify-content: center; align-items: center; padding: 1rem; }
+    .pos-sheet {
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      max-width: 480px;
+      width: 100%;
+      max-height: 90vh;
+    }
+  }
+
+  .pos-drag-handle {
+    width: 40px; height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    margin: 12px auto 4px;
+    flex-shrink: 0;
+  }
+  @media (min-width: 640px) { .pos-drag-handle { display: none; } }
+
+  .pos-scroll {
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 0 1.25rem 0.5rem;
+    flex: 1;
+    scroll-padding-bottom: 100px;
+  }
+
+  .pos-phase-head {
+    padding: 1rem 0 1.25rem;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 1.25rem;
+  }
+  .pos-phase-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 26px;
+    letter-spacing: 0.04em;
+    color: var(--text);
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+  .pos-phase-sub {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+  }
+  .pos-review-head { display: flex; justify-content: space-between; align-items: flex-end; }
+  .pos-retake-link {
+    background: none;
+    border: none;
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: var(--accent);
+    cursor: pointer;
+    padding: 6px 0;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Photo button — large, unmissable */
+  .pos-photo-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    width: 100%;
+    min-height: 160px;
+    background: var(--card);
+    border: 2px dashed var(--border);
+    border-radius: 14px;
+    cursor: pointer;
+    transition: border-color 150ms, background 150ms;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    margin-bottom: 1rem;
+  }
+  .pos-photo-btn:active { border-color: var(--accent); background: var(--surface); }
+  .pos-photo-icon { font-size: 36px; line-height: 1; }
+  .pos-photo-label {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text);
+  }
+
+  .pos-tips {
+    list-style: none;
+    margin-bottom: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 0;
+  }
+  .pos-tips li {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    padding-left: 14px;
+    position: relative;
+  }
+  .pos-tips li::before { content: '·'; position: absolute; left: 0; color: var(--accent); }
+
+  .pos-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    padding: 2rem 1rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    text-align: center;
+    margin-bottom: 1rem;
+  }
+  .pos-spinner {
+    width: 36px; height: 36px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: posSpin 0.8s linear infinite;
+  }
+  @keyframes posSpin { to { transform: rotate(360deg); } }
+  .pos-loading-msg {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .pos-cancel-btn {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 7px 18px;
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .pos-manual-link {
+    display: block;
+    width: 100%;
+    background: none;
+    border: none;
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    cursor: pointer;
+    padding: 12px 0;
+    text-align: center;
+    -webkit-tap-highlight-color: transparent;
+    margin-top: 0.5rem;
+  }
+
+  .pos-confidence-badge {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 9px 12px;
+    border-radius: 6px;
+    margin-bottom: 1rem;
+  }
+  .pos-confidence-badge.high {
+    background: rgba(22,163,74,0.08);
+    border: 1px solid rgba(22,163,74,0.25);
+    color: #16a34a;
+  }
+  .pos-confidence-badge.medium {
+    background: rgba(245,158,11,0.08);
+    border: 1px solid rgba(245,158,11,0.25);
+    color: #d97706;
+  }
+  .pos-confidence-badge.low {
+    background: rgba(239,68,68,0.08);
+    border: 1px solid rgba(239,68,68,0.25);
+    color: #dc2626;
+  }
+
+  .pos-fields { display: flex; flex-direction: column; gap: 14px; margin-bottom: 1rem; }
+  .pos-field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .pos-field { display: flex; flex-direction: column; gap: 4px; }
+  .pos-field-full { grid-column: 1 / -1; }
+  .pos-lbl {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .pos-opt { font-size: 9px; color: var(--border); }
+  .pos-inp {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 16px;
+    color: var(--text);
+    outline: none;
+    transition: border-color 130ms;
+    -webkit-appearance: none;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .pos-inp:focus { border-color: var(--accent); }
+  .pos-inp.pos-filled { border-color: rgba(245,200,66,0.4); background: #13180a; }
+  .pos-select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%235a6585' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 14px center;
+    padding-right: 36px;
+    cursor: pointer;
+  }
+  .pos-price-wrap { position: relative; }
+  .pos-price-sym {
+    position: absolute;
+    left: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-family: 'DM Mono', monospace;
+    font-size: 16px;
+    color: var(--muted);
+    pointer-events: none;
+  }
+  .pos-price-inp { padding-left: 30px; }
+
+  .pos-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 1rem 0 0.5rem;
+    position: sticky;
+    bottom: 0;
+    background: var(--surface);
+    box-shadow: 0 -16px 20px 4px var(--surface);
+  }
+  .pos-btn-primary {
+    width: 100%;
+    height: 52px;
+    background: var(--accent);
+    color: var(--black);
+    border: none;
+    border-radius: 12px;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+  .pos-btn-primary:active { opacity: 0.85; }
+  .pos-btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+  .pos-btn-cancel {
+    width: 100%;
+    height: 44px;
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+
 </style>
 </head>
 <body>
@@ -4011,6 +4370,184 @@
 
 <!-- FAB — mobile Add Card button, seller view only -->
 <button class="fab-add" id="fabAddCard" onclick="openAddCard()" style="display:none" aria-label="Add card">+</button>
+
+<!-- Scan-to-Sell FAB — seller + mobile only, stacks above #fabAddCard -->
+<button
+  id="fabScanToSell"
+  class="fab-scan-to-sell"
+  onclick="posOpenPhotoSheet()"
+  style="display:none"
+  aria-label="Scan to Sell"
+>
+  📷 Scan to Sell
+</button>
+
+<!-- ═══════════════════════════════════════════════
+     SCAN-TO-SELL — Photo identification sheet
+     Mobile-first bottom sheet. Photo → Vision → Review → Sell Drawer.
+     Does NOT replace the sell drawer — chains into it.
+═══════════════════════════════════════════════ -->
+<div class="pos-overlay" id="posOverlay" style="display:none"
+  onclick="if(event.target===this)posClose()">
+  <div class="pos-sheet" id="posSheet">
+
+    <!-- Drag handle -->
+    <div class="pos-drag-handle"></div>
+
+    <!-- Scrollable content -->
+    <div class="pos-scroll" id="posScroll">
+
+      <!-- ── PHASE: PHOTO CAPTURE (default) ── -->
+      <div id="posPhotoPhase">
+        <div class="pos-phase-head">
+          <div class="pos-phase-title">Identify Card</div>
+          <div class="pos-phase-sub">
+            Take a photo to auto-fill card details
+          </div>
+        </div>
+
+        <!-- Large photo button -->
+        <button class="pos-photo-btn" id="posPhotoBtn"
+          onclick="posTriggerCamera()" type="button">
+          <span class="pos-photo-icon">📷</span>
+          <span class="pos-photo-label">Take Photo</span>
+        </button>
+
+        <!-- Tips -->
+        <ul class="pos-tips">
+          <li>Fill the frame with the card face</li>
+          <li>For slabs, include the label in the shot</li>
+          <li>Avoid flash glare on foil cards</li>
+        </ul>
+
+        <!-- Loading state (shown while Claude runs) -->
+        <div class="pos-loading" id="posLoading" style="display:none">
+          <div class="pos-spinner"></div>
+          <div class="pos-loading-msg" id="posLoadingMsg">
+            Identifying card…
+          </div>
+          <button class="pos-cancel-btn" onclick="posCancelVision()"
+            type="button">Cancel</button>
+        </div>
+
+        <!-- Manual entry link -->
+        <button class="pos-manual-link" onclick="posShowManualPhase()"
+          type="button">
+          Enter card details manually
+        </button>
+      </div><!-- /posPhotoPhase -->
+
+      <!-- ── PHASE: REVIEW (after vision or manual entry) ── -->
+      <div id="posReviewPhase" style="display:none">
+
+        <div class="pos-phase-head pos-review-head">
+          <div>
+            <div class="pos-phase-title">Review Card</div>
+            <div class="pos-phase-sub">Check details before recording sale</div>
+          </div>
+          <button class="pos-retake-link" onclick="posRetakePhoto()"
+            type="button">
+            📷 Retake
+          </button>
+        </div>
+
+        <!-- Confidence badge — injected by posShowReview() -->
+        <div id="posConfidenceBadge" style="display:none"
+          class="pos-confidence-badge"></div>
+
+        <!-- Review fields -->
+        <div class="pos-fields">
+          <div class="pos-field pos-field-full">
+            <label class="pos-lbl" for="posRPlayer">Player</label>
+            <input id="posRPlayer" class="pos-inp" type="text"
+              inputmode="text" autocomplete="off" autocorrect="off"
+              spellcheck="false" placeholder="e.g. Paul Skenes">
+          </div>
+
+          <div class="pos-field-row">
+            <div class="pos-field">
+              <label class="pos-lbl" for="posRYear">Year</label>
+              <input id="posRYear" class="pos-inp" type="text"
+                inputmode="numeric" placeholder="2024" maxlength="4">
+            </div>
+            <div class="pos-field">
+              <label class="pos-lbl" for="posRSet">Set</label>
+              <input id="posRSet" class="pos-inp" type="text"
+                inputmode="text" autocomplete="off"
+                placeholder="topps chrome">
+            </div>
+          </div>
+
+          <div class="pos-field-row">
+            <div class="pos-field">
+              <label class="pos-lbl" for="posRCardNum">Card #</label>
+              <input id="posRCardNum" class="pos-inp" type="text"
+                inputmode="text" placeholder="101">
+            </div>
+            <div class="pos-field">
+              <label class="pos-lbl" for="posRParallel">Parallel</label>
+              <input id="posRParallel" class="pos-inp" type="text"
+                inputmode="text" placeholder="refractor">
+            </div>
+          </div>
+
+          <div class="pos-field-row">
+            <div class="pos-field">
+              <label class="pos-lbl" for="posRGrade">Grade</label>
+              <input id="posRGrade" class="pos-inp" type="text"
+                inputmode="decimal" placeholder="10">
+            </div>
+            <div class="pos-field">
+              <label class="pos-lbl" for="posRGrader">Grader</label>
+              <select id="posRGrader" class="pos-inp pos-select">
+                <option value="">Raw</option>
+                <option value="PSA">PSA</option>
+                <option value="BGS">BGS</option>
+                <option value="SGC">SGC</option>
+                <option value="CGC">CGC</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="pos-field pos-field-full">
+            <label class="pos-lbl" for="posRCert">
+              Cert # <span class="pos-opt">optional</span>
+            </label>
+            <input id="posRCert" class="pos-inp" type="text"
+              inputmode="numeric" placeholder="PSA / BGS cert number">
+          </div>
+
+          <div class="pos-field pos-field-full">
+            <label class="pos-lbl" for="posRPrice">
+              Asking Price <span class="pos-opt">optional</span>
+            </label>
+            <div class="pos-price-wrap">
+              <span class="pos-price-sym">$</span>
+              <input id="posRPrice" class="pos-inp pos-price-inp"
+                type="number" inputmode="decimal" step="0.01"
+                placeholder="0.00">
+            </div>
+          </div>
+        </div>
+
+        <!-- Actions — sticky at bottom -->
+        <div class="pos-actions">
+          <button class="pos-btn-primary" onclick="posInsertAndOpenDrawer()">
+            Looks Good — Record Sale →
+          </button>
+          <button class="pos-btn-cancel" onclick="posClose()">Cancel</button>
+        </div>
+
+      </div><!-- /posReviewPhase -->
+
+    </div><!-- /posScroll -->
+  </div><!-- /posSheet -->
+</div>
+
+<!-- Hidden file input for camera capture -->
+<input type="file" id="posFileInput" accept="image/*"
+  capture="environment" style="display:none"
+  onchange="posHandlePhoto(this)">
 
 <!-- ═══════════════ BUYER VIEW ═══════════════ -->
 <div id="view-buyer" class="view">
@@ -7917,6 +8454,363 @@ function closeSellDrawer() {
   sdSelectedPayment = null;
 }
 
+// ════════════════════════════════════════════════════════
+// SCAN-TO-SELL POS — Photo-first identification
+// Chains into existing vision-scan.js and the sell drawer. Inserts the
+// card as Available, then hands off to openSellDrawer()/sdConfirm() —
+// the exact same path a seller marking an existing card sold takes.
+// ════════════════════════════════════════════════════════
+
+let _posVisionAbort = null;   // AbortController for in-flight vision fetch
+let _posLastResult  = null;   // last vision result { card, result }
+
+function posOpenPhotoSheet() {
+  _posReset();
+  document.getElementById('posOverlay').style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+}
+
+function posClose() {
+  if (_posVisionAbort) { _posVisionAbort.abort(); _posVisionAbort = null; }
+  document.getElementById('posOverlay').style.display = 'none';
+  document.body.style.overflow = '';
+  _posReset();
+}
+
+function _posReset() {
+  if (_posVisionAbort) { _posVisionAbort.abort(); _posVisionAbort = null; }
+  _posLastResult = null;
+
+  document.getElementById('posPhotoPhase').style.display  = 'block';
+  document.getElementById('posReviewPhase').style.display = 'none';
+
+  const photoBtn   = document.getElementById('posPhotoBtn');
+  const loading    = document.getElementById('posLoading');
+  const manualLink = document.querySelector('.pos-manual-link');
+  if (photoBtn)   photoBtn.style.display   = 'flex';
+  if (loading)    loading.style.display    = 'none';
+  if (manualLink) manualLink.style.display = 'block';
+
+  ['posRPlayer','posRYear','posRSet','posRCardNum','posRParallel',
+   'posRGrade','posRCert','posRPrice'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.value = ''; el.classList.remove('pos-filled'); }
+  });
+  const graderEl = document.getElementById('posRGrader');
+  if (graderEl) graderEl.value = '';
+
+  const badge = document.getElementById('posConfidenceBadge');
+  if (badge) { badge.className = 'pos-confidence-badge'; badge.style.display = 'none'; badge.textContent = ''; }
+
+  const fi = document.getElementById('posFileInput');
+  if (fi) fi.value = '';
+
+  const scroll = document.getElementById('posScroll');
+  if (scroll) scroll.scrollTop = 0;
+}
+
+function posTriggerCamera() {
+  document.getElementById('posFileInput').click();
+}
+
+async function posHandlePhoto(inputEl) {
+  const file = inputEl.files?.[0];
+  if (!file) return;
+  inputEl.value = ''; // reset so the same photo can be retried
+
+  const photoBtn   = document.getElementById('posPhotoBtn');
+  const loading    = document.getElementById('posLoading');
+  const manualLink = document.querySelector('.pos-manual-link');
+  const msgEl      = document.getElementById('posLoadingMsg');
+
+  if (photoBtn)   photoBtn.style.display   = 'none';
+  if (loading)    loading.style.display    = 'flex';
+  if (manualLink) manualLink.style.display = 'none';
+  if (msgEl)      msgEl.textContent        = 'Reading photo…';
+
+  try {
+    const base64    = await _posCompressImage(file);
+    const mediaType = 'image/jpeg';
+
+    if (msgEl) msgEl.textContent = 'Identifying card…';
+
+    _posVisionAbort = new AbortController();
+
+    // Calls vision-scan.js directly rather than through _callVisionScan() —
+    // that helper is hard-wired to the Add Card modal's cert-scanner
+    // overlay (closeCertScanner(), fillFormFromVision(), its own loading
+    // overlay) and would fill the wrong form entirely if reused here.
+    const response = await fetch('/.netlify/functions/vision-scan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: base64, mediaType }),
+      signal: _posVisionAbort.signal
+    });
+
+    _posVisionAbort = null;
+
+    if (!response.ok) {
+      throw new Error(`Server error ${response.status}`);
+    }
+
+    const result = await response.json();
+
+    if (!result.success || result.error === 'low_confidence') {
+      _posShowLowConfidence(result);
+      return;
+    }
+
+    posShowReview(result.card, result);
+
+  } catch (err) {
+    if (err.name === 'AbortError') return; // user cancelled
+
+    console.error('[POS Vision]', err);
+
+    if (photoBtn)   photoBtn.style.display   = 'flex';
+    if (loading)    loading.style.display    = 'none';
+    if (manualLink) manualLink.style.display = 'block';
+
+    showToast('⚠️ Could not identify card — try again or enter manually', 'var(--danger)');
+  }
+}
+
+async function _posCompressImage(file) {
+  // Max 1024px, JPEG 85% — mirrors scanTakePhoto()'s compression exactly
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const MAX = 1024;
+      let w = img.width, h = img.height;
+      if (w > MAX || h > MAX) {
+        if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+        else       { w = Math.round(w * MAX / h); h = MAX; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', 0.85).split(',')[1]);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Image load failed')); };
+    img.src = url;
+  });
+}
+
+// Overall confidence: worst of the per-field ratings vision-scan.js
+// returns under card.confidence (not a flat value on the card itself —
+// e.g. card.confidence.player, card.confidence.cardSet, etc).
+function _posOverallConfidence(card) {
+  const conf = card.confidence || {};
+  const values = ['player','year','cardSet','cardNumber','parallel','grade']
+    .map(k => conf[k]).filter(Boolean);
+  if (!values.length)        return 'medium';
+  if (values.includes('low'))    return 'low';
+  if (values.includes('medium')) return 'medium';
+  return 'high';
+}
+
+function posShowReview(card, result) {
+  _posLastResult = { card, result };
+
+  document.getElementById('posPhotoPhase').style.display  = 'none';
+  document.getElementById('posReviewPhase').style.display = 'block';
+
+  const fill = (id, val) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const v = String(val ?? '').trim();
+    el.value = v;
+    if (v) el.classList.add('pos-filled');
+    el.addEventListener('focus', () => el.classList.remove('pos-filled'), { once: true });
+  };
+
+  // vision-scan.js field names: cardSet (not "set"), cardNumber, certNumber
+  fill('posRPlayer',   card.player);
+  fill('posRYear',     card.year);
+  fill('posRSet',      card.cardSet);
+  fill('posRCardNum',  card.cardNumber);
+  fill('posRParallel', card.parallel);
+  fill('posRGrade',    card.grade);
+  fill('posRCert',     card.certNumber);
+
+  const graderEl = document.getElementById('posRGrader');
+  if (graderEl && card.grader) graderEl.value = String(card.grader).toUpperCase();
+
+  const badge = document.getElementById('posConfidenceBadge');
+  if (badge) {
+    const level  = _posOverallConfidence(card);
+    const icons  = { high: '✓', medium: '⚠', low: '✗' };
+    const labels = {
+      high:   'High confidence — ready to confirm',
+      medium: 'Medium confidence — check highlighted fields',
+      low:    'Low confidence — fill in missing details'
+    };
+    badge.className     = `pos-confidence-badge ${level}`;
+    badge.textContent   = `${icons[level]}  ${labels[level]}`;
+    badge.style.display = 'block';
+  }
+
+  const scroll = document.getElementById('posScroll');
+  if (scroll) scroll.scrollTop = 0;
+}
+
+function posShowManualPhase() {
+  const loading    = document.getElementById('posLoading');
+  const photoBtn   = document.getElementById('posPhotoBtn');
+  const manualLink = document.querySelector('.pos-manual-link');
+  if (loading)    loading.style.display    = 'none';
+  if (photoBtn)   photoBtn.style.display   = 'none';
+  if (manualLink) manualLink.style.display = 'none';
+
+  document.getElementById('posPhotoPhase').style.display  = 'none';
+  document.getElementById('posReviewPhase').style.display = 'block';
+
+  const badge = document.getElementById('posConfidenceBadge');
+  if (badge) badge.style.display = 'none';
+
+  setTimeout(() => document.getElementById('posRPlayer')?.focus(), 100);
+}
+
+function posRetakePhoto() {
+  document.getElementById('posReviewPhase').style.display = 'none';
+  document.getElementById('posPhotoPhase').style.display  = 'block';
+
+  const photoBtn   = document.getElementById('posPhotoBtn');
+  const loading    = document.getElementById('posLoading');
+  const manualLink = document.querySelector('.pos-manual-link');
+  if (photoBtn)   photoBtn.style.display   = 'flex';
+  if (loading)    loading.style.display    = 'none';
+  if (manualLink) manualLink.style.display = 'block';
+
+  setTimeout(() => posTriggerCamera(), 150);
+}
+
+function _posShowLowConfidence(result) {
+  // vision-scan.js returns no `card` at all on the low_confidence path —
+  // nothing usable to pre-fill, so just restore the photo UI for a retry.
+  const photoBtn   = document.getElementById('posPhotoBtn');
+  const loading    = document.getElementById('posLoading');
+  const manualLink = document.querySelector('.pos-manual-link');
+  if (photoBtn)   photoBtn.style.display   = 'flex';
+  if (loading)    loading.style.display    = 'none';
+  if (manualLink) manualLink.style.display = 'block';
+
+  showToast('⚠️ Card not clearly identified — try a closer photo or enter manually', '#f5a623');
+}
+
+function posCancelVision() {
+  if (_posVisionAbort) { _posVisionAbort.abort(); _posVisionAbort = null; }
+
+  const photoBtn   = document.getElementById('posPhotoBtn');
+  const loading    = document.getElementById('posLoading');
+  const manualLink = document.querySelector('.pos-manual-link');
+  if (photoBtn)   photoBtn.style.display   = 'flex';
+  if (loading)    loading.style.display    = 'none';
+  if (manualLink) manualLink.style.display = 'block';
+}
+
+// Bridge from POS review into the existing sell drawer. Card is inserted
+// as Available (never Sold directly) — openSellDrawer()/sdConfirm() is
+// the same path used for any pre-existing inventory card, unmodified.
+async function posInsertAndOpenDrawer() {
+  const player = document.getElementById('posRPlayer').value.trim();
+  if (!player) {
+    showToast('⚠️ Player name is required', 'var(--danger)');
+    document.getElementById('posRPlayer').focus();
+    return;
+  }
+
+  const year     = document.getElementById('posRYear').value.trim();
+  const cardSet  = document.getElementById('posRSet').value.trim().toLowerCase();
+  const cardNum  = document.getElementById('posRCardNum').value.trim().toLowerCase();
+  const parallel = document.getElementById('posRParallel').value.trim().toLowerCase();
+  const gradeVal = document.getElementById('posRGrade').value.trim();
+  const grader   = document.getElementById('posRGrader').value.trim();
+  const cert     = document.getElementById('posRCert').value.trim();
+  const price    = parseFloat(document.getElementById('posRPrice').value) || 0;
+
+  // Field names match cardToDbRow()'s expectations exactly — 'Parallel/Variant'
+  // and 'Cert #', not the shorter 'Parallel'/'Cert' — and validateAndNormalizeCard()
+  // runs on every other card-creation path in this app, so it runs here too.
+  const rawCard = {
+    Player:             player,
+    Year:               year || null,
+    'Set ':             cardSet,
+    Number:             cardNum,
+    'Parallel/Variant': parallel,
+    Grader:             grader || null,
+    Grade:              gradeVal !== '' ? parseFloat(gradeVal) : null,
+    'Cert #':           cert,
+    Price:              price,
+    Status:             'Available',
+    Location:           null,
+    Seller:             currentSeller,
+    item_type:          'card',
+    product_type:       null,
+  };
+
+  const card = validateAndNormalizeCard(rawCard);
+  card._shows = new Set();
+
+  // buildCardTitle() reads cardSet/cardNum (not set/cardNumber) and never
+  // uses grader/grade — matches the exact call shape fillFormFromVision() uses.
+  card['Card Title'] = (typeof buildCardTitle === 'function')
+    ? buildCardTitle({
+        player, year, cardSet, cardNum, parallel,
+        sport: _posLastResult?.card?.sport || '',
+        rawTitle: '',
+      })
+    : [year, cardSet, player, parallel].filter(Boolean).join(' ').trim();
+
+  const confirmBtn = document.querySelector('#posReviewPhase .pos-btn-primary');
+  if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = 'Saving…'; }
+
+  try {
+    // insertCardToDB() returns the new UUID but does not mutate `card` —
+    // it must be captured and assigned to _dbId here, or updateCardInDB()
+    // (called later by sdConfirm()) will silently no-op on this card forever.
+    const dbId = await insertCardToDB(card);
+    if (dbId) {
+      card._dbId = dbId;
+    } else {
+      showToast('⚠️ Saved locally — sync to server failed', 'var(--danger)');
+    }
+
+    inventory.push(card);
+    const cardIdx = inventory.length - 1;
+
+    document.getElementById('posOverlay').style.display = 'none';
+    document.body.style.overflow = '';
+    _posReset();
+
+    openSellDrawer(cardIdx);
+
+  } catch (err) {
+    console.error('[POS Insert]', err);
+    showToast('⚠️ Error saving card — try again', 'var(--danger)');
+    if (confirmBtn) {
+      confirmBtn.disabled    = false;
+      confirmBtn.textContent = 'Looks Good — Record Sale →';
+    }
+  }
+}
+
+// Swipe-down gesture on the sheet
+(function posSwipeInit() {
+  let _startY = 0;
+  const sheet = document.getElementById('posSheet');
+  if (!sheet) return;
+  sheet.addEventListener('touchstart', e => {
+    _startY = e.touches[0].clientY;
+  }, { passive: true });
+  sheet.addEventListener('touchend', e => {
+    const delta = e.changedTouches[0].clientY - _startY;
+    if (delta > 80) posClose();
+  }, { passive: true });
+})();
+
 function populateReportShowSelector() {
   const sel = document.getElementById('rptShowFilter');
   if (!sel) return;
@@ -8313,6 +9207,8 @@ function loginAsSeller(handle) {
   if (compBtn) compBtn.style.display = '';
   const fabAdd = document.getElementById('fabAddCard');
   if (fabAdd) fabAdd.style.display = '';
+  const fabScan = document.getElementById('fabScanToSell');
+  if (fabScan) fabScan.style.display = '';
 
   // Show Select All for seller, hide admin-only buttons
   const selectAllBtn = document.getElementById('selectAllBtn');
@@ -8425,6 +9321,8 @@ function loginAsAdmin() {
   if (compBtnAdm) compBtnAdm.style.display = 'none';
   const fabAddAdm = document.getElementById('fabAddCard');
   if (fabAddAdm) fabAddAdm.style.display = 'none';
+  const fabScanAdm = document.getElementById('fabScanToSell');
+  if (fabScanAdm) fabScanAdm.style.display = 'none';
   const sellerTabBarAdm = document.getElementById('sellerTabBar');
   if (sellerTabBarAdm) sellerTabBarAdm.style.display = 'none';
 
@@ -8511,6 +9409,8 @@ async function signOut() {
   if (compBtnSO) compBtnSO.style.display = 'none';
   const fabAddSO = document.getElementById('fabAddCard');
   if (fabAddSO) fabAddSO.style.display = 'none';
+  const fabScanSO = document.getElementById('fabScanToSell');
+  if (fabScanSO) fabScanSO.style.display = 'none';
   const sellerTabBarSO = document.getElementById('sellerTabBar');
   if (sellerTabBarSO) { sellerTabBarSO.style.display = 'none'; switchSellerTab('inventory'); }
 
