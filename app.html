@@ -3284,6 +3284,179 @@
   .pos-dropdown-item .pos-dd-sub { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--muted); letter-spacing: 0.08em; margin-top: 3px; }
   .pos-dd-loading { padding: 14px 16px; font-family: 'DM Mono', monospace; font-size: 11px; color: var(--muted); letter-spacing: 0.1em; }
 
+  /* ════════════════════════════════════════════════
+     SCAN-TO-SELL POS — Session 2: barcode scan path
+  ════════════════════════════════════════════════ */
+
+  #posScanMode { padding-bottom: 8px; }
+
+  .pos-viewfinder-wrap {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    background: #000;
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 14px;
+  }
+
+  .pos-camera-feed {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  .pos-reticle {
+    position: absolute;
+    inset: 12px;
+    border: 1.5px solid rgba(245, 200, 66, 0.6);
+    border-radius: 6px;
+    overflow: hidden;
+    pointer-events: none;
+  }
+  .pos-reticle::before,
+  .pos-reticle::after {
+    content: '';
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    border-color: var(--accent);
+    border-style: solid;
+  }
+  .pos-reticle::before {
+    top: -1px; left: -1px;
+    border-width: 2.5px 0 0 2.5px;
+    border-radius: 4px 0 0 0;
+  }
+  .pos-reticle::after {
+    bottom: -1px; right: -1px;
+    border-width: 0 2.5px 2.5px 0;
+    border-radius: 0 0 4px 0;
+  }
+
+  .pos-reticle-line {
+    position: absolute;
+    left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    animation: posScanLine 2s ease-in-out infinite;
+  }
+  @keyframes posScanLine {
+    0%   { top: 10%; opacity: 0; }
+    10%  { opacity: 1; }
+    90%  { opacity: 1; }
+    100% { top: 85%; opacity: 0; }
+  }
+  .pos-reticle-line.paused { animation-play-state: paused; }
+
+  .pos-scan-status {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    padding: 8px 12px;
+    background: rgba(7, 8, 12, 0.7);
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: var(--text);
+    text-align: center;
+    backdrop-filter: blur(4px);
+  }
+
+  .pos-no-camera {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    background: var(--surface);
+    color: var(--muted);
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    text-align: center;
+  }
+  .pos-no-camera svg { opacity: 0.4; }
+  .pos-no-camera-sub { font-size: 10px; color: var(--border); }
+
+  .pos-scan-result {
+    background: #0a1a10;
+    border: 1px solid #1baf7a;
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-bottom: 14px;
+    text-align: center;
+  }
+  .pos-scan-result-cert {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 22px;
+    letter-spacing: 0.06em;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+  .pos-scan-result-status {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    color: #1baf7a;
+  }
+  .pos-scan-result-status.error { color: #e05c5c; }
+
+  .pos-manual-toggle {
+    display: block;
+    width: 100%;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    cursor: pointer;
+    text-align: center;
+    transition: border-color 140ms, color 140ms;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    margin-bottom: 8px;
+  }
+  .pos-manual-toggle:active { border-color: var(--muted); color: var(--text); }
+
+  .pos-manual-header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  .pos-scan-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: none;
+    border: none;
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    cursor: pointer;
+    padding: 6px 0;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .pos-cert-lookup-status {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    margin-top: 6px;
+  }
+  .pos-cert-lookup-status.found { color: #1baf7a; }
+  .pos-cert-lookup-status.notfound { color: #e05c5c; }
+
 </style>
 </head>
 <body>
@@ -4338,97 +4511,166 @@
       <!-- ── PHASE 1: Card identity ── -->
       <div id="posPhase1">
 
-        <div class="pos-section-head">
-          <div class="pos-section-title">Card Details</div>
-          <div class="pos-section-sub">
-            Camera scan coming soon — enter details below
+        <!-- ── SCAN MODE (default) — Session 2 ── -->
+        <div id="posScanMode">
+
+          <div class="pos-section-head">
+            <div class="pos-section-title">Scan Cert Barcode</div>
+            <div class="pos-section-sub">
+              Point camera at the barcode on the PSA, BGS, SGC, or CGC label
+            </div>
           </div>
-        </div>
 
-        <div class="pos-field" style="position:relative">
-          <label class="pos-label" for="posPlayer">Player</label>
-          <input
-            id="posPlayer"
-            class="pos-input"
-            type="text"
-            inputmode="text"
-            autocomplete="off"
-            autocorrect="off"
-            spellcheck="false"
-            placeholder="e.g. Paul Skenes"
-            oninput="posTcapiPlayerSearch(this.value)"
-          >
-          <div id="posPlayerDropdown" class="pos-dropdown"
-            style="display:none"></div>
-        </div>
+          <!-- Camera viewfinder -->
+          <div class="pos-viewfinder-wrap" id="posViewfinderWrap">
+            <video id="posCameraFeed" class="pos-camera-feed"
+              autoplay muted playsinline></video>
+            <!-- Scanning reticle overlay -->
+            <div class="pos-reticle" id="posReticle">
+              <div class="pos-reticle-line" id="posReticleLine"></div>
+            </div>
+            <!-- Status message over viewfinder -->
+            <div class="pos-scan-status" id="posScanStatus">
+              Align barcode within the frame
+            </div>
+            <!-- Camera not available fallback message -->
+            <div class="pos-no-camera" id="posNoCamera" style="display:none">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8
+                         a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                <line x1="1" y1="1" x2="23" y2="23"/>
+              </svg>
+              <div>Camera unavailable</div>
+              <div class="pos-no-camera-sub">
+                Use manual entry below
+              </div>
+            </div>
+          </div>
 
-        <div class="pos-row-2">
+          <!-- Scan result feedback (shown briefly on successful read) -->
+          <div class="pos-scan-result" id="posScanResult" style="display:none">
+            <div class="pos-scan-result-cert" id="posScanResultCert"></div>
+            <div class="pos-scan-result-status" id="posScanResultStatus">
+              Looking up cert…
+            </div>
+          </div>
+
+          <!-- Manual entry toggle -->
+          <button class="pos-manual-toggle" id="posManualToggle"
+            onclick="posShowManualEntry()" type="button">
+            Enter cert number or card details manually
+          </button>
+
+        </div><!-- /posScanMode -->
+
+        <!-- ── MANUAL ENTRY (hidden until toggled or fallback) — Session 2 wraps Session 1 fields ── -->
+        <div id="posManualEntry" style="display:none">
+
+          <div class="pos-manual-header">
+            <div class="pos-section-title">Card Details</div>
+            <button class="pos-scan-toggle" onclick="posShowScanMode()"
+              type="button" id="posScanToggle">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8
+                         a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                <circle cx="12" cy="13" r="4"/>
+              </svg>
+              Scan instead
+            </button>
+          </div>
+
+          <!-- Cert number (pre-filled if barcode was partially read) -->
           <div class="pos-field">
-            <label class="pos-label" for="posYear">Year</label>
-            <input id="posYear" class="pos-input" type="text"
-              inputmode="numeric" pattern="[0-9]*"
-              placeholder="2024" maxlength="4">
-          </div>
-          <div class="pos-field" style="position:relative">
-            <label class="pos-label" for="posSet">Set</label>
-            <input id="posSet" class="pos-input" type="text"
-              inputmode="text" autocomplete="off" autocorrect="off"
-              placeholder="topps chrome"
-              oninput="posTcapiSetSearch(this.value)">
-            <div id="posSetDropdown" class="pos-dropdown"
+            <label class="pos-label" for="posCertNum">
+              Cert # <span class="pos-optional">optional</span>
+            </label>
+            <input id="posCertNum" class="pos-input" type="text"
+              inputmode="numeric" placeholder="PSA / BGS cert number"
+              oninput="posManualCertLookup(this.value)">
+            <div class="pos-cert-lookup-status" id="posCertLookupStatus"
               style="display:none"></div>
           </div>
-        </div>
 
-        <div class="pos-row-2">
-          <div class="pos-field">
-            <label class="pos-label" for="posCardNum">Card #</label>
-            <input id="posCardNum" class="pos-input" type="text"
-              inputmode="text" placeholder="101">
+          <div class="pos-field" style="position:relative">
+            <label class="pos-label" for="posPlayer">Player</label>
+            <input
+              id="posPlayer"
+              class="pos-input"
+              type="text"
+              inputmode="text"
+              autocomplete="off"
+              autocorrect="off"
+              spellcheck="false"
+              placeholder="e.g. Paul Skenes"
+              oninput="posTcapiPlayerSearch(this.value)"
+            >
+            <div id="posPlayerDropdown" class="pos-dropdown"
+              style="display:none"></div>
           </div>
-          <div class="pos-field">
-            <label class="pos-label" for="posParallel">Parallel</label>
-            <input id="posParallel" class="pos-input" type="text"
-              inputmode="text" placeholder="refractor">
+
+          <div class="pos-row-2">
+            <div class="pos-field">
+              <label class="pos-label" for="posYear">Year</label>
+              <input id="posYear" class="pos-input" type="text"
+                inputmode="numeric" pattern="[0-9]*"
+                placeholder="2024" maxlength="4">
+            </div>
+            <div class="pos-field" style="position:relative">
+              <label class="pos-label" for="posSet">Set</label>
+              <input id="posSet" class="pos-input" type="text"
+                inputmode="text" autocomplete="off" autocorrect="off"
+                placeholder="topps chrome"
+                oninput="posTcapiSetSearch(this.value)">
+              <div id="posSetDropdown" class="pos-dropdown"
+                style="display:none"></div>
+            </div>
           </div>
-        </div>
 
-        <div class="pos-row-2">
-          <div class="pos-field">
-            <label class="pos-label" for="posGrade">Grade</label>
-            <input id="posGrade" class="pos-input" type="text"
-              inputmode="decimal" placeholder="10">
+          <div class="pos-row-2">
+            <div class="pos-field">
+              <label class="pos-label" for="posCardNum">Card #</label>
+              <input id="posCardNum" class="pos-input" type="text"
+                inputmode="text" placeholder="101">
+            </div>
+            <div class="pos-field">
+              <label class="pos-label" for="posParallel">Parallel</label>
+              <input id="posParallel" class="pos-input" type="text"
+                inputmode="text" placeholder="refractor">
+            </div>
           </div>
-          <div class="pos-field">
-            <label class="pos-label" for="posGrader">Grader</label>
-            <select id="posGrader" class="pos-input pos-select">
-              <option value="">Raw</option>
-              <option value="PSA">PSA</option>
-              <option value="BGS">BGS</option>
-              <option value="CGC">CGC</option>
-              <option value="SGC">SGC</option>
-            </select>
+
+          <div class="pos-row-2">
+            <div class="pos-field">
+              <label class="pos-label" for="posGrade">Grade</label>
+              <input id="posGrade" class="pos-input" type="text"
+                inputmode="decimal" placeholder="10">
+            </div>
+            <div class="pos-field">
+              <label class="pos-label" for="posGrader">Grader</label>
+              <select id="posGrader" class="pos-input pos-select">
+                <option value="">Raw</option>
+                <option value="PSA">PSA</option>
+                <option value="BGS">BGS</option>
+                <option value="CGC">CGC</option>
+                <option value="SGC">SGC</option>
+              </select>
+            </div>
           </div>
-        </div>
 
-        <div class="pos-field">
-          <label class="pos-label" for="posCertNum">
-            Cert # <span class="pos-optional">optional</span>
-          </label>
-          <input id="posCertNum" class="pos-input" type="text"
-            inputmode="numeric" placeholder="PSA / BGS cert number">
-        </div>
+          <input type="hidden" id="posPlayerUUID" value="">
+          <input type="hidden" id="posSetUUID" value="">
+          <input type="hidden" id="posCardUUID" value="">
 
-        <input type="hidden" id="posPlayerUUID" value="">
-        <input type="hidden" id="posSetUUID" value="">
-        <input type="hidden" id="posCardUUID" value="">
+          <div class="pos-actions">
+            <button class="pos-btn-next" onclick="posAdvanceToPhase2()">
+              Next: Sale Amount
+            </button>
+            <button class="pos-btn-cancel" onclick="closePOS()">Cancel</button>
+          </div>
 
-        <div class="pos-actions">
-          <button class="pos-btn-next" onclick="posAdvanceToPhase2()">
-            Next: Sale Amount
-          </button>
-          <button class="pos-btn-cancel" onclick="closePOS()">Cancel</button>
-        </div>
+        </div><!-- /posManualEntry -->
 
       </div><!-- /posPhase1 -->
 
@@ -13728,18 +13970,27 @@ let _posSelectedPayment = '';
 let _posPlayerResults   = [];
 let _posSetResults      = [];
 
+// ── Session 2: barcode scan state ──
+let _posCameraStream  = null;   // active MediaStream — stopped on exit
+let _posBarcodeReader = null;   // ZXing reader instance
+let _posScanActive    = false;  // guard against concurrent scan frames
+let _posCertTimer     = null;   // debounce for manual cert input
+
 function openPOS() {
   posReset();
   const overlay = document.getElementById('posOverlay');
   overlay.style.display = 'flex';
-  setTimeout(() => {
-    const playerInput = document.getElementById('posPlayer');
-    if (playerInput) playerInput.focus();
-  }, 300);
   document.body.style.overflow = 'hidden';
+  // Session 2: default to scan mode, camera starts after sheet animates in
+  setTimeout(() => posShowScanMode(), 300);
 }
 
 function closePOS() {
+  posStopCamera(); // Session 2: always stop camera on close
+  if (_posBarcodeReader) {
+    try { _posBarcodeReader.reset?.(); } catch { /* ignore */ }
+    _posBarcodeReader = null;
+  }
   document.getElementById('posOverlay').style.display = 'none';
   document.body.style.overflow = '';
   if (_posCountdownTimer) { clearInterval(_posCountdownTimer); _posCountdownTimer = null; }
@@ -13747,6 +13998,21 @@ function closePOS() {
 }
 
 function posReset() {
+  // Session 2: stop camera and reset scan UI back to default scan mode
+  posStopCamera();
+  if (_posBarcodeReader) {
+    try { _posBarcodeReader.reset?.(); } catch { /* ignore */ }
+    _posBarcodeReader = null;
+  }
+  const resultPanel = document.getElementById('posScanResult');
+  if (resultPanel) resultPanel.style.display = 'none';
+  const scanMode   = document.getElementById('posScanMode');
+  const manualMode = document.getElementById('posManualEntry');
+  if (scanMode)   scanMode.style.display   = 'block';
+  if (manualMode) manualMode.style.display = 'none';
+  const scanLine = document.getElementById('posReticleLine');
+  if (scanLine) scanLine.classList.remove('paused');
+
   ['posPlayer','posYear','posSet','posCardNum','posParallel',
    'posGrade','posCertNum','posSoldPrice','posSaleNotes']
     .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
@@ -13792,6 +14058,361 @@ function posReset() {
   if (countdown) countdown.style.display = 'none';
 
   posShowPhase(1);
+}
+
+// ════════════════════════════════════════════════════════
+// SCAN-TO-SELL POS — Session 2 (barcode scan path)
+// ════════════════════════════════════════════════════════
+
+async function posShowScanMode() {
+  document.getElementById('posScanMode').style.display = 'block';
+  document.getElementById('posManualEntry').style.display = 'none';
+
+  const resultPanel = document.getElementById('posScanResult');
+  if (resultPanel) resultPanel.style.display = 'none';
+
+  const line = document.getElementById('posReticleLine');
+  if (line) line.classList.remove('paused');
+
+  await posStartCamera();
+}
+
+function posShowManualEntry() {
+  // Stop camera before switching — conserve battery
+  posStopCamera();
+
+  document.getElementById('posScanMode').style.display = 'none';
+  document.getElementById('posManualEntry').style.display = 'block';
+
+  // Focus cert number first (seller may have a partial cert to enter);
+  // fall back to player field if cert is already filled
+  setTimeout(() => {
+    const cert = document.getElementById('posCertNum');
+    const player = document.getElementById('posPlayer');
+    if (cert && !cert.value) {
+      cert.focus();
+    } else {
+      player?.focus();
+    }
+  }, 100);
+}
+
+async function posStartCamera() {
+  const video      = document.getElementById('posCameraFeed');
+  const noCamera   = document.getElementById('posNoCamera');
+  const scanStatus = document.getElementById('posScanStatus');
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: 'environment' },
+        width:  { ideal: 1280 },
+        height: { ideal: 720 }
+      },
+      audio: false
+    });
+
+    _posCameraStream = stream;
+    video.srcObject  = stream;
+    video.style.display = '';
+    await video.play();
+
+    noCamera.style.display = 'none';
+    scanStatus.textContent = 'Align barcode within the frame';
+
+    await posStartBarcodeDetection(video);
+
+  } catch (err) {
+    console.warn('[POS Camera]', err.name, err.message);
+    // Graceful fallback — modal stays fully usable via manual entry
+    noCamera.style.display = 'flex';
+    video.style.display    = 'none';
+    scanStatus.textContent = 'Camera access denied — use manual entry';
+  }
+}
+
+function posStopCamera() {
+  if (_posCameraStream) {
+    _posCameraStream.getTracks().forEach(t => t.stop());
+    _posCameraStream = null;
+  }
+  _posScanActive = false;
+  const video = document.getElementById('posCameraFeed');
+  if (video) {
+    video.srcObject = null;
+    video.pause();
+  }
+}
+
+async function posStartBarcodeDetection(video) {
+  _posScanActive = true;
+
+  // ── Path A: BarcodeDetector API (Chrome Android, iOS 17+, Safari 17+) ──
+  if (typeof BarcodeDetector !== 'undefined') {
+    let detector;
+    try {
+      detector = new BarcodeDetector({
+        formats: ['code_128', 'code_39', 'ean_13', 'ean_8',
+                  'qr_code', 'data_matrix', 'pdf417']
+      });
+    } catch {
+      detector = new BarcodeDetector();
+    }
+
+    const scanFrame = async () => {
+      if (!_posScanActive) return;
+      if (video.readyState !== video.HAVE_ENOUGH_DATA) {
+        requestAnimationFrame(scanFrame);
+        return;
+      }
+
+      try {
+        const barcodes = await detector.detect(video);
+        if (barcodes.length > 0) {
+          const found = barcodes.find(b => b.rawValue);
+          if (found) {
+            posOnBarcodeDetected(found.rawValue);
+            return; // stop the loop
+          }
+        }
+      } catch { /* detection failure — continue scanning */ }
+
+      requestAnimationFrame(scanFrame);
+    };
+
+    requestAnimationFrame(scanFrame);
+    return;
+  }
+
+  // ── Path B: ZXing WASM fallback (iOS <17, older Android) ──
+  try {
+    await posLoadZXing();
+    posStartZXingScan(video);
+  } catch (err) {
+    console.warn('[POS Scan] ZXing load failed:', err);
+    posUpdateScanStatus('Auto-scan unavailable — enter cert number manually', false);
+  }
+}
+
+function posLoadZXing() {
+  return new Promise((resolve, reject) => {
+    if (window.ZXing) { resolve(); return; }
+
+    if (document.getElementById('zxingScript')) {
+      const wait = setInterval(() => {
+        if (window.ZXing) { clearInterval(wait); resolve(); }
+      }, 100);
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.id  = 'zxingScript';
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/zxing-js/0.21.3/zxing.umd.min.js';
+    script.onload  = () => resolve();
+    script.onerror = () => reject(new Error('ZXing CDN load failed'));
+    document.head.appendChild(script);
+  });
+}
+
+function posStartZXingScan(video) {
+  try {
+    const ReaderClass = (
+      window.ZXing?.BrowserMultiFormatReader ||
+      window.ZXing?.BrowserBarcodeReader ||
+      window.ZXing?.browserMultiFormatReader
+    );
+
+    if (!ReaderClass) {
+      posUpdateScanStatus('Scanner unavailable — enter manually', false);
+      return;
+    }
+
+    const reader = new ReaderClass();
+    _posBarcodeReader = reader;
+
+    reader.decodeFromVideoElement(video, (result) => {
+      if (!_posScanActive) return;
+      if (result) {
+        posOnBarcodeDetected(result.getText());
+        reader.reset();
+      }
+      // Errors are ignored — ZXing emits one on every frame without a barcode
+    });
+
+  } catch (err) {
+    console.warn('[POS ZXing]', err);
+    posUpdateScanStatus('Scanner unavailable — enter manually', false);
+  }
+}
+
+// posExtractCertNumber() was dropped in favor of parseCertBarcode() — this
+// codebase already has a production PSA/CGC/SGC barcode parser (used by the
+// single-card cert scanner) with a digit-length heuristic per grader and a
+// URL-embedded-cert fallback. Reusing it means one heuristic to maintain,
+// not two, and it already knows how to tell PSA/SGC/CGC certs apart —
+// something a "just strip to the longest numeric run" fallback cannot do.
+function posOnBarcodeDetected(rawValue) {
+  if (!_posScanActive) return;
+
+  _posScanActive = false;
+  posStopCamera();
+
+  const line = document.getElementById('posReticleLine');
+  if (line) line.classList.add('paused');
+
+  const { cert: certNumber, grader } = parseCertBarcode(rawValue);
+
+  if (!certNumber) {
+    posUpdateScanStatus('Could not read cert — enter manually', false);
+    setTimeout(() => posShowManualEntry(), 1200);
+    return;
+  }
+
+  const resultPanel = document.getElementById('posScanResult');
+  const certDisplay = document.getElementById('posScanResultCert');
+  const statusEl    = document.getElementById('posScanResultStatus');
+
+  certDisplay.textContent   = `${grader} #${certNumber}`;
+  statusEl.textContent      = 'Looking up cert…';
+  statusEl.className        = 'pos-scan-result-status';
+  resultPanel.style.display = 'block';
+
+  posLookupCert(certNumber, grader);
+}
+
+// Reuses the existing /.netlify/functions/psa-lookup endpoint (POST
+// {cert, grader}) built for the single-card cert scanner — it already
+// routes PSA/SGC vs CGC to the right API, retries on 429 with backoff, and
+// returns a normalized {player, cardSet, year, cardNum, parallel, grade,
+// grader, certNum, sport, rawTitle} shape. A separate psa-cert.js proxy
+// with a guessed PSA response shape would duplicate that work and risk
+// getting the field mapping wrong with no way to verify it from here.
+async function posLookupCert(certNumber, grader) {
+  const statusEl = document.getElementById('posScanResultStatus');
+
+  try {
+    const response = await fetch('/.netlify/functions/psa-lookup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cert: certNumber, grader }),
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || `HTTP ${response.status}`);
+    }
+
+    const card = await response.json();
+    posPopulateFromCert(card, certNumber, grader);
+
+  } catch (err) {
+    console.warn('[POS Cert lookup]', err.message);
+
+    if (statusEl) {
+      statusEl.textContent = 'Cert not found — fill in details below';
+      statusEl.className   = 'pos-scan-result-status error';
+    }
+
+    setTimeout(() => {
+      posShowManualEntry();
+      const certField = document.getElementById('posCertNum');
+      if (certField) {
+        certField.value = certNumber;
+        document.getElementById('posPlayer')?.focus();
+      }
+    }, 1000);
+  }
+}
+
+// card is the normalized shape returned by /.netlify/functions/psa-lookup:
+// {player, cardSet, year, cardNum, parallel, grade, grader, certNum, sport, rawTitle}
+function posPopulateFromCert(card, certNumber, grader) {
+  const statusEl = document.getElementById('posScanResultStatus');
+
+  const player  = card.player  || '';
+  const year    = card.year    || '';
+  const cardSet = card.cardSet || '';
+  const cardNum = card.cardNum || '';
+  const parallel = card.parallel || '';
+
+  if (player)     document.getElementById('posPlayer').value    = player.trim();
+  if (year)       document.getElementById('posYear').value      = String(year).trim();
+  if (cardSet)    document.getElementById('posSet').value       = cardSet.toLowerCase().trim();
+  if (cardNum)    document.getElementById('posCardNum').value   = cardNum.toLowerCase().trim();
+  if (parallel)   document.getElementById('posParallel').value  = parallel.toLowerCase().trim();
+  document.getElementById('posCertNum').value = card.certNum || certNumber;
+
+  if (card.grade != null) document.getElementById('posGrade').value = card.grade;
+
+  const graderEl = document.getElementById('posGrader');
+  if (graderEl) graderEl.value = (card.grader || grader || 'PSA').toUpperCase();
+
+  if (statusEl) {
+    statusEl.textContent = player
+      ? `Found: ${player.trim()}`
+      : 'Cert found — review details below';
+    statusEl.className = 'pos-scan-result-status';
+  }
+
+  // Let the seller see the populated result briefly, then advance —
+  // or fall back to manual entry if the cert response was too sparse to trust.
+  setTimeout(() => {
+    const hasMinimumData = player || cardSet || cardNum;
+    if (hasMinimumData) {
+      posAdvanceToPhase2();
+    } else {
+      posShowManualEntry();
+    }
+  }, 1200);
+}
+
+function posManualCertLookup(value) {
+  clearTimeout(_posCertTimer);
+  const statusEl = document.getElementById('posCertLookupStatus');
+  if (!statusEl) return;
+
+  const cert = value.trim().replace(/\D/g, '');
+
+  if (cert.length < 6) {
+    statusEl.style.display = 'none';
+    return;
+  }
+
+  statusEl.textContent   = 'Looking up cert…';
+  statusEl.className     = 'pos-cert-lookup-status';
+  statusEl.style.display = 'block';
+
+  // Grader isn't known from a manually-typed cert number the way it is from
+  // a barcode's digit-length heuristic — use whatever's currently selected
+  // in the Grader dropdown; psa-lookup.js defaults to PSA when it's blank.
+  const grader = document.getElementById('posGrader')?.value || '';
+
+  _posCertTimer = setTimeout(async () => {
+    try {
+      const response = await fetch('/.netlify/functions/psa-lookup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cert, grader }),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const card = await response.json();
+
+      posPopulateFromCert(card, cert, grader);
+      statusEl.textContent = '✓ Cert found — fields populated';
+      statusEl.className   = 'pos-cert-lookup-status found';
+
+    } catch {
+      statusEl.textContent = 'Cert not found — fill in details manually';
+      statusEl.className   = 'pos-cert-lookup-status notfound';
+    }
+  }, 600);
+}
+
+function posUpdateScanStatus(message, isGood) {
+  const el = document.getElementById('posScanStatus');
+  if (!el) return;
+  el.textContent = message;
+  el.style.color = isGood ? '#1baf7a' : 'var(--muted)';
 }
 
 function posShowPhase(n) {

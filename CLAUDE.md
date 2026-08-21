@@ -924,7 +924,80 @@ or "Done" also available immediately).
   match at all, so the full ~273-set catalog is fetched once per session
   and filtered client-side).
 
-### Session 2 (next) — barcode scan
+### Session 2 — barcode scan path (shipped)
+
+Default entry point when `openPOS()` is called. Phase 1 now has two
+sub-modes, `#posScanMode` (default, camera viewfinder) and
+`#posManualEntry` (Session 1's original fields, now wrapped and hidden
+until toggled). Camera only runs while scan mode is visible on screen —
+`posStopCamera()` fires on every exit path (`posShowManualEntry()`,
+`closePOS()`, `posReset()`) so no stream is ever left open in the
+background.
+
+- **Camera stack:** `BarcodeDetector` API first (native, Chrome Android /
+  iOS 17+ / Safari 17+, `requestAnimationFrame` scan loop, no library) —
+  `posStartBarcodeDetection()`. Falls back to a lazy-loaded ZXing WASM
+  bundle from cdnjs (`posLoadZXing()` / `posStartZXingScan()`) only when
+  `BarcodeDetector` is unavailable. `getUserMedia` failure (denied
+  permission, no camera, sandboxed/headless environment) falls through to
+  `#posNoCamera` — the modal stays fully usable via the manual entry
+  toggle, it never dead-ends.
+- **Cert lookup reuses the existing cert-scanner pipeline instead of a new
+  endpoint.** The original session plan called for a brand-new
+  `netlify/functions/psa-cert.js` GET proxy with a hand-guessed PSA
+  response shape (`data.PSACert.Subject` etc.) — but this codebase already
+  has a production PSA/CGC/SGC pipeline built for the single-card cert
+  scanner (see "Cert Scanner — Sprint 1 + 2 Architecture" above):
+  `parseCertBarcode(raw)` (digit-length heuristic: PSA 8-9 digits, CGC
+  10 digits, SGC 7 digits, plus a URL-embedded-cert fallback) and
+  `POST /.netlify/functions/psa-lookup` `{cert, grader}` → normalized
+  `{player, cardSet, year, cardNum, parallel, grade, grader, certNum,
+  sport, rawTitle}` — already routes PSA/SGC vs CGC to the right API and
+  retries on 429 with backoff. `posOnBarcodeDetected()` calls
+  `parseCertBarcode()` directly (pure function, no DOM coupling, safe to
+  share); `posLookupCert()` / `posManualCertLookup()` POST to the same
+  `psa-lookup` endpoint the existing scanner uses. **No new Netlify
+  function was added.** This avoids maintaining two barcode-parsing
+  heuristics and two PSA response-shape guesses for the same underlying
+  API — the existing mapping was already shipped and is far more
+  trustworthy than a fresh, unverifiable guess.
+- `posPopulateFromCert(card, certNumber, grader)` maps the already-clean
+  `psa-lookup` response straight onto the Phase 1 fields (Set/Card#/
+  Parallel lowercased to match the rest of POS's field conventions;
+  Grader forced uppercase to match `VALID_GRADERS`). Auto-advances to
+  Phase 2 after a 1.2s pause if `player`/`cardSet`/`cardNum` came back
+  non-empty; falls back to `posShowManualEntry()` with the cert number
+  pre-filled otherwise, or on a failed/not-found lookup.
+- **BGS is not supported by this path** — `parseCertBarcode()` and
+  `psa-lookup.js` only recognize PSA, SGC, and CGC cert formats (a
+  pre-existing limitation of the reused pipeline, not new to this
+  session). A BGS slab falls through to manual entry.
+- Manual cert entry (`posManualCertLookup()`, debounced 600ms on
+  `#posCertNum` input in manual mode) reads whatever grader is currently
+  selected in `#posGrader` and passes it along; `psa-lookup.js` defaults
+  to PSA when grader is blank.
+
+#### Key new functions (Session 2)
+`posShowScanMode()` / `posShowManualEntry()`
+`posStartCamera()` / `posStopCamera()`
+`posStartBarcodeDetection(video)` / `posLoadZXing()` / `posStartZXingScan(video)`
+`posOnBarcodeDetected(rawValue)` — calls the shared `parseCertBarcode()`
+`posLookupCert(certNumber, grader)` / `posPopulateFromCert(card, certNumber, grader)`
+`posManualCertLookup(value)` / `posUpdateScanStatus(msg, isGood)`
+
+#### New state variables (Session 2)
+`_posCameraStream` — active MediaStream; stopped on every exit path
+`_posBarcodeReader` — ZXing reader instance (only set on the fallback path)
+`_posScanActive` — guards concurrent scan frames / a stale scan resolving after exit
+`_posCertTimer` — debounce timer for manual cert input
+
+#### `openPOS()` / `closePOS()` / `posReset()` updated
+`openPOS()` no longer focuses `#posPlayer` (it's hidden by default now) —
+calls `posShowScanMode()` after the 300ms sheet-in animation instead.
+`closePOS()` and `posReset()` both call `posStopCamera()` and reset the
+ZXing reader before doing anything else, then reset the scan UI back to
+its default (scan mode visible, manual entry hidden, scan line unpaused).
+
 ### Session 3 — image scan (single-card Claude vision)
 
 ### Key functions (app.html)
