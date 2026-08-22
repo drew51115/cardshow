@@ -6044,7 +6044,17 @@ function _closeBulkScanImageLightbox() {
 // button. Stops early on a 429 so the rest fall back to manual too.
 const BULK_SCAN_AUTO_VERIFY_LIMIT = 5;
 
+// Temporarily disabled while PSA API account approval is pending (the account
+// gets a 403 "Access to this API is limited to approved customers" on every
+// call today). Flip to true once that's resolved -- nothing else needs to
+// change. bsVerifyGrader() itself is untouched and fully functional; this
+// flag only gates whether the button renders and whether the auto-verify
+// pass runs, so re-enabling is a one-line change. CGC/SGC are unaffected --
+// their API access isn't in question, only PSA's.
+const BULK_SCAN_PSA_VERIFY_ENABLED = false;
+
 async function _autoVerifyPsaCards(cards) {
+  if (!BULK_SCAN_PSA_VERIFY_ENABLED) return;
   const targets = cards
     .filter(c => (c.grader || '').toString().trim().toUpperCase() === 'PSA' && (c.certNumber || '').toString().trim())
     .slice(0, BULK_SCAN_AUTO_VERIFY_LIMIT);
@@ -6424,6 +6434,15 @@ function _numericGrade(g) {
   return match ? match[0] : '';
 }
 
+// Shared between the initial card-block render and bsToggleGraderRow()'s
+// live update, so both stay in sync when the grader gets changed after render.
+function _bsVerifySlotHTML(grader) {
+  if (grader === 'PSA' && !BULK_SCAN_PSA_VERIFY_ENABLED) {
+    return `<div style="width:100%;font-size:0.68rem;color:var(--muted);font-family:'DM Mono',monospace;padding:0.55rem 0;text-align:center">PSA verification paused — pending API access</div>`;
+  }
+  return `<button class="btn btn-xs" style="width:100%;justify-content:center;padding:0.55rem;background:#1a1f2e;color:var(--gold);border:1px solid var(--gold)" onclick="bsVerifyGrader(this)">🔍 Verify with ${grader || 'Grader'}</button>`;
+}
+
 function bulkScanCardBlockHTML(c, idx) {
   const knownGraders = ['PSA', 'BGS', 'CGC', 'SGC'];
   const graderNorm = (c.grader || '').toString().trim().toUpperCase();
@@ -6492,8 +6511,8 @@ function bulkScanCardBlockHTML(c, idx) {
           <div class="section-label" style="margin-bottom:0.3rem">Cert #</div>
           <input class="show-input" data-field="certNumber" value="${_bsEsc(c.certNumber)}" placeholder="e.g. 12345678" style="margin:0">
         </div>
-        <div style="display:flex;align-items:flex-end">
-          <button class="btn btn-xs" style="width:100%;justify-content:center;padding:0.55rem;background:#1a1f2e;color:var(--gold);border:1px solid var(--gold)" onclick="bsVerifyGrader(this)">🔍 Verify with ${graderVal || 'Grader'}</button>
+        <div style="display:flex;align-items:flex-end" data-verify-slot>
+          ${_bsVerifySlotHTML(graderVal)}
         </div>
       </div>
       <div class="bulkscan-field-grid">
@@ -6528,8 +6547,8 @@ function bsToggleGraderRow(selectEl) {
   if (certRow) {
     const psaLookupSupported = ['PSA', 'CGC', 'SGC'].includes(grader); // psa-lookup.js doesn't support BGS
     certRow.style.display = psaLookupSupported ? '' : 'none';
-    const verifyBtn = certRow.querySelector('button');
-    if (verifyBtn) verifyBtn.textContent = `🔍 Verify with ${grader || 'Grader'}`;
+    const slot = certRow.querySelector('[data-verify-slot]');
+    if (slot) slot.innerHTML = _bsVerifySlotHTML(grader);
   }
 }
 
