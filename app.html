@@ -6044,7 +6044,17 @@ function _closeBulkScanImageLightbox() {
 // button. Stops early on a 429 so the rest fall back to manual too.
 const BULK_SCAN_AUTO_VERIFY_LIMIT = 5;
 
+// Temporarily disabled while PSA API account approval is pending (the account
+// gets a 403 "Access to this API is limited to approved customers" on every
+// call today). Flip to true once that's resolved -- nothing else needs to
+// change. bsVerifyGrader() itself is untouched and fully functional; this
+// flag only gates whether the button renders and whether the auto-verify
+// pass runs, so re-enabling is a one-line change. CGC/SGC are unaffected --
+// their API access isn't in question, only PSA's.
+const BULK_SCAN_PSA_VERIFY_ENABLED = false;
+
 async function _autoVerifyPsaCards(cards) {
+  if (!BULK_SCAN_PSA_VERIFY_ENABLED) return;
   const targets = cards
     .filter(c => (c.grader || '').toString().trim().toUpperCase() === 'PSA' && (c.certNumber || '').toString().trim())
     .slice(0, BULK_SCAN_AUTO_VERIFY_LIMIT);
@@ -6338,8 +6348,12 @@ async function _tcapiValidateOneCard(card) {
     // with no subset data at all (e.g. 2025 Bowman Chrome, subset_count: 0)
     // has nothing to cross-check against, so it's given the benefit of the
     // doubt as before.
+    // v2's format=compact is a documented-but-buggy no-op (confirmed by the
+    // API team) -- v1 honors it, but returns the set as primary `data` with
+    // cards as bare {type,id} refs; include=checklist puts the real
+    // number/name attributes into `included`.
     const [checklistData, parallelData] = await Promise.all([
-      tcapiGet(`/v2/sets/${matchedSet.id}/checklist?format=compact&per_page=100`),
+      tcapiGet(`/v1/sets/${matchedSet.id}/checklist?format=compact&include=checklist&per_page=100`),
       tcapiGet(`/v1/sets?parent_id=${matchedSet.id}&per_page=100`),
     ]);
     const parallels = parallelData?.data || [];
@@ -6362,7 +6376,7 @@ async function _tcapiValidateOneCard(card) {
     const cardNumVal = block.querySelector('[data-field="cardNumber"]')?.value.trim() || '';
     if (!cardNumVal) {
       const playerLower   = playerQ.toLowerCase();
-      const matchedCard   = (checklistData?.data || [])
+      const matchedCard   = (checklistData?.included || [])
         .find(cc => (cc.attributes?.name || '').toLowerCase().includes(playerLower));
       if (matchedCard?.attributes?.number) {
         _bsApplyValidatedField(block, 'cardNumber', matchedCard.attributes.number);
@@ -6422,6 +6436,15 @@ function _numericGrade(g) {
   const s = String(g ?? '').trim();
   const match = s.match(/\d+(?:\.\d+)?/);
   return match ? match[0] : '';
+}
+
+// Shared between the initial card-block render and bsToggleGraderRow()'s
+// live update, so both stay in sync when the grader gets changed after render.
+function _bsVerifySlotHTML(grader) {
+  if (grader === 'PSA' && !BULK_SCAN_PSA_VERIFY_ENABLED) {
+    return `<div style="width:100%;font-size:0.68rem;color:var(--muted);font-family:'DM Mono',monospace;padding:0.55rem 0;text-align:center">PSA verification paused — pending API access</div>`;
+  }
+  return `<button class="btn btn-xs" style="width:100%;justify-content:center;padding:0.55rem;background:#1a1f2e;color:var(--gold);border:1px solid var(--gold)" onclick="bsVerifyGrader(this)">🔍 Verify with ${grader || 'Grader'}</button>`;
 }
 
 function bulkScanCardBlockHTML(c, idx) {
@@ -6492,8 +6515,8 @@ function bulkScanCardBlockHTML(c, idx) {
           <div class="section-label" style="margin-bottom:0.3rem">Cert #</div>
           <input class="show-input" data-field="certNumber" value="${_bsEsc(c.certNumber)}" placeholder="e.g. 12345678" style="margin:0">
         </div>
-        <div style="display:flex;align-items:flex-end">
-          <button class="btn btn-xs" style="width:100%;justify-content:center;padding:0.55rem;background:#1a1f2e;color:var(--gold);border:1px solid var(--gold)" onclick="bsVerifyGrader(this)">🔍 Verify with ${graderVal || 'Grader'}</button>
+        <div style="display:flex;align-items:flex-end" data-verify-slot>
+          ${_bsVerifySlotHTML(graderVal)}
         </div>
       </div>
       <div class="bulkscan-field-grid">
@@ -6528,8 +6551,8 @@ function bsToggleGraderRow(selectEl) {
   if (certRow) {
     const psaLookupSupported = ['PSA', 'CGC', 'SGC'].includes(grader); // psa-lookup.js doesn't support BGS
     certRow.style.display = psaLookupSupported ? '' : 'none';
-    const verifyBtn = certRow.querySelector('button');
-    if (verifyBtn) verifyBtn.textContent = `🔍 Verify with ${grader || 'Grader'}`;
+    const slot = certRow.querySelector('[data-verify-slot]');
+    if (slot) slot.innerHTML = _bsVerifySlotHTML(grader);
   }
 }
 
@@ -12645,8 +12668,12 @@ function tcSelectSet(i) {
 async function _tcLoadChecklist(setId) {
   const dd = document.getElementById('tc_card_dd');
   dd.innerHTML = _tcLoading('LOADING CHECKLIST…');
-  const data = await tcapiGet(`/v2/sets/${setId}/checklist?format=compact&per_page=100`);
-  const allCards = data?.data || [];
+  // v2's format=compact is a documented-but-buggy no-op (confirmed by the API
+  // team) -- v1 actually honors it, but returns the set as primary `data`
+  // with cards as bare {type,id} refs; include=checklist is what puts the
+  // real number/name attributes into `included`.
+  const data = await tcapiGet(`/v1/sets/${setId}/checklist?format=compact&include=checklist&per_page=100`);
+  const allCards = data?.included || [];
   const playerName = document.getElementById('ac_player').value.trim().toLowerCase();
   const filtered = playerName
     ? allCards.filter(c => (c.attributes?.name || '').toLowerCase().includes(playerName))
