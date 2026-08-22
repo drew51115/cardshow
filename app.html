@@ -3185,6 +3185,34 @@
     color: var(--text);
   }
 
+  /* Secondary — pick an existing photo, sits directly under Take Photo */
+  .pos-library-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    min-height: 52px;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: border-color 150ms, background 150ms;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    margin-bottom: 1.25rem;
+  }
+  .pos-library-btn:active { border-color: var(--accent); background: var(--card); }
+  .pos-library-icon { font-size: 18px; line-height: 1; }
+  .pos-library-label {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
   .pos-tips {
     list-style: none;
     margin-bottom: 1.25rem;
@@ -4413,6 +4441,13 @@
           <span class="pos-photo-label">Take Photo</span>
         </button>
 
+        <!-- Secondary — pick an existing photo instead of shooting a new one -->
+        <button class="pos-library-btn" id="posLibraryBtn"
+          onclick="posTriggerLibrary()" type="button">
+          <span class="pos-library-icon">🖼️</span>
+          <span class="pos-library-label">Choose from Library</span>
+        </button>
+
         <!-- Tips -->
         <ul class="pos-tips">
           <li>Fill the frame with the card face</li>
@@ -4547,6 +4582,12 @@
 <!-- Hidden file input for camera capture -->
 <input type="file" id="posFileInput" accept="image/*"
   capture="environment" style="display:none"
+  onchange="posHandlePhoto(this)">
+
+<!-- Hidden file input for photo library — no `capture` attribute, so
+     mobile browsers open the photo picker instead of the camera -->
+<input type="file" id="posLibraryFileInput" accept="image/*"
+  style="display:none"
   onchange="posHandlePhoto(this)">
 
 <!-- ═══════════════ BUYER VIEW ═══════════════ -->
@@ -8512,12 +8553,7 @@ function _posReset() {
   document.getElementById('posPhotoPhase').style.display  = 'block';
   document.getElementById('posReviewPhase').style.display = 'none';
 
-  const photoBtn   = document.getElementById('posPhotoBtn');
-  const loading    = document.getElementById('posLoading');
-  const manualLink = document.querySelector('.pos-manual-link');
-  if (photoBtn)   photoBtn.style.display   = 'flex';
-  if (loading)    loading.style.display    = 'none';
-  if (manualLink) manualLink.style.display = 'block';
+  _posShowPhotoOptions();
 
   ['posRPlayer','posRYear','posRSet','posRCardNum','posRParallel',
    'posRGrade','posRCert','posRPrice'].forEach(id => {
@@ -8538,13 +8574,55 @@ function _posReset() {
 
   const fi = document.getElementById('posFileInput');
   if (fi) fi.value = '';
+  const lfi = document.getElementById('posLibraryFileInput');
+  if (lfi) lfi.value = '';
 
   const scroll = document.getElementById('posScroll');
   if (scroll) scroll.scrollTop = 0;
 }
 
+// Shared show/hide for the photo-selection phase's four sub-elements
+// (Take Photo, Choose from Library, the loading spinner, and the manual
+// entry link) — every phase transition below touches all four together.
+function _posShowPhotoOptions() {
+  const photoBtn   = document.getElementById('posPhotoBtn');
+  const libraryBtn = document.getElementById('posLibraryBtn');
+  const loading    = document.getElementById('posLoading');
+  const manualLink = document.querySelector('.pos-manual-link');
+  if (photoBtn)   photoBtn.style.display   = 'flex';
+  if (libraryBtn) libraryBtn.style.display = 'flex';
+  if (loading)    loading.style.display    = 'none';
+  if (manualLink) manualLink.style.display = 'block';
+}
+
+function _posShowLoading() {
+  const photoBtn   = document.getElementById('posPhotoBtn');
+  const libraryBtn = document.getElementById('posLibraryBtn');
+  const loading    = document.getElementById('posLoading');
+  const manualLink = document.querySelector('.pos-manual-link');
+  if (photoBtn)   photoBtn.style.display   = 'none';
+  if (libraryBtn) libraryBtn.style.display = 'none';
+  if (loading)    loading.style.display    = 'flex';
+  if (manualLink) manualLink.style.display = 'none';
+}
+
+function _posHidePhotoOptions() {
+  const photoBtn   = document.getElementById('posPhotoBtn');
+  const libraryBtn = document.getElementById('posLibraryBtn');
+  const loading    = document.getElementById('posLoading');
+  const manualLink = document.querySelector('.pos-manual-link');
+  if (photoBtn)   photoBtn.style.display   = 'none';
+  if (libraryBtn) libraryBtn.style.display = 'none';
+  if (loading)    loading.style.display    = 'none';
+  if (manualLink) manualLink.style.display = 'none';
+}
+
 function posTriggerCamera() {
   document.getElementById('posFileInput').click();
+}
+
+function posTriggerLibrary() {
+  document.getElementById('posLibraryFileInput').click();
 }
 
 async function posHandlePhoto(inputEl) {
@@ -8552,15 +8630,9 @@ async function posHandlePhoto(inputEl) {
   if (!file) return;
   inputEl.value = ''; // reset so the same photo can be retried
 
-  const photoBtn   = document.getElementById('posPhotoBtn');
-  const loading    = document.getElementById('posLoading');
-  const manualLink = document.querySelector('.pos-manual-link');
-  const msgEl      = document.getElementById('posLoadingMsg');
-
-  if (photoBtn)   photoBtn.style.display   = 'none';
-  if (loading)    loading.style.display    = 'flex';
-  if (manualLink) manualLink.style.display = 'none';
-  if (msgEl)      msgEl.textContent        = 'Reading photo…';
+  const msgEl = document.getElementById('posLoadingMsg');
+  _posShowLoading();
+  if (msgEl) msgEl.textContent = 'Reading photo…';
 
   try {
     const base64    = await _posCompressImage(file);
@@ -8601,9 +8673,7 @@ async function posHandlePhoto(inputEl) {
 
     console.error('[POS Vision]', err);
 
-    if (photoBtn)   photoBtn.style.display   = 'flex';
-    if (loading)    loading.style.display    = 'none';
-    if (manualLink) manualLink.style.display = 'block';
+    _posShowPhotoOptions();
 
     showToast('⚠️ Could not identify card — try again or enter manually', 'var(--danger)');
   }
@@ -8691,12 +8761,7 @@ function posShowReview(card, result) {
 }
 
 function posShowManualPhase() {
-  const loading    = document.getElementById('posLoading');
-  const photoBtn   = document.getElementById('posPhotoBtn');
-  const manualLink = document.querySelector('.pos-manual-link');
-  if (loading)    loading.style.display    = 'none';
-  if (photoBtn)   photoBtn.style.display   = 'none';
-  if (manualLink) manualLink.style.display = 'none';
+  _posHidePhotoOptions();
 
   document.getElementById('posPhotoPhase').style.display  = 'none';
   document.getElementById('posReviewPhase').style.display = 'block';
@@ -8711,25 +8776,15 @@ function posRetakePhoto() {
   document.getElementById('posReviewPhase').style.display = 'none';
   document.getElementById('posPhotoPhase').style.display  = 'block';
 
-  const photoBtn   = document.getElementById('posPhotoBtn');
-  const loading    = document.getElementById('posLoading');
-  const manualLink = document.querySelector('.pos-manual-link');
-  if (photoBtn)   photoBtn.style.display   = 'flex';
-  if (loading)    loading.style.display    = 'none';
-  if (manualLink) manualLink.style.display = 'block';
-
-  setTimeout(() => posTriggerCamera(), 150);
+  // Return to the Take Photo / Choose from Library choice rather than
+  // assuming the camera — the original image may have come from either.
+  _posShowPhotoOptions();
 }
 
 function _posShowLowConfidence(result) {
   // vision-scan.js returns no `card` at all on the low_confidence path —
   // nothing usable to pre-fill, so just restore the photo UI for a retry.
-  const photoBtn   = document.getElementById('posPhotoBtn');
-  const loading    = document.getElementById('posLoading');
-  const manualLink = document.querySelector('.pos-manual-link');
-  if (photoBtn)   photoBtn.style.display   = 'flex';
-  if (loading)    loading.style.display    = 'none';
-  if (manualLink) manualLink.style.display = 'block';
+  _posShowPhotoOptions();
 
   showToast('⚠️ Card not clearly identified — try a closer photo or enter manually', '#f5a623');
 }
@@ -8737,12 +8792,7 @@ function _posShowLowConfidence(result) {
 function posCancelVision() {
   if (_posVisionAbort) { _posVisionAbort.abort(); _posVisionAbort = null; }
 
-  const photoBtn   = document.getElementById('posPhotoBtn');
-  const loading    = document.getElementById('posLoading');
-  const manualLink = document.querySelector('.pos-manual-link');
-  if (photoBtn)   photoBtn.style.display   = 'flex';
-  if (loading)    loading.style.display    = 'none';
-  if (manualLink) manualLink.style.display = 'block';
+  _posShowPhotoOptions();
 }
 
 // Bridge from POS review into the existing sell drawer. Card is inserted
