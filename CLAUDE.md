@@ -865,7 +865,12 @@ duplicating its price/payment UI.
 #fabScanToSell (mobile only, seller view) → posOpenPhotoSheet()
   └─ #posOverlay/#posSheet bottom sheet opens, #posPhotoPhase shown
        ├─ "Take Photo" → posTriggerCamera() → hidden #posFileInput (capture="environment")
-       │    └─ posHandlePhoto(inputEl)
+       ├─ "Choose from Library" → posTriggerLibrary() → hidden #posLibraryFileInput
+       │    (identical accept="image/*" but NO capture attribute — that's what makes
+       │    mobile browsers open the photo picker instead of jumping straight to camera)
+       │    Both inputs share the same onchange="posHandlePhoto(this)" handler — it
+       │    only reads inputEl.files[0], so it doesn't care which source produced it
+       │         └─ posHandlePhoto(inputEl)
        │         ├─ _posCompressImage(file) — canvas resize, max 1024px, JPEG 85%
        │         │    (same compression convention as scanTakePhoto())
        │         └─ POST /.netlify/functions/vision-scan { image, mediaType }
@@ -924,6 +929,39 @@ omitted from this call rather than passed in and silently ignored.
 `_posVisionAbort` holds the in-flight vision `fetch()`'s `AbortController`. `posCancelVision()`
 and `posClose()` both abort it before touching UI state, so a slow vision response can never
 land after the seller has already cancelled, retaken, or closed the sheet.
+
+### Photo source — camera vs. library
+`#posPhotoBtn` ("Take Photo") and `#posLibraryBtn` ("Choose from Library") sit stacked
+in `#posPhotoPhase`, both visible by default. `posTriggerCamera()`/`posTriggerLibrary()`
+click their respective hidden `<input type="file">` — the only difference between them
+is the `capture="environment"` attribute on `#posFileInput`, absent on
+`#posLibraryFileInput`. That one attribute is what makes a mobile browser jump straight
+into the camera app for one and open the photo library/file picker for the other; no
+other code differs, since `posHandlePhoto()` is source-agnostic. Every phase-transition
+site that used to show/hide `#posPhotoBtn` + `#posLoading` + the manual-entry link
+together now goes through one of three shared helpers so `#posLibraryBtn` stays in sync
+with them automatically: `_posShowPhotoOptions()` (both buttons + manual link visible,
+loading hidden), `_posShowLoading()` (inverse, while vision is running), and
+`_posHidePhotoOptions()` (everything hidden, used only when manual entry is chosen).
+`posRetakePhoto()` returns to this same choice screen rather than re-opening the camera
+directly (its original behavior, from before the library option existed) — assuming
+"retake" always means "camera" stopped being safe once a photo can also come from the
+library, so it now lets the seller pick either source again.
+
+### Insert timeout (fixes: Confirm button stuck on "Saving…")
+`posInsertAndOpenDrawer()` races `insertCardToDB(card)` against a `POS_INSERT_TIMEOUT_MS`
+(8000ms) timer via `Promise.race()`. Without this, a stalled connection — common on
+show-floor wifi — left the awaited insert call pending forever, and with it the Confirm
+button permanently disabled on "Saving…" with no way to continue. On timeout, the flow
+falls through to the same "saved locally — sync to server failed" degradation path
+already used for a genuine insert failure (`dbId` is `null` either way) and proceeds to
+the Sell Drawer immediately rather than blocking a live sale on a slow network. The
+original insert request is left running in the background if it hasn't failed outright;
+if it does eventually resolve, nothing reads its result anymore since the caller has
+already moved on. `_posReset()` also now explicitly restores the Confirm button's
+disabled state and label — it previously only reset the review fields, so a slow/failed
+save that later got reset via `_posReset()` (closing the sheet, or opening it fresh for
+the next sale) would leave a *second* transaction's Confirm button stuck too.
 
 ### Does not change
 Sell Drawer / `sdConfirm()` / `openSellDrawer()`, `vision-scan.js`, `_callVisionScan()`,
