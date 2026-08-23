@@ -4194,6 +4194,31 @@
                 </div>
               </div>
 
+              <!-- Revenue by table number — for table pricing decisions -->
+              <div class="org-card" style="margin-top:1rem">
+                <div class="org-card-head">
+                  Revenue by Table
+                  <span class="org-card-head-sub">for table pricing decisions</span>
+                </div>
+                <div class="org-table-wrap">
+                  <table class="org-table" id="orgTablePerfTable">
+                    <thead>
+                      <tr>
+                        <th>Table</th>
+                        <th class="org-th-r">Revenue</th>
+                        <th class="org-th-r">Sold</th>
+                        <th class="org-th-r">Sell-Thru</th>
+                        <th class="org-th-r">Sellers</th>
+                        <th class="org-th-r">Avg $</th>
+                      </tr>
+                    </thead>
+                    <tbody id="orgTablePerfBody">
+                      <tr><td colspan="6" class="org-empty">No sales recorded</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
               <!-- Top cards sold -->
               <div class="org-card" style="margin-top:1rem">
                 <div class="org-card-head">Top Cards Sold</div>
@@ -14130,12 +14155,13 @@ function _orgSetState(state) {
 
 async function _orgFetchAndRender(showId) {
   try {
-    const [cards, events] = await Promise.all([
+    const [cards, events, tableMap] = await Promise.all([
       _orgFetchInventory(showId),
-      _orgFetchEvents(showId)
+      _orgFetchEvents(showId),
+      _orgFetchTableAssignments(showId)
     ]);
 
-    _orgRender(showId, cards, events);
+    _orgRender(showId, cards, events, tableMap);
     _orgSetState('ready');
 
   } catch (err) {
@@ -14189,9 +14215,29 @@ async function _orgFetchEvents(showId) {
   return data || [];
 }
 
+// seller_id (uuid) → table_number, read directly from show_sellers rather than
+// via the in-memory shows{}.tables cache (which is keyed by handle, not UUID —
+// using it here would require an extra handle round trip inventory rows don't need).
+async function _orgFetchTableAssignments(showId) {
+  const { data, error } = await db
+    .from('show_sellers')
+    .select('seller_id, table_number')
+    .eq('show_id', showId);
+
+  if (error) {
+    console.warn('[org-analytics] show_sellers:', error.message);
+    return {};
+  }
+  const map = {};
+  (data || []).forEach(r => {
+    if (r.seller_id && r.table_number) map[r.seller_id] = String(r.table_number);
+  });
+  return map;
+}
+
 // ── RENDER ────────────────────────────────────────────────
 
-function _orgRender(showId, cards, events) {
+function _orgRender(showId, cards, events, tableMap) {
   const show    = shows[showId];
   const sold    = cards.filter(c => (c.status || '').toLowerCase() === 'sold'
                                  && c.sold_price != null);
@@ -14232,6 +14278,9 @@ function _orgRender(showId, cards, events) {
 
   // ── Seller performance table ──
   _orgRenderSellerTable(sold, cards);
+
+  // ── Revenue / sell-through by table number ──
+  _orgRenderTablePerformance(sold, cards, tableMap || {});
 
   // ── Top 10 cards sold ──
   _orgRenderTopCards(sold);
@@ -14332,6 +14381,65 @@ async function _orgEnrichSellerHandles(sellerIds) {
         .forEach(el => { el.textContent = label; });
     });
   } catch { /* non-fatal */ }
+}
+
+// ── REVENUE / SELL-THROUGH BY TABLE NUMBER ────────────────
+// Answers "which tables earn their keep" so an organizer can price high-traffic
+// tables higher next show. Grouped by table_number (from show_sellers), not by
+// seller, so multiple sellers sharing one table roll up into a single row.
+
+function _orgRenderTablePerformance(sold, allCards, tableMap) {
+  const tbody = document.getElementById('orgTablePerfBody');
+  if (!tbody) return;
+
+  const UNASSIGNED = 'Unassigned';
+  function bucketFor(sellerId) {
+    return (sellerId && tableMap[sellerId]) || UNASSIGNED;
+  }
+
+  const byTable = {};
+  function ensure(t) {
+    if (!byTable[t]) byTable[t] = { revenue: 0, soldCnt: 0, listed: 0, sellers: new Set() };
+    return byTable[t];
+  }
+
+  sold.forEach(c => {
+    const t = ensure(bucketFor(c.seller_id));
+    t.revenue += Number(c.sold_price) || 0;
+    t.soldCnt += 1;
+    if (c.seller_id) t.sellers.add(c.seller_id);
+  });
+  allCards.forEach(c => {
+    const t = ensure(bucketFor(c.seller_id));
+    t.listed += 1;
+    if (c.seller_id) t.sellers.add(c.seller_id);
+  });
+
+  // Ranked by revenue — the highest earners are the ones that justify a
+  // higher table price, so that's the order an organizer wants to see first.
+  const rows = Object.entries(byTable)
+    .sort((a, b) => b[1].revenue - a[1].revenue);
+
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="org-empty">No sales recorded</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = rows.map(([table, d]) => {
+    const stPct = d.listed > 0 ? Math.round((d.soldCnt / d.listed) * 100) : 0;
+    const avg   = d.soldCnt > 0 ? Math.round(d.revenue / d.soldCnt) : 0;
+    const label = table === UNASSIGNED ? 'No table' : `Table ${table}`;
+    return `<tr>
+      <td class="org-td-muted">${label}</td>
+      <td class="org-td-r org-td-gold">
+        $${d.revenue.toLocaleString('en-US', {minimumFractionDigits:0})}
+      </td>
+      <td class="org-td-r org-td-muted">${d.soldCnt}</td>
+      <td class="org-td-r org-td-muted">${stPct}%</td>
+      <td class="org-td-r org-td-muted">${d.sellers.size || '—'}</td>
+      <td class="org-td-r org-td-muted">$${avg.toLocaleString()}</td>
+    </tr>`;
+  }).join('');
 }
 
 // ── TOP CARDS SOLD ────────────────────────────────────────
