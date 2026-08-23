@@ -14432,6 +14432,15 @@ function _orgRenderTablePerformance(sold, allCards, tableMap) {
     return byTable[t];
   }
 
+  // Seed every table that has a seller assigned to it, before folding in
+  // sold/listed cards — same fix as the Revenue by Seller table: a table
+  // whose seller(s) haven't published any inventory yet has zero matching
+  // card rows and would otherwise never appear at all, instead of showing
+  // as a $0 row an organizer can actually see (and price against).
+  Object.entries(tableMap).forEach(([sellerId, table]) => {
+    ensure(table).sellers.add(sellerId);
+  });
+
   sold.forEach(c => {
     const t = ensure(bucketFor(c.seller_id));
     t.revenue += Number(c.sold_price) || 0;
@@ -14446,8 +14455,16 @@ function _orgRenderTablePerformance(sold, allCards, tableMap) {
 
   // Ranked by revenue — the highest earners are the ones that justify a
   // higher table price, so that's the order an organizer wants to see first.
+  // Ties (mostly $0 tables now that every assigned table is seeded) break by
+  // table number ascending rather than arbitrary insertion order.
   const rows = Object.entries(byTable)
-    .sort((a, b) => b[1].revenue - a[1].revenue);
+    .sort((a, b) => {
+      const revDiff = b[1].revenue - a[1].revenue;
+      if (revDiff !== 0) return revDiff;
+      const an = Number(a[0]), bn = Number(b[0]);
+      if (!isNaN(an) && !isNaN(bn)) return an - bn;
+      return a[0].localeCompare(b[0]);
+    });
 
   if (!rows.length) {
     tbody.innerHTML = '<tr><td colspan="6" class="org-empty">No sales recorded</td></tr>';
