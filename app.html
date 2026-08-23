@@ -14155,13 +14155,20 @@ function _orgSetState(state) {
 
 async function _orgFetchAndRender(showId) {
   try {
-    const [cards, events, tableMap] = await Promise.all([
+    const [cards, events, tableData] = await Promise.all([
       _orgFetchInventory(showId),
       _orgFetchEvents(showId),
       _orgFetchTableAssignments(showId)
     ]);
 
-    _orgRender(showId, cards, events, tableMap);
+    // The "Cards" stat chip on the show card is only refreshed once, at admin
+    // login (refreshShowCardCounts()) — it goes stale the moment inventory is
+    // published afterward. Analytics fetches live, so piggyback a correction
+    // here rather than leaving the two numbers visibly disagree.
+    showCardCounts[showId] = cards.length;
+    if (typeof updateAscHeader === 'function') updateAscHeader(showId);
+
+    _orgRender(showId, cards, events, tableData.tableMap, tableData.sellerIds);
     _orgSetState('ready');
 
   } catch (err) {
@@ -14226,18 +14233,24 @@ async function _orgFetchTableAssignments(showId) {
 
   if (error) {
     console.warn('[org-analytics] show_sellers:', error.message);
-    return {};
+    return { tableMap: {}, sellerIds: [] };
   }
-  const map = {};
+  const tableMap = {};
+  const sellerIds = [];
+  // Every authorized seller gets a show_sellers row on authorization
+  // (addShowSellerToDB), whether or not a table_number is set yet — so this
+  // row set is the full authorized roster, not just sellers with a table.
   (data || []).forEach(r => {
-    if (r.seller_id && r.table_number) map[r.seller_id] = String(r.table_number);
+    if (!r.seller_id) return;
+    sellerIds.push(r.seller_id);
+    if (r.table_number) tableMap[r.seller_id] = String(r.table_number);
   });
-  return map;
+  return { tableMap, sellerIds };
 }
 
 // ── RENDER ────────────────────────────────────────────────
 
-function _orgRender(showId, cards, events, tableMap) {
+function _orgRender(showId, cards, events, tableMap, authorizedSellerIds) {
   const show    = shows[showId];
   const sold    = cards.filter(c => (c.status || '').toLowerCase() === 'sold'
                                  && c.sold_price != null);
@@ -14249,7 +14262,12 @@ function _orgRender(showId, cards, events, tableMap) {
 
   // ── Active sellers (UUID deduplication) ──
   const activeSellers = new Set(sold.map(c => c.seller_id).filter(Boolean));
-  const authSellers   = show?.sellers ? show.sellers.size : 0;
+  // Prefer the live show_sellers count (same query that seeds the roster
+  // below) — falls back to the handle-keyed in-memory cache only if that
+  // fetch failed, so this KPI and the seller table always agree.
+  const authSellers = (authorizedSellerIds && authorizedSellerIds.length)
+    ? authorizedSellerIds.length
+    : (show?.sellers ? show.sellers.size : 0);
 
   // ── Sellers who uploaded any inventory (participated) ──
   const uploadedSellers = new Set(cards.map(c => c.seller_id).filter(Boolean));
@@ -14277,7 +14295,7 @@ function _orgRender(showId, cards, events, tableMap) {
     `QR scans: ${qrScans.length || '—'}`);
 
   // ── Seller performance table ──
-  _orgRenderSellerTable(sold, cards);
+  _orgRenderSellerTable(sold, cards, authorizedSellerIds || []);
 
   // ── Revenue / sell-through by table number ──
   _orgRenderTablePerformance(sold, cards, tableMap || {});
@@ -14314,27 +14332,38 @@ function _orgSetKPI(id, value, sub) {
 
 // ── SELLER PERFORMANCE TABLE ─────────────────────────────
 
-function _orgRenderSellerTable(sold, allCards) {
+function _orgRenderSellerTable(sold, allCards, authorizedSellerIds) {
   const tbody = document.getElementById('orgSellerBody');
   if (!tbody) return;
 
   // Aggregate per seller_id
   const byId = {};
+  function ensure(sid) {
+    if (!byId[sid]) byId[sid] = { revenue: 0, soldCnt: 0, listed: 0 };
+    return byId[sid];
+  }
+
+  // Seed every authorized seller first — a seller who hasn't published any
+  // inventory to this show yet has zero rows in `allCards`/`sold` and would
+  // otherwise never get an entry here at all, silently vanishing from the
+  // table instead of showing as a $0 row an organizer can actually see.
+  (authorizedSellerIds || []).forEach(sid => { if (sid) ensure(sid); });
+
   sold.forEach(c => {
     const sid = c.seller_id || '__unknown__';
-    if (!byId[sid]) byId[sid] = { revenue: 0, soldCnt: 0, listed: 0 };
-    byId[sid].revenue += Number(c.sold_price) || 0;
-    byId[sid].soldCnt += 1;
+    const d = ensure(sid);
+    d.revenue += Number(c.sold_price) || 0;
+    d.soldCnt += 1;
   });
   allCards.forEach(c => {
     const sid = c.seller_id || '__unknown__';
-    if (!byId[sid]) byId[sid] = { revenue: 0, soldCnt: 0, listed: 0 };
-    byId[sid].listed += 1;
+    ensure(sid).listed += 1;
   });
 
+  // No cap — this is now the full authorized roster, not just top sellers,
+  // so an organizer needs to see everyone, not just the top 15 by revenue.
   const rows = Object.entries(byId)
-    .sort((a, b) => b[1].revenue - a[1].revenue)
-    .slice(0, 15);
+    .sort((a, b) => b[1].revenue - a[1].revenue);
 
   if (!rows.length) {
     tbody.innerHTML = '<tr><td colspan="5" class="org-empty">No sales recorded</td></tr>';
