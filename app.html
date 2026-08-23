@@ -7429,6 +7429,15 @@ async function confirmBulkScanReview() {
   const dbIds = await bulkScanInsertMany(normalized);
   normalized.forEach((c, i) => { if (dbIds[i]) c._dbId = dbIds[i]; });
 
+  // Auto-publish each successfully inserted card. dbIds[i] maps to
+  // normalized[i] in order. Null IDs (insert failed) skipped by guard.
+  if (activeShowId) {
+    const capturedShowId = activeShowId;
+    normalized.forEach((card, i) => {
+      if (dbIds[i]) _autoPublishCardToShow(card, dbIds[i], capturedShowId);
+    });
+  }
+
   closeBulkScanReview();
   renderSellerTable(getSellerInventory());
   updateStats();
@@ -9547,6 +9556,10 @@ async function posInsertAndOpenDrawer() {
     ]);
     if (dbId) {
       card._dbId = dbId;
+      // Auto-publish fire-and-forget before openSellDrawer().
+      // When this succeeds: show_inventory row exists → sdConfirm()
+      // writes sold_price → organizer analytics picks up the sale.
+      if (activeShowId) _autoPublishCardToShow(card, dbId, activeShowId);
     } else {
       showToast('⚠️ Saved locally — sync to server failed', 'var(--danger)');
     }
@@ -13521,13 +13534,19 @@ function saveAddCard() {
 
   // Persist to Supabase and store the returned UUID on the card
   insertCardToDB(card).then(dbId => {
-    if (dbId) card._dbId = dbId;
+    if (!dbId) return;
+    card._dbId = dbId;
+    if (activeShowId) _autoPublishCardToShow(card, dbId, activeShowId);
   });
 
   closeAddCard();
   renderSellerTable(getSellerInventory());
   updateStats();
-  showToast(`✓ "${title.slice(0,30)}…" added to inventory`);
+  showToast(
+    activeShowId
+      ? `✓ "${title.slice(0,30)}…" added · going live on show floor…`
+      : `✓ "${title.slice(0,30)}…" added to inventory`
+  );
 }
 
 
@@ -15597,6 +15616,27 @@ async function fetchSellerInventoryFromDB(sellerHandle) {
   }
 }
 
+// ── Auto-publish a card to the active show ──────────────────────────────────
+// FIRE-AND-FORGET — never await. On success: upserts { show_id, card_id }
+// to show_inventory, adds showId to card._shows, increments showCardCounts,
+// calls syncBuyerView(). On failure: console.warn only.
+function _autoPublishCardToShow(card, dbId, showId) {
+  if (!showId || !dbId || typeof db === 'undefined') return;
+
+  db.from('show_inventory')
+    .upsert(
+      { show_id: showId, card_id: dbId },
+      { onConflict: 'show_id,card_id' }
+    )
+    .then(({ error }) => {
+      if (error) { console.warn('[auto-publish]', error.message); return; }
+      if (!card._shows) card._shows = new Set();
+      card._shows.add(showId);
+      showCardCounts[showId] = (showCardCounts[showId] || 0) + 1;
+      syncBuyerView();
+    });
+}
+
 // ── Insert a single card to Supabase ──
 // sellerIdOverride skips the per-call seller lookup — used by bulkScanInsertMany
 // to look up the seller UUID once and reuse it across N inserts.
@@ -15817,6 +15857,7 @@ async function upsertCardsToDB(cards) {
     });
 
     const toInsert = [];
+    const toInsertCards = []; // parallel to toInsert — original card object per row, by index
     const toUpdate = [];
 
     cards.forEach(card => {
@@ -15829,13 +15870,19 @@ async function upsertCardsToDB(cards) {
         toUpdate.push({ ...row, id: existingFps.get(fp) });
       } else {
         toInsert.push(row);
+        toInsertCards.push(card);
       }
     });
 
-    // Batch insert new cards
+    // Batch insert new cards — select('id') back so newly inserted rows can be
+    // auto-published to the active show without a separate re-fetch guess
+    // (e.g. "N most recent rows for this seller"), which would race against
+    // any concurrent insert from another tab/session.
+    let insertedIds = [];
     if (toInsert.length) {
-      const { error } = await db.from('inventory').insert(toInsert);
+      const { data: insertedRows, error } = await db.from('inventory').insert(toInsert).select('id');
       if (error) console.warn('Batch insert error:', error.message);
+      else insertedIds = (insertedRows || []).map(r => r.id);
     }
 
     // Update existing cards one at a time (Supabase upsert requires unique constraint)
@@ -15845,6 +15892,18 @@ async function upsertCardsToDB(cards) {
     }
 
     console.log(`Upserted ${toInsert.length} new + ${toUpdate.length} updated cards`);
+
+    // Auto-publish newly inserted cards to the active show. Skip updates —
+    // those cards already have a show_inventory row from a prior publish run.
+    if (activeShowId && insertedIds.length === toInsertCards.length) {
+      const capturedShowId = activeShowId;
+      toInsertCards.forEach((card, i) => {
+        const dbId = insertedIds[i];
+        if (!dbId) return;
+        if (!card._dbId) card._dbId = dbId;
+        _autoPublishCardToShow(card, dbId, capturedShowId);
+      });
+    }
   } catch(e) {
     console.warn('upsertCardsToDB error:', e.message);
   }
