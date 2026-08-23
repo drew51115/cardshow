@@ -3407,6 +3407,464 @@
     -webkit-tap-highlight-color: transparent;
   }
 
+  /* ════════════════════════════════════════════════
+     SHOW ORGANIZER ANALYTICS DASHBOARD
+  ════════════════════════════════════════════════ */
+
+  /* Nav bar */
+  .org-dash-nav {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+  }
+  .org-back-btn {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: border-color 140ms, color 140ms;
+  }
+  .org-back-btn:hover { border-color: var(--muted); color: var(--text); }
+  .org-dash-show-name {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 22px;
+    letter-spacing: 0.05em;
+    color: var(--text);
+    line-height: 1;
+  }
+  .org-dash-show-meta {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    margin-left: auto;
+  }
+
+  /* Loading */
+  .org-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    padding: 3rem 1rem;
+    text-align: center;
+  }
+  .org-spinner {
+    width: 36px; height: 36px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: orgSpin 0.8s linear infinite;
+  }
+  @keyframes orgSpin { to { transform: rotate(360deg); } }
+  .org-loading-msg {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  /* Error */
+  .org-error {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 3rem 1rem;
+    text-align: center;
+  }
+  .org-error-icon { font-size: 2rem; }
+  .org-error-msg {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    color: var(--muted);
+  }
+
+  /* Section labels */
+  .org-section-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 0.75rem;
+    padding-left: 2px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .org-section-label::before {
+    content: '';
+    display: block;
+    width: 3px;
+    height: 14px;
+    background: var(--accent);
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+
+  /* North star KPI grid */
+  .org-north-star {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 2rem;
+  }
+  @media (max-width: 900px) {
+    .org-north-star { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (max-width: 500px) {
+    .org-north-star { grid-template-columns: 1fr; }
+  }
+
+  .org-kpi-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1rem 1.1rem;
+  }
+  .org-kpi-primary {
+    border-color: rgba(245, 200, 66, 0.3);
+    background: rgba(245, 200, 66, 0.04);
+  }
+  .org-kpi-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  .org-kpi-value {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 32px;
+    letter-spacing: 0.02em;
+    color: var(--text);
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+  .org-kpi-primary .org-kpi-value { color: var(--accent); }
+  .org-kpi-sub {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+  }
+
+  /* Two-column layout */
+  .org-two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    align-items: start;
+  }
+  @media (max-width: 800px) {
+    .org-two-col { grid-template-columns: 1fr; }
+  }
+  .org-col { display: flex; flex-direction: column; }
+
+  /* Cards */
+  .org-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1rem 1.1rem;
+  }
+  .org-card-head {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 0.75rem;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .org-card-head-sub {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    font-weight: 400;
+  }
+  .org-card-sub {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin-top: 6px;
+  }
+  .org-empty {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: var(--border);
+    padding: 0.5rem 0;
+  }
+
+  /* Seller table */
+  .org-table-wrap { overflow-x: auto; }
+  .org-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+  }
+  .org-table th {
+    font-family: 'DM Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 0 6px 8px 0;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  .org-th-r { text-align: right !important; }
+  .org-table td {
+    padding: 8px 6px 8px 0;
+    color: var(--text);
+    border-bottom: 1px solid rgba(30,38,64,0.5);
+    vertical-align: middle;
+  }
+  .org-table tr:last-child td { border-bottom: none; }
+  .org-table .org-td-r { text-align: right; }
+  .org-table .org-td-muted {
+    color: var(--muted);
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+  }
+  .org-table .org-td-gold {
+    color: var(--accent);
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 15px;
+    letter-spacing: 0.04em;
+  }
+  .org-seller-badge {
+    display: inline-block;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 7px;
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Top cards list */
+  .org-top-cards { display: flex; flex-direction: column; gap: 6px; }
+  .org-top-card-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(30,38,64,0.5);
+  }
+  .org-top-card-row:last-child { border-bottom: none; }
+  .org-top-card-rank {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--border);
+    width: 18px;
+    flex-shrink: 0;
+  }
+  .org-top-card-info { flex: 1; min-width: 0; }
+  .org-top-card-title {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 12px;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .org-top-card-meta {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.06em;
+    margin-top: 2px;
+  }
+  .org-top-card-price {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 16px;
+    color: var(--accent);
+    letter-spacing: 0.04em;
+    flex-shrink: 0;
+  }
+
+  /* Tag cloud for searches */
+  .org-tag-cloud {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .org-tag {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 4px 10px;
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .org-tag-count {
+    background: var(--border);
+    border-radius: 10px;
+    padding: 1px 6px;
+    font-size: 10px;
+    color: var(--text);
+  }
+  .org-tag-zero {
+    border-color: rgba(239,68,68,0.25);
+    background: rgba(239,68,68,0.05);
+    color: #dc2626;
+  }
+
+  /* Participation bar */
+  .org-participation-wrap { margin-bottom: 8px; }
+  .org-participation-bar-wrap {
+    height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 6px;
+  }
+  .org-participation-bar {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 3px;
+    transition: width 600ms ease;
+  }
+  .org-participation-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+  }
+
+  /* Health grid */
+  .org-health-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 1rem;
+  }
+  .org-health-kpi {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+  }
+  .org-health-val {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 24px;
+    color: var(--text);
+    letter-spacing: 0.03em;
+    line-height: 1;
+    margin-bottom: 3px;
+  }
+  .org-health-lbl {
+    font-family: 'DM Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  /* Payment bars */
+  .org-payment-bar-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .org-payment-bar-row:last-child { margin-bottom: 0; }
+  .org-payment-name {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    width: 64px;
+    flex-shrink: 0;
+  }
+  .org-payment-track {
+    flex: 1;
+    height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .org-payment-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 500ms ease;
+  }
+  .org-payment-val {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    color: var(--text);
+    text-align: right;
+    width: 60px;
+    flex-shrink: 0;
+  }
+
+  /* vs. Previous */
+  .org-vs-prev { display: flex; flex-direction: column; gap: 8px; }
+  .org-vs-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(30,38,64,0.5);
+  }
+  .org-vs-row:last-child { border-bottom: none; }
+  .org-vs-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+  }
+  .org-vs-val {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .org-vs-delta {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 4px;
+    letter-spacing: 0.06em;
+  }
+  .org-vs-up   { background: rgba(74,222,128,0.1); color: #4ade80; }
+  .org-vs-down { background: rgba(239,68,68,0.1);  color: #f87171; }
+  .org-vs-flat { background: var(--border);         color: var(--muted); }
+
 </style>
 </head>
 <body>
@@ -3648,6 +4106,185 @@
         </div>
         <div id="adminShowsGrid" style="display:flex;flex-direction:column;gap:0.75rem"></div>
       </div>
+
+      <!-- ═══════════════════════════════════════════════
+           SHOW ORGANIZER ANALYTICS DASHBOARD
+           Opened per-show via 📊 Analytics button
+           Data fetched fresh on each open from Supabase
+      ═══════════════════════════════════════════════ -->
+      <div id="showAnalyticsPanel" style="display:none">
+
+        <!-- Back nav -->
+        <div class="org-dash-nav">
+          <button class="org-back-btn" onclick="closeShowAnalytics()">
+            ← Back to Shows
+          </button>
+          <div class="org-dash-show-name" id="orgDashShowName"></div>
+          <div class="org-dash-show-meta" id="orgDashShowMeta"></div>
+        </div>
+
+        <!-- Loading state -->
+        <div class="org-loading" id="orgLoading">
+          <div class="org-spinner"></div>
+          <div class="org-loading-msg">Loading show data…</div>
+        </div>
+
+        <!-- Error state -->
+        <div class="org-error" id="orgError" style="display:none">
+          <div class="org-error-icon">⚠</div>
+          <div class="org-error-msg" id="orgErrorMsg">Could not load analytics</div>
+          <button class="btn btn-ghost" onclick="reloadShowAnalytics()">
+            Try again
+          </button>
+        </div>
+
+        <!-- Dashboard content — hidden until data loads -->
+        <div id="orgDashContent" style="display:none">
+
+          <!-- ── NORTH STAR METRICS ── -->
+          <div class="org-section-label">Show Summary</div>
+          <div class="org-north-star">
+            <div class="org-kpi-card org-kpi-primary">
+              <div class="org-kpi-label">Total Show Floor GMV</div>
+              <div class="org-kpi-value" id="orgGMV">$0</div>
+              <div class="org-kpi-sub" id="orgGMVSub">0 transactions</div>
+            </div>
+            <div class="org-kpi-card">
+              <div class="org-kpi-label">Sell-Through Rate</div>
+              <div class="org-kpi-value" id="orgSellThru">—</div>
+              <div class="org-kpi-sub" id="orgSellThruSub">cards sold ÷ listed</div>
+            </div>
+            <div class="org-kpi-card">
+              <div class="org-kpi-label">Active Sellers</div>
+              <div class="org-kpi-value" id="orgActiveSellers">—</div>
+              <div class="org-kpi-sub" id="orgActiveSellersSub">had at least 1 sale</div>
+            </div>
+            <div class="org-kpi-card">
+              <div class="org-kpi-label">Buyer Searches</div>
+              <div class="org-kpi-value" id="orgSearches">—</div>
+              <div class="org-kpi-sub" id="orgSearchesSub">QR scans: <span id="orgQRScans">—</span></div>
+            </div>
+          </div>
+
+          <!-- ── TWO-COLUMN BODY ── -->
+          <div class="org-two-col">
+
+            <!-- LEFT: Seller Performance -->
+            <div class="org-col">
+              <div class="org-section-label">Seller Performance</div>
+
+              <!-- Revenue by seller table -->
+              <div class="org-card">
+                <div class="org-card-head">Revenue by Seller</div>
+                <div class="org-table-wrap">
+                  <table class="org-table" id="orgSellerTable">
+                    <thead>
+                      <tr>
+                        <th>Seller</th>
+                        <th class="org-th-r">Revenue</th>
+                        <th class="org-th-r">Sold</th>
+                        <th class="org-th-r">Sell-Thru</th>
+                        <th class="org-th-r">Avg $</th>
+                      </tr>
+                    </thead>
+                    <tbody id="orgSellerBody">
+                      <tr><td colspan="5" class="org-empty">No sales recorded</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <!-- Top cards sold -->
+              <div class="org-card" style="margin-top:1rem">
+                <div class="org-card-head">Top Cards Sold</div>
+                <div id="orgTopCards" class="org-top-cards">
+                  <div class="org-empty">No sales recorded</div>
+                </div>
+              </div>
+
+              <!-- Seller participation -->
+              <div class="org-card" style="margin-top:1rem">
+                <div class="org-card-head">Seller Participation</div>
+                <div class="org-participation-wrap">
+                  <div class="org-participation-bar-wrap">
+                    <div class="org-participation-bar" id="orgParticipationBar"
+                      style="width:0%"></div>
+                  </div>
+                  <div class="org-participation-label" id="orgParticipationLabel">
+                    — of — sellers uploaded inventory
+                  </div>
+                </div>
+                <div class="org-card-sub" id="orgParticipationSub"></div>
+              </div>
+            </div>
+
+            <!-- RIGHT: Buyer Behavior + Show Health -->
+            <div class="org-col">
+              <div class="org-section-label">Buyer Behavior</div>
+
+              <!-- Top searched players -->
+              <div class="org-card">
+                <div class="org-card-head">Top Searched Players</div>
+                <div id="orgTopSearches" class="org-tag-cloud">
+                  <div class="org-empty">No searches logged yet</div>
+                </div>
+              </div>
+
+              <!-- Zero-result searches -->
+              <div class="org-card" style="margin-top:1rem">
+                <div class="org-card-head">
+                  Zero-Result Searches
+                  <span class="org-card-head-sub">
+                    buyers who found nothing
+                  </span>
+                </div>
+                <div id="orgZeroResults" class="org-tag-cloud">
+                  <div class="org-empty">None recorded</div>
+                </div>
+              </div>
+
+              <div class="org-section-label" style="margin-top:1.5rem">
+                Show Health
+              </div>
+
+              <!-- Average transaction + payment mix -->
+              <div class="org-card">
+                <div class="org-card-head">Transaction Summary</div>
+                <div class="org-health-grid">
+                  <div class="org-health-kpi">
+                    <div class="org-health-val" id="orgAvgTx">—</div>
+                    <div class="org-health-lbl">Avg Transaction</div>
+                  </div>
+                  <div class="org-health-kpi">
+                    <div class="org-health-val" id="orgParticipationRate">—</div>
+                    <div class="org-health-lbl">Participation Rate</div>
+                  </div>
+                </div>
+
+                <!-- Payment method breakdown -->
+                <div class="org-payment-breakdown" id="orgPaymentBreakdown">
+                  <div class="org-card-head" style="margin-top:0.75rem;margin-bottom:0.5rem">
+                    Payment Methods
+                  </div>
+                  <div id="orgPaymentBars">
+                    <div class="org-empty">No sales recorded</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Show vs previous -->
+              <div class="org-card" style="margin-top:1rem" id="orgVsPrevCard">
+                <div class="org-card-head">vs. Previous Show</div>
+                <div id="orgVsPrev" class="org-vs-prev">
+                  <div class="org-empty">Only one show on record</div>
+                </div>
+              </div>
+
+            </div>
+          </div><!-- /org-two-col -->
+
+        </div><!-- /orgDashContent -->
+      </div><!-- /showAnalyticsPanel -->
 
       <!-- Seller / Admin Inventory view -->
       <div id="adminInventoryPanel">
@@ -5026,6 +5663,21 @@ async function tcapiGet(path) {
   } catch {
     return null;
   }
+}
+
+// ── SHOW EVENT LOGGING (organizer analytics) ──
+// Fire-and-forget — never await, never block the caller (search rendering, show join, etc).
+function _logShowEvent(type, data) {
+  const showId = buyerShowId || activeShowId;
+  if (!showId || typeof db === 'undefined') return;
+  const row = {
+    show_id:    showId,
+    event_type: type,
+    event_data: data || {}
+  };
+  db.from('show_events').insert(row).then(({ error }) => {
+    if (error) console.warn('[show_events]', error.message);
+  });
 }
 
 // ── AUTH FUNCTIONS — hoisted to top so HTML onclick handlers always find them ──
@@ -7735,6 +8387,11 @@ function filterBuyer() {
   });
 
   renderBuyerGrid(results);
+
+  // Log non-trivial searches (3+ chars) — fire-and-forget, never blocks rendering
+  if (q.length >= 3 && (buyerShowId || activeShowId)) {
+    _logShowEvent('buyer_search', { query: q });
+  }
 }
 
 function clearFilters() {
@@ -10599,6 +11256,10 @@ async function joinShowByCode() {
 async function joinShow(showId) {
   buyerShowId  = showId;
   activeShowId = showId;
+
+  // Log QR scan / show join event — fire-and-forget
+  _logShowEvent('qr_scan', {});
+
   document.getElementById('buyerShowPicker').classList.remove('open');
   document.body.style.overflow = '';
 
@@ -13121,6 +13782,11 @@ let _adminTab = 'shows'; // 'shows' | 'inventory'
 
 function switchAdminTab(tab) {
   _adminTab = tab;
+
+  // Hide analytics panel when switching tabs — restored via openShowAnalytics()
+  const analyticsPanel = document.getElementById('showAnalyticsPanel');
+  if (analyticsPanel) analyticsPanel.style.display = 'none';
+
   const showsTab    = document.getElementById('adminTabShows');
   const invTab      = document.getElementById('adminTabInventory');
   const reportTab   = document.getElementById('adminTabReport');
@@ -13261,6 +13927,9 @@ function renderAdminShowsDashboard() {
         </button>
         <button class="asc-action-secondary" onclick="event.stopPropagation();openShowAccessQr('${s.id}')">
           📢 QR Codes
+        </button>
+        <button class="asc-action-secondary" onclick="event.stopPropagation();openShowAnalytics('${s.id}')">
+          📊 Analytics
         </button>
         <button class="asc-action-secondary" onclick="event.stopPropagation();openCreateShowModal('${s.id}')">
           ✏ Edit
@@ -13404,6 +14073,500 @@ function addSellerByHandleAsc(showId) {
   addSellerToShow(showId, handle);
   input.value = '';
   renderAdminShowsDashboard();
+}
+
+// ════════════════════════════════════════════════════════
+// SHOW ORGANIZER ANALYTICS DASHBOARD
+// ════════════════════════════════════════════════════════
+
+let _orgActiveShowId = null; // show currently open in analytics
+
+// ── OPEN / CLOSE ─────────────────────────────────────────
+
+function openShowAnalytics(showId) {
+  _orgActiveShowId = showId;
+
+  // Switch panel visibility
+  const mainDash  = document.getElementById('adminShowsDashboard');
+  const analytics = document.getElementById('showAnalyticsPanel');
+  if (mainDash)  mainDash.style.display  = 'none';
+  if (analytics) analytics.style.display = 'block';
+
+  // Populate header
+  const show = shows[showId];
+  const nameEl = document.getElementById('orgDashShowName');
+  const metaEl = document.getElementById('orgDashShowMeta');
+  if (nameEl) nameEl.textContent = show?.name || showId;
+  if (metaEl) metaEl.textContent = [show?.date, show?.location]
+    .filter(Boolean).join(' · ');
+
+  // Show loading, hide content and error
+  _orgSetState('loading');
+
+  // Fetch and render
+  _orgFetchAndRender(showId);
+}
+
+function closeShowAnalytics() {
+  _orgActiveShowId = null;
+  document.getElementById('showAnalyticsPanel').style.display = 'none';
+  document.getElementById('adminShowsDashboard').style.display = 'block';
+}
+
+function reloadShowAnalytics() {
+  if (_orgActiveShowId) openShowAnalytics(_orgActiveShowId);
+}
+
+function _orgSetState(state) {
+  const loading = document.getElementById('orgLoading');
+  const error   = document.getElementById('orgError');
+  const content = document.getElementById('orgDashContent');
+  if (loading) loading.style.display = state === 'loading' ? 'flex' : 'none';
+  if (error)   error.style.display   = state === 'error'   ? 'flex' : 'none';
+  if (content) content.style.display = state === 'ready'   ? 'block': 'none';
+}
+
+// ── DATA FETCH ────────────────────────────────────────────
+
+async function _orgFetchAndRender(showId) {
+  try {
+    const [cards, events] = await Promise.all([
+      _orgFetchInventory(showId),
+      _orgFetchEvents(showId)
+    ]);
+
+    _orgRender(showId, cards, events);
+    _orgSetState('ready');
+
+  } catch (err) {
+    console.error('[org-analytics]', err);
+    const msgEl = document.getElementById('orgErrorMsg');
+    if (msgEl) msgEl.textContent = err.message || 'Could not load analytics';
+    _orgSetState('error');
+  }
+}
+
+// Two explicit queries (show_inventory → card_ids, then inventory .in(ids))
+// rather than a nested FK-embed select — this codebase has already hit cases
+// where PostgREST's embedded-join syntax silently returns null on a stale
+// schema cache (see loadShowSellersAndTables()); the two-step form is the
+// established, proven-reliable pattern here.
+async function _orgFetchInventory(showId) {
+  const { data: siRows, error: siErr } = await db
+    .from('show_inventory')
+    .select('card_id')
+    .eq('show_id', showId);
+  if (siErr) throw new Error(`Inventory fetch: ${siErr.message}`);
+
+  const cardIds = [...new Set((siRows || []).map(r => r.card_id).filter(Boolean))];
+  if (!cardIds.length) return [];
+
+  const { data: cards, error: invErr } = await db
+    .from('inventory')
+    .select(`
+      id, seller_id, card_title, player, year,
+      card_set, parallel, grade, grader,
+      price, status, sold_price, payment_method,
+      sale_notes, sold_time, item_type
+    `)
+    .in('id', cardIds);
+  if (invErr) throw new Error(`Inventory fetch: ${invErr.message}`);
+  return cards || [];
+}
+
+async function _orgFetchEvents(showId) {
+  const { data, error } = await db
+    .from('show_events')
+    .select('event_type, event_data, created_at')
+    .eq('show_id', showId)
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    // show_events may not exist yet — degrade gracefully
+    console.warn('[org-analytics] show_events:', error.message);
+    return [];
+  }
+  return data || [];
+}
+
+// ── RENDER ────────────────────────────────────────────────
+
+function _orgRender(showId, cards, events) {
+  const show    = shows[showId];
+  const sold    = cards.filter(c => (c.status || '').toLowerCase() === 'sold'
+                                 && c.sold_price != null);
+  const listed  = cards.length;
+  const soldCnt = sold.length;
+
+  const gmv     = sold.reduce((s, c) => s + (Number(c.sold_price) || 0), 0);
+  const avgTx   = soldCnt ? gmv / soldCnt : 0;
+
+  // ── Active sellers (UUID deduplication) ──
+  const activeSellers = new Set(sold.map(c => c.seller_id).filter(Boolean));
+  const authSellers   = show?.sellers ? show.sellers.size : 0;
+
+  // ── Sellers who uploaded any inventory (participated) ──
+  const uploadedSellers = new Set(cards.map(c => c.seller_id).filter(Boolean));
+
+  // ── Event counts ──
+  const searches = events.filter(e => e.event_type === 'buyer_search');
+  const qrScans  = events.filter(e => e.event_type === 'qr_scan');
+
+  // ── North star ──
+  _orgSetKPI('orgGMV',
+    '$' + gmv.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
+    `${soldCnt} transaction${soldCnt !== 1 ? 's' : ''}`);
+
+  const stPct = listed > 0 ? Math.round((soldCnt / listed) * 100) : null;
+  _orgSetKPI('orgSellThru',
+    stPct !== null ? `${stPct}%` : '—',
+    `${soldCnt} sold of ${listed} listed`);
+
+  _orgSetKPI('orgActiveSellers',
+    activeSellers.size || '—',
+    `of ${authSellers} authorized`);
+
+  _orgSetKPI('orgSearches',
+    searches.length || '—',
+    `QR scans: ${qrScans.length || '—'}`);
+
+  // ── Seller performance table ──
+  _orgRenderSellerTable(sold, cards);
+
+  // ── Top 10 cards sold ──
+  _orgRenderTopCards(sold);
+
+  // ── Participation bar ──
+  _orgRenderParticipation(uploadedSellers.size, authSellers);
+
+  // ── Search analytics ──
+  _orgRenderSearchAnalytics(searches, cards);
+
+  // ── Health metrics ──
+  const avgEl  = document.getElementById('orgAvgTx');
+  const partEl = document.getElementById('orgParticipationRate');
+  if (avgEl)  avgEl.textContent  = soldCnt ? '$' + Math.round(avgTx).toLocaleString() : '—';
+  if (partEl) partEl.textContent = authSellers
+    ? `${Math.round((uploadedSellers.size / authSellers) * 100)}%` : '—';
+
+  // ── Payment method breakdown ──
+  _orgRenderPaymentBars(sold);
+
+  // ── vs. Previous show ──
+  _orgRenderVsPrev(showId, gmv, soldCnt, stPct);
+}
+
+function _orgSetKPI(id, value, sub) {
+  const valEl = document.getElementById(id);
+  const subEl = document.getElementById(id + 'Sub');
+  if (valEl) valEl.textContent = value;
+  if (subEl && sub !== undefined) subEl.textContent = sub;
+}
+
+// ── SELLER PERFORMANCE TABLE ─────────────────────────────
+
+function _orgRenderSellerTable(sold, allCards) {
+  const tbody = document.getElementById('orgSellerBody');
+  if (!tbody) return;
+
+  // Aggregate per seller_id
+  const byId = {};
+  sold.forEach(c => {
+    const sid = c.seller_id || '__unknown__';
+    if (!byId[sid]) byId[sid] = { revenue: 0, soldCnt: 0, listed: 0 };
+    byId[sid].revenue += Number(c.sold_price) || 0;
+    byId[sid].soldCnt += 1;
+  });
+  allCards.forEach(c => {
+    const sid = c.seller_id || '__unknown__';
+    if (!byId[sid]) byId[sid] = { revenue: 0, soldCnt: 0, listed: 0 };
+    byId[sid].listed += 1;
+  });
+
+  const rows = Object.entries(byId)
+    .sort((a, b) => b[1].revenue - a[1].revenue)
+    .slice(0, 15);
+
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="org-empty">No sales recorded</td></tr>';
+    return;
+  }
+
+  // Seller handle is resolved async below (_orgEnrichSellerHandles) — start with
+  // a truncated UUID placeholder so the table renders immediately.
+  tbody.innerHTML = rows.map(([sid, d]) => {
+    const stPct = d.listed > 0 ? Math.round((d.soldCnt / d.listed) * 100) : 0;
+    const avg   = d.soldCnt > 0 ? Math.round(d.revenue / d.soldCnt) : 0;
+    const placeholder = sid === '__unknown__' ? 'Unknown' : `@${sid.slice(0, 8)}`;
+    return `<tr data-seller-id="${sid}">
+      <td>
+        <span class="org-seller-badge org-seller-handle-${sid.slice(0,8)}">
+          ${placeholder}
+        </span>
+      </td>
+      <td class="org-td-r org-td-gold">
+        $${d.revenue.toLocaleString('en-US', {minimumFractionDigits:0})}
+      </td>
+      <td class="org-td-r org-td-muted">${d.soldCnt}</td>
+      <td class="org-td-r org-td-muted">${stPct}%</td>
+      <td class="org-td-r org-td-muted">$${avg.toLocaleString()}</td>
+    </tr>`;
+  }).join('');
+
+  // Enrich handles asynchronously — avoids blocking the render
+  const sellerIds = rows.map(([sid]) => sid).filter(s => s !== '__unknown__');
+  _orgEnrichSellerHandles(sellerIds);
+}
+
+async function _orgEnrichSellerHandles(sellerIds) {
+  if (!sellerIds.length || typeof db === 'undefined') return;
+  try {
+    const { data } = await db
+      .from('sellers')
+      .select('id, handle, display_name')
+      .in('id', sellerIds);
+
+    (data || []).forEach(row => {
+      const label = row.display_name || `@${row.handle}`;
+      document.querySelectorAll(`.org-seller-handle-${row.id.slice(0,8)}`)
+        .forEach(el => { el.textContent = label; });
+    });
+  } catch { /* non-fatal */ }
+}
+
+// ── TOP CARDS SOLD ────────────────────────────────────────
+
+function _orgRenderTopCards(sold) {
+  const el = document.getElementById('orgTopCards');
+  if (!el) return;
+
+  const top = [...sold]
+    .sort((a, b) => (Number(b.sold_price) || 0) - (Number(a.sold_price) || 0))
+    .slice(0, 10);
+
+  if (!top.length) {
+    el.innerHTML = '<div class="org-empty">No sales recorded</div>';
+    return;
+  }
+
+  el.innerHTML = top.map((c, i) => {
+    const title    = c.card_title || [c.year, c.card_set, c.player].filter(Boolean).join(' ') || 'Unknown card';
+    const gradeStr = c.grader && c.grade ? `${c.grader} ${c.grade}` : c.grade || '';
+    const meta     = [gradeStr, c.payment_method].filter(Boolean).join(' · ');
+    const price    = Number(c.sold_price) || 0;
+    return `<div class="org-top-card-row">
+      <div class="org-top-card-rank">${i + 1}</div>
+      <div class="org-top-card-info">
+        <div class="org-top-card-title">${title}</div>
+        ${meta ? `<div class="org-top-card-meta">${meta}</div>` : ''}
+      </div>
+      <div class="org-top-card-price">$${price.toLocaleString('en-US', {minimumFractionDigits:0})}</div>
+    </div>`;
+  }).join('');
+}
+
+// ── PARTICIPATION BAR ─────────────────────────────────────
+
+function _orgRenderParticipation(uploaded, authorized) {
+  const barEl   = document.getElementById('orgParticipationBar');
+  const labelEl = document.getElementById('orgParticipationLabel');
+  const subEl   = document.getElementById('orgParticipationSub');
+
+  const pct = authorized > 0 ? Math.round((uploaded / authorized) * 100) : 0;
+  if (barEl)   barEl.style.width   = `${Math.min(pct, 100)}%`;
+  if (labelEl) labelEl.textContent = `${uploaded} of ${authorized} authorized sellers uploaded inventory`;
+
+  if (subEl) {
+    const missing = Math.max(0, authorized - uploaded);
+    subEl.textContent = missing > 0
+      ? `${missing} seller${missing !== 1 ? 's' : ''} authorized but uploaded no cards`
+      : (authorized > 0 ? 'All authorized sellers uploaded inventory ✓' : '');
+  }
+}
+
+// ── SEARCH ANALYTICS ─────────────────────────────────────
+
+function _orgRenderSearchAnalytics(searches, cards) {
+  // Extract player last names present in this show's inventory
+  const playerNames = cards.map(c => (c.player || '').toLowerCase().trim()).filter(Boolean);
+
+  const queryCounts = {};
+  searches.forEach(e => {
+    const q = (e.event_data?.query || '').trim().toLowerCase();
+    if (!q || q.length < 2) return;
+    queryCounts[q] = (queryCounts[q] || 0) + 1;
+  });
+
+  const sorted = Object.entries(queryCounts).sort((a, b) => b[1] - a[1]);
+
+  const topEl  = document.getElementById('orgTopSearches');
+  const zeroEl = document.getElementById('orgZeroResults');
+
+  if (!sorted.length) {
+    if (topEl)  topEl.innerHTML  = '<div class="org-empty">No searches logged yet</div>';
+    if (zeroEl) zeroEl.innerHTML = '<div class="org-empty">None recorded</div>';
+    return;
+  }
+
+  // Top searches (all)
+  const topTags = sorted.slice(0, 20).map(([q, cnt]) =>
+    `<div class="org-tag">
+      ${q}
+      <span class="org-tag-count">${cnt}</span>
+    </div>`
+  ).join('');
+  if (topEl) topEl.innerHTML = topTags || '<div class="org-empty">None</div>';
+
+  // A search "found" inventory if the query is a substring of a listed player's
+  // name, or a listed player's name contains the query as a whole word — an
+  // empty/missing name segment is never treated as a match (a single-word
+  // player name must not make every query auto-match).
+  function queryFoundMatch(q) {
+    return playerNames.some(name => {
+      if (name.includes(q)) return true;
+      return name.split(/\s+/).some(word => word.length > 0 && q.includes(word));
+    });
+  }
+
+  const zeroTags = sorted
+    .filter(([q]) => !queryFoundMatch(q))
+    .slice(0, 15)
+    .map(([q, cnt]) =>
+      `<div class="org-tag org-tag-zero">
+        ${q}
+        <span class="org-tag-count">${cnt}</span>
+      </div>`
+    ).join('');
+
+  if (zeroEl) zeroEl.innerHTML = zeroTags || '<div class="org-empty">None — all searches found matching inventory</div>';
+}
+
+// ── PAYMENT METHOD BARS ───────────────────────────────────
+
+function _orgRenderPaymentBars(sold) {
+  const el = document.getElementById('orgPaymentBars');
+  if (!el) return;
+
+  const COLORS = {
+    Cash:    '#4ade80',
+    Venmo:   '#60a5fa',
+    Zelle:   '#c084fc',
+    PayPal:  '#fb923c',
+    Square:  '#f87171',
+    Other:   '#5a6585'
+  };
+
+  const totals = {};
+  sold.forEach(c => {
+    const m = c.payment_method || 'Other';
+    totals[m] = (totals[m] || 0) + (Number(c.sold_price) || 0);
+  });
+
+  const rows = Object.entries(totals).sort((a, b) => b[1] - a[1]);
+
+  if (!rows.length) {
+    el.innerHTML = '<div class="org-empty">No sales recorded</div>';
+    return;
+  }
+
+  const maxAmt = Math.max(...rows.map(([, amt]) => amt), 1);
+
+  el.innerHTML = rows.map(([method, amt]) => {
+    const pct   = Math.round((amt / maxAmt) * 100);
+    const color = COLORS[method] || COLORS.Other;
+    return `<div class="org-payment-bar-row">
+      <div class="org-payment-name">${method}</div>
+      <div class="org-payment-track">
+        <div class="org-payment-fill"
+          style="width:${pct}%;background:${color}"></div>
+      </div>
+      <div class="org-payment-val">
+        $${amt.toLocaleString('en-US', {minimumFractionDigits:0})}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── VS. PREVIOUS SHOW ─────────────────────────────────────
+
+async function _orgRenderVsPrev(currentShowId, currentGMV, currentSold, currentSTPct) {
+  const el = document.getElementById('orgVsPrev');
+  if (!el) return;
+
+  // Find the previous show by date (among all shows this admin manages)
+  const allShows    = Object.values(shows).filter(s => s.id !== currentShowId);
+  const currentShow = shows[currentShowId];
+  const currentDate = currentShow?.date ? new Date(currentShow.date) : null;
+
+  const prevShow = allShows
+    .filter(s => s.date && (!currentDate || new Date(s.date) < currentDate))
+    .sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+
+  if (!prevShow) {
+    el.innerHTML = '<div class="org-empty">Only one show on record</div>';
+    return;
+  }
+
+  // Fetch previous show inventory
+  try {
+    const prevCards   = await _orgFetchInventory(prevShow.id);
+    const prevSold    = prevCards.filter(c =>
+      (c.status || '').toLowerCase() === 'sold' && c.sold_price != null);
+    const prevGMV     = prevSold.reduce((s, c) => s + (Number(c.sold_price) || 0), 0);
+    const prevSoldCnt = prevSold.length;
+    const prevListed  = prevCards.length;
+    const prevSTPct   = prevListed > 0 ? Math.round((prevSoldCnt / prevListed) * 100) : null;
+
+    function delta(curr, prev) {
+      if (!prev) return null;
+      const diff = curr - prev;
+      const pct  = Math.abs(Math.round((diff / prev) * 100));
+      const sign = diff >= 0 ? '+' : '-';
+      return { pct, sign, cls: diff >= 0 ? 'org-vs-up' : 'org-vs-down' };
+    }
+
+    const gmvDelta  = delta(currentGMV, prevGMV);
+    const soldDelta = delta(currentSold, prevSoldCnt);
+    const stDelta   = currentSTPct !== null && prevSTPct !== null
+      ? delta(currentSTPct, prevSTPct) : null;
+
+    function fmtDelta(d) {
+      if (!d) return '';
+      return `<span class="org-vs-delta ${d.cls}">${d.sign}${d.pct}%</span>`;
+    }
+
+    el.innerHTML = `
+      <div class="org-vs-row">
+        <div class="org-vs-label">GMV</div>
+        <div class="org-vs-val">
+          $${currentGMV.toLocaleString('en-US',{minimumFractionDigits:0})}
+          ${fmtDelta(gmvDelta)}
+        </div>
+      </div>
+      <div class="org-vs-row">
+        <div class="org-vs-label">Transactions</div>
+        <div class="org-vs-val">
+          ${currentSold}
+          ${fmtDelta(soldDelta)}
+        </div>
+      </div>
+      <div class="org-vs-row">
+        <div class="org-vs-label">Sell-Through</div>
+        <div class="org-vs-val">
+          ${currentSTPct !== null ? currentSTPct + '%' : '—'}
+          ${fmtDelta(stDelta)}
+        </div>
+      </div>
+      <div class="org-vs-row" style="border-bottom:none">
+        <div class="org-vs-label" style="color:var(--border)">vs.</div>
+        <div class="org-vs-label" style="color:var(--border)">
+          ${prevShow.name} · ${prevShow.date || ''}
+        </div>
+      </div>`;
+
+  } catch {
+    el.innerHTML = '<div class="org-empty">Could not load previous show data</div>';
+  }
 }
 
 // ── SELLER PROFILE ──
