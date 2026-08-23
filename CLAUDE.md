@@ -720,6 +720,76 @@ Badge states (`.tc-verify-badge`, injected into `.bulkscan-card-header` next to 
 
 Fingerprint preview: `data-fingerprint` elements are **debug-only** (`window.CARDSHOW_DEBUG`), not shown to sellers — a raw pipe-delimited fingerprint string has no seller-facing value and 10-15 of them per scan would just be clutter. `_bulkScanFingerprintFromBlock()` reads live DOM values (matching the correction pass's own "read live DOM, not the original vision snapshot" convention) rather than tracking canonical values separately on the card object — since validated fields are written straight into the same `[data-field]` inputs `confirmBulkScanReview()` already reads at save time, canonical values flow through to the saved fingerprint automatically with no extra plumbing. Updated once on initial render (debug mode only) and again whenever validation resolves for that card.
 
+## DB Migration: show_events (run in Supabase SQL editor)
+```sql
+-- show_events: lightweight event log for buyer searches and QR scans
+-- Append-only. Admin-readable. No RLS enforcement (permissive like other tables).
+CREATE TABLE IF NOT EXISTS show_events (
+  id          uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  show_id     text NOT NULL,
+  event_type  text NOT NULL,  -- 'buyer_search' | 'qr_scan'
+  event_data  jsonb,          -- { query: string } for searches; {} for scans
+  created_at  timestamptz DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS show_events_show_id_idx
+  ON show_events (show_id);
+CREATE INDEX IF NOT EXISTS show_events_type_idx
+  ON show_events (show_id, event_type);
+```
+Must be run before the organizer analytics dashboard's search/QR metrics will populate — see below. The dashboard degrades gracefully (shows '—') if this table doesn't exist yet.
+
+## Show Organizer Analytics Dashboard
+
+### Entry point
+📊 Analytics button on each admin show card → `openShowAnalytics(showId)`.
+Replaces the `#adminShowsDashboard` view with `#showAnalyticsPanel`.
+Back button calls `closeShowAnalytics()`, which restores `adminShowsDashboard`.
+`switchAdminTab()` also force-hides `#showAnalyticsPanel` on every tab switch so it can't be left showing behind the Shows/Inventory/Report tabs.
+
+### Data sources
+- `show_inventory` → `inventory` — fetched as **two explicit queries** (all `card_id`s for the show, then `inventory.in('id', cardIds)`), not a nested FK-embed `select()`. This codebase already documented a case (`loadShowSellersAndTables()`) where PostgREST's embedded-join syntax silently returned null on a stale schema cache — the two-step form is the established, proven-reliable pattern here and is used for the same reason.
+  - Fields read: `status, sold_price, payment_method, seller_id, player, year, card_set, parallel, grade, grader, price, card_title, item_type`
+- `show_events` table — `buyer_search` and `qr_scan` event log
+  - `event_type`: `'buyer_search'` | `'qr_scan'`
+  - `event_data`: `{ query: string }` for searches; `{}` for scans
+- `shows{}` in-memory cache — authorized sellers (`Set`), tables, dates
+- `sellers` table (async enrichment) — `handle` and `display_name` for seller UUID → display label, resolved after the seller table renders so it never blocks the initial paint
+- `show_sellers` table — `seller_id → table_number` mapping, queried directly (not via `shows{}.tables`, which is keyed by handle, not UUID) so it lines up with `inventory.seller_id` with no extra handle round trip
+
+### Event instrumentation
+- `_logShowEvent(type, data)` (top of script, next to `tcapiGet`) — fire-and-forget append to `show_events`; no-ops when there's no active/buyer show or `db` is unavailable.
+- Triggered in `filterBuyer()`, after `renderBuyerGrid(results)`, for non-trivial searches (3+ chars). **No debounce** — fires on every qualifying keystroke via the existing `oninput` wiring. Worth adding a 1–2s debounce if search volume at a live show turns out to be a real cost (see Limitations).
+- Triggered in `joinShow(showId)`, right after `activeShowId = showId` is set, once per show join/QR scan.
+
+### Key functions
+- `openShowAnalytics(showId)` / `closeShowAnalytics()` / `reloadShowAnalytics()`
+- `_orgFetchAndRender(showId)` — async; fetches inventory + events + table assignments in parallel via `Promise.all`
+- `_orgFetchInventory(showId)` — two-step `show_inventory` → `inventory` query (see above)
+- `_orgFetchEvents(showId)` — `show_events` log; degrades gracefully (returns `[]`) if the table is missing
+- `_orgFetchTableAssignments(showId)` — `show_sellers.select('seller_id, table_number')`; returns `{ tableMap: { seller_id: table_number }, sellerIds: [seller_id, ...] }`. `sellerIds` is the full authorized roster for the show — every authorized seller gets a `show_sellers` row on authorization (`addShowSellerToDB`) whether or not a table is assigned yet, so this is not limited to sellers with a table. Degrades to `{ tableMap: {}, sellerIds: [] }` on error.
+- `_orgRender(showId, cards, events, tableMap, authorizedSellerIds)` — computes all metrics, calls sub-renderers. `authSellers` (used by the Active Sellers KPI and Participation bar) prefers `authorizedSellerIds.length` — the same live count that seeds the seller table below — falling back to the handle-keyed `shows{}.sellers` Set only if that fetch failed, so the KPI and the table never disagree.
+- Also stamps a fresh `showCardCounts[showId]` from the live `cards.length` and calls `updateAscHeader(showId)` — the Shows dashboard's "Cards" stat chip is otherwise only refreshed once, at admin login (`refreshShowCardCounts()`), and goes stale the moment inventory is published afterward.
+- `_orgSetKPI(id, value, sub)` — updates one north-star KPI card's value + sub-label
+- `_orgRenderSellerTable(sold, allCards, authorizedSellerIds)` — revenue-by-seller table, one row per **authorized** seller, not just sellers with published inventory. `authorizedSellerIds` seeds a $0 row for every seller before `sold`/`allCards` are folded in — without this seed, a seller who hasn't published anything to the show has zero matching card rows and silently never gets a table entry at all (this was a real bug: a show with 19 authorized sellers only showed the 7 who'd actually published inventory). No row cap — this is the full roster, not a top-N leaderboard. Renders with truncated-UUID placeholders immediately, then `_orgEnrichSellerHandles()` swaps in real handles/display names asynchronously.
+- `_orgEnrichSellerHandles(sellerIds)` — async UUID→handle/display_name lookup from `sellers` table, targets rows via a per-seller CSS class (`org-seller-handle-{uuid8}`)
+- `_orgRenderTablePerformance(sold, allCards, tableMap)` — revenue-by-table table, one row per **table with a seller assigned**, not just tables whose seller has published inventory. `tableMap` (every `seller_id → table_number` pair) seeds a $0 row for each assigned table before `sold`/`allCards` are folded in — same fix and same underlying bug class as the seller table (a table whose only seller(s) haven't published anything yet had zero matching card rows and never appeared at all). Ranked by revenue descending; ties (mostly $0 tables now) break by table number ascending rather than arbitrary insertion order. Groups sold + listed cards by table number (via each card's `seller_id → tableMap`), not by seller, so co-sellers sharing one table roll into a single row. Columns: Table, Revenue, Sold, Sell-Thru, Sellers (count at that table — included so a table's high GMV can be told apart from "it just has more sellers on it" before an organizer raises its price), Avg $. Cards whose seller has no `table_number` row roll into a "No table" bucket rather than being silently dropped.
+- `_orgRenderTopCards(sold)` — top 10 by `sold_price`
+- `_orgRenderParticipation(uploaded, authorized)` — sellers who uploaded ≥1 card ÷ authorized sellers
+- `_orgRenderSearchAnalytics(searches, cards)` — top queries + zero-result detection against this show's listed player names
+- `_orgRenderPaymentBars(sold)` — payment method breakdown, bar width relative to the largest method's total
+- `_orgRenderVsPrev(showId, gmv, sold, stPct)` — async; finds the most recent show before this one by date, fetches its inventory, renders GMV/transactions/sell-through delta badges
+
+### Zero-result search detection
+A query counts as "found" if it's a substring of a listed player's full name, **or** a non-empty word of that player's name is a substring of the query — an empty/missing name segment is never treated as a match. (An earlier draft of this logic fell back to `''` for players with a one-word name, and `string.includes('')` is always `true` in JS — that would have silently marked every search as "found" once any single-name player was in inventory. Fixed before shipping.) This remains a fuzzy, client-side heuristic, not exact search-result tracking — see Limitations.
+
+### Limitations / future improvements
+- Zero-result search detection is fuzzy client-side name matching, not real search-result tracking. A server-side approach that logs actual result counts would be more accurate.
+- Seller handle enrichment fires a fresh `sellers` query every time analytics is opened. Could be cached across opens in one session.
+- `filterBuyer()` logs every qualifying search input change with no debounce — fine at low volume, worth revisiting if a busy show generates excessive `show_events` writes.
+- Buyer search events are only logged when the buyer is in `app.html` (not from `show.html` or `seller-browse.html`). Extend `_logShowEvent()` to those pages for full search coverage.
+- `show_events` has no RLS policy tightening — matches the rest of the schema's current permissive-by-default posture (see RLS note above); revisit together.
+
 ## Backlog Priority
 
 ### Shipped ✅
@@ -794,6 +864,7 @@ Fingerprint preview: `data-fingerprint` elements are **debug-only** (`window.CAR
   - Report HTML — `<div id="rptTxLog"></div>` added immediately after `#rptPayBreakdown` closing tag.
   - `updateReport()` — renders `"✓ N transactions logged · show floor data synced"` in `#rptTxLog` when `soldCards.length > 0 && activeShowId`; clears otherwise.
   - **Critical constraints:** `recordShowTransaction` must never be awaited from `sdConfirm`. Table is append-only (INSERT + SELECT RLS only, no UPDATE/DELETE). `card_fingerprint` format: `player|year|set|cardNumber|parallel|grade|grader` (7 fields, lowercased, matches price_cache exactly).
+- **Show Organizer Analytics Dashboard (session 2026-08-23)** — 📊 Analytics button per show card opens a per-show metrics panel: GMV, sell-through rate, active sellers, seller revenue table, **revenue/sell-through by table number**, top cards sold, seller participation, top searched players, zero-result searches, payment method mix, vs. previous show delta. Revenue-by-table (`_orgRenderTablePerformance`) is fed by `show_sellers.seller_id → table_number`, fetched directly rather than via the handle-keyed `shows{}.tables` cache, so organizers can see which tables actually earn their keep before pricing next show's tables. New `show_events` table logs buyer searches (`filterBuyer()`) and QR scans/show joins (`joinShow()`) fire-and-forget via `_logShowEvent()`. See "Show Organizer Analytics Dashboard" section above for full detail. **Requires the `show_events` DB migration** (see above) — degrades gracefully (shows '—') if not yet run.
 - **Trading Card API integration (session 2026-08-18/19)** — `TRADING_CARD_API_KEY` went live; see "Trading Card API Integration" section above for full detail. `netlify/functions/tcapi.js` (generic proxy) + `tcapiGet()` helper. Add Card modal's old `#ac_search` free-text box replaced with a 4-step guided picker (player → set → card# → parallel) wired directly to the Player/Set/Card#/Parallel fields. Bulk scan review grid gained a background Trading Card API validation pass (VERIFYING/VERIFIED/UNVERIFIED badge per card, best-effort set/card#/parallel enrichment). Three real API constraints discovered, only the first two on the first pass — the third was found by reproducing a live UI failure end-to-end, not by re-reasoning about the first fix: (1) `filter[x]=` params are non-functional today (silently return the unfiltered collection) on both `/v1/cards` and `/v1/sets`; `trading-card-lookup.js`'s old `filter[name]` search was broken the same way, meaning `#ac_search` had been silently returning wrong results since the key went live — removing it fixed that exposure as a side effect. (2) `filter[player_id]` on `/v1/cards` is real and documented but too slow for interactive use (10s+, no fast alternative). (3) The plain `full_name=`/`name=` params only prefix-match a first-name token — a last-name token never prefix-matches at any length short of complete, and `/v1/sets?name=` has no partial matching at all — so player search reports a "still typing the last name" state instead of substituting an unrelated candidate list when a multi-word query comes up empty, and set search fetches+caches the whole 273-set catalog client-side instead of relying on the server to filter it. An earlier version of the player-search fix tried a first-word-only fallback, which silently showed unrelated players with nothing distinguishing them from real matches — worse than showing nothing, and cut once this was caught.
 
 ### Tier 1 — Ship before beta show
@@ -815,7 +886,7 @@ Fingerprint preview: `data-fingerprint` elements are **debug-only** (`window.CAR
 - Dealer-to-dealer transfer (QR handoff)
 - Stripe billing ($49/show organizer tier)
 - Offer system (buyer broadcasts want to all sellers)
-- Organizer analytics dashboard
+- ~~**Organizer analytics dashboard**~~ — shipped (see Shipped section above)
 
 ### Tier 4 — Long game
 - TCDB card database integration (3M+ card autocomplete)
