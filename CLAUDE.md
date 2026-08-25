@@ -758,7 +758,7 @@ ALTER TABLE show_floor_transactions
       'social_extract'      -- public social post extraction (future)
     ));
 ```
-Must be run before "Log a Manual Sale" (see below) can write a `source:'manual'` row — without it, `_recordManualSaleTransaction()`'s insert fails on the missing column and only warns to console (non-fatal, matches every other `show_floor_transactions` write in this app).
+Must be run before "Log a Manual Sale" (see below) can write a `source:'manual'` row — without it, `recordManualSaleTransaction()`'s insert fails on the missing column and only warns to console (non-fatal, matches every other `show_floor_transactions` write in this app).
 
 ## Show Organizer Analytics Dashboard
 
@@ -906,7 +906,7 @@ If `insertCardToDB()` times out inside `posInsertAndOpenDrawer()`'s `Promise.rac
   - **Critical constraints:** `recordShowTransaction` must never be awaited from `sdConfirm`. Table is append-only (INSERT + SELECT RLS only, no UPDATE/DELETE). `card_fingerprint` format: `player|year|set|cardNumber|parallel|grade|grader` (7 fields, lowercased, matches price_cache exactly).
 - **Show Organizer Analytics Dashboard (session 2026-08-23)** — 📊 Analytics button per show card opens a per-show metrics panel: GMV, sell-through rate, active sellers, seller revenue table, **revenue/sell-through by table number**, top cards sold, seller participation, top searched players, zero-result searches, payment method mix, vs. previous show delta. Revenue-by-table (`_orgRenderTablePerformance`) is fed by `show_sellers.seller_id → table_number`, fetched directly rather than via the handle-keyed `shows{}.tables` cache, so organizers can see which tables actually earn their keep before pricing next show's tables. New `show_events` table logs buyer searches (`filterBuyer()`) and QR scans/show joins (`joinShow()`) fire-and-forget via `_logShowEvent()`. See "Show Organizer Analytics Dashboard" section above for full detail. **Requires the `show_events` DB migration** (see above) — degrades gracefully (shows '—') if not yet run.
 - **Auto-Publish on Insert (session 2026-08-23)** — `_autoPublishCardToShow()` fire-and-forget helper wired into all four card-insertion paths (Add Card, Scan-to-Sell POS, bulk scan review, CSV/XLSX import), so cards added mid-show get a `show_inventory` row immediately instead of waiting for the organizer to re-run Publish Inventory. See "Auto-Publish on Insert" section above for full detail, including a deliberate implementation change from the original spec in `upsertCardsToDB()` (captures inserted IDs via `.select('id')` instead of a race-prone re-fetch-by-recency guess).
-- **Log a Manual Sale (session 2026-08-24)** — "+ Log a Manual Sale" button in the seller Report tab opens a Sell-Drawer-styled modal for recording off-platform sales. Writes through the same three layers a platform sale does (`inventory`, `show_inventory` via `_autoPublishCardToShow()`, `show_floor_transactions` via a dedicated `_recordManualSaleTransaction(card, showId)` wrapper — not `recordShowTransaction()`, since that reads `activeShowId` as a global and a manual sale can target a past show). New `show_floor_transactions.source` column (`'platform'`/`'manual'`/`'community_report'`/`'social_extract'`) tags provenance; MANUAL badge shown in the transaction log via `card._manualSale`. See "Log a Manual Sale" section above. **Requires the `show_floor_transactions.source` DB migration** (see above).
+- **Log a Manual Sale (session 2026-08-24)** — "+ Log a Manual Sale" button in the seller Report tab opens a Sell-Drawer-styled modal for recording off-platform sales. Writes through the same three layers a platform sale does (`inventory`, `show_inventory` via `_autoPublishCardToShow()`, `show_floor_transactions` via a dedicated `recordManualSaleTransaction(card, showId)` wrapper — not `recordShowTransaction()`, since that reads `activeShowId` as a global and a manual sale can target a past show). New `show_floor_transactions.source` column (`'platform'`/`'manual'`/`'community_report'`/`'social_extract'`) tags provenance; MANUAL badge shown in the transaction log via `card._manualSale`. Optional photo capture (camera or library) calls `vision-scan.js` directly (same pattern as `posHandlePhoto()`) to auto-fill Player/Year/Set/Grade/Grader before the seller confirms. See "Log a Manual Sale" section above. **Requires the `show_floor_transactions.source` DB migration** (see above).
 - **Trading Card API integration (session 2026-08-18/19)** — `TRADING_CARD_API_KEY` went live; see "Trading Card API Integration" section above for full detail. `netlify/functions/tcapi.js` (generic proxy) + `tcapiGet()` helper. Add Card modal's old `#ac_search` free-text box replaced with a 4-step guided picker (player → set → card# → parallel) wired directly to the Player/Set/Card#/Parallel fields. Bulk scan review grid gained a background Trading Card API validation pass (VERIFYING/VERIFIED/UNVERIFIED badge per card, best-effort set/card#/parallel enrichment). Three real API constraints discovered, only the first two on the first pass — the third was found by reproducing a live UI failure end-to-end, not by re-reasoning about the first fix: (1) `filter[x]=` params are non-functional today (silently return the unfiltered collection) on both `/v1/cards` and `/v1/sets`; `trading-card-lookup.js`'s old `filter[name]` search was broken the same way, meaning `#ac_search` had been silently returning wrong results since the key went live — removing it fixed that exposure as a side effect. (2) `filter[player_id]` on `/v1/cards` is real and documented but too slow for interactive use (10s+, no fast alternative). (3) The plain `full_name=`/`name=` params only prefix-match a first-name token — a last-name token never prefix-matches at any length short of complete, and `/v1/sets?name=` has no partial matching at all — so player search reports a "still typing the last name" state instead of substituting an unrelated candidate list when a multi-word query comes up empty, and set search fetches+caches the whole 273-set catalog client-side instead of relying on the server to filter it. An earlier version of the player-search fix tried a first-word-only fallback, which silently showed unrelated players with nothing distinguishing them from real matches — worse than showing nothing, and cut once this was caught.
 
 ### Tier 1 — Ship before beta show
@@ -1127,7 +1127,10 @@ Lets a seller record a sale that happened off-platform or was never captured by 
 via **"+ Log a Manual Sale"** in the Report tab. The sale still propagates through the
 same three data layers a normal Sell Drawer sale does — `inventory`, `show_inventory`,
 `show_floor_transactions` — just tagged `source: 'manual'` on the transaction row so it
-can be told apart from a platform-captured sale in reporting/analytics later.
+can be told apart from a platform-captured sale in reporting/analytics later. The modal
+also has an optional photo capture step (camera or library) that runs the same vision
+identification `vision-scan.js` uses elsewhere in the app to auto-fill Player/Year/Set/
+Grade/Grader — see "Photo capture" below.
 
 ### DB migration
 See "DB Migration: show_floor_transactions.source" above — required before this feature's
@@ -1164,25 +1167,59 @@ confirmManualSale() — validates Player + Sold Price + Payment Method, then:
   5. _autoPublishCardToShow(card, dbId, targetShowId) fire-and-forget —
      targetShowId is the explicitly selected show, or activeShowId if none
      picked; skipped entirely for an off-show sale (no show selected)
-  6. _recordManualSaleTransaction(card, targetShowId) fire-and-forget —
+  6. recordManualSaleTransaction(card, targetShowId) fire-and-forget —
      see below
   7. closeManualSaleModal() + renderSellerTable() + updateStats() +
      updateReport() + syncBuyerView()
 ```
 
-### `_recordManualSaleTransaction(card, showId)`
-A **dedicated wrapper**, not a call to `recordShowTransaction()` — that function reads
-`activeShowId` as a global, which is wrong here: a seller can log a manual sale against
-a past show that isn't the currently active one, so the target show has to be an explicit
-parameter. Its row shape otherwise mirrors `recordShowTransaction()` field-for-field
-(confirmed by reading that function's source before writing this one), plus
-`source: 'manual'`. Uses `detectCardSport()` (API-routing, full TCG keyword detection) —
-not `detectSport()`, which is UI-badge-only. Fire-and-forget, like every other write to
-the immutable `show_floor_transactions` table in this app.
+### Photo capture (optional, auto-fills fields)
+The modal leads with a compact "📷 Take Photo" / "🖼 Choose from Library" row above the
+Show selector — same dual-source convention as Scan-to-Sell POS (`capture="environment"`
+on the camera input, absent on the library input). Calls `vision-scan.js` **directly**
+via `fetch()`, the same way `posHandlePhoto()` does — `_callVisionScan()` is hard-wired to
+the Add Card modal's cert-scanner overlay and would drive the wrong UI if reused here.
+Reuses two existing generic helpers rather than duplicating them: `_posCompressImage(file)`
+(canvas resize to 1024px, JPEG 85%, state-free) and `_posOverallConfidence(card)` (worst of
+vision's per-field confidence ratings).
+
+- `mslTriggerCamera()` / `mslTriggerLibrary()` — click the two hidden `<input type="file">`s
+- `mslHandlePhoto(inputEl)` — compress → POST `/.netlify/functions/vision-scan` →
+  `_mslApplyVisionResult(card, base64)` on success; on `low_confidence`/failure, restores
+  the idle photo buttons and toasts rather than leaving the loading state stuck
+- `_mslApplyVisionResult(card, base64)` — fills **Player/Year/Set/Grade/Grader only**
+  (`fill()` helper, mirrors `posShowReview()`'s field-name mapping — `card.cardSet`, not
+  `card.set`). The modal's Number/Parallel/Cert # fields don't exist in this quick-entry
+  form (see `confirmManualSale()` above), so nothing from the scan is mapped to them even
+  if vision detected them — same omission as manual typing already has, not a regression.
+  Filled fields get the existing `.db-filled` green-left-border convention (Add Card
+  picker, bulk-scan verify) rather than POS's separate `.pos-filled` class, since this
+  modal isn't part of the POS UI. Shows a 48×48 thumbnail with a Retake link after a
+  successful scan.
+- `_mslResetPhoto()` — called from `openManualSaleModal()`; aborts any in-flight fetch,
+  clears both file inputs, returns the photo section to its idle button state.
+  `closeManualSaleModal()` also aborts an in-flight fetch, so closing mid-scan can't land
+  a result after the modal is gone.
+- A photo is **never uploaded to Supabase Storage or attached to the transaction row** —
+  it exists only in the browser tab as a base64 string used for the vision call and the
+  thumbnail preview, then is discarded (matches `_posLastResult`'s POS precedent — no
+  photo persistence anywhere in this app's card-identification flows).
+
+### `recordManualSaleTransaction(card, showId)`
+**Not a thin wrapper around `recordShowTransaction()`** — that function reads `activeShowId`
+as a global with no parameter to override the target show or add a `source` value, and a
+manual sale can target a past show the seller isn't currently viewing. Calling it here would
+either use the wrong show or require modifying it, and `recordShowTransaction()` sits on
+`sdConfirm()`'s hot path and must never be touched for this. So the row is built manually
+instead — shape mirrors `recordShowTransaction()` field-for-field (confirmed by reading that
+function's source before writing this one), plus `source: 'manual'`. Uses `detectCardSport()`
+(API-routing, full TCG keyword detection) — not `detectSport()`, which is UI-badge-only.
+Fire-and-forget, like every other write to the immutable `show_floor_transactions` table in
+this app. `recordShowTransaction()` itself is completely untouched.
 
 ### Off-show sales
 If the seller leaves the Show selector on "Off-show / no show", `targetShowId` is `null`:
-`_autoPublishCardToShow()` and `_recordManualSaleTransaction()` are both skipped entirely
+`_autoPublishCardToShow()` and `recordManualSaleTransaction()` are both skipped entirely
 (no show to attribute the sale to) and the sale lives only in `inventory`/the seller's
 lifetime Report — same graceful-degradation shape as every other "no show" path elsewhere
 in this app.
@@ -1193,8 +1230,11 @@ in this app.
 function; every other column is untouched.
 
 ### CSS
-`.btn-log-manual-sale` and `.msl-badge` both use `var(--accent)` — `var(--gold)` is not a
-real CSS variable in this codebase (see the Critical Note in the Trading Card API section).
+`.btn-log-manual-sale`, `.msl-badge`, and the `.msl-photo-*` photo-capture classes all use
+`var(--accent)` — `var(--gold)` is not a real CSS variable in this codebase (see the
+Critical Note in the Trading Card API section). Photo buttons/loading/preview use compact,
+purpose-built `.msl-photo-*` styles rather than POS's large `.pos-photo-btn` (160px min-height)
+— the photo option is supplementary to a form here, not the primary flow like it is in POS.
 
 ### Prerequisite
 `_autoPublishCardToShow()` (from `feature/auto-publish-on-insert`) must already exist —

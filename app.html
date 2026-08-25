@@ -3907,6 +3907,95 @@
     line-height: 1.4;
   }
 
+  /* Manual Sale — photo capture (optional, auto-fills fields below) */
+  .msl-photo-buttons {
+    display: flex;
+    gap: 8px;
+  }
+  .msl-photo-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 10px 10px;
+    background: var(--card);
+    border: 1px dashed var(--border);
+    border-radius: 8px;
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    color: var(--text);
+    cursor: pointer;
+    transition: border-color 150ms, background 150ms;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+  .msl-photo-btn:active { border-color: var(--accent); background: var(--surface); }
+
+  .msl-photo-loading {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  .msl-photo-spinner {
+    width: 18px; height: 18px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: mslSpin 0.8s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes mslSpin { to { transform: rotate(360deg); } }
+  .msl-photo-loading-msg {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+  }
+
+  .msl-photo-preview-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  .msl-photo-preview-img {
+    width: 48px; height: 48px;
+    object-fit: cover;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .msl-photo-preview-label {
+    flex: 1;
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+  }
+  .msl-photo-retake-btn {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    cursor: pointer;
+    flex-shrink: 0;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .msl-photo-retake-btn:active { border-color: var(--accent); color: var(--accent); }
+
 </style>
 </head>
 <body>
@@ -9151,7 +9240,8 @@ let sdActiveIdx = null;
 let sdSelectedPayment = null;
 
 // ── MANUAL SALE MODAL STATE ──
-let _mslPayment = null;  // selected payment for the manual sale modal
+let _mslPayment     = null;  // selected payment for the manual sale modal
+let _mslVisionAbort = null;  // AbortController for in-flight photo-scan fetch
 
 function cycleStatus(realIdx, el) {
   const card = inventory[realIdx];
@@ -15682,17 +15772,17 @@ async function fetchSellerInventoryFromDB(sellerHandle) {
 // LOG A MANUAL SALE
 // Entry: "+ Log a Manual Sale" in the Report tab.
 // Chain: inventory[] (instant) → insertCardToDB → updateCardInDB
-//        → _autoPublishCardToShow → _recordManualSaleTransaction
+//        → _autoPublishCardToShow → recordManualSaleTransaction
 // ════════════════════════════════════════════════════════
 
 function openManualSaleModal() {
   // Reset every field
   ['mslPlayer','mslYear','mslSet','mslGrade','mslNotes'].forEach(id => {
     const el = document.getElementById(id);
-    if (el) el.value = '';
+    if (el) { el.value = ''; el.classList.remove('db-filled'); }
   });
   const graderEl = document.getElementById('mslGrader');
-  if (graderEl) graderEl.value = '';
+  if (graderEl) { graderEl.value = ''; graderEl.classList.remove('db-filled'); }
 
   const priceEl = document.getElementById('mslPrice');
   if (priceEl)  priceEl.value = '';
@@ -15706,6 +15796,7 @@ function openManualSaleModal() {
   const btn = document.getElementById('mslConfirmBtn');
   if (btn) { btn.disabled = false; btn.textContent = '✓ Log Sale'; }
 
+  _mslResetPhoto();
   _mslPopulateShowSelector();
 
   document.getElementById('manualSaleOverlay').classList.add('open');
@@ -15715,6 +15806,7 @@ function openManualSaleModal() {
 function closeManualSaleModal() {
   document.getElementById('manualSaleOverlay').classList.remove('open');
   _mslPayment = null;
+  if (_mslVisionAbort) { _mslVisionAbort.abort(); _mslVisionAbort = null; }
 }
 
 function _mslPopulateShowSelector() {
@@ -15733,6 +15825,140 @@ function _mslPopulateShowSelector() {
     });
 
   if (activeShowId) sel.value = activeShowId;  // pre-select active show
+}
+
+// ── Manual Sale — photo capture + card identification ──
+// Reuses _posCompressImage() (a generic, state-free utility) and calls
+// vision-scan.js directly, same as posHandlePhoto() — the existing
+// _callVisionScan() helper is hard-wired to the Add Card modal's
+// cert-scanner overlay and would drive the wrong UI entirely if reused here.
+
+function mslTriggerCamera() {
+  document.getElementById('mslFileInput').click();
+}
+
+function mslTriggerLibrary() {
+  document.getElementById('mslLibraryFileInput').click();
+}
+
+function _mslResetPhoto() {
+  if (_mslVisionAbort) { _mslVisionAbort.abort(); _mslVisionAbort = null; }
+  _mslShowPhotoIdle();
+  const fi = document.getElementById('mslFileInput');
+  if (fi) fi.value = '';
+  const lfi = document.getElementById('mslLibraryFileInput');
+  if (lfi) lfi.value = '';
+}
+
+function _mslShowPhotoIdle() {
+  document.getElementById('mslPhotoButtons').style.display     = 'flex';
+  document.getElementById('mslPhotoLoading').style.display     = 'none';
+  document.getElementById('mslPhotoPreviewWrap').style.display = 'none';
+}
+
+function _mslShowPhotoLoading(msg) {
+  document.getElementById('mslPhotoButtons').style.display     = 'none';
+  document.getElementById('mslPhotoPreviewWrap').style.display = 'none';
+  document.getElementById('mslPhotoLoading').style.display     = 'flex';
+  document.getElementById('mslPhotoLoadingMsg').textContent    = msg;
+}
+
+function _mslShowPhotoPreview(base64) {
+  document.getElementById('mslPhotoButtons').style.display     = 'none';
+  document.getElementById('mslPhotoLoading').style.display     = 'none';
+  document.getElementById('mslPhotoPreviewWrap').style.display = 'flex';
+  document.getElementById('mslPhotoPreviewImg').src = 'data:image/jpeg;base64,' + base64;
+}
+
+function mslRetakePhoto() {
+  if (_mslVisionAbort) { _mslVisionAbort.abort(); _mslVisionAbort = null; }
+  _mslShowPhotoIdle();
+}
+
+async function mslHandlePhoto(inputEl) {
+  const file = inputEl.files?.[0];
+  if (!file) return;
+  inputEl.value = ''; // reset so the same photo can be retried
+
+  _mslShowPhotoLoading('Reading photo…');
+
+  try {
+    const base64    = await _posCompressImage(file);
+    const mediaType = 'image/jpeg';
+
+    _mslShowPhotoLoading('Identifying card…');
+    _mslVisionAbort = new AbortController();
+
+    const response = await fetch('/.netlify/functions/vision-scan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: base64, mediaType }),
+      signal: _mslVisionAbort.signal,
+    });
+    _mslVisionAbort = null;
+
+    if (!response.ok) throw new Error(`Server error ${response.status}`);
+    const result = await response.json();
+
+    if (!result.success || result.error === 'low_confidence') {
+      // vision-scan.js returns no `card` at all on this path — nothing
+      // usable to pre-fill, so just restore the photo UI for a retry.
+      _mslShowPhotoIdle();
+      showToast('⚠️ Card not clearly identified — try a closer photo or enter manually', '#f5a623');
+      return;
+    }
+
+    _mslApplyVisionResult(result.card, base64);
+
+  } catch (err) {
+    if (err.name === 'AbortError') return; // user retook/closed mid-scan
+
+    console.error('[Manual Sale Vision]', err);
+    _mslShowPhotoIdle();
+    showToast('⚠️ Could not identify card — try again or enter manually', 'var(--danger)');
+  }
+}
+
+// Fills Player/Year/Set/Grade/Grader from a vision-scan.js result — the
+// modal's other fields (Number, Parallel, Cert #) are intentionally not
+// part of this quick-entry form (see confirmManualSale()), so nothing
+// from the scan is mapped to them even if vision detected them.
+function _mslApplyVisionResult(card, base64) {
+  const fill = (id, val) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const v = String(val ?? '').trim();
+    if (!v) return;
+    el.value = v;
+    el.classList.add('db-filled');
+    el.addEventListener('focus', () => el.classList.remove('db-filled'), { once: true });
+  };
+
+  // vision-scan.js field names: cardSet (not "set") — same shape
+  // posShowReview() reads.
+  fill('mslPlayer', card.player);
+  fill('mslYear',   card.year);
+  fill('mslSet',    card.cardSet);
+  fill('mslGrade',  card.grade);
+
+  const graderEl = document.getElementById('mslGrader');
+  if (graderEl && card.grader) {
+    graderEl.value = String(card.grader).toUpperCase();
+    graderEl.classList.add('db-filled');
+    graderEl.addEventListener('change', () => graderEl.classList.remove('db-filled'), { once: true });
+  }
+
+  _mslShowPhotoPreview(base64);
+
+  // _posOverallConfidence() is a generic helper — worst of vision's
+  // per-field confidence ratings under card.confidence.
+  const level = _posOverallConfidence(card);
+  showToast(
+    level === 'low'
+      ? 'Card scanned — please double-check the fields'
+      : 'Card identified — fields filled in below',
+    level === 'low' ? '#f5a623' : undefined
+  );
 }
 
 function mslSelPay(el, method) {
@@ -15855,7 +16081,7 @@ async function confirmManualSale() {
   // Dedicated wrapper — NOT recordShowTransaction() — because that
   // function reads activeShowId as a global and would use the wrong
   // show when the seller is logging a past-show sale.
-  _recordManualSaleTransaction(card, targetShowId);  // fire-and-forget
+  recordManualSaleTransaction(card, targetShowId);  // fire-and-forget
 
   // ── Step 6: Refresh UI ────────────────────────────────
   closeManualSaleModal();
@@ -15870,10 +16096,17 @@ async function confirmManualSale() {
 }
 
 // Writes one row to show_floor_transactions with source:'manual'.
-// Row shape mirrors recordShowTransaction() exactly — confirmed by
-// reading that function's source before writing this wrapper.
+// NOT a thin wrapper around recordShowTransaction() — that function reads
+// activeShowId as a global with no param to override it or the source
+// value, and a manual sale can target a past show the seller isn't
+// currently viewing. Calling it here would either use the wrong show or
+// require modifying it, and recordShowTransaction() is on sdConfirm()'s
+// hot path and should never be touched for this. So the row is built
+// manually instead — shape mirrors recordShowTransaction() field-for-field
+// (confirmed by reading that function's source before writing this one),
+// plus source:'manual'. recordShowTransaction() itself is untouched.
 // FIRE-AND-FORGET — never await.
-async function _recordManualSaleTransaction(card, showId) {
+async function recordManualSaleTransaction(card, showId) {
   if (typeof db === 'undefined') return;
   if (!currentSeller) return;
   if (!showId)        return;   // off-show sale — skip, no show to attribute
@@ -16455,6 +16688,39 @@ async function upsertCardsToDB(cards) {
     </div>
 
     <div class="drawer-body">
+
+      <!-- Photo — optional, auto-fills Player/Year/Set/Grade/Grader below.
+           Calls vision-scan.js directly, same as posHandlePhoto() — the
+           existing _callVisionScan() helper is hard-wired to the Add Card
+           modal's cert-scanner overlay and would fill the wrong form. -->
+      <div>
+        <div class="drawer-field-label">Photo (optional — auto-fills fields below)</div>
+
+        <div class="msl-photo-buttons" id="mslPhotoButtons">
+          <button type="button" class="msl-photo-btn" onclick="mslTriggerCamera()">
+            📷 Take Photo
+          </button>
+          <button type="button" class="msl-photo-btn" onclick="mslTriggerLibrary()">
+            🖼 Choose from Library
+          </button>
+        </div>
+
+        <div class="msl-photo-loading" id="mslPhotoLoading" style="display:none">
+          <div class="msl-photo-spinner"></div>
+          <div class="msl-photo-loading-msg" id="mslPhotoLoadingMsg">Identifying card…</div>
+        </div>
+
+        <div class="msl-photo-preview-wrap" id="mslPhotoPreviewWrap" style="display:none">
+          <img class="msl-photo-preview-img" id="mslPhotoPreviewImg" alt="Card photo">
+          <div class="msl-photo-preview-label">Fields filled in below — review before logging</div>
+          <button type="button" class="msl-photo-retake-btn" onclick="mslRetakePhoto()">Retake</button>
+        </div>
+
+        <input type="file" id="mslFileInput" accept="image/*" capture="environment"
+          style="display:none" onchange="mslHandlePhoto(this)">
+        <input type="file" id="mslLibraryFileInput" accept="image/*"
+          style="display:none" onchange="mslHandlePhoto(this)">
+      </div>
 
       <!-- Show selector -->
       <div>
