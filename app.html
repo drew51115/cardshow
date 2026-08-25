@@ -15777,7 +15777,7 @@ async function fetchSellerInventoryFromDB(sellerHandle) {
 
 function openManualSaleModal() {
   // Reset every field
-  ['mslPlayer','mslYear','mslSet','mslGrade','mslNotes'].forEach(id => {
+  ['mslPlayer','mslYear','mslSet','mslParallel','mslGrade','mslNotes'].forEach(id => {
     const el = document.getElementById(id);
     if (el) { el.value = ''; el.classList.remove('db-filled'); }
   });
@@ -15919,10 +15919,10 @@ async function mslHandlePhoto(inputEl) {
   }
 }
 
-// Fills Player/Year/Set/Grade/Grader from a vision-scan.js result — the
-// modal's other fields (Number, Parallel, Cert #) are intentionally not
-// part of this quick-entry form (see confirmManualSale()), so nothing
-// from the scan is mapped to them even if vision detected them.
+// Fills Player/Year/Set/Parallel/Grade/Grader from a vision-scan.js result —
+// the modal's remaining fields (Number, Cert #) are intentionally not part
+// of this quick-entry form (see confirmManualSale()), so nothing from the
+// scan is mapped to them even if vision detected them.
 function _mslApplyVisionResult(card, base64) {
   const fill = (id, val) => {
     const el = document.getElementById(id);
@@ -15938,8 +15938,9 @@ function _mslApplyVisionResult(card, base64) {
   // posShowReview() reads.
   fill('mslPlayer', card.player);
   fill('mslYear',   card.year);
-  fill('mslSet',    card.cardSet);
-  fill('mslGrade',  card.grade);
+  fill('mslSet',      card.cardSet);
+  fill('mslParallel', card.parallel);
+  fill('mslGrade',    card.grade);
 
   const graderEl = document.getElementById('mslGrader');
   if (graderEl && card.grader) {
@@ -15993,12 +15994,13 @@ async function confirmManualSale() {
   }
 
   // ── Gather fields ─────────────────────────────────────
-  const year     = (document.getElementById('mslYear')?.value  || '').trim();
-  const cardSet  = (document.getElementById('mslSet')?.value   || '').trim().toLowerCase();
-  const gradeStr = (document.getElementById('mslGrade')?.value || '').trim();
-  const grader   = (document.getElementById('mslGrader')?.value || '').trim();
-  const notes    = (document.getElementById('mslNotes')?.value  || '').trim();
-  const showId   = document.getElementById('mslShow')?.value   || null;
+  const year     = (document.getElementById('mslYear')?.value     || '').trim();
+  const cardSet  = (document.getElementById('mslSet')?.value      || '').trim().toLowerCase();
+  const parallel = (document.getElementById('mslParallel')?.value || '').trim().toLowerCase();
+  const gradeStr = (document.getElementById('mslGrade')?.value    || '').trim();
+  const grader   = (document.getElementById('mslGrader')?.value   || '').trim();
+  const notes    = (document.getElementById('mslNotes')?.value    || '').trim();
+  const showId   = document.getElementById('mslShow')?.value      || null;
 
   // ── Disable button ────────────────────────────────────
   const btn = document.getElementById('mslConfirmBtn');
@@ -16013,7 +16015,7 @@ async function confirmManualSale() {
     Year:               year      || null,
     'Set ':             cardSet,
     Number:             '',
-    'Parallel/Variant': '',
+    'Parallel/Variant': parallel,
     Grader:             grader    || null,
     Grade:              gradeStr !== '' ? parseFloat(gradeStr) : null,
     'Cert #':           '',
@@ -16032,8 +16034,8 @@ async function confirmManualSale() {
   // buildCardTitle uses cardSet/cardNum — not set/cardNumber.
   // Grader/grade intentionally omitted (buildCardTitle ignores them).
   card['Card Title'] = buildCardTitle({
-    player, year, cardSet,
-    cardNum: '', parallel: '', sport: '', rawTitle: '',
+    player, year, cardSet, parallel,
+    cardNum: '', sport: '', rawTitle: '',
   });
 
   card.Status        = 'Sold';
@@ -16764,6 +16766,16 @@ async function upsertCardsToDB(cards) {
             type="text" inputmode="text" autocomplete="off"
             placeholder="topps chrome">
         </div>
+      </div>
+
+      <!-- Parallel/Variant -->
+      <div>
+        <div class="drawer-field-label">Parallel / Variant</div>
+        <input id="mslParallel" class="sold-price-input"
+          style="font-size:15px;padding:9px 12px;
+                 width:100%;box-sizing:border-box;border-radius:7px"
+          type="text" inputmode="text" autocomplete="off"
+          placeholder="e.g. refractor, gold /50">
       </div>
 
       <!-- Grade + Grader -->
