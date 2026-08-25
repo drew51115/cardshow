@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trade Zone Board — CardShow</title>
+<meta name="robots" content="noindex">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+  const { createClient } = supabase;
+  const db = createClient('SUPABASE_URL_PLACEHOLDER', 'SUPABASE_ANON_KEY_PLACEHOLDER');
+</script>
+
+<style>
+:root {
+  --gold: #f5c842; --black: #07080c; --surface: #0d1018; --card: #131828;
+  --border: #1e2640; --text: #e8eaf5; --muted: #5a6585; --success: #1BAF7A;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--black); color: var(--text); font-family: 'DM Sans', sans-serif;
+  min-height: 100vh; overflow: hidden; -webkit-font-smoothing: antialiased;
+}
+.mono { font-family: 'DM Mono', monospace; }
+
+/* ── header (board mode) ── */
+.tb-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 1.5rem 2.5rem; border-bottom: 1px solid var(--border); background: var(--surface);
+}
+.tb-brand { font-family: 'Bebas Neue', sans-serif; font-size: 2.4rem; letter-spacing: 0.08em; color: var(--gold); }
+.tb-show-info { text-align: right; }
+#tbShowName { font-size: 1.3rem; font-weight: 700; }
+#tbShowLocation { color: var(--muted); font-size: 1rem; margin-top: 0.15rem; }
+.tb-counts { display: flex; gap: 2rem; align-items: center; }
+.tb-count-block { text-align: center; }
+.tb-count-value { font-family: 'Bebas Neue', sans-serif; font-size: 2.6rem; color: var(--gold); line-height: 1; }
+.tb-count-label { font-family: 'DM Mono', monospace; font-size: 0.7rem; letter-spacing: 0.1em; color: var(--muted); text-transform: uppercase; }
+
+/* ── board grid ── */
+#tbBoardView { padding: 2rem 2.5rem; }
+.tb-board-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem;
+}
+.tb-card {
+  background: var(--card); border: 1px solid var(--border); border-radius: 16px;
+  overflow: hidden; display: flex; flex-direction: column; transition: border-color 0.3s, box-shadow 0.3s;
+}
+.tb-card-new { border-color: var(--gold); box-shadow: 0 0 0 4px rgba(245,200,66,0.25); animation: tbPulse 1.2s ease-in-out 2; }
+@keyframes tbPulse { 0%,100% { box-shadow: 0 0 0 4px rgba(245,200,66,0.25); } 50% { box-shadow: 0 0 0 10px rgba(245,200,66,0.05); } }
+.tb-card-img { width: 100%; height: 220px; object-fit: cover; background: var(--surface); }
+.tb-card-body { padding: 1.1rem; }
+.tb-card-name { font-size: 1.15rem; font-weight: 700; line-height: 1.3; }
+.tb-card-meta { display: flex; gap: 0.5rem; margin-top: 0.6rem; }
+.tb-badge {
+  font-family: 'DM Mono', monospace; font-size: 0.75rem; padding: 0.2rem 0.6rem;
+  border-radius: 999px; background: var(--surface); color: var(--muted); border: 1px solid var(--border);
+}
+.tb-status-open { color: var(--success); border-color: rgba(27,175,122,0.4); }
+.tb-status-matched { color: var(--gold); border-color: rgba(245,200,66,0.4); }
+.tb-status-traded { color: var(--muted); }
+.tb-card-looking { margin-top: 0.6rem; font-size: 0.9rem; color: var(--muted); }
+.tb-empty { grid-column: 1 / -1; text-align: center; padding: 4rem; color: var(--muted); font-size: 1.3rem; }
+.tb-page-indicator {
+  position: fixed; bottom: 1.5rem; right: 2.5rem; font-family: 'DM Mono', monospace;
+  color: var(--muted); font-size: 0.9rem;
+}
+
+/* ── report mode ── */
+#tbReportView { padding: 2rem 2.5rem; overflow-y: auto; height: calc(100vh - 100px); }
+.tb-rpt-kpis { display: flex; gap: 1.5rem; margin-bottom: 2rem; }
+.tb-rpt-kpi { flex: 1; background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 1.5rem; text-align: center; }
+.tb-rpt-kpi-value { font-family: 'Bebas Neue', sans-serif; font-size: 3rem; color: var(--gold); }
+.tb-rpt-kpi-label { font-family: 'DM Mono', monospace; font-size: 0.75rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-top: 0.3rem; }
+.tb-rpt-section-label {
+  font-family: 'DM Mono', monospace; font-size: 0.75rem; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--gold); margin: 1.5rem 0 0.75rem;
+}
+#tbRptTopCards { list-style: none; }
+#tbRptTopCards li {
+  display: flex; justify-content: space-between; padding: 0.85rem 1.1rem;
+  background: var(--card); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 0.5rem;
+}
+.tb-rpt-count { color: var(--gold); font-family: 'DM Mono', monospace; }
+
+.tb-fatal { padding: 3rem; text-align: center; color: #ef4444; font-size: 1.2rem; display: none; }
+</style>
+</head>
+<body>
+
+<header class="tb-header">
+  <div class="tb-brand">TRADE ZONE</div>
+  <div class="tb-counts" id="tbBoardCounts">
+    <div class="tb-count-block"><div class="tb-count-value" id="tbPostCount">—</div><div class="tb-count-label">Posts Today</div></div>
+    <div class="tb-count-block"><div class="tb-count-value" id="tbTradeCount">—</div><div class="tb-count-label">Trades Made</div></div>
+  </div>
+  <div class="tb-show-info">
+    <div id="tbShowName">Loading…</div>
+    <div id="tbShowLocation"></div>
+  </div>
+</header>
+
+<div class="tb-fatal" id="tbFatalError"></div>
+
+<main id="tbBoardView" style="display:none">
+  <div class="tb-board-grid" id="tbBoardGrid"></div>
+</main>
+<div class="tb-page-indicator" id="tbPageIndicator"></div>
+
+<main id="tbReportView" style="display:none">
+  <div class="tb-rpt-kpis">
+    <div class="tb-rpt-kpi"><div class="tb-rpt-kpi-value" id="tbRptPostCount">—</div><div class="tb-rpt-kpi-label">Total Posts</div></div>
+    <div class="tb-rpt-kpi"><div class="tb-rpt-kpi-value" id="tbRptTradeCount">—</div><div class="tb-rpt-kpi-label">Confirmed Trades</div></div>
+    <div class="tb-rpt-kpi"><div class="tb-rpt-kpi-value" id="tbRptShareCount">—</div><div class="tb-rpt-kpi-label">Shares Logged</div></div>
+  </div>
+  <div class="tb-rpt-section-label">Most-Traded Cards</div>
+  <ul id="tbRptTopCards"></ul>
+</main>
+
+<script src="/js/trade-board.js"></script>
+</body>
+</html>

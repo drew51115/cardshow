@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+<title>Trade Zone — CardShow</title>
+<meta name="description" content="Post a card to trade at the show and find a match, live.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="CardShow">
+<meta property="og:title" content="Trade Zone — CardShow">
+<meta property="og:image" content="https://getcardshow.com/og-trade-zone.png">
+<meta name="twitter:card" content="summary_large_image">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+  const { createClient } = supabase;
+  const db = createClient('SUPABASE_URL_PLACEHOLDER', 'SUPABASE_ANON_KEY_PLACEHOLDER');
+</script>
+
+<style>
+:root {
+  --gold: #f5c842; --gold2: #c9a020;
+  --black: #07080c; --surface: #0d1018; --card: #131828;
+  --border: #1e2640; --text: #e8eaf5; --muted: #5a6585;
+  --danger: #ef4444; --success: #1BAF7A;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--black); color: var(--text);
+  font-family: 'DM Sans', sans-serif; min-height: 100vh;
+  -webkit-font-smoothing: antialiased; padding-bottom: 2rem;
+}
+.mono { font-family: 'DM Mono', monospace; }
+.tz-container { max-width: 640px; margin: 0 auto; padding: 0 1rem; }
+
+/* ── header ── */
+.tz-header {
+  padding: 1.25rem 1rem 1rem; text-align: center;
+  border-bottom: 1px solid var(--border); background: var(--surface);
+}
+.tz-header-title {
+  font-family: 'Bebas Neue', sans-serif; font-size: 1.8rem;
+  letter-spacing: 0.08em; color: var(--gold);
+}
+.tz-show-name { font-size: 0.95rem; font-weight: 600; margin-top: 0.35rem; }
+.tz-show-location { font-size: 0.8rem; color: var(--muted); margin-top: 0.1rem; }
+#tzClaimStatus { margin-top: 0.6rem; }
+.tz-claim-btn, .tz-claimed-badge {
+  font-family: 'DM Mono', monospace; font-size: 0.72rem;
+  letter-spacing: 0.04em; padding: 0.4rem 0.8rem; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--card); cursor: pointer;
+}
+.tz-claim-btn { color: var(--gold); }
+.tz-claimed-badge { color: var(--success); border-color: rgba(27,175,122,0.4); }
+
+/* ── tabs ── */
+.tz-tabs {
+  display: flex; position: sticky; top: 0; z-index: 20;
+  background: var(--surface); border-bottom: 1px solid var(--border);
+}
+.tz-tab-btn {
+  flex: 1; padding: 0.85rem 0.5rem; background: none; border: none;
+  color: var(--muted); font-family: 'DM Sans', sans-serif; font-weight: 600;
+  font-size: 0.85rem; cursor: pointer; border-bottom: 2px solid transparent;
+}
+.tz-tab-btn.active { color: var(--gold); border-bottom-color: var(--gold); }
+.tz-tab-panel { padding: 1.25rem 0; }
+
+/* ── post form ── */
+.tz-photo-zone {
+  border: 2px dashed var(--border); border-radius: 12px; padding: 1.5rem 1rem;
+  display: flex; flex-direction: column; align-items: center; gap: 0.75rem;
+  background: var(--card); text-align: center;
+}
+.tz-photo-btn-row { display: flex; gap: 0.6rem; width: 100%; }
+.tz-photo-btn {
+  flex: 1; padding: 0.75rem; border-radius: 10px; border: 1px solid var(--gold);
+  background: #1a1f2e; color: var(--gold); font-weight: 600; cursor: pointer; font-size: 0.85rem;
+}
+.tz-photo-preview-wrap { position: relative; width: 100%; }
+.tz-photo-preview-wrap img { width: 100%; border-radius: 12px; max-height: 320px; object-fit: contain; background: var(--card); }
+.tz-photo-retake { margin-top: 0.5rem; background: none; border: none; color: var(--muted); text-decoration: underline; cursor: pointer; font-size: 0.8rem; }
+
+.tz-field { margin-top: 1rem; }
+.tz-field label { display: block; font-size: 0.75rem; color: var(--muted); margin-bottom: 0.35rem; font-family: 'DM Mono', monospace; letter-spacing: 0.04em; }
+.tz-field input, .tz-field textarea {
+  width: 100%; padding: 0.7rem 0.85rem; border-radius: 10px; border: 1px solid var(--border);
+  background: var(--card); color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 0.95rem;
+}
+.tz-field textarea { resize: vertical; min-height: 60px; }
+
+.tz-condition-row { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.tz-condition-chip {
+  padding: 0.45rem 0.9rem; border-radius: 999px; border: 1px solid var(--border);
+  background: var(--card); color: var(--muted); font-size: 0.8rem; cursor: pointer;
+}
+.tz-condition-chip.selected { border-color: var(--gold); color: var(--gold); background: rgba(245,200,66,0.08); }
+
+.tz-submit-btn {
+  width: 100%; margin-top: 1.25rem; padding: 0.95rem; border-radius: 12px; border: none;
+  background: var(--gold); color: var(--black); font-weight: 700; font-size: 1rem; cursor: pointer;
+}
+.tz-submit-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.tz-section-label {
+  font-family: 'DM Mono', monospace; font-size: 0.72rem; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--gold); margin: 1.75rem 0 0.75rem;
+}
+
+/* ── post/board cards ── */
+.tz-post-card, .tz-empty { border: 1px solid var(--border); border-radius: 12px; background: var(--card); margin-bottom: 0.75rem; overflow: hidden; }
+.tz-post-card { display: flex; gap: 0.85rem; padding: 0.75rem; }
+.tz-post-thumb { width: 72px; height: 72px; border-radius: 8px; object-fit: cover; background: var(--surface); flex-shrink: 0; }
+.tz-post-body { flex: 1; min-width: 0; }
+.tz-post-name { font-weight: 600; font-size: 0.95rem; }
+.tz-post-meta { display: flex; gap: 0.4rem; margin-top: 0.35rem; flex-wrap: wrap; }
+.tz-badge {
+  font-family: 'DM Mono', monospace; font-size: 0.68rem; padding: 0.15rem 0.5rem;
+  border-radius: 999px; background: var(--surface); color: var(--muted); border: 1px solid var(--border);
+}
+.tz-status-open { color: var(--success); border-color: rgba(27,175,122,0.4); }
+.tz-status-matched { color: var(--gold); border-color: rgba(245,200,66,0.4); }
+.tz-status-traded { color: var(--muted); }
+.tz-post-looking { font-size: 0.8rem; color: var(--muted); margin-top: 0.35rem; }
+.tz-propose-btn {
+  margin-top: 0.6rem; padding: 0.4rem 0.9rem; border-radius: 8px; border: 1px solid var(--gold);
+  background: none; color: var(--gold); font-size: 0.8rem; font-weight: 600; cursor: pointer;
+}
+.tz-empty { padding: 2rem 1rem; text-align: center; color: var(--muted); font-size: 0.9rem; }
+
+/* ── trades ── */
+.tz-trade-card { border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 1rem; margin-bottom: 1rem; }
+.tz-trade-card.tz-highlight { border-color: var(--gold); box-shadow: 0 0 0 3px rgba(245,200,66,0.2); }
+.tz-trade-swap { display: flex; align-items: center; justify-content: center; gap: 1rem; }
+.tz-trade-thumb, .tz-thumb-missing { width: 88px; height: 88px; border-radius: 10px; object-fit: cover; background: var(--surface); border: 1px solid var(--border); }
+.tz-swap-icon { font-size: 1.4rem; color: var(--gold); }
+.tz-trade-names { display: flex; justify-content: space-between; gap: 1rem; margin-top: 0.6rem; font-size: 0.82rem; text-align: center; }
+.tz-trade-names span { flex: 1; }
+.tz-trade-status { text-align: center; margin-top: 0.75rem; font-size: 0.82rem; font-weight: 600; }
+.tz-trade-status-action { color: var(--gold); }
+.tz-trade-status-pending { color: var(--muted); }
+.tz-trade-status-traded { color: var(--success); }
+.tz-confirm-btn {
+  display: block; width: 100%; margin-top: 0.75rem; padding: 0.75rem; border-radius: 10px;
+  border: none; background: var(--gold); color: var(--black); font-weight: 700; cursor: pointer;
+}
+
+/* ── share block (Phase 4) ── */
+.tz-share-block { margin-top: 1rem; border-top: 1px solid var(--border); padding-top: 1rem; }
+.tz-consent-row { display: flex; align-items: center; gap: 0.5rem; font-size: 0.82rem; color: var(--muted); }
+.tz-share-generate-btn {
+  margin-top: 0.75rem; width: 100%; padding: 0.7rem; border-radius: 10px; border: 1px solid var(--gold);
+  background: none; color: var(--gold); font-weight: 600; cursor: pointer;
+}
+.tz-share-img { width: 100%; border-radius: 10px; margin-top: 0.75rem; }
+.tz-share-btn-row { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.6rem; }
+.tz-share-btn-row button {
+  flex: 1; min-width: 45%; padding: 0.6rem; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--surface); color: var(--text); font-size: 0.78rem; cursor: pointer;
+}
+
+/* ── propose / claim modals ── */
+.tz-modal-overlay {
+  display: none; position: fixed; inset: 0; background: rgba(7,8,12,0.85);
+  z-index: 200; align-items: flex-end; justify-content: center;
+}
+.tz-modal-overlay.open { display: flex; }
+.tz-modal {
+  background: var(--surface); border-radius: 16px 16px 0 0; width: 100%; max-width: 640px;
+  padding: 1.5rem 1.25rem 2rem; max-height: 85vh; overflow-y: auto;
+}
+.tz-modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+.tz-modal-header h3 { font-family: 'Bebas Neue', sans-serif; letter-spacing: 0.05em; font-size: 1.3rem; color: var(--gold); }
+.tz-modal-close { background: none; border: none; color: var(--muted); font-size: 1.4rem; cursor: pointer; }
+.tz-propose-target { display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; background: var(--card); border-radius: 10px; margin-bottom: 1rem; }
+.tz-propose-target img { width: 56px; height: 56px; border-radius: 8px; object-fit: cover; }
+.tz-propose-option {
+  display: flex; align-items: center; gap: 0.75rem; width: 100%; padding: 0.7rem;
+  background: var(--card); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 0.5rem;
+  color: var(--text); cursor: pointer; text-align: left;
+}
+.tz-propose-option:hover { border-color: var(--gold); }
+.tz-propose-option img { width: 44px; height: 44px; border-radius: 8px; object-fit: cover; }
+
+.tz-claim-field { margin-bottom: 0.85rem; }
+.tz-claim-field label { display: block; font-size: 0.75rem; color: var(--muted); margin-bottom: 0.3rem; }
+.tz-claim-field input {
+  width: 100%; padding: 0.65rem 0.85rem; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--card); color: var(--text);
+}
+
+/* ── loading / toast ── */
+#tzLoadingOverlay {
+  position: fixed; inset: 0; background: var(--black); z-index: 300;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1rem;
+}
+.tz-spinner { width: 36px; height: 36px; border-radius: 50%; border: 3px solid var(--border); border-top-color: var(--gold); animation: tzspin 0.8s linear infinite; }
+@keyframes tzspin { to { transform: rotate(360deg); } }
+.tz-fatal-error { text-align: center; padding: 2rem; color: var(--danger); }
+.tz-fatal-icon { font-size: 2rem; margin-bottom: 0.5rem; }
+
+#tzToast {
+  position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%) translateY(20px);
+  background: var(--success); color: #07080c; padding: 0.75rem 1.25rem; border-radius: 10px;
+  font-weight: 600; font-size: 0.85rem; opacity: 0; pointer-events: none; transition: all 0.25s ease;
+  z-index: 400; max-width: calc(100vw - 3rem); text-align: center;
+}
+#tzToast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<div id="tzLoadingOverlay">
+  <div class="tz-spinner"></div>
+  <div id="tzLoadingMsg" class="mono" style="color:var(--muted);font-size:0.85rem;">Loading…</div>
+</div>
+
+<header class="tz-header">
+  <div class="tz-header-title">TRADE ZONE</div>
+  <div id="tzShowHeader"></div>
+  <div id="tzClaimStatus"></div>
+</header>
+
+<nav class="tz-tabs">
+  <button class="tz-tab-btn active" id="tzTabBtn_post"   onclick="tzSwitchTab('post')">📷 Post</button>
+  <button class="tz-tab-btn"        id="tzTabBtn_board"  onclick="tzSwitchTab('board')">🗂 Board</button>
+  <button class="tz-tab-btn"        id="tzTabBtn_trades" onclick="tzSwitchTab('trades')">⇄ My Trades</button>
+</nav>
+
+<div class="tz-container">
+
+  <!-- ── POST TAB ── -->
+  <section class="tz-tab-panel" id="tzTab_post" style="display:block">
+    <div class="tz-photo-zone" id="tzPostPhotoPrompt">
+      <div style="font-size:2rem;">📷</div>
+      <div style="color:var(--muted);font-size:0.85rem;">Photograph the card you want to trade</div>
+      <div class="tz-photo-btn-row">
+        <button class="tz-photo-btn" onclick="tzTriggerCamera()">Take Photo</button>
+        <button class="tz-photo-btn" onclick="tzTriggerLibrary()">Choose from Library</button>
+      </div>
+    </div>
+    <div class="tz-photo-preview-wrap" id="tzPostPhotoPreviewWrap" style="display:none;text-align:center;">
+      <img id="tzPostPhotoPreview" alt="">
+      <button class="tz-photo-retake" onclick="tzClearPostPhoto()">Retake / choose a different photo</button>
+    </div>
+    <input type="file" id="tzPostFileInput" accept="image/*" capture="environment" style="display:none" onchange="tzHandlePostPhoto(this)">
+    <input type="file" id="tzPostLibraryInput" accept="image/*" style="display:none" onchange="tzHandlePostPhoto(this)">
+
+    <div class="tz-field">
+      <label>Card Name</label>
+      <input type="text" id="tzPostCardName" placeholder="e.g. 2024 Bowman Chrome Dylan Crews Refractor" oninput="tzUpdatePostSubmitState()">
+    </div>
+
+    <div class="tz-field">
+      <label>Condition</label>
+      <div class="tz-condition-row">
+        <button class="tz-condition-chip selected" data-val="raw"   onclick="tzSetPostCondition('raw', this)">Raw</button>
+        <button class="tz-condition-chip"          data-val="psa10" onclick="tzSetPostCondition('psa10', this)">PSA 10</button>
+        <button class="tz-condition-chip"          data-val="psa9"  onclick="tzSetPostCondition('psa9', this)">PSA 9</button>
+        <button class="tz-condition-chip"          data-val="bgs"   onclick="tzSetPostCondition('bgs', this)">BGS</button>
+        <button class="tz-condition-chip"          data-val="other" onclick="tzSetPostCondition('other', this)">Other</button>
+      </div>
+    </div>
+
+    <div class="tz-field">
+      <label>Looking For (optional)</label>
+      <textarea id="tzPostLookingFor" placeholder="What would you trade this for?"></textarea>
+    </div>
+
+    <button class="tz-submit-btn" id="tzPostSubmitBtn" disabled onclick="tzSubmitPost()">Post to the Board</button>
+
+    <div class="tz-section-label">Your Posts</div>
+    <div id="tzMyPostsList"></div>
+  </section>
+
+  <!-- ── BOARD TAB ── -->
+  <section class="tz-tab-panel" id="tzTab_board" style="display:none">
+    <div class="tz-section-label">Open on the Board</div>
+    <div id="tzBoardGrid"></div>
+  </section>
+
+  <!-- ── MY TRADES TAB ── -->
+  <section class="tz-tab-panel" id="tzTab_trades" style="display:none">
+    <div class="tz-section-label">My Trades</div>
+    <div id="tzTradesList"></div>
+  </section>
+
+</div>
+
+<!-- ── PROPOSE TRADE MODAL ── -->
+<div class="tz-modal-overlay" id="tzProposeOverlay">
+  <div class="tz-modal">
+    <div class="tz-modal-header">
+      <h3>Propose a Trade</h3>
+      <button class="tz-modal-close" onclick="tzCloseProposeModal()">✕</button>
+    </div>
+    <div class="tz-propose-target">
+      <img id="tzProposeTargetThumb" alt="">
+      <div>
+        <div style="font-size:0.75rem;color:var(--muted);">You want:</div>
+        <div id="tzProposeTargetName" style="font-weight:600;"></div>
+      </div>
+    </div>
+    <div style="font-size:0.8rem;color:var(--muted);margin-bottom:0.6rem;">Offer one of your posted cards:</div>
+    <div id="tzProposeMyPostsList"></div>
+  </div>
+</div>
+
+<!-- ── CLAIM MODAL ── -->
+<div class="tz-modal-overlay" id="tzClaimOverlay">
+  <div class="tz-modal">
+    <div class="tz-modal-header">
+      <h3>Claim Your Activity</h3>
+      <button class="tz-modal-close" onclick="tzCloseClaimModal()">✕</button>
+    </div>
+    <p style="font-size:0.82rem;color:var(--muted);margin-bottom:1rem;">
+      Link this session to a real account so your posts and trades stay yours after the show — nothing here is lost, it just gets a login.
+    </p>
+    <div class="tz-claim-field"><label>Handle (optional)</label><input type="text" id="tzClaimHandle" placeholder="@yourname"></div>
+    <div class="tz-claim-field"><label>Phone (optional)</label><input type="tel" id="tzClaimPhone" placeholder="(555) 555-5555"></div>
+    <div class="tz-claim-field"><label>Email</label><input type="email" id="tzClaimEmail" placeholder="you@example.com"></div>
+    <div class="tz-claim-field"><label>Password</label><input type="password" id="tzClaimPassword" placeholder="At least 6 characters"></div>
+    <button class="tz-submit-btn" id="tzClaimSubmitBtn" onclick="tzSubmitClaim()">Claim my activity</button>
+  </div>
+</div>
+
+<div id="tzToast"></div>
+
+<script src="/js/trade-share.js"></script>
+<script src="/js/trade-zone.js"></script>
+</body>
+</html>

@@ -21,10 +21,18 @@ netlify/functions/psa-lookup.js   → Serverless: POST {cert, grader} → normal
 netlify/functions/vision-scan.js         → Serverless: POST {image, mediaType} → normalized card object via Claude vision (Sprint 2)
 netlify/functions/trading-card-lookup.js → Serverless: POST {query, sport?} → card search results from Trading Card API (Sprint 3); write-through cache via card_search_cache table (7-day TTL)
 netlify/functions/invalidate-search-cache.js → Serverless: POST {query} → deletes matching rows from card_search_cache; protected by x-invalidate-secret header
+netlify/functions/trade-og.js            → Serverless: GET /trade/:id → OG-tagged HTML for social crawlers, redirects humans into trade-zone.html (Trade Zone Phase 5)
+netlify/functions/expire-trade-posts.js  → Scheduled (hourly, see netlify.toml): calls expire_stale_trade_posts() RPC to hide stale trade_posts from the live board
 .env.example                             → Placeholder env vars for all keys
 downloads/                               → Static file downloads served by Netlify
 downloads/CardShow_Inventory_Template.xlsx → Pre-filled inventory template (13 example rows); linked from landing page and footer
 downloads/.gitkeep                       → Tracks empty directory in git
+trade-zone.html                          → Trade Zone guest quick-post + board + trade flow (standalone, lightweight — see "Trade Zone" section)
+trade-board.html                         → Trade Zone venue-monitor live board + ?report=1 organizer report mode
+js/trade-zone.js                         → Guest auth, post/board/propose/confirm/claim logic for trade-zone.html
+js/trade-board.js                        → Realtime board rendering + report aggregation for trade-board.html
+js/trade-share.js                        → Phase 4 canvas compositor + Web Share API for the branded trade graphic
+supabase/migrations/20260825120000_trade_zone.sql → Trade Zone schema, storage buckets, RLS, and RPC functions — run in Supabase SQL editor
 CLAUDE.md                         → This file
 ```
 
@@ -908,6 +916,7 @@ If `insertCardToDB()` times out inside `posInsertAndOpenDrawer()`'s `Promise.rac
 - **Auto-Publish on Insert (session 2026-08-23)** — `_autoPublishCardToShow()` fire-and-forget helper wired into all four card-insertion paths (Add Card, Scan-to-Sell POS, bulk scan review, CSV/XLSX import), so cards added mid-show get a `show_inventory` row immediately instead of waiting for the organizer to re-run Publish Inventory. See "Auto-Publish on Insert" section above for full detail, including a deliberate implementation change from the original spec in `upsertCardsToDB()` (captures inserted IDs via `.select('id')` instead of a race-prone re-fetch-by-recency guess).
 - **Log a Manual Sale (session 2026-08-24)** — "+ Log a Manual Sale" button in the seller Report tab opens a Sell-Drawer-styled modal for recording off-platform sales. Writes through the same three layers a platform sale does (`inventory`, `show_inventory` via `_autoPublishCardToShow()`, `show_floor_transactions` via a dedicated `recordManualSaleTransaction(card, showId)` wrapper — not `recordShowTransaction()`, since that reads `activeShowId` as a global and a manual sale can target a past show). New `show_floor_transactions.source` column (`'platform'`/`'manual'`/`'community_report'`/`'social_extract'`) tags provenance; MANUAL badge shown in the transaction log via `card._manualSale`. Optional photo capture (camera or library) calls `vision-scan.js` directly (same pattern as `posHandlePhoto()`) to auto-fill Player/Year/Set/Parallel/Grade/Grader before the seller confirms. See "Log a Manual Sale" section above. **Requires the `show_floor_transactions.source` DB migration** (see above).
 - **Trading Card API integration (session 2026-08-18/19)** — `TRADING_CARD_API_KEY` went live; see "Trading Card API Integration" section above for full detail. `netlify/functions/tcapi.js` (generic proxy) + `tcapiGet()` helper. Add Card modal's old `#ac_search` free-text box replaced with a 4-step guided picker (player → set → card# → parallel) wired directly to the Player/Set/Card#/Parallel fields. Bulk scan review grid gained a background Trading Card API validation pass (VERIFYING/VERIFIED/UNVERIFIED badge per card, best-effort set/card#/parallel enrichment). Three real API constraints discovered, only the first two on the first pass — the third was found by reproducing a live UI failure end-to-end, not by re-reasoning about the first fix: (1) `filter[x]=` params are non-functional today (silently return the unfiltered collection) on both `/v1/cards` and `/v1/sets`; `trading-card-lookup.js`'s old `filter[name]` search was broken the same way, meaning `#ac_search` had been silently returning wrong results since the key went live — removing it fixed that exposure as a side effect. (2) `filter[player_id]` on `/v1/cards` is real and documented but too slow for interactive use (10s+, no fast alternative). (3) The plain `full_name=`/`name=` params only prefix-match a first-name token — a last-name token never prefix-matches at any length short of complete, and `/v1/sets?name=` has no partial matching at all — so player search reports a "still typing the last name" state instead of substituting an unrelated candidate list when a multi-word query comes up empty, and set search fetches+caches the whole 273-set catalog client-side instead of relying on the server to filter it. An earlier version of the player-search fix tried a first-word-only fallback, which silently showed unrelated players with nothing distinguishing them from real matches — worse than showing nothing, and cut once this was caught.
+- **Trade Zone (session 2026-08-25)** — guest-friendly show-floor trading, fully standalone from the rest of the platform (`trade_zone_shows`/`traders`/`trade_posts`/`trades`/`share_events` never touch `inventory`/`shows`/`show_sellers`/`show_inventory`). Anonymous Supabase Auth for zero-friction guest identity, client-side photo resize + Storage upload, a live board (`trade-board.html`, Realtime `postgres_changes`) plus an interactive personal board in `trade-zone.html`, two-sided trade propose/confirm funneled entirely through `SECURITY DEFINER` RPCs (not direct table writes — see "Trade Zone" section above for why), a client-side Canvas-composited branded share graphic with consent-gated handle display and Web Share API integration, OG-tagged social previews via `netlify/functions/trade-og.js`, and a claim flow that upgrades the anonymous session in place via `supabase.auth.updateUser()` (same `auth.uid()`, zero data migration). Every RLS policy and RPC — including the security-critical paths (forged-post rejection, direct-`trades`-update rejection, non-party confirm rejection, consent-gated handle exposure, share-image URL folder validation) — was verified against a real local Postgres instance with a minimal Supabase-shape stub before shipping. **Requires the `supabase/migrations/20260825120000_trade_zone.sql` migration** (schema, storage buckets, RLS, RPCs) and enabling Anonymous Sign-Ins in the Supabase dashboard (Authentication → Providers → Anonymous).
 
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`
@@ -1252,6 +1261,170 @@ this feature calls it as-is and never modifies it.
 `recordShowTransaction()` · `sdConfirm()` · `openSellDrawer()` / `closeSellDrawer()` ·
 `publishShowInventoryToDB()` · organizer analytics functions · any Netlify function ·
 RLS policies. `updateReport()` changes only the single `<td>` player-name cell.
+
+## Trade Zone
+
+Guest-friendly, phone-first trading board for a live show floor — post a card photo, get
+matched, confirm a two-sided trade, generate a branded share graphic. **Fully standalone**
+from the rest of the platform: `trade_posts`/`trades`/`traders`/`share_events` never read
+or write `inventory`/`shows`/`show_sellers`/`show_inventory`, and none of the functions or
+tables documented elsewhere in this file were touched building this.
+
+### Files
+`trade-zone.html` (guest quick-post + board + my-trades, mobile-first) · `trade-board.html`
+(venue-monitor live board, and `?report=1` for a lightweight organizer report) ·
+`js/trade-zone.js` / `js/trade-board.js` / `js/trade-share.js` · `netlify/functions/trade-og.js`
+(OG preview + redirect for `/trade/:id`) · `netlify/functions/expire-trade-posts.js` (hourly
+scheduled function) · `supabase/migrations/20260825120000_trade_zone.sql` (schema, storage
+buckets, RLS, RPC functions — the only place any of this is defined; nothing is duplicated
+into JS).
+
+### Naming deviation from the original design doc
+The plan's schema names its show-scoping table `shows` (uuid id, `starts_at`/`ends_at`).
+The platform already has a production `shows` table (text id, a single `date` column, no
+start/end timestamps — see "Database Schema" above) — reusing it would mean changing a
+live table's id type or bolting on columns nothing else uses, which conflicts with Trade
+Zone's own "standalone" design decision. The migration instead creates **`trade_zone_shows`**
+— same columns as the original design, collision-safe name. An organizer sets up a Trade
+Zone show separately from a platform Show; the two are unrelated records today.
+
+### Data model (see the migration for the authoritative definition)
+`trade_zone_shows` (name, location, starts_at, ends_at) · `traders` (one row per
+`auth.users` identity — anonymous or claimed; handle/phone/claimed_at) · `trade_posts`
+(one-sided "I have this to trade" — card_name, condition, looking_for, image_url, thumb_url,
+status: open/matched/traded/expired) · `trades` (two-sided — post_a/post_b, trader_a/trader_b,
+confirmed_a/confirmed_b, confirmed_at, share_consent_a/b, share_image_url) · `share_events`
+(append-only log of share/export actions, no reward-eligibility column — deliberately
+deferred until an incentive feature is actually scoped). Storage: `trade-zone-cards`
+(posts/{post_id}/original.jpg + thumb.jpg) and `trade-zone-shares` (trades/{trade_id}/card.png),
+both public-read.
+
+### Guest identity
+`supabase.auth.signInAnonymously()` on first load (`tzEnsureGuestSession()` in trade-zone.js)
+— gives a real `auth.uid()` for RLS with zero login friction. A `traders` row is upserted for
+that identity immediately. **Prerequisite (manual, dashboard-only):** Authentication → Providers
+→ Anonymous must be enabled, or `signInAnonymously()` fails at runtime. **Also required:**
+Realtime must be on for the project (default) — the migration adds `trade_posts` and `trades`
+to the `supabase_realtime` publication itself, wrapped in `DO` blocks so re-running the
+migration doesn't error on "already a member".
+
+### RLS + RPC design — why mutations on `trades` go through RPCs, not direct updates
+`trade_zone_shows` is public-read/no-client-write. `traders` and `trade_posts` use plain
+per-row RLS (`auth.uid() = id` / `auth.uid() = trader_id`) exactly per the original design's
+RLS sketch — normal `db.from(...).insert()/.update()` calls from the client work unmodified.
+
+`trades` is different: **it has no client-facing INSERT or UPDATE policy at all.** The
+"trader A can never set confirmed_b" and "confirmed_at only flips once both sides have
+confirmed" rules are column-granular, and per-column RLS `WITH CHECK` expressions for that
+are fragile and hard to verify. Instead every state change goes through a `SECURITY DEFINER`
+RPC that does its own explicit authorization check and only ever touches the caller's own
+side:
+- `propose_trade(post_a_id, post_b_id)` — caller must own post_a; post_b must be a different
+  trader's still-open post in the same show; flips both posts to `'matched'`.
+- `confirm_trade(trade_id)` — idempotent; sets the caller's own `confirmed_a`/`confirmed_b`;
+  once both are true, sets `confirmed_at` and flips both posts to `'traded'` in the same call.
+- `set_trade_share_consent(trade_id, consent)` — sets only the caller's own consent flag.
+- `set_trade_share_image(trade_id, url)` — only callable by a party to an already-confirmed
+  trade, and only for a URL under that trade's own `trades/{trade_id}/` folder in
+  `trade-zone-shares` (defense in depth against writing an arbitrary URL into the row).
+- `get_trade_partner_handle(trade_id)` — the *only* way a trader's handle ever crosses into
+  the other party's client. `traders` RLS stays "own row only" (so `phone` is never
+  incidentally exposed by a broader policy); this function returns just the handle string,
+  and only when the trade is confirmed and the handle's owner has `share_consent` on.
+- `expire_stale_trade_posts()` — `service_role`-only, called from the scheduled Netlify
+  function; flips stale `open`/`matched` posts to `'expired'` 1 day after their show's
+  `ends_at`. Rows are never deleted.
+
+**All of the above — including the security-critical paths (forged-post-insert rejection,
+direct-update rejection, non-party confirm rejection, handle-sharing consent gating, trader
+phone-number isolation, and the share-image URL folder guard) — were verified against a real
+local Postgres 16 instance with a minimal Supabase-shape stub (`auth.users`/`auth.uid()`,
+`storage.buckets`/`objects`, `supabase_realtime` publication) before this shipped, simulating
+two anonymous traders via `SET request.jwt.claim.sub`. The migration also re-runs cleanly
+(idempotent `DROP POLICY IF EXISTS` + `CREATE POLICY`, `IF NOT EXISTS` tables/indexes,
+guarded realtime `ALTER PUBLICATION`).**
+
+### Show resolution (both trade-zone.html and trade-board.html)
+`?show=<uuid>` wins if present; otherwise the show currently in progress (`now` between
+`starts_at`/`ends_at`); otherwise the soonest upcoming show; otherwise the most recent past
+show. `tzResolveShow()` / `tbResolveShow()` — small, deliberately duplicated (not shared)
+since the two pages load independently with no build step to share a module from.
+
+### Phase 1 — quick post
+Photo capture mirrors the codebase's existing dual-source convention (`capture="environment"`
+input for camera, a second plain `accept="image/*"` input for library — same pattern as
+Scan-to-Sell POS / Log a Manual Sale). `_tzResizeImageToBlob()` mirrors `_posCompressImage()`'s
+canvas-resize convention but returns a `Blob` (for direct Storage `.upload()`) instead of a
+base64 string (for a vision API call) — two passes, 1200px/0.8 for the full image and 300px/0.7
+for the thumb. The post's `id` is generated client-side (`crypto.randomUUID()`) *before*
+upload so both Storage paths and the `trade_posts` insert can reference the same id in one
+round trip.
+
+### Phase 2 — live board
+`trade-board.html` is a read-only venue-monitor display — no auth, no interaction, large type,
+auto-paginates 6 posts at a time every 8s, subscribes to `postgres_changes` on `trade_posts`
+(new posts prepend with a highlight pulse) and `trades` (recount on any change). A personal,
+interactive version of the board (with a "Propose Trade" button per post) lives in
+trade-zone.html's Board tab instead — the plan's "meant for the venue monitor" framing for
+`trade-board.html` reads as passive-display-only, so the interactive one is deliberately a
+separate surface.
+
+### Phase 3 — trade completion
+Propose (from the Board tab) opens a bottom-sheet picker of the caller's own open posts to
+offer; confirms via `propose_trade`. Each side confirms independently from the My Trades tab
+via `confirm_trade` — the UI shows "Awaiting your confirmation" / "Waiting on the other
+trader…" / "✓ Traded" per side. **Known limitation:** there is no decline/cancel-proposal
+path in v1 — a proposed-but-never-confirmed trade leaves both posts `'matched'` (unavailable
+for other proposals) indefinitely. Not required by the original acceptance criteria; flagged
+here as a natural follow-up if it proves to matter in practice.
+
+### Phase 4 — branded share image
+`js/trade-share.js`'s `renderShareSlot()` is injected into each confirmed trade's card in the
+My Trades tab. Composites a 1080×1920 canvas (gradient background, both cards' full images —
+not thumbnails, for quality at that canvas size — swap icon, card names, handles gated by
+`get_trade_partner_handle()`, show name, CardShow wordmark watermark — all drawn, no image
+assets needed), uploads to `trade-zone-shares`, writes the URL back via `set_trade_share_image`.
+Share buttons map to the plan's exact `share_events.platform` enum (`instagram_story`, `x`,
+`download`, `copy_link`) — Web Share API's OS share sheet is a black box that never reports
+which app the user actually picked, so the button clicked is logged as the platform, matching
+how every other app treats "share intent" logging. A spectator who opens a `/trade/:id` link
+and isn't a party to that trade gets a read-only rendering (the finished image only, if one
+exists) — no consent checkbox or generate button, since those RPCs would just reject them.
+
+### Phase 5 — public link + OG previews
+`_redirects` routes `/trade/:id` → `/.netlify/functions/trade-og?id=:id`. `trade-og.js`
+checks the request's User-Agent against a known-crawler regex (Facebook/Twitter/Slack/
+Discord/WhatsApp/Telegram/LinkedIn/iMessage/etc.); a real human is 302'd straight to
+`trade-zone.html?trade=<id>` without touching the DB. A crawler gets server-rendered HTML
+with `og:image` set to the trade's `share_image_url` (falls back to a generic
+`/og-trade-zone.png` if the trade isn't found or hasn't generated one yet) and `og:title`/
+`og:description` naming the show. Uses the anon key only — the `trades` public-select RLS
+policy (`confirmed_at is not null`) already covers what this function needs, no service key
+required.
+
+### Phase 6 — claim flow + organizer reporting
+"Claim your Trade Zone activity" calls `supabase.auth.updateUser({ email, password })` on the
+still-anonymous session — Supabase's native anonymous → permanent upgrade converts the
+session **in place**, same `auth.uid()`, so every `trade_posts`/`trades` row already tied to
+that identity carries over with zero migration (this is *why* anonymous auth was chosen over
+a hand-rolled device-token scheme, per the original plan's own rationale). Organizer reporting
+is `trade-board.html?report=1` — trade count, confirmed-trade count, `share_events` count for
+the show, and a most-traded-cards list (grouped by normalized `card_name` text, since posts
+don't carry structured player/set fields — this is a casual free-text flow by design).
+
+### Local testing
+```bash
+# Apply the migration to a local/dev Supabase project:
+supabase db push
+# or paste supabase/migrations/20260825120000_trade_zone.sql into the SQL editor.
+
+# Then visit:
+#   /trade-zone.html?show=<trade_zone_shows.id>   (guest flow)
+#   /trade-board.html?show=<id>                    (venue monitor)
+#   /trade-board.html?show=<id>&report=1           (organizer report)
+```
+The migration seeds one demo `trade_zone_shows` row ("MLP Card Show (Trade Zone demo)") so
+both pages have something to resolve to with no `?show=` param on a fresh project.
 
 ## Show Configuration (Demo Data)
 - **MLP Card Show** — Oct 17-18, 2026 · Grand Hyatt Tampa Bay, FL · Code: MLPTPA (primary demo, shown to buyers without code)

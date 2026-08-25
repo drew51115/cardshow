@@ -9,3 +9,13 @@
 # Seller browse
 /seller-browse     /seller-browse.html    200
 /seller-browse/    /seller-browse.html    200
+
+# Trade Zone
+/trade-zone     /trade-zone.html    200
+/trade-zone/    /trade-zone.html    200
+/trade-board    /trade-board.html   200
+/trade-board/   /trade-board.html   200
+
+# Public trade link — social crawlers get server-rendered OG tags,
+# human visitors get redirected into the SPA (see trade-og.js)
+/trade/:id      /.netlify/functions/trade-og?id=:id    200
