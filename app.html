@@ -3865,6 +3865,139 @@
   .org-vs-down { background: rgba(239,68,68,0.1);  color: #f87171; }
   .org-vs-flat { background: var(--border);         color: var(--muted); }
 
+  /* ── LOG A MANUAL SALE ─────────────────────────────────────── */
+
+  /* Solid/filled — this is the primary CTA in the Report tab header,
+     not a secondary action, so it matches .btn-primary's visual weight
+     rather than the outlined style it originally shipped with. */
+  .btn-log-manual-sale {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--accent);   /* var(--gold) does not exist — use var(--accent) */
+    border: 1px solid var(--accent);
+    border-radius: 7px;
+    padding: 8px 16px;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--black);
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 150ms, transform 150ms;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    white-space: nowrap;
+  }
+  .btn-log-manual-sale:hover  { opacity: 0.92; }
+  .btn-log-manual-sale:active { opacity: 0.82; transform: scale(0.99); }
+
+  /* MANUAL badge — transaction log rows for manually logged sales */
+  .msl-badge {
+    display: inline-block;
+    font-family: 'DM Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 1px 5px;
+    margin-left: 6px;
+    vertical-align: middle;
+    line-height: 1.4;
+  }
+
+  /* Manual Sale — photo capture (optional, auto-fills fields below) */
+  .msl-photo-buttons {
+    display: flex;
+    gap: 8px;
+  }
+  .msl-photo-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 10px 10px;
+    background: var(--card);
+    border: 1px dashed var(--border);
+    border-radius: 8px;
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    color: var(--text);
+    cursor: pointer;
+    transition: border-color 150ms, background 150ms;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+  .msl-photo-btn:active { border-color: var(--accent); background: var(--surface); }
+
+  .msl-photo-loading {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  .msl-photo-spinner {
+    width: 18px; height: 18px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: mslSpin 0.8s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes mslSpin { to { transform: rotate(360deg); } }
+  .msl-photo-loading-msg {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+  }
+
+  .msl-photo-preview-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  .msl-photo-preview-img {
+    width: 48px; height: 48px;
+    object-fit: cover;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .msl-photo-preview-label {
+    flex: 1;
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+  }
+  .msl-photo-retake-btn {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    cursor: pointer;
+    flex-shrink: 0;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .msl-photo-retake-btn:active { border-color: var(--accent); color: var(--accent); }
+
 </style>
 </head>
 <body>
@@ -4403,6 +4536,10 @@
             <option value="">All shows (lifetime)</option>
           </select>
           <button class="btn btn-ghost" onclick="exportReportCSV()" style="font-size:0.78rem;padding:0.35rem 0.8rem">↓ Export CSV</button>
+          <button class="btn-log-manual-sale" onclick="openManualSaleModal()" style="margin-left:auto"
+            title="Record a sale that happened off-platform or wasn't captured by CardShow">
+            + Log a Manual Sale
+          </button>
         </div>
         <div class="report-grid-2col">
           <div class="report-stat-card">
@@ -4449,6 +4586,7 @@
           </div>
         </div>
         <div id="rptTxLog"></div>
+
         <div class="report-stat-card">
           <div class="report-stat-label">Transaction log</div>
           <div style="overflow-x:auto">
@@ -9094,6 +9232,10 @@ const STATUS_CYCLE = ['Available', 'On Hold', 'Sold'];
 let sdActiveIdx = null;
 let sdSelectedPayment = null;
 
+// ── MANUAL SALE MODAL STATE ──
+let _mslPayment     = null;  // selected payment for the manual sale modal
+let _mslVisionAbort = null;  // AbortController for in-flight photo-scan fetch
+
 function cycleStatus(realIdx, el) {
   const card = inventory[realIdx];
   if (!card) return;
@@ -9746,10 +9888,13 @@ function updateReport() {
     tbody.innerHTML = '<tr><td colspan="6" style="padding:16px 8px;color:var(--muted);font-size:12px">No sales yet</td></tr>';
   } else {
     tbody.innerHTML = soldCards.map(r => {
-      const delta = (Number(r.SoldPrice) || 0) - (Number(r.Price) || 0);
+      const delta    = (Number(r.SoldPrice) || 0) - (Number(r.Price) || 0);
+      const mslBadge = r._manualSale
+        ? '<span class="msl-badge">MANUAL</span>'
+        : '';
       return `<tr>
         <td style="padding:7px 8px;border-bottom:1px solid rgba(30,38,64,.5)">
-          <div style="font-weight:500;font-size:12px;color:var(--text)">${r.Player || '—'}</div>
+          <div style="font-weight:500;font-size:12px;color:var(--text)">${r.Player || '—'}${mslBadge}</div>
           <div style="font-size:10px;color:var(--muted);margin-top:1px">${r['Card Title'] || ''}</div>
         </td>
         <td style="padding:7px 8px;border-bottom:1px solid rgba(30,38,64,.5);font-family:'DM Mono',monospace;font-size:11px;color:var(--muted)">$${Number(r.Price||0).toLocaleString()}</td>
@@ -15616,6 +15761,427 @@ async function fetchSellerInventoryFromDB(sellerHandle) {
   }
 }
 
+// ════════════════════════════════════════════════════════
+// LOG A MANUAL SALE
+// Entry: "+ Log a Manual Sale" in the Report tab.
+// Chain: inventory[] (instant) → insertCardToDB → updateCardInDB
+//        → _autoPublishCardToShow → recordManualSaleTransaction
+// ════════════════════════════════════════════════════════
+
+function openManualSaleModal() {
+  // Reset every field
+  ['mslPlayer','mslYear','mslSet','mslParallel','mslGrade','mslNotes'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.value = ''; el.classList.remove('db-filled'); }
+  });
+  const graderEl = document.getElementById('mslGrader');
+  if (graderEl) { graderEl.value = ''; graderEl.classList.remove('db-filled'); }
+
+  const priceEl = document.getElementById('mslPrice');
+  if (priceEl)  priceEl.value = '';
+
+  _mslPayment = '';
+  const pmEl = document.getElementById('mslPayment');
+  if (pmEl) pmEl.value = '';
+  document.querySelectorAll('#mslPayGrid .pay-opt')
+    .forEach(b => b.classList.remove('pay-selected'));
+
+  const btn = document.getElementById('mslConfirmBtn');
+  if (btn) { btn.disabled = false; btn.textContent = '✓ Log Sale'; }
+
+  _mslResetPhoto();
+  _mslPopulateShowSelector();
+
+  document.getElementById('manualSaleOverlay').classList.add('open');
+  setTimeout(() => document.getElementById('mslPlayer')?.focus(), 350);
+}
+
+function closeManualSaleModal() {
+  document.getElementById('manualSaleOverlay').classList.remove('open');
+  _mslPayment = null;
+  if (_mslVisionAbort) { _mslVisionAbort.abort(); _mslVisionAbort = null; }
+}
+
+function _mslPopulateShowSelector() {
+  const sel = document.getElementById('mslShow');
+  if (!sel) return;
+  while (sel.options.length > 1) sel.remove(1);   // keep placeholder
+
+  Object.values(shows)
+    .filter(s => s.sellers instanceof Set && s.sellers.has(currentSeller))
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''))  // newest first
+    .forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s.id;
+      opt.text  = s.name + (s.date ? ' · ' + s.date : '');
+      sel.appendChild(opt);
+    });
+
+  if (activeShowId) sel.value = activeShowId;  // pre-select active show
+}
+
+// ── Manual Sale — photo capture + card identification ──
+// Reuses _posCompressImage() (a generic, state-free utility) and calls
+// vision-scan.js directly, same as posHandlePhoto() — the existing
+// _callVisionScan() helper is hard-wired to the Add Card modal's
+// cert-scanner overlay and would drive the wrong UI entirely if reused here.
+
+function mslTriggerCamera() {
+  document.getElementById('mslFileInput').click();
+}
+
+function mslTriggerLibrary() {
+  document.getElementById('mslLibraryFileInput').click();
+}
+
+function _mslResetPhoto() {
+  if (_mslVisionAbort) { _mslVisionAbort.abort(); _mslVisionAbort = null; }
+  _mslShowPhotoIdle();
+  const fi = document.getElementById('mslFileInput');
+  if (fi) fi.value = '';
+  const lfi = document.getElementById('mslLibraryFileInput');
+  if (lfi) lfi.value = '';
+}
+
+function _mslShowPhotoIdle() {
+  document.getElementById('mslPhotoButtons').style.display     = 'flex';
+  document.getElementById('mslPhotoLoading').style.display     = 'none';
+  document.getElementById('mslPhotoPreviewWrap').style.display = 'none';
+}
+
+function _mslShowPhotoLoading(msg) {
+  document.getElementById('mslPhotoButtons').style.display     = 'none';
+  document.getElementById('mslPhotoPreviewWrap').style.display = 'none';
+  document.getElementById('mslPhotoLoading').style.display     = 'flex';
+  document.getElementById('mslPhotoLoadingMsg').textContent    = msg;
+}
+
+function _mslShowPhotoPreview(base64) {
+  document.getElementById('mslPhotoButtons').style.display     = 'none';
+  document.getElementById('mslPhotoLoading').style.display     = 'none';
+  document.getElementById('mslPhotoPreviewWrap').style.display = 'flex';
+  document.getElementById('mslPhotoPreviewImg').src = 'data:image/jpeg;base64,' + base64;
+}
+
+function mslRetakePhoto() {
+  if (_mslVisionAbort) { _mslVisionAbort.abort(); _mslVisionAbort = null; }
+  _mslShowPhotoIdle();
+}
+
+async function mslHandlePhoto(inputEl) {
+  const file = inputEl.files?.[0];
+  if (!file) return;
+  inputEl.value = ''; // reset so the same photo can be retried
+
+  _mslShowPhotoLoading('Reading photo…');
+
+  try {
+    const base64    = await _posCompressImage(file);
+    const mediaType = 'image/jpeg';
+
+    _mslShowPhotoLoading('Identifying card…');
+    _mslVisionAbort = new AbortController();
+
+    const response = await fetch('/.netlify/functions/vision-scan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: base64, mediaType }),
+      signal: _mslVisionAbort.signal,
+    });
+    _mslVisionAbort = null;
+
+    if (!response.ok) throw new Error(`Server error ${response.status}`);
+    const result = await response.json();
+
+    if (!result.success || result.error === 'low_confidence') {
+      // vision-scan.js returns no `card` at all on this path — nothing
+      // usable to pre-fill, so just restore the photo UI for a retry.
+      _mslShowPhotoIdle();
+      showToast('⚠️ Card not clearly identified — try a closer photo or enter manually', '#f5a623');
+      return;
+    }
+
+    _mslApplyVisionResult(result.card, base64);
+
+  } catch (err) {
+    if (err.name === 'AbortError') return; // user retook/closed mid-scan
+
+    console.error('[Manual Sale Vision]', err);
+    _mslShowPhotoIdle();
+    showToast('⚠️ Could not identify card — try again or enter manually', 'var(--danger)');
+  }
+}
+
+// Fills Player/Year/Set/Parallel/Grade/Grader from a vision-scan.js result —
+// the modal's remaining fields (Number, Cert #) are intentionally not part
+// of this quick-entry form (see confirmManualSale()), so nothing from the
+// scan is mapped to them even if vision detected them.
+function _mslApplyVisionResult(card, base64) {
+  const fill = (id, val) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const v = String(val ?? '').trim();
+    if (!v) return;
+    el.value = v;
+    el.classList.add('db-filled');
+    el.addEventListener('focus', () => el.classList.remove('db-filled'), { once: true });
+  };
+
+  // vision-scan.js field names: cardSet (not "set") — same shape
+  // posShowReview() reads.
+  fill('mslPlayer', card.player);
+  fill('mslYear',   card.year);
+  fill('mslSet',      card.cardSet);
+  fill('mslParallel', card.parallel);
+  fill('mslGrade',    card.grade);
+
+  const graderEl = document.getElementById('mslGrader');
+  if (graderEl && card.grader) {
+    graderEl.value = String(card.grader).toUpperCase();
+    graderEl.classList.add('db-filled');
+    graderEl.addEventListener('change', () => graderEl.classList.remove('db-filled'), { once: true });
+  }
+
+  _mslShowPhotoPreview(base64);
+
+  // _posOverallConfidence() is a generic helper — worst of vision's
+  // per-field confidence ratings under card.confidence.
+  const level = _posOverallConfidence(card);
+  showToast(
+    level === 'low'
+      ? 'Card scanned — please double-check the fields'
+      : 'Card identified — fields filled in below',
+    level === 'low' ? '#f5a623' : undefined
+  );
+}
+
+function mslSelPay(el, method) {
+  document.querySelectorAll('#mslPayGrid .pay-opt')
+    .forEach(b => b.classList.remove('pay-selected'));
+  el.classList.add('pay-selected');
+  _mslPayment = method;
+  const pmEl = document.getElementById('mslPayment');
+  if (pmEl) pmEl.value = method;
+}
+
+async function confirmManualSale() {
+  // ── Validation ────────────────────────────────────────
+  const player   = (document.getElementById('mslPlayer')?.value || '').trim();
+  const priceRaw = document.getElementById('mslPrice')?.value   || '';
+  const price    = parseFloat(priceRaw);
+  const payment  = _mslPayment;
+
+  if (!player) {
+    showToast('⚠️ Player name is required', 'var(--danger)');
+    document.getElementById('mslPlayer')?.focus();
+    return;
+  }
+  if (!priceRaw || isNaN(price) || price <= 0) {
+    showToast('⚠️ Enter the sold price', 'var(--danger)');
+    document.getElementById('mslPrice')?.focus();
+    return;
+  }
+  if (!payment) {
+    showToast('⚠️ Select a payment method', 'var(--danger)');
+    return;
+  }
+
+  // ── Gather fields ─────────────────────────────────────
+  const year     = (document.getElementById('mslYear')?.value     || '').trim();
+  const cardSet  = (document.getElementById('mslSet')?.value      || '').trim().toLowerCase();
+  const parallel = (document.getElementById('mslParallel')?.value || '').trim().toLowerCase();
+  const gradeStr = (document.getElementById('mslGrade')?.value    || '').trim();
+  const grader   = (document.getElementById('mslGrader')?.value   || '').trim();
+  const notes    = (document.getElementById('mslNotes')?.value    || '').trim();
+  const showId   = document.getElementById('mslShow')?.value      || null;
+
+  // ── Disable button ────────────────────────────────────
+  const btn = document.getElementById('mslConfirmBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Logging…'; }
+
+  // ── Build card object ─────────────────────────────────
+  // Field names must match cardToDbRow() exactly — see CLAUDE.md.
+  // 'Set ' has a trailing space. 'Parallel/Variant' and 'Cert #' are
+  // the real names (not 'Parallel' or 'Cert').
+  const rawCard = {
+    Player:             player,
+    Year:               year      || null,
+    'Set ':             cardSet,
+    Number:             '',
+    'Parallel/Variant': parallel,
+    Grader:             grader    || null,
+    Grade:              gradeStr !== '' ? parseFloat(gradeStr) : null,
+    'Cert #':           '',
+    Price:              price,           // asking = sold for manual entries
+    Status:             'Sold',          // created sold — no sell drawer step
+    Location:           null,
+    Seller:             currentSeller,
+    item_type:          'card',
+    product_type:       null,
+    _manualSale:        true,            // flag for MANUAL badge in Report
+  };
+
+  const card = validateAndNormalizeCard(rawCard);
+  card._shows = new Set();
+
+  // buildCardTitle uses cardSet/cardNum — not set/cardNumber.
+  // Grader/grade intentionally omitted (buildCardTitle ignores them).
+  card['Card Title'] = buildCardTitle({
+    player, year, cardSet, parallel,
+    cardNum: '', sport: '', rawTitle: '',
+  });
+
+  card.Status        = 'Sold';
+  card.SoldPrice     = price;
+  card.PaymentMethod = payment;
+  card.SaleNotes     = notes || null;
+  card.SoldTime      = new Date().toLocaleTimeString([], {
+    hour: '2-digit', minute: '2-digit',
+  });
+
+  // ── Step 1: Push to inventory[] ───────────────────────
+  // Before any await — Report tab updates feel instant.
+  inventory.push(card);
+
+  // ── Step 2: Insert to DB via timeout race ─────────────
+  // Same POS_INSERT_TIMEOUT_MS pattern as posInsertAndOpenDrawer().
+  // insertCardToDB() does NOT mutate card — _dbId must be assigned here.
+  const dbId = await Promise.race([
+    insertCardToDB(card),
+    new Promise(resolve =>
+      setTimeout(() => resolve(null), POS_INSERT_TIMEOUT_MS)
+    ),
+  ]);
+
+  if (dbId) {
+    card._dbId = dbId;
+  } else {
+    showToast('⚠️ Saved locally — server sync failed', '#f59e0b');
+  }
+
+  // ── Step 3: Write sold fields to inventory row ────────
+  // Organizer analytics reads sold_price from the inventory row
+  // via show_inventory join — this is what makes the sale appear in GMV.
+  updateCardInDB(card);   // fire-and-forget
+
+  // ── Step 4: Publish to show_inventory ─────────────────
+  // Determines target show: explicit selection, active show, or none.
+  const targetShowId = showId || activeShowId;
+  if (targetShowId && dbId) {
+    _autoPublishCardToShow(card, dbId, targetShowId);
+  }
+  if (targetShowId) card._shows.add(targetShowId);  // in-memory for Report filter
+
+  // ── Step 5: Record to show_floor_transactions ─────────
+  // Dedicated wrapper — NOT recordShowTransaction() — because that
+  // function reads activeShowId as a global and would use the wrong
+  // show when the seller is logging a past-show sale.
+  recordManualSaleTransaction(card, targetShowId);  // fire-and-forget
+
+  // ── Step 6: Refresh UI ────────────────────────────────
+  closeManualSaleModal();
+  renderSellerTable(getSellerInventory());
+  updateStats();
+  updateReport();
+  syncBuyerView();
+
+  showToast(
+    `✓ ${player.slice(0, 28)} · $${price.toLocaleString()} · ${payment} · logged`
+  );
+}
+
+// Writes one row to show_floor_transactions with source:'manual'.
+// NOT a thin wrapper around recordShowTransaction() — that function reads
+// activeShowId as a global with no param to override it or the source
+// value, and a manual sale can target a past show the seller isn't
+// currently viewing. Calling it here would either use the wrong show or
+// require modifying it, and recordShowTransaction() is on sdConfirm()'s
+// hot path and should never be touched for this. So the row is built
+// manually instead — shape mirrors recordShowTransaction() field-for-field
+// (confirmed by reading that function's source before writing this one),
+// plus source:'manual'. recordShowTransaction() itself is untouched.
+// FIRE-AND-FORGET — never await.
+async function recordManualSaleTransaction(card, showId) {
+  if (typeof db === 'undefined') return;
+  if (!currentSeller) return;
+  if (!showId)        return;   // off-show sale — skip, no show to attribute
+
+  try {
+    const show = shows[showId];
+    if (!show) return;
+
+    let city  = show.city  || null;
+    let state = show.state || null;
+    if (!city && show.location) {
+      const parsed = parseShowLocation(show.location);
+      city  = parsed.city;
+      state = parsed.state;
+    }
+
+    const { data: { user } } = await db.auth.getUser();
+    const sellerUuid = user?.id || null;
+    const tableNum   = show.tables?.[currentSeller] || null;
+
+    const row = {
+      // Transaction
+      sold_at:        new Date().toISOString(),
+      sold_price:     parseFloat(card.SoldPrice),
+      asking_price:   parseFloat(card.Price) || null,
+      payment_method: card.PaymentMethod     || 'Other',
+
+      // Source — the Session 1 addition
+      source:         'manual',
+
+      // Card snapshot — field access matches recordShowTransaction()
+      inventory_id:   card._dbId                             || null,
+      card_title:     card['Card Title'] || card.card_title  || '',
+      player:         card.Player        || null,
+      year:           card.Year ? parseInt(String(card.Year), 10) : null,
+      card_set:       card['Set ']       || card['Set']      || null,
+      card_number:    card.Number        || null,
+      parallel:       card['Parallel/Variant']               || null,
+      grader:         card.Grader        || null,
+      grade:          card.Grade != null ? parseFloat(card.Grade) : null,
+      cert_number:    card['Cert #']     || null,
+      condition:      card.Condition     || null,
+      item_type:      card.item_type     || 'card',
+      // detectCardSport() is API routing — NOT detectSport() which is UI only
+      sport:          detectCardSport(card) || null,
+
+      // Seller snapshot
+      seller_id:      sellerUuid,
+      seller_handle:  currentSeller,
+
+      // Show snapshot — denormalised so record is self-describing
+      show_id:        showId,
+      show_name:      show.name,
+      show_date:      show.date     || null,
+      show_location:  show.location || null,
+      show_city:      city,
+      show_state:     state,
+      table_number:   tableNum,
+
+      // Data quality flags — manual entries are valid market data
+      is_test:        false,
+      api_eligible:   true,
+      data_version:   1,
+    };
+
+    const { error } = await db
+      .from('show_floor_transactions')
+      .insert(row);
+
+    if (error) {
+      console.warn('[manual-sale] tx write failed:', error.message);
+    } else {
+      console.log('[manual-sale] recorded:',
+        row.card_title, '· $' + row.sold_price, '· source:manual');
+    }
+  } catch (err) {
+    console.warn('[manual-sale] tx error:', err.message);
+  }
+}
+
 // ── Auto-publish a card to the active show ──────────────────────────────────
 // FIRE-AND-FORGET — never await. On success: upserts { show_id, card_id }
 // to show_inventory, adds showId to card._shows, increments showCardCounts,
@@ -16089,6 +16655,229 @@ async function upsertCardsToDB(cards) {
     </div>
   </div>
 </div>
+
+<!-- ════════════════════════════════════════════════════
+     MANUAL SALE MODAL
+     Seller logs a sale that happened off-platform.
+     Reuses: .drawer-overlay, .drawer, .drawer-handle,
+             .drawer-header, .drawer-body, .drawer-field-label,
+             .sold-price-wrap, .sold-price-sym, .sold-price-input,
+             .payment-grid, .pay-opt, .pay-opt-icon, .pay-opt-label,
+             .sale-notes-input, .btn-confirm-sale, .btn-cancel-sale,
+             .filter-select
+     Writes: inventory[] → inventory DB → show_inventory →
+             show_floor_transactions (source:'manual')
+════════════════════════════════════════════════════ -->
+<div class="drawer-overlay" id="manualSaleOverlay"
+  onclick="if(event.target===this)closeManualSaleModal()">
+  <div class="drawer" id="manualSaleDrawer">
+
+    <div class="drawer-handle"></div>
+
+    <div class="drawer-header">
+      <div class="drawer-player">Log a Manual Sale</div>
+      <div class="drawer-card-sub"
+        style="color:var(--muted);font-size:12px">
+        Record a sale that happened off-platform
+      </div>
+    </div>
+
+    <div class="drawer-body">
+
+      <!-- Photo — optional, auto-fills Player/Year/Set/Grade/Grader below.
+           Calls vision-scan.js directly, same as posHandlePhoto() — the
+           existing _callVisionScan() helper is hard-wired to the Add Card
+           modal's cert-scanner overlay and would fill the wrong form. -->
+      <div>
+        <div class="drawer-field-label">Photo (optional — auto-fills fields below)</div>
+
+        <div class="msl-photo-buttons" id="mslPhotoButtons">
+          <button type="button" class="msl-photo-btn" onclick="mslTriggerCamera()">
+            📷 Take Photo
+          </button>
+          <button type="button" class="msl-photo-btn" onclick="mslTriggerLibrary()">
+            🖼 Choose from Library
+          </button>
+        </div>
+
+        <div class="msl-photo-loading" id="mslPhotoLoading" style="display:none">
+          <div class="msl-photo-spinner"></div>
+          <div class="msl-photo-loading-msg" id="mslPhotoLoadingMsg">Identifying card…</div>
+        </div>
+
+        <div class="msl-photo-preview-wrap" id="mslPhotoPreviewWrap" style="display:none">
+          <img class="msl-photo-preview-img" id="mslPhotoPreviewImg" alt="Card photo">
+          <div class="msl-photo-preview-label">Fields filled in below — review before logging</div>
+          <button type="button" class="msl-photo-retake-btn" onclick="mslRetakePhoto()">Retake</button>
+        </div>
+
+        <input type="file" id="mslFileInput" accept="image/*" capture="environment"
+          style="display:none" onchange="mslHandlePhoto(this)">
+        <input type="file" id="mslLibraryFileInput" accept="image/*"
+          style="display:none" onchange="mslHandlePhoto(this)">
+      </div>
+
+      <!-- Show selector -->
+      <div>
+        <div class="drawer-field-label">Show</div>
+        <select id="mslShow" class="filter-select"
+          style="width:100%;margin-bottom:0">
+          <option value="">Off-show / no show</option>
+        </select>
+      </div>
+
+      <!-- Player — required -->
+      <div>
+        <div class="drawer-field-label">
+          Player
+          <span style="color:#f87171;font-size:10px;margin-left:3px">
+            required</span>
+        </div>
+        <input id="mslPlayer" class="sold-price-input"
+          style="font-size:16px;padding:10px 14px;
+                 width:100%;box-sizing:border-box;border-radius:7px"
+          type="text" inputmode="text"
+          autocomplete="off" autocorrect="off" spellcheck="false"
+          placeholder="e.g. Paul Skenes">
+      </div>
+
+      <!-- Year + Set -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div>
+          <div class="drawer-field-label">Year</div>
+          <input id="mslYear" class="sold-price-input"
+            style="font-size:15px;padding:9px 12px;
+                   width:100%;box-sizing:border-box;border-radius:7px"
+            type="text" inputmode="numeric"
+            placeholder="2024" maxlength="4">
+        </div>
+        <div>
+          <div class="drawer-field-label">Set</div>
+          <input id="mslSet" class="sold-price-input"
+            style="font-size:15px;padding:9px 12px;
+                   width:100%;box-sizing:border-box;border-radius:7px"
+            type="text" inputmode="text" autocomplete="off"
+            placeholder="topps chrome">
+        </div>
+      </div>
+
+      <!-- Parallel/Variant -->
+      <div>
+        <div class="drawer-field-label">Parallel / Variant</div>
+        <input id="mslParallel" class="sold-price-input"
+          style="font-size:15px;padding:9px 12px;
+                 width:100%;box-sizing:border-box;border-radius:7px"
+          type="text" inputmode="text" autocomplete="off"
+          placeholder="e.g. refractor, gold /50">
+      </div>
+
+      <!-- Grade + Grader -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div>
+          <div class="drawer-field-label">Grade</div>
+          <input id="mslGrade" class="sold-price-input"
+            style="font-size:15px;padding:9px 12px;
+                   width:100%;box-sizing:border-box;border-radius:7px"
+            type="text" inputmode="decimal" placeholder="10">
+        </div>
+        <div>
+          <div class="drawer-field-label">Grader</div>
+          <select id="mslGrader"
+            style="width:100%;padding:9px 12px;font-size:15px;
+                   box-sizing:border-box;border-radius:7px;
+                   background:var(--card);border:1px solid var(--border);
+                   color:var(--text);font-family:'DM Sans',sans-serif;
+                   -webkit-appearance:none">
+            <option value="">Raw</option>
+            <option value="PSA">PSA</option>
+            <option value="BGS">BGS</option>
+            <option value="SGC">SGC</option>
+            <option value="CGC">CGC</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Sold price — required -->
+      <div>
+        <div class="drawer-field-label">
+          Sold For
+          <span style="color:#f87171;font-size:10px;margin-left:3px">
+            required</span>
+        </div>
+        <div class="sold-price-wrap">
+          <span class="sold-price-sym">$</span>
+          <input class="sold-price-input" id="mslPrice"
+            type="number" inputmode="decimal"
+            step="0.01" min="0" placeholder="0.00">
+        </div>
+      </div>
+
+      <!-- Payment method — required -->
+      <div>
+        <div class="drawer-field-label">
+          Payment Method
+          <span style="color:#f87171;font-size:10px;margin-left:3px">
+            required</span>
+        </div>
+        <div class="payment-grid" id="mslPayGrid">
+          <div class="pay-opt" onclick="mslSelPay(this,'Cash')">
+            <div class="pay-opt-icon">💵</div>
+            <div class="pay-opt-label">Cash</div>
+          </div>
+          <div class="pay-opt" onclick="mslSelPay(this,'Venmo')">
+            <div class="pay-opt-icon">💙</div>
+            <div class="pay-opt-label">Venmo</div>
+          </div>
+          <div class="pay-opt" onclick="mslSelPay(this,'Zelle')">
+            <div class="pay-opt-icon">⚡</div>
+            <div class="pay-opt-label">Zelle</div>
+          </div>
+          <div class="pay-opt" onclick="mslSelPay(this,'PayPal')">
+            <div class="pay-opt-icon">🅿️</div>
+            <div class="pay-opt-label">PayPal</div>
+          </div>
+          <div class="pay-opt" onclick="mslSelPay(this,'Square')">
+            <div class="pay-opt-icon">⬛</div>
+            <div class="pay-opt-label">Square</div>
+          </div>
+          <div class="pay-opt" onclick="mslSelPay(this,'Other')">
+            <div class="pay-opt-icon">···</div>
+            <div class="pay-opt-label">Other</div>
+          </div>
+        </div>
+        <input type="hidden" id="mslPayment" value="">
+      </div>
+
+      <!-- Notes — optional -->
+      <div>
+        <div class="drawer-field-label">Notes (optional)</div>
+        <textarea class="sale-notes-input" id="mslNotes"
+          placeholder="Card #, parallel, cert #, buyer name…"
+          rows="2"></textarea>
+      </div>
+
+      <!-- Source note -->
+      <div style="font-family:'DM Mono',monospace;font-size:10px;
+        color:var(--muted);letter-spacing:0.07em;line-height:1.5;
+        padding:10px 12px;background:rgba(30,38,64,0.35);
+        border-radius:6px;border-left:2px solid var(--border)">
+        Logged as
+        <strong style="color:var(--text)">manually reported</strong>
+        and shown with a MANUAL badge in your transaction log
+      </div>
+
+      <button class="btn-confirm-sale" id="mslConfirmBtn"
+        onclick="confirmManualSale()">
+        ✓ Log Sale
+      </button>
+      <button class="btn-cancel-sale"
+        onclick="closeManualSaleModal()">
+        Cancel
+      </button>
+
+    </div><!-- /drawer-body -->
+  </div><!-- /manualSaleDrawer -->
+</div><!-- /manualSaleOverlay -->
 
 </body>
 </html>
