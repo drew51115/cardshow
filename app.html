@@ -3867,29 +3867,31 @@
 
   /* ── LOG A MANUAL SALE ─────────────────────────────────────── */
 
+  /* Solid/filled — this is the primary CTA in the Report tab header,
+     not a secondary action, so it matches .btn-primary's visual weight
+     rather than the outlined style it originally shipped with. */
   .btn-log-manual-sale {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    background: transparent;
-    border: 1px solid var(--border);
+    background: var(--accent);   /* var(--gold) does not exist — use var(--accent) */
+    border: 1px solid var(--accent);
     border-radius: 7px;
     padding: 8px 16px;
     font-family: 'DM Mono', monospace;
     font-size: 12px;
     letter-spacing: 0.1em;
     text-transform: uppercase;
-    color: var(--accent);   /* var(--gold) does not exist — use var(--accent) */
+    color: var(--black);
+    font-weight: 600;
     cursor: pointer;
-    transition: border-color 150ms, background 150ms;
+    transition: opacity 150ms, transform 150ms;
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
+    white-space: nowrap;
   }
-  .btn-log-manual-sale:hover {
-    border-color: var(--accent);
-    background: rgba(245, 200, 66, 0.06);
-  }
-  .btn-log-manual-sale:active { opacity: 0.82; }
+  .btn-log-manual-sale:hover  { opacity: 0.92; }
+  .btn-log-manual-sale:active { opacity: 0.82; transform: scale(0.99); }
 
   /* MANUAL badge — transaction log rows for manually logged sales */
   .msl-badge {
@@ -4534,6 +4536,10 @@
             <option value="">All shows (lifetime)</option>
           </select>
           <button class="btn btn-ghost" onclick="exportReportCSV()" style="font-size:0.78rem;padding:0.35rem 0.8rem">↓ Export CSV</button>
+          <button class="btn-log-manual-sale" onclick="openManualSaleModal()" style="margin-left:auto"
+            title="Record a sale that happened off-platform or wasn't captured by CardShow">
+            + Log a Manual Sale
+          </button>
         </div>
         <div class="report-grid-2col">
           <div class="report-stat-card">
@@ -4580,19 +4586,6 @@
           </div>
         </div>
         <div id="rptTxLog"></div>
-
-        <!-- Log a Manual Sale entry point -->
-        <div style="margin-bottom:14px">
-          <button class="btn-log-manual-sale"
-            onclick="openManualSaleModal()">
-            + Log a Manual Sale
-          </button>
-          <div style="font-family:'DM Mono',monospace;font-size:10px;
-            color:var(--muted);letter-spacing:0.08em;margin-top:6px;
-            padding-left:2px;line-height:1.5">
-            Record a sale that happened off-platform or wasn't captured by CardShow
-          </div>
-        </div>
 
         <div class="report-stat-card">
           <div class="report-stat-label">Transaction log</div>

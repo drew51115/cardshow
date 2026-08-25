@@ -1141,8 +1141,16 @@ transaction writes succeed.
 classes (`.drawer-handle`, `.drawer-header`, `.drawer-body`, `.drawer-field-label`,
 `.sold-price-wrap`, `.payment-grid`, `.pay-opt`, `.sale-notes-input`, `.btn-confirm-sale`,
 `.btn-cancel-sale`) for visual consistency, rather than a new custom UI. Opened via
-`openManualSaleModal()` from the `.btn-log-manual-sale` button above the Transaction Log
-card in the seller Report tab.
+`openManualSaleModal()` from the `.btn-log-manual-sale` button in `#reportShowSelector` —
+the Report tab's header row, alongside the show filter and Export CSV button (pushed to
+the row's right edge via `margin-left:auto`). Originally shipped as an outlined button
+lower in the panel, above the Transaction Log card; moved to the header and restyled as a
+solid `var(--accent)` fill (matching `.btn-primary`'s visual weight) so it reads as a
+primary action instead of a secondary link — it's now visible without scrolling and no
+longer competes visually with the ghost-styled Export CSV button next to it. The helper
+text that used to sit under the button ("Record a sale that happened off-platform or
+wasn't captured by CardShow") is now a `title` tooltip on the button instead, since the
+compact header row has no room for a second line.
 
 ### Flow
 ```
