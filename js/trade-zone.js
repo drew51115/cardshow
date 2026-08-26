@@ -140,6 +140,7 @@ function _tzResizeImageToBlob(file, maxDim, quality) {
 
 let _tzPostPhotoFile = null;
 let _tzPostPhotoPreviewUrl = null;
+let _tzVisionAbort = null;
 
 function tzTriggerCamera()  { document.getElementById('tzPostFileInput').click(); }
 function tzTriggerLibrary() { document.getElementById('tzPostLibraryInput').click(); }
@@ -155,15 +156,19 @@ function tzHandlePostPhoto(inputEl) {
   document.getElementById('tzPostPhotoPreviewWrap').style.display = 'block';
   document.getElementById('tzPostPhotoPrompt').style.display = 'none';
   tzUpdatePostSubmitState();
+
+  _tzRunVisionOnPhoto(file);
 }
 
 function tzClearPostPhoto() {
   _tzPostPhotoFile = null;
   if (_tzPostPhotoPreviewUrl) { URL.revokeObjectURL(_tzPostPhotoPreviewUrl); _tzPostPhotoPreviewUrl = null; }
+  if (_tzVisionAbort) { _tzVisionAbort.abort(); _tzVisionAbort = null; }
   document.getElementById('tzPostFileInput').value = '';
   document.getElementById('tzPostLibraryInput').value = '';
   document.getElementById('tzPostPhotoPreviewWrap').style.display = 'none';
   document.getElementById('tzPostPhotoPrompt').style.display = 'flex';
+  _tzHideVisionStatus();
   tzUpdatePostSubmitState();
 }
 
@@ -174,9 +179,166 @@ function tzSetPostCondition(val, btnEl) {
   if (btnEl) btnEl.classList.add('selected');
 }
 
+function _tzSelectConditionChip(val) {
+  const chip = document.querySelector(`.tz-condition-chip[data-val="${val}"]`);
+  if (chip) tzSetPostCondition(val, chip);
+}
+
 function tzUpdatePostSubmitState() {
   const nameOk = document.getElementById('tzPostCardName').value.trim().length > 0;
   document.getElementById('tzPostSubmitBtn').disabled = !(nameOk && _tzPostPhotoFile);
+}
+
+// ─────────────────────────────────────────────────────────
+// VISION AUTO-FILL — same cascade seller inventory uses (vision-scan.js
+// via a direct fetch(), not through _callVisionScan()/app.html, which is
+// hard-wired to the Add Card modal and unavailable on this standalone
+// page). Trade posts only carry a free-text card_name + condition, so
+// this fills those two fields instead of a full structured card form.
+// ─────────────────────────────────────────────────────────
+
+// Mirrors app.html's _posCompressImage() exactly (1024px / JPEG 85% /
+// base64) — vision-scan.js needs base64, not the Blob _tzResizeImageToBlob()
+// produces for Storage upload.
+function _tzImageToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const MAX = 1024;
+      let w = img.width, h = img.height;
+      if (w > MAX || h > MAX) {
+        if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+        else       { w = Math.round(w * MAX / h); h = MAX; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', 0.85).split(',')[1]);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Image load failed')); };
+    img.src = url;
+  });
+}
+
+// Verbatim port of app.html's buildCardTitle() — same sport-aware
+// synthesis (TCG game-label prefix vs. plain "year set player parallel"
+// for everything else), so a Trade Zone post reads the same way an
+// inventory card's title would for the same photo.
+function _tzBuildCardTitle(card) {
+  const year     = String(card.year     ?? '').trim();
+  const name     = String(card.player   ?? '').trim();
+  const set      = String(card.cardSet  ?? '').trim();
+  const parallel = String(card.parallel ?? '').trim();
+  const cardNum  = String(card.cardNum  ?? '').trim();
+  const sport    = String(card.sport    ?? '').trim();
+  const raw      = String(card.rawTitle ?? '').toLowerCase();
+  const setLower = set.toLowerCase();
+
+  if (sport === 'TCG') {
+    let game = '';
+    if (/pokemon/.test(raw) || /pokemon/.test(setLower)) {
+      game = setLower.startsWith('pokemon') ? '' : 'Pokemon';
+    } else if (/magic|mtg/.test(raw) || /magic|mtg/.test(setLower)) {
+      game = /^magic|^mtg/.test(setLower) ? '' : 'Magic The Gathering';
+    } else if (/one piece/.test(raw) || /one.piece/.test(setLower)) {
+      game = /^one piece/.test(setLower) ? '' : 'One Piece Card Game';
+    } else if (/yu.gi.oh/.test(raw) || /yu.gi.oh/.test(setLower)) {
+      game = /^yu.gi.oh/.test(setLower) ? '' : 'Yu-Gi-Oh!';
+    }
+
+    const parts = [year, game, set, name];
+    if (cardNum) parts.push(`#${cardNum}`);
+    if (parallel) parts.push(parallel);
+    return parts.filter(Boolean).join(' ');
+  }
+
+  return [year, set, name, parallel].filter(Boolean).join(' ');
+}
+
+// Maps a vision result to one of Trade Zone's condition chips —
+// there's no numeric grade field here, just raw/psa10/psa9/bgs/other.
+function _tzInferCondition(card) {
+  const grader = String(card.grader || '').toUpperCase();
+  const grade  = Number(card.grade);
+  if (!grader) return 'raw';
+  if (grader === 'BGS') return 'bgs';
+  if (grader === 'PSA' && grade === 10) return 'psa10';
+  if (grader === 'PSA' && grade === 9)  return 'psa9';
+  return 'other';
+}
+
+function _tzShowVisionStatus(msg) {
+  const el = document.getElementById('tzVisionStatus');
+  if (!el) return;
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+function _tzHideVisionStatus() {
+  const el = document.getElementById('tzVisionStatus');
+  if (el) el.style.display = 'none';
+}
+
+async function _tzRunVisionOnPhoto(file) {
+  if (_tzVisionAbort) _tzVisionAbort.abort();
+  const controller = new AbortController();
+  _tzVisionAbort = controller;
+
+  // Snapshot the field as of right now (should be empty, since a photo
+  // was just added) so we never clobber text the guest typed manually
+  // while this call was still in flight — vision takes 1-3s, plenty of
+  // time to start typing a name by hand.
+  const nameElAtStart = document.getElementById('tzPostCardName');
+  const valueAtStart = nameElAtStart ? nameElAtStart.value : '';
+
+  _tzShowVisionStatus('🔍 Identifying card…');
+
+  try {
+    const base64 = await _tzImageToBase64(file);
+    if (controller.signal.aborted) return;
+
+    const response = await fetch('/.netlify/functions/vision-scan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: base64, mediaType: 'image/jpeg' }),
+      signal: controller.signal,
+    });
+    if (controller.signal.aborted) return;
+    if (!response.ok) throw new Error(`Server error ${response.status}`);
+
+    const result = await response.json();
+    if (controller.signal.aborted) return;
+
+    if (!result.success || result.error === 'low_confidence') {
+      _tzHideVisionStatus();
+      return; // silent fallback — guest just types the name manually
+    }
+
+    const card = result.card;
+    const title = _tzBuildCardTitle(card) || card.rawTitle || '';
+    const nameEl = document.getElementById('tzPostCardName');
+    const untouched = nameEl && nameEl.value === valueAtStart;
+
+    if (title && untouched) {
+      nameEl.value = title;
+      nameEl.classList.add('tz-vision-filled');
+      setTimeout(() => nameEl.classList.remove('tz-vision-filled'), 4000);
+      tzUpdatePostSubmitState();
+    }
+
+    if (untouched) _tzSelectConditionChip(_tzInferCondition(card));
+    _tzHideVisionStatus();
+    if (title && untouched) tzToast('✓ Card identified — review & post');
+  } catch (err) {
+    if (err.name === 'AbortError') return; // superseded by a retake
+    console.warn('[trade-zone] vision identify failed:', err.message);
+    _tzHideVisionStatus();
+    // Non-fatal — falls through to manual entry, same as every other
+    // vision-scan.js caller in this codebase.
+  } finally {
+    if (_tzVisionAbort === controller) _tzVisionAbort = null;
+  }
 }
 
 // ─────────────────────────────────────────────────────────

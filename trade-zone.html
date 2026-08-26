@@ -90,6 +90,8 @@ body {
   background: var(--card); color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 0.95rem;
 }
 .tz-field textarea { resize: vertical; min-height: 60px; }
+.tz-vision-status { margin-top: 0.4rem; font-size: 0.78rem; color: var(--gold); font-family: 'DM Mono', monospace; }
+.tz-vision-filled { border-color: var(--success) !important; box-shadow: 0 0 0 1px var(--success); }
 
 .tz-condition-row { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 .tz-condition-chip {
@@ -251,6 +253,7 @@ body {
     <div class="tz-field">
       <label>Card Name</label>
       <input type="text" id="tzPostCardName" placeholder="e.g. 2024 Bowman Chrome Dylan Crews Refractor" oninput="tzUpdatePostSubmitState()">
+      <div id="tzVisionStatus" class="tz-vision-status" style="display:none"></div>
     </div>
 
     <div class="tz-field">
