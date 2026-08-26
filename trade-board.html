@@ -69,6 +69,20 @@ body {
   color: var(--muted); font-size: 0.9rem;
 }
 
+/* ── QR panel — always-on corner card so guests can join any time ── */
+.tb-qr-panel {
+  position: fixed; bottom: 1.5rem; left: 2.5rem; z-index: 50;
+  background: #fff; border-radius: 16px; padding: 1rem 1rem 0.85rem;
+  display: flex; flex-direction: column; align-items: center; gap: 0.5rem;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.45);
+}
+.tb-qr-panel canvas { display: block; border-radius: 4px; }
+.tb-qr-label {
+  font-family: 'Bebas Neue', sans-serif; font-size: 1rem; letter-spacing: 0.06em;
+  color: var(--black); text-align: center; line-height: 1.15;
+}
+.tb-qr-sub { font-family: 'DM Mono', monospace; font-size: 0.65rem; color: #6b7280; }
+
 /* ── report mode ── */
 #tbReportView { padding: 2rem 2.5rem; overflow-y: auto; height: calc(100vh - 100px); }
 .tb-rpt-kpis { display: flex; gap: 1.5rem; margin-bottom: 2rem; }
@@ -109,6 +123,12 @@ body {
   <div class="tb-board-grid" id="tbBoardGrid"></div>
 </main>
 <div class="tb-page-indicator" id="tbPageIndicator"></div>
+
+<div class="tb-qr-panel" id="tbQrPanel" style="display:none">
+  <canvas id="tbQrCanvas" width="180" height="180"></canvas>
+  <div class="tb-qr-label">📱 SCAN TO TRADE</div>
+  <div class="tb-qr-sub">getcardshow.com/trade-zone</div>
+</div>
 
 <main id="tbReportView" style="display:none">
   <div class="tb-rpt-kpis">

@@ -39,6 +39,7 @@ async function tbInit() {
       tbRenderCounts();
       tbStartPagination();
       tbWireRealtime();
+      tbRenderQR();
     }
   } catch (err) {
     console.error('[trade-board] init failed:', err);
@@ -209,6 +210,102 @@ async function tbRenderReport() {
   listEl.innerHTML = top.length
     ? top.map(([name, n]) => `<li><span>${tbEsc(name)}</span><span class="tb-rpt-count">${n}×</span></li>`).join('')
     : '<li class="tb-empty">No completed trades yet</li>';
+}
+
+// ─────────────────────────────────────────────────────────
+// QR PANEL — same qrcodejs CDN pattern app.html already uses for seller
+// table QR codes (loadQRLib/renderQR/overlayQRLogo/renderQRFallback),
+// ported here since trade-board.html is a standalone page that can't
+// call app.html's functions directly. Always-on corner card so a guest
+// can join the board at any time without anyone handing out a link.
+// ─────────────────────────────────────────────────────────
+
+function _tbLoadQRLib(cb, onErr) {
+  if (window.QRCode) { cb(); return; }
+  const s = document.createElement('script');
+  s.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
+  s.onload = cb;
+  s.onerror = onErr || (() => _tbRenderQRFallback());
+  document.head.appendChild(s);
+}
+
+function tbRenderQR() {
+  const panel = document.getElementById('tbQrPanel');
+  const canvas = document.getElementById('tbQrCanvas');
+  if (!panel || !canvas || !TB.show) return;
+  panel.style.display = 'flex';
+
+  const size = canvas.width; // 180
+  const url = `${location.origin}/trade-zone.html?show=${TB.show.id}`;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, size, size);
+
+  _tbLoadQRLib(() => {
+    const tmp = document.createElement('div');
+    tmp.style.cssText = 'position:absolute;left:-9999px;top:-9999px';
+    document.body.appendChild(tmp);
+    try {
+      new QRCode(tmp, {
+        text: url, width: size, height: size,
+        colorDark: '#0a0a0a', colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.M,
+      });
+      setTimeout(() => {
+        const img = tmp.querySelector('img') || tmp.querySelector('canvas');
+        if (img) {
+          const c = document.getElementById('tbQrCanvas');
+          if (c) {
+            const cx = c.getContext('2d');
+            if (img.tagName === 'CANVAS') {
+              cx.drawImage(img, 0, 0, c.width, c.height);
+            } else {
+              const i2 = new Image();
+              i2.onload = () => { cx.drawImage(i2, 0, 0, c.width, c.height); _tbOverlayQRLogo(size); };
+              i2.src = img.src;
+            }
+          }
+        }
+        document.body.removeChild(tmp);
+        if (img && img.tagName === 'CANVAS') _tbOverlayQRLogo(size);
+      }, 100);
+    } catch (e) {
+      document.body.removeChild(tmp);
+      _tbRenderQRFallback();
+    }
+  });
+}
+
+function _tbOverlayQRLogo(size) {
+  const canvas = document.getElementById('tbQrCanvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const s = size * 0.18;
+  const x = (size - s) / 2, y = (size - s) / 2;
+  ctx.fillStyle = '#f5c842';
+  ctx.beginPath();
+  ctx.roundRect(x, y, s, s, 4);
+  ctx.fill();
+  ctx.fillStyle = '#0a0a0a';
+  ctx.font = `bold ${s * 0.45}px 'Bebas Neue', sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('CS', x + s / 2, y + s / 2);
+}
+
+function _tbRenderQRFallback() {
+  const canvas = document.getElementById('tbQrCanvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#0a0a0a';
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 13px monospace';
+  ctx.fillText('Join at:', canvas.width / 2, 80);
+  ctx.font = '11px monospace';
+  ctx.fillText('getcardshow.com', canvas.width / 2, 100);
+  ctx.fillText('/trade-zone', canvas.width / 2, 116);
 }
 
 document.addEventListener('DOMContentLoaded', tbInit);
