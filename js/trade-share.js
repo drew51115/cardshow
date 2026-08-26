@@ -122,55 +122,83 @@
 
       Promise.all([_loadImage(postA.image_url), _loadImage(postB.image_url)])
         .then(([imgA, imgB]) => {
-          const cardW = 760, cardH = 640;
+          const cardW = 760, cardH = 540;
           const cardX = (CANVAS_W - cardW) / 2;
-
-          _drawCardImage(ctx, imgA, cardX, 220, cardW, cardH);
-          _drawCardImage(ctx, imgB, cardX, 1000, cardW, cardH);
-
-          // Swap icon between the two cards
-          ctx.save();
-          ctx.fillStyle = '#f5c842';
-          ctx.beginPath();
-          ctx.arc(CANVAS_W / 2, 920, 56, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.fillStyle = '#07080c';
-          ctx.font = '700 56px "DM Sans", sans-serif';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText('⇄', CANVAS_W / 2, 926);
-          ctx.restore();
-
-          // Card names
-          ctx.fillStyle = '#e8eaf5';
-          ctx.font = '500 34px "DM Sans", sans-serif';
-          ctx.textAlign = 'center';
-          _wrapText(ctx, postA.card_name, CANVAS_W / 2, 900, 900, 40);
-          _wrapText(ctx, postB.card_name, CANVAS_W / 2, 1680, 900, 40);
-
-          // Handles (only when consented — may be null)
-          ctx.font = '400 28px "DM Mono", monospace';
-          ctx.fillStyle = '#f5c842';
-          if (handleA) ctx.fillText('@' + handleA, CANVAS_W / 2, 940);
-          if (handleB) ctx.fillText('@' + handleB, CANVAS_W / 2, 1720);
+          const NAME_FONT = '600 36px "DM Sans", sans-serif';
+          const NAME_SIZE = 36, NAME_LINE_H = 42;
+          const HANDLE_FONT = '400 26px "DM Mono", monospace';
+          const HANDLE_SIZE = 26;
+          const CARD_TO_NAME_GAP = 32;   // clearance below each card image before its title
+          const NAME_TO_HANDLE_GAP = 10;
+          const PRE_ICON_GAP = 34;       // clearance below card A's text block before the swap icon
+          const POST_ICON_GAP = 34;      // clearance below the swap icon before card B's image
+          const ICON_R = 50;
 
           // Header
           ctx.textAlign = 'left';
           ctx.font = '700 44px "Bebas Neue", sans-serif';
           ctx.fillStyle = '#f5c842';
-          ctx.fillText('TRADE ZONE', 60, 120);
+          ctx.fillText('TRADE ZONE', 60, 90);
           ctx.font = '400 26px "DM Sans", sans-serif';
           ctx.fillStyle = '#5a6585';
-          ctx.fillText(TZ.show ? TZ.show.name : 'CardShow', 60, 160);
+          ctx.fillText(TZ.show ? TZ.show.name : 'CardShow', 60, 130);
 
-          // Footer watermark
+          // Card A image + title (+ optional handle)
+          let y = 180;
+          _drawCardImage(ctx, imgA, cardX, y, cardW, cardH);
+          y += cardH + CARD_TO_NAME_GAP;
+
           ctx.textAlign = 'center';
-          ctx.font = '700 30px "Bebas Neue", sans-serif';
+          ctx.fillStyle = '#e8eaf5';
+          ctx.font = NAME_FONT;
+          y = _drawWrappedText(ctx, postA.card_name, CANVAS_W / 2, y, 900, NAME_SIZE, NAME_LINE_H, 2);
+
+          if (handleA) {
+            ctx.font = HANDLE_FONT;
+            ctx.fillStyle = '#f5c842';
+            y = _drawWrappedText(ctx, '@' + handleA, CANVAS_W / 2, y + NAME_TO_HANDLE_GAP, 900, HANDLE_SIZE, HANDLE_SIZE + 8, 1);
+          }
+
+          // Swap icon — positioned relative to wherever card A's title/handle
+          // block actually ended, so it can never overlap a long (2-line) title
+          y += PRE_ICON_GAP;
+          const iconCenterY = y + ICON_R;
+          ctx.save();
           ctx.fillStyle = '#f5c842';
-          ctx.fillText('CARDSHOW', CANVAS_W / 2, CANVAS_H - 60);
-          ctx.font = '400 20px "DM Sans", sans-serif';
+          ctx.beginPath();
+          ctx.arc(CANVAS_W / 2, iconCenterY, ICON_R, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = '#07080c';
+          ctx.font = '700 50px "DM Sans", sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('⇄', CANVAS_W / 2, iconCenterY + 4);
+          ctx.restore();
+          y = iconCenterY + ICON_R + POST_ICON_GAP;
+
+          // Card B image + title (+ optional handle)
+          _drawCardImage(ctx, imgB, cardX, y, cardW, cardH);
+          y += cardH + CARD_TO_NAME_GAP;
+
+          ctx.textAlign = 'center';
+          ctx.fillStyle = '#e8eaf5';
+          ctx.font = NAME_FONT;
+          y = _drawWrappedText(ctx, postB.card_name, CANVAS_W / 2, y, 900, NAME_SIZE, NAME_LINE_H, 2);
+
+          if (handleB) {
+            ctx.font = HANDLE_FONT;
+            ctx.fillStyle = '#f5c842';
+            y = _drawWrappedText(ctx, '@' + handleB, CANVAS_W / 2, y + NAME_TO_HANDLE_GAP, 900, HANDLE_SIZE, HANDLE_SIZE + 8, 1);
+          }
+
+          // Footer watermark — enlarged for legibility at share-image size
+          ctx.textAlign = 'center';
+          ctx.font = '700 44px "Bebas Neue", sans-serif';
+          ctx.fillStyle = '#f5c842';
+          ctx.fillText('CARDSHOW', CANVAS_W / 2, CANVAS_H - 68);
+          ctx.font = '400 26px "DM Sans", sans-serif';
           ctx.fillStyle = '#5a6585';
-          ctx.fillText('getcardshow.com', CANVAS_W / 2, CANVAS_H - 30);
+          ctx.fillText('getcardshow.com', CANVAS_W / 2, CANVAS_H - 34);
 
           canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('canvas export failed')), 'image/png');
         })
@@ -194,7 +222,13 @@
     ctx.restore();
   }
 
-  function _wrapText(ctx, text, cx, y, maxWidth, lineHeight) {
+  // Wraps text to maxWidth (up to maxLines), drawing each line top-anchored
+  // starting at topY, and returns the Y just below the last line drawn —
+  // callers chain this into the next element's position so nothing is ever
+  // placed at a fixed pixel that could collide with a longer-than-expected
+  // block above it (the original bug: a 2-line title drawn at a fixed Y
+  // that assumed a 1-line title, overlapping the swap icon below it).
+  function _drawWrappedText(ctx, text, cx, topY, maxWidth, fontSize, lineHeight, maxLines) {
     const words = String(text || '').split(' ');
     let line = '';
     const lines = [];
@@ -208,8 +242,9 @@
       }
     }
     if (line) lines.push(line);
-    const startY = y - ((lines.length - 1) * lineHeight) / 2;
-    lines.slice(0, 2).forEach((l, i) => ctx.fillText(l, cx, startY + i * lineHeight));
+    const drawn = lines.slice(0, maxLines || lines.length);
+    drawn.forEach((l, i) => ctx.fillText(l, cx, topY + fontSize * 0.8 + i * lineHeight));
+    return topY + drawn.length * lineHeight;
   }
 
   function _loadImage(src) {
