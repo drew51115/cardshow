@@ -29,6 +29,20 @@
     const iAmA = trade.trader_a_id === TZ.trader.id;
     const myConsent = iAmA ? trade.share_consent_a : trade.share_consent_b;
 
+    // A guest's `handle` is null until they either claim a full account
+    // (email+password, via tzSubmitClaim) or set one right here — the
+    // consent checkbox alone has nothing to show without one. Without
+    // this, checking "Show my handle" silently does nothing, which is
+    // exactly the bug this block fixes: the compositor was always
+    // passing null for a handle-less trader regardless of consent.
+    const handleRowHTML = !TZ.trader.handle ? `
+      <div class="tz-handle-row">
+        <input type="text" id="tzHandleInput_${trade.id}" placeholder="@yourhandle" maxlength="32">
+        <button onclick="TradeShare._setHandle('${trade.id}')">Set</button>
+      </div>
+      <div class="tz-handle-hint">Add a handle above to show it on the shared image</div>
+    ` : '';
+
     container.innerHTML = `
       <div class="tz-share-block">
         <label class="tz-consent-row">
@@ -36,6 +50,7 @@
                  onchange="TradeShare._toggleConsent('${trade.id}', this.checked)">
           Show my handle on the shared image
         </label>
+        ${handleRowHTML}
         <div class="tz-share-actions" id="tzShareActions_${trade.id}">
           <button class="tz-share-generate-btn" onclick="TradeShare._generateAndOpen('${trade.id}')">
             🎨 Generate Share Image
@@ -50,6 +65,27 @@
     if (trade.share_image_url) {
       _showGeneratedImage(trade.id, trade.share_image_url);
     }
+  }
+
+  async function _setHandle(tradeId) {
+    const input = document.getElementById(`tzHandleInput_${tradeId}`);
+    if (!input) return;
+    const handle = input.value.trim().replace(/^@/, '');
+    if (!handle) { tzToast('Enter a handle first', 'var(--danger, #ef4444)'); return; }
+
+    const { error } = await db.from('traders').update({ handle }).eq('id', TZ.trader.id);
+    if (error) { tzToast('Could not save handle: ' + error.message, 'var(--danger, #ef4444)'); return; }
+
+    TZ.trader.handle = handle;
+    tzToast('Handle saved!');
+
+    // Re-render this trade's share slot — the handle-set row disappears
+    // now that TZ.trader.handle is set, and if an image was already
+    // generated without a handle (like this exact bug report), the
+    // regenerate button in _showGeneratedImage lets them fix it.
+    const trade = TZ.myTrades.find(t => t.id === tradeId);
+    const slot = document.getElementById(`tzShareSlot_${tradeId}`);
+    if (trade && slot) renderShareSlot(slot, trade, TZ.postCache);
   }
 
   async function _toggleConsent(tradeId, consent) {
@@ -68,6 +104,7 @@
     const actionsEl = document.getElementById(`tzShareActions_${tradeId}`);
     const btn = actionsEl.querySelector('.tz-share-generate-btn');
     if (btn) { btn.disabled = true; btn.textContent = 'Generating…'; }
+    else tzToast('Regenerating…'); // called via the "Regenerate" link on an already-generated image, no button to relabel
 
     try {
       const postA = TZ.postCache[trade.post_a_id];
@@ -270,6 +307,7 @@
         <button onclick="TradeShare._share('${tradeId}', 'download')">⬇ Save Image</button>
         <button onclick="TradeShare._share('${tradeId}', 'copy_link')">🔗 Copy Link</button>
       </div>
+      <button class="tz-share-regenerate-btn" onclick="TradeShare._generateAndOpen('${tradeId}')">🔄 Regenerate</button>
     `;
     if (actionsEl) actionsEl.innerHTML = '';
     if (blob) el._blob = blob;
@@ -313,5 +351,5 @@
     }
   }
 
-  window.TradeShare = { renderShareSlot, _toggleConsent, _generateAndOpen, _share };
+  window.TradeShare = { renderShareSlot, _toggleConsent, _setHandle, _generateAndOpen, _share };
 })();
