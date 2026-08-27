@@ -2265,15 +2265,27 @@
 
   /* ── "The Drop" — post-sale share prompt bar ── */
   .drop-prompt-bar {
+    /* display:none (not a translateY-off-screen transform) while hidden —
+       a position:fixed element hidden only via transform is a known iOS
+       Safari touch hit-testing hazard: it can still intercept taps at its
+       original position instead of its transformed one, which is exactly
+       where this bar overlaps the Sell Drawer's Confirm Sale/Cancel
+       buttons. display:none is spec-guaranteed to never receive pointer
+       events, so there's no ambiguity. */
     position: fixed; left: 0; right: 0; bottom: 0;
     height: 48px; z-index: 970;
     background: var(--card); border-top: 1px solid var(--border);
-    display: flex; align-items: center; gap: 0.75rem;
+    display: none; align-items: center; gap: 0.75rem;
     padding: 0 1rem;
-    transform: translateY(100%);
-    transition: transform 0.25s ease;
   }
-  .drop-prompt-bar.visible { transform: translateY(0); }
+  .drop-prompt-bar.visible {
+    display: flex;
+    animation: dropPromptSlideUp 0.25s ease;
+  }
+  @keyframes dropPromptSlideUp {
+    from { transform: translateY(100%); }
+    to   { transform: translateY(0); }
+  }
   .drop-prompt-text {
     flex: 1; font-size: 0.85rem; color: var(--text);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -2287,9 +2299,6 @@
   .drop-prompt-dismiss {
     background: none; border: none; color: var(--muted);
     font-size: 1rem; cursor: pointer; padding: 0.25rem;
-  }
-  @media (max-width: 599px) {
-    .drop-prompt-bar { bottom: 0; }
   }
 
   /* ── "The Drop" — share card modal ── */
