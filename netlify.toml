@@ -1,7 +1,7 @@
 [build]
   # Substitute Supabase credentials from Netlify environment variables into HTML files.
   # Set SUPABASE_URL and SUPABASE_ANON_KEY in Netlify dashboard → Site settings → Environment variables.
-  command = "sed -i \"s|SUPABASE_URL_PLACEHOLDER|$SUPABASE_URL|g\" app.html show.html seller-browse.html && sed -i \"s|SUPABASE_ANON_KEY_PLACEHOLDER|$SUPABASE_ANON_KEY|g\" app.html show.html seller-browse.html"
+  command = "sed -i \"s|SUPABASE_URL_PLACEHOLDER|$SUPABASE_URL|g\" app.html show.html seller-browse.html trade-zone.html trade-board.html && sed -i \"s|SUPABASE_ANON_KEY_PLACEHOLDER|$SUPABASE_ANON_KEY|g\" app.html show.html seller-browse.html trade-zone.html trade-board.html"
   publish = "."
   functions = "netlify/functions"
 
@@ -9,6 +9,11 @@
   # Supabase anon/publishable keys are intentionally public — safe to appear in
   # built HTML files. Tell Netlify's secrets scanner to skip these two keys.
   SECRETS_SCAN_OMIT_KEYS = "SUPABASE_URL,SUPABASE_ANON_KEY"
+
+# Trade Zone: hourly expiry sweep — flips stale trade_posts rows to
+# 'expired' 1 day after their show's ends_at (never deletes rows).
+[functions."expire-trade-posts"]
+  schedule = "@hourly"
 
 # Disable pretty URLs globally — prevents Netlify from redirecting
 # show.html → /show which strips the URL hash fragment containing
