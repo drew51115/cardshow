@@ -1392,9 +1392,17 @@ venue/city — `card.PaymentMethod` is never referenced by either.
 
 ### Entry points
 1. **Post-sale prompt** — `showDropPrompt(card, showId)`, a 48px auto-dismissing (6s) bottom
-   bar (`#dropPromptBar`), fired from `sdConfirm()` (gated: only when the opt-in preference
-   is `'always'`) and from `confirmManualSale()` (gated: `'always'` or `'manual_only'`).
-   "Create Share Card" opens the modal; the dismiss `✕` or the 6s timeout just hides the bar.
+   bar (`#dropPromptBar`), fired from `sdConfirm()` and from `confirmManualSale()` (gated:
+   `'always'` or `'manual_only'`). `sdConfirm()` is shared by every Sell Drawer confirm,
+   including the one **Scan-to-Sell POS** hands off to (`posInsertAndOpenDrawer()` →
+   `openSellDrawer()`) — a POS sale is just as spontaneous/off-catalog as a Manual Sale
+   entry, unlike confirming a sale on a card that was already sitting in inventory, so
+   `posInsertAndOpenDrawer()` stamps `card._posOrigin = true` and `sdConfirm()`'s gate
+   treats that the same as a Manual Sale (`'always'` or `'manual_only'`) rather than
+   requiring `'always'` the way a plain pre-existing-inventory sale does. Without this, an
+   established seller (3+ shows → default `'manual_only'`) would never see the prompt after
+   a POS sale. "Create Share Card" opens the modal; the dismiss `✕` or the 6s timeout just
+   hides the bar.
 2. **Report tab** — a 📤 button in every `#rptTxBody` transaction-log row calls
    `openShareCardModal(inventory[idx])` directly, with no gating by the opt-in preference
    (that preference only controls the automatic post-sale prompt, not an explicit request).

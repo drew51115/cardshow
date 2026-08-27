@@ -9514,8 +9514,13 @@ function sdConfirm() {
   showToast(`✓ ${card.Player || 'Card'} · $${price.toLocaleString()} · ${sdSelectedPayment}`);
 
   // "The Drop" — post-sale share prompt. Gated by the opt-in preference;
-  // never fires for 'manual_only' or 'never' from this path.
-  if (getDropPromptPref() === 'always') {
+  // a POS-originated sale (card._posOrigin, set by posInsertAndOpenDrawer())
+  // is treated the same as a Manual Sale — both are spontaneous/off-catalog,
+  // unlike confirming a sale on a card that was already sitting in
+  // inventory — so it also fires on 'manual_only', not just 'always'.
+  // Never fires for 'never' from this path.
+  const dropPref = getDropPromptPref();
+  if (dropPref === 'always' || (dropPref === 'manual_only' && card._posOrigin)) {
     showDropPrompt(card, activeShowId);
   }
 }
@@ -10344,6 +10349,15 @@ async function posInsertAndOpenDrawer() {
 
   const card = validateAndNormalizeCard(rawCard);
   card._shows = new Set();
+
+  // Flags this card as POS-originated so sdConfirm() (below, shared with
+  // every other Sell Drawer confirm) treats its post-sale Drop prompt the
+  // same as a Manual Sale — a walk-up POS sale is just as spontaneous/
+  // off-catalog as a manual entry, unlike confirming a sale on a card that
+  // was already sitting in inventory. Without this, an established seller
+  // (default pref 'manual_only') would never see the prompt after a POS
+  // sale, even though that's exactly the kind of sale worth sharing.
+  card._posOrigin = true;
 
   // Recomputed from the final (possibly seller-edited) field values rather
   // than trusting the scan-time fingerprint — matches this app's existing
