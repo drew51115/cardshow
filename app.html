@@ -5590,29 +5590,54 @@
     </div>
     <div class="modal-body" style="display:flex;flex-direction:column;gap:0.9rem">
 
-      <canvas id="dropShareCanvas" class="drop-share-canvas" width="1080" height="1350"></canvas>
-
-      <div class="drop-style-picker" id="dropStylePicker">
-        <button type="button" class="drop-style-chip drop-style-dark"    data-style="dark"    onclick="_dropSetStyle('dark')">Dark</button>
-        <button type="button" class="drop-style-chip drop-style-light"   data-style="light"   onclick="_dropSetStyle('light')">Light</button>
-        <button type="button" class="drop-style-chip drop-style-minimal" data-style="minimal" onclick="_dropSetStyle('minimal')">Minimal</button>
-      </div>
-
-      <div>
-        <div class="drawer-field-label">Caption</div>
-        <textarea id="dropCaptionBody" class="drop-caption-textarea" rows="4" oninput="_dropUpdateCounters()"></textarea>
-        <div class="drop-caption-footer" id="dropCaptionFooter"></div>
-        <div class="drop-caption-counters">
-          <span id="dropCounterIG">0 / 2200 · Instagram</span>
-          <span id="dropCounterX">0 / 280 · X</span>
+      <!-- Photo step — required. Posts always include a picture, so nothing
+           below this is reachable until one is attached. -->
+      <div id="dropPhotoSection">
+        <div class="drawer-field-label">
+          Card Photo
+          <span style="color:#f87171;font-size:10px;margin-left:3px">required</span>
         </div>
+        <div class="msl-photo-buttons" id="dropPhotoButtons">
+          <button type="button" class="msl-photo-btn" onclick="_dropTriggerCamera()">📷 Take Photo</button>
+          <button type="button" class="msl-photo-btn" onclick="_dropTriggerLibrary()">🖼 Choose from Library</button>
+        </div>
+        <div class="profile-field-hint">A photo of the card makes the post — required before you can share</div>
       </div>
+      <input type="file" id="dropPhotoInput" accept="image/*" capture="environment"
+        style="display:none" onchange="_dropHandlePhoto(this)">
+      <input type="file" id="dropPhotoLibraryInput" accept="image/*"
+        style="display:none" onchange="_dropHandlePhoto(this)">
 
-      <div class="drop-share-actions">
-        <button type="button" class="btn btn-primary" style="flex:1" onclick="_dropCopyCaption()">📋 Copy Caption</button>
-        <button type="button" class="btn btn-ghost" style="flex:1" onclick="_dropDownloadImage()">⬇ Download Image</button>
+      <!-- Share body — hidden until a photo is attached -->
+      <div id="dropShareBody" style="display:none;flex-direction:column;gap:0.9rem">
+
+        <canvas id="dropShareCanvas" class="drop-share-canvas" width="1080" height="1350"></canvas>
+
+        <button type="button" class="msl-photo-retake-btn" onclick="_dropChangePhoto()">Change Photo</button>
+
+        <div class="drop-style-picker" id="dropStylePicker">
+          <button type="button" class="drop-style-chip drop-style-dark"    data-style="dark"    onclick="_dropSetStyle('dark')">Dark</button>
+          <button type="button" class="drop-style-chip drop-style-light"   data-style="light"   onclick="_dropSetStyle('light')">Light</button>
+          <button type="button" class="drop-style-chip drop-style-minimal" data-style="minimal" onclick="_dropSetStyle('minimal')">Minimal</button>
+        </div>
+
+        <div>
+          <div class="drawer-field-label">Caption</div>
+          <textarea id="dropCaptionBody" class="drop-caption-textarea" rows="4" oninput="_dropUpdateCounters()"></textarea>
+          <div class="drop-caption-footer" id="dropCaptionFooter"></div>
+          <div class="drop-caption-counters">
+            <span id="dropCounterIG">0 / 2200 · Instagram</span>
+            <span id="dropCounterX">0 / 280 · X</span>
+          </div>
+        </div>
+
+        <div class="drop-share-actions">
+          <button type="button" class="btn btn-primary" style="flex:1" onclick="_dropCopyCaption()">📋 Copy Caption</button>
+          <button type="button" class="btn btn-ghost" style="flex:1" onclick="_dropDownloadImage()">⬇ Download Image</button>
+        </div>
+        <button type="button" class="btn btn-ghost" id="dropNativeShareBtn" style="display:none;width:100%" onclick="_dropNativeShare()">📤 Share</button>
+
       </div>
-      <button type="button" class="btn btn-ghost" id="dropNativeShareBtn" style="display:none;width:100%" onclick="_dropNativeShare()">📤 Share</button>
 
     </div>
   </div>
@@ -9558,7 +9583,9 @@ function _dropVenueLabel(showId) {
 
 // ── Style picker + canvas renderer ──
 // Rendered fresh on every open/style change — no DB write, purely local.
-function renderShareCard(canvas, card, style, venueLabel) {
+// Async because a required card photo (see the photo-capture step below)
+// has to load before it can be drawn into the canvas.
+async function renderShareCard(canvas, card, style, venueLabel) {
   style = style || 'dark';
   const ctx = canvas.getContext('2d');
   const W = canvas.width, H = canvas.height;
@@ -9582,44 +9609,74 @@ function renderShareCard(canvas, card, style, venueLabel) {
 
   ctx.textAlign = 'center';
 
-  ctx.font = '700 40px "DM Mono", monospace';
+  ctx.font = '700 36px "DM Mono", monospace';
   ctx.fillStyle = t.accent;
-  ctx.fillText('SOLD', W / 2, 220);
+  ctx.fillText('SOLD', W / 2, 90);
 
-  ctx.font = '700 96px "Bebas Neue", sans-serif';
+  // Card photo — required (see _dropRenderReady()/openShareCardModal()),
+  // so this always has something to draw once rendering actually happens.
+  let y = 130;
+  if (card._dropPhotoDataUrl) {
+    const img = await _dropLoadImage(card._dropPhotoDataUrl);
+    const boxW = 560, boxH = 740;
+    const boxX = (W - boxW) / 2;
+    ctx.save();
+    ctx.fillStyle = 'rgba(255,255,255,0.03)';
+    ctx.strokeStyle = t.accent;
+    ctx.lineWidth = 3;
+    ctx.fillRect(boxX, y, boxW, boxH);
+    ctx.strokeRect(boxX, y, boxW, boxH);
+    const scale = Math.min(boxW / img.width, boxH / img.height);
+    const dw = img.width * scale, dh = img.height * scale;
+    const dx = boxX + (boxW - dw) / 2, dy = y + (boxH - dh) / 2;
+    ctx.drawImage(img, dx, dy, dw, dh);
+    ctx.restore();
+    y += boxH + 36;
+  }
+
+  ctx.font = '700 64px "Bebas Neue", sans-serif';
   ctx.fillStyle = t.text;
-  let y = _dropWrapText(ctx, card.Player || card['Card Title'] || 'Card', W / 2, 300, 920, 96, 100, 2);
+  y = _dropWrapText(ctx, card.Player || card['Card Title'] || 'Card', W / 2, y, 920, 64, 68, 2);
 
   const subParts = [
     [card.Year, card['Set ']].filter(Boolean).join(' ').trim(),
     card['Parallel/Variant'],
     (card.Grader && card.Grade != null) ? `${card.Grader} ${card.Grade}` : null,
   ].filter(Boolean);
-  ctx.font = '400 34px "DM Sans", sans-serif';
+  ctx.font = '400 28px "DM Sans", sans-serif';
   ctx.fillStyle = t.muted;
-  y = _dropWrapText(ctx, subParts.join(' · '), W / 2, y + 24, 900, 34, 44, 2);
+  y = _dropWrapText(ctx, subParts.join(' · '), W / 2, y + 16, 900, 28, 36, 2);
 
   // Price — the whole point of the card. Never draw card.PaymentMethod.
-  ctx.font = '700 140px "Bebas Neue", sans-serif';
+  ctx.font = '700 84px "Bebas Neue", sans-serif';
   ctx.fillStyle = t.accent;
-  const priceY = Math.max(y + 130, 800);
+  const priceY = y + 90;
   ctx.fillText('$' + Number(card.SoldPrice || card.Price || 0).toLocaleString(), W / 2, priceY);
 
   // Venue only — no payment method, ever.
   if (venueLabel) {
-    ctx.font = '400 32px "DM Sans", sans-serif';
+    ctx.font = '400 26px "DM Sans", sans-serif';
     ctx.fillStyle = t.muted;
-    ctx.fillText(venueLabel, W / 2, priceY + 55);
+    ctx.fillText(venueLabel, W / 2, priceY + 45);
   }
 
   if (t.showLabel) {
-    ctx.font = '700 40px "Bebas Neue", sans-serif';
+    ctx.font = '700 36px "Bebas Neue", sans-serif';
     ctx.fillStyle = t.accent;
-    ctx.fillText('CARDSHOW', W / 2, H - 90);
-    ctx.font = '400 24px "DM Sans", sans-serif';
+    ctx.fillText('CARDSHOW', W / 2, H - 80);
+    ctx.font = '400 22px "DM Sans", sans-serif';
     ctx.fillStyle = t.muted;
-    ctx.fillText('getcardshow.com', W / 2, H - 56);
+    ctx.fillText('getcardshow.com', W / 2, H - 50);
   }
+}
+
+function _dropLoadImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload  = () => resolve(img);
+    img.onerror = () => reject(new Error('Could not load card photo'));
+    img.src = src;
+  });
 }
 
 // Wraps text to maxWidth (up to maxLines), drawing each line top-anchored
@@ -9652,6 +9709,73 @@ function _dropSetStyle(style) {
   if (_dropPending) {
     renderShareCard(document.getElementById('dropShareCanvas'), _dropPending.card, style, _dropVenueLabel(_dropPending.showId));
   }
+}
+
+// ── Photo capture — required before a share card can be created ──
+// Client-side only, not persisted to Storage/DB (matches this app's
+// existing "photo used in-browser only, then discarded" convention for
+// card-identification photos — see Photo Scan & Card Fingerprinting).
+// Stored on the in-memory card object so it survives reopening the modal
+// for the same sale later in the same session (e.g. from the Report tab),
+// but is lost on page reload like every other in-memory-only field here.
+function _dropTriggerCamera()  { document.getElementById('dropPhotoInput').click(); }
+function _dropTriggerLibrary() { document.getElementById('dropPhotoLibraryInput').click(); }
+
+async function _dropHandlePhoto(inputEl) {
+  const file = inputEl.files?.[0];
+  if (!file) return;
+  inputEl.value = ''; // reset so the same photo can be retried
+
+  if (!_dropPending) return;
+  try {
+    _dropPending.card._dropPhotoDataUrl = await _readFileAsDataURL(file);
+    await _dropRenderReady();
+  } catch (e) {
+    console.error('[Drop photo]', e);
+    showToast('⚠️ Could not read that photo — try again', 'var(--danger)');
+  }
+}
+
+function _dropChangePhoto() {
+  if (!_dropPending) return;
+  delete _dropPending.card._dropPhotoDataUrl;
+  _dropShowPhotoStep();
+}
+
+function _dropShowPhotoStep() {
+  const photoSection = document.getElementById('dropPhotoSection');
+  const shareBody    = document.getElementById('dropShareBody');
+  if (photoSection) photoSection.style.display = 'block';
+  if (shareBody)    shareBody.style.display    = 'none';
+}
+
+// Renders the canvas + caption once a photo is attached, and reveals the
+// rest of the modal (style picker, caption, share actions) — none of
+// which are reachable without a photo first.
+async function _dropRenderReady() {
+  if (!_dropPending) return;
+  const card = _dropPending.card;
+  const venueLabel = _dropVenueLabel(_dropPending.showId);
+
+  // Render before revealing — the share actions (Download/Share in
+  // particular) read the canvas directly, so it must already be finished
+  // drawing before a seller can reach those buttons.
+  document.querySelectorAll('.drop-style-chip').forEach(b => b.classList.toggle('active', b.dataset.style === _dropStyle));
+  await renderShareCard(document.getElementById('dropShareCanvas'), card, _dropStyle, venueLabel);
+
+  const photoSection = document.getElementById('dropPhotoSection');
+  const shareBody    = document.getElementById('dropShareBody');
+  if (photoSection) photoSection.style.display = 'none';
+  if (shareBody)    shareBody.style.display    = 'flex';
+
+  const bodyEl = document.getElementById('dropCaptionBody');
+  if (bodyEl) bodyEl.value = generateCaptionBody(card, venueLabel);
+  const footerEl = document.getElementById('dropCaptionFooter');
+  if (footerEl) footerEl.textContent = generateCaptionFooter(card);
+  _dropUpdateCounters();
+
+  const nativeBtn = document.getElementById('dropNativeShareBtn');
+  if (nativeBtn) nativeBtn.style.display = (navigator.share && navigator.canShare) ? 'block' : 'none';
 }
 
 // ── Caption ──
@@ -9699,21 +9823,16 @@ function openShareCardModal(card, showId) {
   _dropPending = { card, showId: showId != null ? showId : (card._shows instanceof Set ? [...card._shows][0] : activeShowId) };
   _dropStyle = 'dark';
 
-  const venueLabel = _dropVenueLabel(_dropPending.showId);
-
-  document.querySelectorAll('.drop-style-chip').forEach(b => b.classList.toggle('active', b.dataset.style === 'dark'));
-  renderShareCard(document.getElementById('dropShareCanvas'), card, _dropStyle, venueLabel);
-
-  const bodyEl = document.getElementById('dropCaptionBody');
-  if (bodyEl) bodyEl.value = generateCaptionBody(card, venueLabel);
-  const footerEl = document.getElementById('dropCaptionFooter');
-  if (footerEl) footerEl.textContent = generateCaptionFooter(card);
-  _dropUpdateCounters();
-
-  const nativeBtn = document.getElementById('dropNativeShareBtn');
-  if (nativeBtn) nativeBtn.style.display = (navigator.share && navigator.canShare) ? 'block' : 'none';
-
   document.getElementById('shareCardOverlay')?.classList.add('open');
+
+  // A photo already attached earlier this session (e.g. reopening from the
+  // Report tab) skips straight to the share body; otherwise the photo step
+  // is required before anything else in the modal is reachable.
+  if (card._dropPhotoDataUrl) {
+    _dropRenderReady();
+  } else {
+    _dropShowPhotoStep();
+  }
 }
 
 function closeShareCardModal() {
@@ -16233,6 +16352,19 @@ const CARD_TO_DB = Object.fromEntries(
   Object.entries(DB_TO_CARD).map(([k, v]) => [v, k])
 );
 
+// Supabase/PostgREST returns PGRST204 ("Could not find the 'X' column of
+// 'Y' in the schema cache") when a payload key has no matching DB column —
+// expected pre-migration for fingerprint/detected_confidence (see "Pending
+// DB Migrations" in CLAUDE.md). Every insert/update path strips these two
+// keys and retries once on that specific error, so a sale or CSV import
+// never fails outright just because this migration hasn't run yet.
+function _isMissingScanColumnError(error) {
+  return !!error && (
+    error.code === 'PGRST204' ||
+    /column .*(fingerprint|detected_confidence).*schema cache/i.test(error.message || '')
+  );
+}
+
 function cardToDbRow(card) {
   return {
     card_title:   card['Card Title'] || '',
@@ -16838,8 +16970,14 @@ async function insertCardToDB(card, sellerIdOverride) {
     }
 
     const row = { ...cardToDbRow(card), seller_id: sellerId };
-    const { data, error } = await db
+    let { data, error } = await db
       .from('inventory').insert(row).select('id').maybeSingle();
+
+    if (error && _isMissingScanColumnError(error)) {
+      delete row.fingerprint;
+      delete row.detected_confidence;
+      ({ data, error } = await db.from('inventory').insert(row).select('id').maybeSingle());
+    }
 
     if (error) { console.warn('Insert failed:', error.message); return null; }
     return data.id; // return the UUID so we can store it on the card
@@ -16886,10 +17024,16 @@ async function updateCardInDB(card) {
       sale_notes:     card.SaleNotes     ?? null,
       sold_time:      card.SoldTime      ?? null,
     };
-    const { error } = await db
+    let { error } = await db
       .from('inventory')
       .update(payload)
       .eq('id', card._dbId);
+
+    if (error && _isMissingScanColumnError(error)) {
+      delete payload.fingerprint;
+      delete payload.detected_confidence;
+      ({ error } = await db.from('inventory').update(payload).eq('id', card._dbId));
+    }
 
     if (error) console.warn('Update failed:', error.message);
   } catch(e) {
@@ -17065,7 +17209,11 @@ async function upsertCardsToDB(cards) {
     // any concurrent insert from another tab/session.
     let insertedIds = [];
     if (toInsert.length) {
-      const { data: insertedRows, error } = await db.from('inventory').insert(toInsert).select('id');
+      let { data: insertedRows, error } = await db.from('inventory').insert(toInsert).select('id');
+      if (error && _isMissingScanColumnError(error)) {
+        toInsert.forEach(row => { delete row.fingerprint; delete row.detected_confidence; });
+        ({ data: insertedRows, error } = await db.from('inventory').insert(toInsert).select('id'));
+      }
       if (error) console.warn('Batch insert error:', error.message);
       else insertedIds = (insertedRows || []).map(r => r.id);
     }
@@ -17073,7 +17221,13 @@ async function upsertCardsToDB(cards) {
     // Update existing cards one at a time (Supabase upsert requires unique constraint)
     for (const row of toUpdate) {
       const { id, ...updates } = row;
-      await db.from('inventory').update(updates).eq('id', id);
+      let { error } = await db.from('inventory').update(updates).eq('id', id);
+      if (error && _isMissingScanColumnError(error)) {
+        delete updates.fingerprint;
+        delete updates.detected_confidence;
+        ({ error } = await db.from('inventory').update(updates).eq('id', id));
+      }
+      if (error) console.warn('Row update error:', error.message);
     }
 
     console.log(`Upserted ${toInsert.length} new + ${toUpdate.length} updated cards`);

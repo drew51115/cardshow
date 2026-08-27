@@ -929,8 +929,8 @@ If `insertCardToDB()` times out inside `posInsertAndOpenDrawer()`'s `Promise.rac
 - **Log a Manual Sale (session 2026-08-24)** — "+ Log a Manual Sale" button in the seller Report tab opens a Sell-Drawer-styled modal for recording off-platform sales. Writes through the same three layers a platform sale does (`inventory`, `show_inventory` via `_autoPublishCardToShow()`, `show_floor_transactions` via a dedicated `recordManualSaleTransaction(card, showId)` wrapper — not `recordShowTransaction()`, since that reads `activeShowId` as a global and a manual sale can target a past show). New `show_floor_transactions.source` column (`'platform'`/`'manual'`/`'community_report'`/`'social_extract'`) tags provenance; MANUAL badge shown in the transaction log via `card._manualSale`. Optional photo capture (camera or library) calls `vision-scan.js` directly (same pattern as `posHandlePhoto()`) to auto-fill Player/Year/Set/Parallel/Grade/Grader before the seller confirms. See "Log a Manual Sale" section above. **Requires the `show_floor_transactions.source` DB migration** (see above).
 - **Trading Card API integration (session 2026-08-18/19)** — `TRADING_CARD_API_KEY` went live; see "Trading Card API Integration" section above for full detail. `netlify/functions/tcapi.js` (generic proxy) + `tcapiGet()` helper. Add Card modal's old `#ac_search` free-text box replaced with a 4-step guided picker (player → set → card# → parallel) wired directly to the Player/Set/Card#/Parallel fields. Bulk scan review grid gained a background Trading Card API validation pass (VERIFYING/VERIFIED/UNVERIFIED badge per card, best-effort set/card#/parallel enrichment). Three real API constraints discovered, only the first two on the first pass — the third was found by reproducing a live UI failure end-to-end, not by re-reasoning about the first fix: (1) `filter[x]=` params are non-functional today (silently return the unfiltered collection) on both `/v1/cards` and `/v1/sets`; `trading-card-lookup.js`'s old `filter[name]` search was broken the same way, meaning `#ac_search` had been silently returning wrong results since the key went live — removing it fixed that exposure as a side effect. (2) `filter[player_id]` on `/v1/cards` is real and documented but too slow for interactive use (10s+, no fast alternative). (3) The plain `full_name=`/`name=` params only prefix-match a first-name token — a last-name token never prefix-matches at any length short of complete, and `/v1/sets?name=` has no partial matching at all — so player search reports a "still typing the last name" state instead of substituting an unrelated candidate list when a multi-word query comes up empty, and set search fetches+caches the whole 273-set catalog client-side instead of relying on the server to filter it. An earlier version of the player-search fix tried a first-word-only fallback, which silently showed unrelated players with nothing distinguishing them from real matches — worse than showing nothing, and cut once this was caught.
 - **Trade Zone (session 2026-08-25)** — guest-friendly show-floor trading, fully standalone from the rest of the platform (`trade_zone_shows`/`traders`/`trade_posts`/`trades`/`share_events` never touch `inventory`/`shows`/`show_sellers`/`show_inventory`). Anonymous Supabase Auth for zero-friction guest identity, client-side photo resize + Storage upload, a live board (`trade-board.html`, Realtime `postgres_changes`) plus an interactive personal board in `trade-zone.html`, two-sided trade propose/confirm funneled entirely through `SECURITY DEFINER` RPCs (not direct table writes — see "Trade Zone" section above for why), a client-side Canvas-composited branded share graphic with consent-gated handle display and Web Share API integration, OG-tagged social previews via `netlify/functions/trade-og.js`, and a claim flow that upgrades the anonymous session in place via `supabase.auth.updateUser()` (same `auth.uid()`, zero data migration). Every RLS policy and RPC — including the security-critical paths (forged-post rejection, direct-`trades`-update rejection, non-party confirm rejection, consent-gated handle exposure, share-image URL folder validation) — was verified against a real local Postgres instance with a minimal Supabase-shape stub before shipping. **Requires the `supabase/migrations/20260825120000_trade_zone.sql` migration** (schema, storage buckets, RLS, RPCs) and enabling Anonymous Sign-Ins in the Supabase dashboard (Authentication → Providers → Anonymous).
-- **Photo Scan & Card Fingerprinting (session 2026-08-27)** — new `netlify/functions/scan-card.js` (separate from `vision-scan.js` — its prompt distinguishes a graded slab's cert number from the card's own printed serial number, which the fingerprint depends on). Wired into Scan-to-Sell POS review and the Manual Sale modal's existing photo-capture buttons (not the literal Sell Drawer, which has no card-identity fields to autofill — see "Photo Scan & Card Fingerprinting" section above for that deviation). `computeCardFingerprint()` (cert+grader, or a SHA-256 composite fallback) + `checkDuplicateFingerprint()` (scoped to the seller's own inventory) flag a non-blocking "already in your inventory" warning. Low-confidence fields (<0.7) get a yellow `.scan-verify` border. Manual Sale modal gained a new Cert # field (`#mslCert`) it previously lacked. **Requires the `inventory.fingerprint`/`detected_confidence` DB migration** (see above) — degrades gracefully (no dupe warning, no error) if not yet run.
-- **"The Drop" — post-sale share card (session 2026-08-27)** — post-sale prompt bar (`sdConfirm()`/`confirmManualSale()`, gated by a `localStorage` opt-in preference set in the Profile modal) plus a 📤 button on every Report tab transaction row, both opening a share-card modal: three-style canvas renderer (Dark/Light/Minimal), an editable caption with a fixed CardShow-handle+hashtags footer appended after it, and copy/download/native-share actions. **Payment method is never drawn on the card image or included in the caption** — only price and venue. No new DB table or Storage bucket — fully client-side canvas compositing, matching `js/trade-share.js`'s conventions but duplicated rather than shared (no build step to share a module from). See "The Drop" section above for full detail.
+- **Photo Scan & Card Fingerprinting (session 2026-08-27)** — new `netlify/functions/scan-card.js` (separate from `vision-scan.js` — its prompt distinguishes a graded slab's cert number from the card's own printed serial number, which the fingerprint depends on). Wired into Scan-to-Sell POS review and the Manual Sale modal's existing photo-capture buttons (not the literal Sell Drawer, which has no card-identity fields to autofill — see "Photo Scan & Card Fingerprinting" section above for that deviation). `computeCardFingerprint()` (cert+grader, or a SHA-256 composite fallback) + `checkDuplicateFingerprint()` (scoped to the seller's own inventory) flag a non-blocking "already in your inventory" warning. Low-confidence fields (<0.7) get a yellow `.scan-verify` border. Manual Sale modal gained a new Cert # field (`#mslCert`) it previously lacked. **Requires the `inventory.fingerprint`/`detected_confidence` DB migration** (see above) — degrades gracefully (no dupe warning, no error, on every insert/update path via `_isMissingScanColumnError()`'s retry-without-those-columns fallback — see "Resilience to a not-yet-run migration" under "The Drop" below) if not yet run.
+- **"The Drop" — post-sale share card (session 2026-08-27)** — post-sale prompt bar (`sdConfirm()`/`confirmManualSale()`, gated by a `localStorage` opt-in preference set in the Profile modal) plus a 📤 button on every Report tab transaction row, both opening a share-card modal: a **required card photo step** (Take Photo/Choose from Library, client-side only) gates a three-style canvas renderer (Dark/Light/Minimal) that composites the photo into the card, an editable caption with a fixed CardShow-handle+hashtags footer appended after it, and copy/download/native-share actions. **Payment method is never drawn on the card image or included in the caption** — only price and venue. No new DB table or Storage bucket — fully client-side canvas compositing, matching `js/trade-share.js`'s conventions but duplicated rather than shared (no build step to share a module from). See "The Drop" section above for full detail.
 
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`
@@ -1401,13 +1401,38 @@ venue/city — `card.PaymentMethod` is never referenced by either.
    Works identically for sales logged before this feature shipped — `openShareCardModal()`
    never reads `card.Fingerprint` or anything else this feature might not have backfilled.
 
+### Card photo — required before a post can be created
+Every share card must include a photo of the card. `openShareCardModal()` checks
+`card._dropPhotoDataUrl`: if unset, `#dropPhotoSection` (📷 Take Photo / 🖼 Choose from
+Library, same dual-input `capture="environment"`-vs-not convention as POS/Manual Sale) is
+shown and `#dropShareBody` (canvas, style picker, caption, share actions) stays hidden —
+none of those are reachable without a photo first. `_dropHandlePhoto()` reads the file via
+the existing `_readFileAsDataURL()` helper (already used by the bulk-scan source-image
+lightbox) and stores the data URL directly on the in-memory card object, then calls
+`_dropRenderReady()` to render the canvas and reveal the share body. `_dropChangePhoto()`
+clears it and returns to the photo step.
+
+The photo is **client-side only, never uploaded to Storage or persisted to the DB** —
+matches this app's existing convention for card-identification photos (POS/Manual Sale/Add
+Card scanner) of using a photo in-browser only, then discarding it. Because it's stored on
+the card object itself (not a page-scoped variable), it does survive reopening the modal for
+the same sale later in the same session — e.g., tapping the Report tab's 📤 button for a
+sale you already added a photo to earlier — but is lost on page reload like every other
+in-memory-only field in this app (`_dbId`, `_shows`, etc.).
+
 ### Style picker + canvas renderer
 `renderShareCard(canvas, card, style, venueLabel)` — one function, three themes (`dark` /
-`light` / `minimal`), matching the spec's palette. Re-renders the same 1080×1350 canvas on
-every style-chip tap (`_dropSetStyle()`) — purely local, no DB write. `_dropWrapText()` is a
+`light` / `minimal`). Now `async`: when `card._dropPhotoDataUrl` is set it awaits
+`_dropLoadImage()` and draws the photo into a bordered, contain-fit box at the top of the
+card before drawing text (player, set/parallel/grade, price, venue, wordmark) below it —
+`_dropWrapText()`'s return value chains each block's Y position off the previous one so nothing
+overlaps regardless of photo/text lengths. Re-renders the same 1080×1350 canvas on every
+style-chip tap (`_dropSetStyle()`) — purely local, no DB write. `_dropWrapText()` is a
 small duplicated (not shared) canvas text-wrap helper, same convention as `js/trade-share.js`'s
 `_drawWrappedText()` — this app duplicates small canvas helpers across files/features rather
-than sharing a module, since there's no build step to share one from.
+than sharing a module, since there's no build step to share one from. `_dropRenderReady()`
+awaits the full render (photo load included) before revealing `#dropShareBody`, so Download/
+Share can never read a canvas that's still mid-draw.
 
 ### Caption
 Split into an editable body (`generateCaptionBody()`, the "Just sold this..." sentence) and
@@ -1435,7 +1460,9 @@ seller settings panel — there is no separate Settings page in this app.
 ### Key functions (app.html)
 - `showDropPrompt()` / `_dropPromptYes()` / `_dropPromptDismiss()`
 - `openShareCardModal(card, showId)` / `closeShareCardModal()`
-- `renderShareCard()` / `_dropSetStyle()` / `_dropWrapText()`
+- `_dropTriggerCamera()` / `_dropTriggerLibrary()` / `_dropHandlePhoto()` / `_dropChangePhoto()`
+  / `_dropShowPhotoStep()` / `_dropRenderReady()` — required-photo gate
+- `renderShareCard()` (async) / `_dropLoadImage()` / `_dropSetStyle()` / `_dropWrapText()`
 - `generateCaptionBody()` / `generateCaptionFooter()` / `_dropUpdateCounters()`
 - `_dropCopyCaption()` / `_dropDownloadImage()` / `_dropNativeShare()`
 - `getDropPromptPref()` / `getDropPromptDefault()` / `saveDropPref()` / `_dropGetSellerShowCount()`
@@ -1445,6 +1472,21 @@ seller settings panel — there is no separate Settings page in this app.
 `sdConfirm()`'s core sale-recording logic, `recordShowTransaction()`, `recordManualSaleTransaction()`,
 `updateReport()`'s stats (only the transaction-log row template gained a Share cell), RLS
 policies, no new Supabase tables or Storage buckets.
+
+### Resilience to a not-yet-run `fingerprint`/`detected_confidence` migration
+`cardToDbRow()` unconditionally includes `fingerprint`/`detected_confidence` in every
+insert/update payload. Before the "Pending DB Migrations" entry for those columns has been
+run on a given Supabase project, PostgREST rejects the **entire** write with `400
+PGRST204` ("Could not find the 'X' column … in the schema cache") — not just those two
+keys — which would otherwise silently break every sale confirmation (sold_price/
+payment_method never reach the inventory row) and CSV import, independent of whether Photo
+Scan was ever used. `_isMissingScanColumnError(error)` detects this specific error
+(`error.code === 'PGRST204'` or a message match), and `insertCardToDB()`, `updateCardInDB()`,
+and both write paths inside `upsertCardsToDB()` (batch insert + the per-row update loop)
+each strip `fingerprint`/`detected_confidence` from their payload and retry once on that
+error. Running the migration removes the need for the retry but the fallback stays cheap
+and permanent — no reason to special-case "migration not yet run" as a mode to detect and
+warn about.
 
 ## Trade Zone
 
