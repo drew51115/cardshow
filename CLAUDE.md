@@ -19,6 +19,7 @@ _redirects                        → Netlify routing rules
 netlify.toml                      → Disables pretty URLs (critical for show.html hash routing); functions = "netlify/functions"
 netlify/functions/psa-lookup.js   → Serverless: POST {cert, grader} → normalized card object (PSA + CGC APIs)
 netlify/functions/vision-scan.js         → Serverless: POST {image, mediaType} → normalized card object via Claude vision (Sprint 2)
+netlify/functions/scan-card.js           → Serverless: POST {image_base64, media_type} → structured card object + per-field 0-1 confidence, used by Photo Scan & Card Fingerprinting (Scan-to-Sell POS + Manual Sale modal); separate from vision-scan.js because this prompt distinguishes a slab's cert number from the card's own printed serial number
 netlify/functions/trading-card-lookup.js → Serverless: POST {query, sport?} → card search results from Trading Card API (Sprint 3); write-through cache via card_search_cache table (7-day TTL)
 netlify/functions/invalidate-search-cache.js → Serverless: POST {query} → deletes matching rows from card_search_cache; protected by x-invalidate-secret header
 netlify/functions/trade-og.js            → Serverless: GET /trade/:id → OG-tagged HTML for social crawlers, redirects humans into trade-zone.html (Trade Zone Phase 5)
@@ -50,7 +51,9 @@ shows         — id (text), name, date, location, status, access_code, publishe
 show_sellers  — show_id, seller_id (uuid → sellers.id), table_number (junction)
 inventory     — id (uuid), seller_id (uuid → sellers.id), card_title, player, year,
                 card_set, parallel, grader, grade, cert_number, condition, price,
-                status, location, item_type, product_type, created_at, updated_at
+                status, location, item_type, product_type, created_at, updated_at,
+                fingerprint (text, indexed — see "Pending DB Migrations"),
+                detected_confidence (jsonb — raw scan-card.js confidence object, audit trail only)
 show_inventory — show_id, card_id (junction)
 admins        — id (uuid PRIMARY KEY REFERENCES auth.users) — admin identity gate
 show_floor_transactions — id (uuid), created_at, sold_at (timestamptz),
@@ -115,6 +118,15 @@ UPDATE shows SET created_by = '<your-admin-uuid>' WHERE created_by IS NULL;
 CREATE INDEX IF NOT EXISTS shows_created_by_idx ON shows (created_by);
 ```
 After migration, `loadShowsFromDB()` filters `WHERE created_by = _currentAdminUid` so each admin only sees their own shows. `showToDbRow()` stamps `created_by` on every upsert. `window._currentAdminUid` is set on admin login and cleared on sign-out.
+
+Required for Photo Scan & Card Fingerprinting (duplicate detection — see that section below):
+```sql
+ALTER TABLE inventory
+  ADD COLUMN IF NOT EXISTS fingerprint          text,
+  ADD COLUMN IF NOT EXISTS detected_confidence  jsonb;
+CREATE INDEX IF NOT EXISTS idx_inventory_fingerprint ON inventory (fingerprint);
+```
+`cert_number` already existed on `inventory` before this migration (see schema above) — only `fingerprint` and `detected_confidence` are new. Until this migration runs, `checkDuplicateFingerprint()`'s `.eq('fingerprint', …)` query 404s/errors on the missing column; the function catches that and returns `null` (no warning shown), so the feature degrades gracefully rather than blocking a sale.
 
 ## Key Data Structures (in-memory runtime cache)
 ```js
@@ -917,6 +929,8 @@ If `insertCardToDB()` times out inside `posInsertAndOpenDrawer()`'s `Promise.rac
 - **Log a Manual Sale (session 2026-08-24)** — "+ Log a Manual Sale" button in the seller Report tab opens a Sell-Drawer-styled modal for recording off-platform sales. Writes through the same three layers a platform sale does (`inventory`, `show_inventory` via `_autoPublishCardToShow()`, `show_floor_transactions` via a dedicated `recordManualSaleTransaction(card, showId)` wrapper — not `recordShowTransaction()`, since that reads `activeShowId` as a global and a manual sale can target a past show). New `show_floor_transactions.source` column (`'platform'`/`'manual'`/`'community_report'`/`'social_extract'`) tags provenance; MANUAL badge shown in the transaction log via `card._manualSale`. Optional photo capture (camera or library) calls `vision-scan.js` directly (same pattern as `posHandlePhoto()`) to auto-fill Player/Year/Set/Parallel/Grade/Grader before the seller confirms. See "Log a Manual Sale" section above. **Requires the `show_floor_transactions.source` DB migration** (see above).
 - **Trading Card API integration (session 2026-08-18/19)** — `TRADING_CARD_API_KEY` went live; see "Trading Card API Integration" section above for full detail. `netlify/functions/tcapi.js` (generic proxy) + `tcapiGet()` helper. Add Card modal's old `#ac_search` free-text box replaced with a 4-step guided picker (player → set → card# → parallel) wired directly to the Player/Set/Card#/Parallel fields. Bulk scan review grid gained a background Trading Card API validation pass (VERIFYING/VERIFIED/UNVERIFIED badge per card, best-effort set/card#/parallel enrichment). Three real API constraints discovered, only the first two on the first pass — the third was found by reproducing a live UI failure end-to-end, not by re-reasoning about the first fix: (1) `filter[x]=` params are non-functional today (silently return the unfiltered collection) on both `/v1/cards` and `/v1/sets`; `trading-card-lookup.js`'s old `filter[name]` search was broken the same way, meaning `#ac_search` had been silently returning wrong results since the key went live — removing it fixed that exposure as a side effect. (2) `filter[player_id]` on `/v1/cards` is real and documented but too slow for interactive use (10s+, no fast alternative). (3) The plain `full_name=`/`name=` params only prefix-match a first-name token — a last-name token never prefix-matches at any length short of complete, and `/v1/sets?name=` has no partial matching at all — so player search reports a "still typing the last name" state instead of substituting an unrelated candidate list when a multi-word query comes up empty, and set search fetches+caches the whole 273-set catalog client-side instead of relying on the server to filter it. An earlier version of the player-search fix tried a first-word-only fallback, which silently showed unrelated players with nothing distinguishing them from real matches — worse than showing nothing, and cut once this was caught.
 - **Trade Zone (session 2026-08-25)** — guest-friendly show-floor trading, fully standalone from the rest of the platform (`trade_zone_shows`/`traders`/`trade_posts`/`trades`/`share_events` never touch `inventory`/`shows`/`show_sellers`/`show_inventory`). Anonymous Supabase Auth for zero-friction guest identity, client-side photo resize + Storage upload, a live board (`trade-board.html`, Realtime `postgres_changes`) plus an interactive personal board in `trade-zone.html`, two-sided trade propose/confirm funneled entirely through `SECURITY DEFINER` RPCs (not direct table writes — see "Trade Zone" section above for why), a client-side Canvas-composited branded share graphic with consent-gated handle display and Web Share API integration, OG-tagged social previews via `netlify/functions/trade-og.js`, and a claim flow that upgrades the anonymous session in place via `supabase.auth.updateUser()` (same `auth.uid()`, zero data migration). Every RLS policy and RPC — including the security-critical paths (forged-post rejection, direct-`trades`-update rejection, non-party confirm rejection, consent-gated handle exposure, share-image URL folder validation) — was verified against a real local Postgres instance with a minimal Supabase-shape stub before shipping. **Requires the `supabase/migrations/20260825120000_trade_zone.sql` migration** (schema, storage buckets, RLS, RPCs) and enabling Anonymous Sign-Ins in the Supabase dashboard (Authentication → Providers → Anonymous).
+- **Photo Scan & Card Fingerprinting (session 2026-08-27)** — new `netlify/functions/scan-card.js` (separate from `vision-scan.js` — its prompt distinguishes a graded slab's cert number from the card's own printed serial number, which the fingerprint depends on). Wired into Scan-to-Sell POS review and the Manual Sale modal's existing photo-capture buttons (not the literal Sell Drawer, which has no card-identity fields to autofill — see "Photo Scan & Card Fingerprinting" section above for that deviation). `computeCardFingerprint()` (cert+grader, or a SHA-256 composite fallback) + `checkDuplicateFingerprint()` (scoped to the seller's own inventory) flag a non-blocking "already in your inventory" warning. Low-confidence fields (<0.7) get a yellow `.scan-verify` border. Manual Sale modal gained a new Cert # field (`#mslCert`) it previously lacked. **Requires the `inventory.fingerprint`/`detected_confidence` DB migration** (see above) — degrades gracefully (no dupe warning, no error) if not yet run.
+- **"The Drop" — post-sale share card (session 2026-08-27)** — post-sale prompt bar (`sdConfirm()`/`confirmManualSale()`, gated by a `localStorage` opt-in preference set in the Profile modal) plus a 📤 button on every Report tab transaction row, both opening a share-card modal: three-style canvas renderer (Dark/Light/Minimal), an editable caption with a fixed CardShow-handle+hashtags footer appended after it, and copy/download/native-share actions. **Payment method is never drawn on the card image or included in the caption** — only price and venue. No new DB table or Storage bucket — fully client-side canvas compositing, matching `js/trade-share.js`'s conventions but duplicated rather than shared (no build step to share a module from). See "The Drop" section above for full detail.
 
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`
@@ -1261,6 +1275,176 @@ this feature calls it as-is and never modifies it.
 `recordShowTransaction()` · `sdConfirm()` · `openSellDrawer()` / `closeSellDrawer()` ·
 `publishShowInventoryToDB()` · organizer analytics functions · any Netlify function ·
 RLS policies. `updateReport()` changes only the single `<td>` player-name cell.
+
+## Photo Scan & Card Fingerprinting
+
+Lets a seller photograph a single card during **Scan-to-Sell POS** or the **Manual Sale
+modal** to auto-fill its details, and computes a fingerprint per scan so a likely-duplicate
+(the same card already in the seller's inventory) can be flagged non-blockingly. This is a
+separate capability from the existing Add Card modal cert scanner (`vision-scan.js`,
+`_callVisionScan()`, `fillFormFromVision()`) — those are untouched.
+
+### Why a separate Netlify function (`scan-card.js`), not vision-scan.js
+`vision-scan.js`'s prompt returns a single ambiguous `certNumber` field with no instruction
+distinguishing a graded slab's cert number from the card's own printed serial (e.g. "45/99")
+— those are frequently confused, and this feature's fingerprint depends on getting the
+distinction right (cert number + grading company is the strong fingerprint key). `scan-card.js`
+explicitly separates `cert_number` from `parallel_serial` in its prompt and confidence
+shape. It also returns numeric 0.0-1.0 confidence per field (not vision-scan.js's
+high/medium/low strings) — `_scanOverallConfidence()` / `_scanFlagConfidence()` work off
+that scale, with `SCAN_CARD_CONFIDENCE_THRESHOLD = 0.7`.
+
+`scan-card.js`'s JSON shape also includes `card_number` — a bonus field beyond the original
+feature spec, added because Scan-to-Sell POS's review form already has a Card # field every
+other identification path in this app fills, and dropping it would be a real regression.
+`card_number` plays no part in `computeCardFingerprint()`.
+
+### UX — deviation from "the sell drawer, above the manual entry fields"
+The literal Sell Drawer (`sellDrawerOverlay` / `sdConfirm()`) only captures price + payment
+for a card **already in inventory** — it has no player/set/grade fields to autofill at all,
+so a "Scan Card" button there would have nothing to do. **Scan-to-Sell POS**
+(`posOverlay`/`posReviewPhase`) is this app's actual "sell flow with manual entry fields" —
+it already chains photo → identify → review → the real sell drawer — so this feature's
+scan capability lives there instead, reusing the existing "Take Photo" / "Choose from
+Library" buttons (`posTriggerCamera()`/`posTriggerLibrary()`) rather than adding a
+redundant third button. The Manual Sale modal already had its own photo-scan buttons for
+the same reason — both were repointed at `scan-card.js` (see below) rather than adding new UI.
+
+### Client flow (both POS review and Manual Sale modal)
+```
+Tap "Take Photo" / "Choose from Library" (existing buttons — capture="environment" vs. not)
+  ↓
+_scanCardCompressImage(file) — canvas resize, max 1600px long edge, JPEG q=0.85
+  (larger than the Add Card scanner's/POS's old 1024px cap — grading-label cert-number
+  text needs more resolution to stay legible at that field's size on the card)
+  ↓
+POST base64 to /.netlify/functions/scan-card
+  ↓
+Response: { success, card: { player_name, year, set_name, subset, card_number,
+  parallel_name, parallel_serial, autograph, grading_company, grade, cert_number,
+  confidence: { player_name, year, set_name, grade, cert_number } } }
+  ↓
+Form auto-fills (posShowReview() / _mslApplyVisionResult()) — parallel_serial and an
+  Auto flag are folded into the free-text Parallel field, matching how that field already
+  conflates variant info everywhere else in this app (e.g. "Gold Refractor Auto")
+  ↓
+_scanFlagConfidence(el, confidenceValue) — yellow .scan-verify border + "please verify"
+  title tooltip on any filled field whose confidence is < 0.7 or missing. Cleared on focus.
+  Never silently trusts a low-confidence guess without the seller seeing it flagged.
+  ↓
+computeCardFingerprint(card) → checkDuplicateFingerprint(fingerprint)
+  → _scanRenderDupeWarning() — non-blocking "This looks like a card already in your
+  inventory (added [date])" banner. Seller can always proceed anyway — re-scans and
+  previously-sold/re-consigned cards are legitimate.
+```
+
+### Fingerprint
+`computeCardFingerprint(card)` (app.html) — cert number + grading company is the strong,
+preferred fingerprint (`"{GRADER}-{CERT}"`, uppercased); falls back to a SHA-256 digest of
+`year|set_name|subset|parallel_name|parallel_serial|player_name` (lowercased, whitespace
+stripped) for raw cards or illegible labels. Returns `null` if neither branch has anything
+usable — never fingerprints an empty card.
+
+Computed **twice** per card, deliberately: once immediately after the scan (for the
+duplicate-check banner, using the raw scan response) and again at insert/confirm time from
+the **final, possibly seller-edited** DOM field values (for the fingerprint actually
+persisted to the row) — matching this app's existing "read live DOM, not the original scan
+snapshot" convention (see the bulk-scan correction pass). The scan-time fingerprint is
+never itself written to the database.
+
+`checkDuplicateFingerprint(fingerprint)` — scoped to the **current seller's own inventory**
+only (`seller_id` + `fingerprint` match); a fingerprint match on a different seller's card
+isn't a duplicate this seller needs to know about. Degrades to `null` (no warning, no
+error surfaced) if the `fingerprint` column doesn't exist yet, `db` is unavailable, or the
+query otherwise fails — see the migration note above.
+
+### DB persistence
+`fingerprint` and `detected_confidence` flow through `cardToDbRow()`/`dbRowToCard()` exactly
+like every other card field (`card.Fingerprint` / `card.DetectedConfidence` in memory).
+`detected_confidence` is a pure audit trail of the raw scan response's confidence object —
+it is set only when a scan actually ran (`null` for manually-typed cards) and plays no role
+in any current UI; it exists for future analysis of scan accuracy. Both columns require the
+migration above — until it's run, inserts/updates simply write `null` for cards without it
+(no error), and existing pre-migration rows read back as `Fingerprint: null` — the Report
+tab's share button (see "The Drop" below) works identically with or without a fingerprint.
+
+### Key functions (app.html)
+- `_scanCardCompressImage(file)` — canvas resize/compress, shared by both entry points
+- `computeCardFingerprint(card)` / `checkDuplicateFingerprint(fingerprint)`
+- `_scanOverallConfidence(card)` / `_scanFlagConfidence(el, confidenceValue)`
+- `_scanRenderDupeWarning(containerEl, dupe)`
+- `posHandlePhoto()` / `posShowReview()` — POS review phase, `#posDupeWarning` banner
+- `mslHandlePhoto()` / `_mslApplyVisionResult()` — Manual Sale modal, `#mslDupeWarning`
+  banner, new `#mslCert` field (the modal previously had no cert-number input at all)
+
+## "The Drop" — post-sale share card
+
+Lets a seller generate a branded, shareable graphic + caption immediately after confirming
+a sale (Sell Drawer or Manual Sale), or later from the Report tab's transaction log. Fully
+client-side canvas compositing, no Storage upload and no new DB table — the image is
+downloaded/shared directly from the browser, not persisted server-side.
+
+**Payment method is never drawn on the card image or included in the caption** — only price
+and venue. This was called out explicitly because the card visual's price line originally
+read `"$4,800 / CASH · Long Beach"`-shaped output in the design spec; `renderShareCard()`
+and `generateCaptionBody()` both draw only from `card.SoldPrice`/`card.Price` and the show's
+venue/city — `card.PaymentMethod` is never referenced by either.
+
+### Entry points
+1. **Post-sale prompt** — `showDropPrompt(card, showId)`, a 48px auto-dismissing (6s) bottom
+   bar (`#dropPromptBar`), fired from `sdConfirm()` (gated: only when the opt-in preference
+   is `'always'`) and from `confirmManualSale()` (gated: `'always'` or `'manual_only'`).
+   "Create Share Card" opens the modal; the dismiss `✕` or the 6s timeout just hides the bar.
+2. **Report tab** — a 📤 button in every `#rptTxBody` transaction-log row calls
+   `openShareCardModal(inventory[idx])` directly, with no gating by the opt-in preference
+   (that preference only controls the automatic post-sale prompt, not an explicit request).
+   Works identically for sales logged before this feature shipped — `openShareCardModal()`
+   never reads `card.Fingerprint` or anything else this feature might not have backfilled.
+
+### Style picker + canvas renderer
+`renderShareCard(canvas, card, style, venueLabel)` — one function, three themes (`dark` /
+`light` / `minimal`), matching the spec's palette. Re-renders the same 1080×1350 canvas on
+every style-chip tap (`_dropSetStyle()`) — purely local, no DB write. `_dropWrapText()` is a
+small duplicated (not shared) canvas text-wrap helper, same convention as `js/trade-share.js`'s
+`_drawWrappedText()` — this app duplicates small canvas helpers across files/features rather
+than sharing a module, since there's no build step to share one from.
+
+### Caption
+Split into an editable body (`generateCaptionBody()`, the "Just sold this..." sentence) and
+a fixed footer (`generateCaptionFooter()` — "Tracked on @cardshow.io" + a player hashtag +
+core hashtags) that is appended after the editable `<textarea>`, never merged into it — so
+CardShow's handle and hashtags persist even if the seller rewrites their own caption text.
+`_dropUpdateCounters()` shows two live character counters (Instagram 2200, X 280) against
+the **combined** body+footer length, turning red past each platform's limit.
+
+### Actions
+`_dropCopyCaption()` (clipboard), `_dropDownloadImage()` (canvas → PNG blob → download
+anchor), `_dropNativeShare()` (Web Share API with the PNG as a file, when
+`navigator.share`/`canShare` exist — the button is hidden otherwise, same feature-detection
+pattern as `js/trade-share.js`'s share row).
+
+### Opt-in preference
+Device-level via `localStorage` (`dropPromptPref`), no DB column — same pattern as every
+other client-only preference in this app. Three values: `'always'` / `'manual_only'` /
+`'never'`. `getDropPromptDefault()` returns `'manual_only'` once a seller has been
+authorized for 3+ shows (`_dropGetSellerShowCount()`), `'always'` otherwise — an established
+seller is assumed to already know the feature exists. Radio group lives in the Profile
+modal (`#dropPrefGroup`, synced on `openProfile()`), CardShow's closest existing analog to a
+seller settings panel — there is no separate Settings page in this app.
+
+### Key functions (app.html)
+- `showDropPrompt()` / `_dropPromptYes()` / `_dropPromptDismiss()`
+- `openShareCardModal(card, showId)` / `closeShareCardModal()`
+- `renderShareCard()` / `_dropSetStyle()` / `_dropWrapText()`
+- `generateCaptionBody()` / `generateCaptionFooter()` / `_dropUpdateCounters()`
+- `_dropCopyCaption()` / `_dropDownloadImage()` / `_dropNativeShare()`
+- `getDropPromptPref()` / `getDropPromptDefault()` / `saveDropPref()` / `_dropGetSellerShowCount()`
+- `_dropVenueLabel(showId)` — reads `shows[showId].venue || .city || .location`
+
+### Does not change
+`sdConfirm()`'s core sale-recording logic, `recordShowTransaction()`, `recordManualSaleTransaction()`,
+`updateReport()`'s stats (only the transaction-log row template gained a Share cell), RLS
+policies, no new Supabase tables or Storage buckets.
 
 ## Trade Zone
 
