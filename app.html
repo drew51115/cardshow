@@ -9605,14 +9605,25 @@ async function renderShareCard(canvas, card, style, venueLabel) {
   const W = canvas.width, H = canvas.height;
 
   const themes = {
-    dark:    { bg: '#07080C', text: '#FFFFFF', muted: 'rgba(255,255,255,0.55)', accent: '#D4AF37', showLabel: true,  border: true  },
-    light:   { bg: '#FFFFFF', text: '#111111', muted: 'rgba(17,17,17,0.55)',    accent: '#B8860B', showLabel: true,  border: true  },
-    minimal: { bg: '#000000', text: '#FFFFFF', muted: 'rgba(255,255,255,0.6)',  accent: '#FFFFFF', showLabel: false, border: false },
+    dark:    { bg: '#07080C', text: '#FFFFFF', muted: 'rgba(255,255,255,0.55)', accent: '#D4AF37', showLabel: true,  border: true,  goldBg: true  },
+    light:   { bg: '#FFFFFF', text: '#111111', muted: 'rgba(17,17,17,0.55)',    accent: '#B8860B', showLabel: true,  border: true,  goldBg: false },
+    minimal: { bg: '#000000', text: '#FFFFFF', muted: 'rgba(255,255,255,0.6)',  accent: '#FFFFFF', showLabel: false, border: false, goldBg: false },
   };
   const t = themes[style] || themes.dark;
 
   ctx.clearRect(0, 0, W, H);
-  ctx.fillStyle = t.bg;
+  if (t.goldBg) {
+    // Black-and-gold radial glow, centered where the hero price sits, so
+    // the background itself pops on a feed scroll instead of reading as
+    // flat black — fades back to the theme's base color at the edges.
+    const grad = ctx.createRadialGradient(W / 2, H * 0.52, 0, W / 2, H * 0.52, W * 0.85);
+    grad.addColorStop(0,    '#3a2905');
+    grad.addColorStop(0.45, '#160f02');
+    grad.addColorStop(1,    t.bg);
+    ctx.fillStyle = grad;
+  } else {
+    ctx.fillStyle = t.bg;
+  }
   ctx.fillRect(0, 0, W, H);
 
   if (t.border) {
@@ -9623,16 +9634,18 @@ async function renderShareCard(canvas, card, style, venueLabel) {
 
   ctx.textAlign = 'center';
 
-  ctx.font = '700 36px "DM Mono", monospace';
+  // "SOLD" + price are the hero figures on this card — sized well above
+  // everything else so they read first on a feed scroll.
+  ctx.font = '700 52px "DM Mono", monospace';
   ctx.fillStyle = t.accent;
-  ctx.fillText('SOLD', W / 2, 90);
+  ctx.fillText('SOLD', W / 2, 100);
 
   // Card photo — required (see _dropRenderReady()/openShareCardModal()),
   // so this always has something to draw once rendering actually happens.
-  let y = 130;
+  let y = 150;
   if (card._dropPhotoDataUrl) {
     const img = await _dropLoadImage(card._dropPhotoDataUrl);
-    const boxW = 560, boxH = 740;
+    const boxW = 520, boxH = 660;
     const boxX = (W - boxW) / 2;
     ctx.save();
     ctx.fillStyle = 'rgba(255,255,255,0.03)';
@@ -9648,39 +9661,42 @@ async function renderShareCard(canvas, card, style, venueLabel) {
     y += boxH + 36;
   }
 
-  ctx.font = '700 64px "Bebas Neue", sans-serif';
+  ctx.font = '700 56px "Bebas Neue", sans-serif';
   ctx.fillStyle = t.text;
-  y = _dropWrapText(ctx, card.Player || card['Card Title'] || 'Card', W / 2, y, 920, 64, 68, 2);
+  y = _dropWrapText(ctx, card.Player || card['Card Title'] || 'Card', W / 2, y, 920, 56, 60, 2);
 
   const subParts = [
     [card.Year, card['Set ']].filter(Boolean).join(' ').trim(),
     card['Parallel/Variant'],
     (card.Grader && card.Grade != null) ? `${card.Grader} ${card.Grade}` : null,
   ].filter(Boolean);
-  ctx.font = '400 28px "DM Sans", sans-serif';
+  ctx.font = '400 26px "DM Sans", sans-serif';
   ctx.fillStyle = t.muted;
-  y = _dropWrapText(ctx, subParts.join(' · '), W / 2, y + 16, 900, 28, 36, 2);
+  // Single line here (not wrapped to 2) — keeps the layout budget
+  // predictable now that the price below is much larger and needs the room.
+  y = _dropWrapText(ctx, subParts.join(' · '), W / 2, y + 14, 900, 26, 34, 1);
 
-  // Price — the whole point of the card. Never draw card.PaymentMethod.
-  ctx.font = '700 84px "Bebas Neue", sans-serif';
+  // Price — the hero number on the card, and the whole point of the sale.
+  // Never draw card.PaymentMethod.
+  ctx.font = '700 150px "Bebas Neue", sans-serif';
   ctx.fillStyle = t.accent;
-  const priceY = y + 90;
+  const priceY = y + 150;
   ctx.fillText('$' + Number(card.SoldPrice || card.Price || 0).toLocaleString(), W / 2, priceY);
 
   // Venue only — no payment method, ever.
   if (venueLabel) {
     ctx.font = '400 26px "DM Sans", sans-serif';
     ctx.fillStyle = t.muted;
-    ctx.fillText(venueLabel, W / 2, priceY + 45);
+    ctx.fillText(venueLabel, W / 2, priceY + 55);
   }
 
   if (t.showLabel) {
-    ctx.font = '700 36px "Bebas Neue", sans-serif';
+    ctx.font = '700 56px "Bebas Neue", sans-serif';
     ctx.fillStyle = t.accent;
     ctx.fillText('CARDSHOW', W / 2, H - 80);
-    ctx.font = '400 22px "DM Sans", sans-serif';
+    ctx.font = '400 24px "DM Sans", sans-serif';
     ctx.fillStyle = t.muted;
-    ctx.fillText('getcardshow.com', W / 2, H - 50);
+    ctx.fillText('getcardshow.com', W / 2, H - 42);
   }
 }
 
