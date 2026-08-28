@@ -5700,15 +5700,15 @@
           </div>
           <div style="font-family:'Bebas Neue',sans-serif;font-size:1rem;letter-spacing:0.06em;color:#f5c842;margin-bottom:0.4rem">SCAN TO BROWSE ALL INVENTORY</div>
           <div style="background:#1a1a1a;border-radius:6px;padding:0.35rem 0.9rem;display:inline-block;font-family:'DM Mono',monospace;font-size:0.85rem;font-weight:700;letter-spacing:0.14em;color:#f5c842;margin-bottom:0.7rem" id="saqSgnCode">CODE</div>
-          <div style="display:flex;justify-content:center;gap:1.5rem;border-top:1px solid #222;padding-top:0.7rem">
-            <div>
-              <div style="font-family:'Bebas Neue',sans-serif;font-size:1.5rem;color:#f5c842;line-height:1" id="saqSgnCardCount">0</div>
-              <div style="font-size:0.6rem;color:#777;font-family:'DM Mono',monospace;letter-spacing:0.06em;text-transform:uppercase">Cards</div>
-            </div>
-            <div>
-              <div style="font-family:'Bebas Neue',sans-serif;font-size:1.5rem;color:#f5c842;line-height:1" id="saqSgnSellerCount">0</div>
-              <div style="font-size:0.6rem;color:#777;font-family:'DM Mono',monospace;letter-spacing:0.06em;text-transform:uppercase">Sellers</div>
-            </div>
+          <!-- Cards/Sellers counts intentionally not shown on entrance signage —
+               it's meant to be printed and posted at the door before the show's
+               inventory is even fully known; kept for the Marketing tab (saqMkt*)
+               only. These two elements stay in the DOM (hidden) since
+               openShowAccessQr()/its DB-count callback still populate them
+               unconditionally for both tabs. -->
+          <div style="display:none">
+            <span id="saqSgnCardCount">0</span>
+            <span id="saqSgnSellerCount">0</span>
           </div>
         </div>
       </div>
@@ -11696,8 +11696,6 @@ function _downloadSignageComposite(slug) {
   const showName = (document.getElementById('saqSgnName') || {}).textContent || (show ? show.name : 'SHOW NAME');
   const meta     = (document.getElementById('saqSgnMeta') || {}).textContent || '';
   const code     = (document.getElementById('saqSgnCode') || {}).textContent || '';
-  const cards    = (document.getElementById('saqSgnCardCount') || {}).textContent || '0';
-  const sellers  = (document.getElementById('saqSgnSellerCount') || {}).textContent || '0';
 
   const SCALE = 2;
   const W = 480, PAD = 48;
@@ -11721,22 +11719,36 @@ function _downloadSignageComposite(slug) {
   if (line) nameLines.push(line);
   const nameH = nameLines.length * 50 * SCALE;
 
+  // Measure meta (date · location) the same way — it was previously drawn
+  // as a single unwrapped fillText() call, so a long location silently ran
+  // past the canvas edge and got clipped (never actually cut the string,
+  // just rendered off-canvas). Wrapping it fixes that regardless of length.
+  tmpX.font = `${14 * SCALE}px 'DM Mono', monospace`;
+  const metaLines = [];
+  const metaWords = meta.split(' ');
+  let mline = '';
+  for (const w of metaWords) {
+    const test = mline ? mline + ' ' + w : w;
+    if (tmpX.measureText(test).width > (W * SCALE - PAD * SCALE * 2)) {
+      if (mline) metaLines.push(mline);
+      mline = w;
+    } else { mline = test; }
+  }
+  if (mline) metaLines.push(mline);
+  const META_LINE_H = 20 * SCALE;
+  const metaH = metaLines.length * META_LINE_H; // matches the draw loop below exactly, including the (rare) empty-meta case
+
   const totalH = PAD * SCALE              // top pad
     + 14 * SCALE                          // "WELCOME TO" label
     + 8 * SCALE                           // gap
     + nameH                               // show name
     + 8 * SCALE                           // gap
-    + 18 * SCALE                          // meta line
+    + metaH                               // meta line(s) — date · location
     + 20 * SCALE                          // gap before QR
     + QR_SIZE + QR_PAD * 2 + 20 * SCALE  // white QR box + bottom margin
     + 22 * SCALE                          // "SCAN TO BROWSE" label
     + 12 * SCALE                          // gap
     + 32 * SCALE                          // access code pill
-    + 20 * SCALE                          // gap before stats
-    + 1  * SCALE                          // divider
-    + 16 * SCALE                          // gap
-    + 40 * SCALE                          // stat numbers
-    + 14 * SCALE                          // stat labels
     + PAD * SCALE;                        // bottom pad
 
   const oc = document.createElement('canvas');
@@ -11777,12 +11789,15 @@ function _downloadSignageComposite(slug) {
   }
   y += 8 * SCALE;
 
-  // Meta line
+  // Meta line(s) — possibly wrapped
   ctx.fillStyle = '#aaaaaa';
   ctx.font = `${14 * SCALE}px 'DM Mono', monospace`;
   ctx.letterSpacing = '0';
-  ctx.fillText(meta, oc.width / 2, y + 14 * SCALE);
-  y += 18 * SCALE + 20 * SCALE;
+  for (const ml of metaLines) {
+    ctx.fillText(ml, oc.width / 2, y + 14 * SCALE);
+    y += META_LINE_H;
+  }
+  y += 20 * SCALE;
 
   // White QR box
   const qrBoxW = QR_SIZE + QR_PAD * 2;
@@ -11813,33 +11828,7 @@ function _downloadSignageComposite(slug) {
   ctx.font = `bold ${14 * SCALE}px 'DM Mono', monospace`;
   ctx.letterSpacing = `${0.14 * 14 * SCALE}px`;
   ctx.fillText(code, oc.width / 2, y + 20 * SCALE);
-  y += 32 * SCALE + 20 * SCALE;
-
-  // Divider
-  ctx.strokeStyle = '#222222';
-  ctx.lineWidth = 1 * SCALE;
-  ctx.beginPath();
-  ctx.moveTo(PAD * SCALE, y);
-  ctx.lineTo(oc.width - PAD * SCALE, y);
-  ctx.stroke();
-  y += 16 * SCALE;
-
-  // Stats: Cards | Sellers
-  const statCols = [
-    { val: cards,   label: 'CARDS'   },
-    { val: sellers, label: 'SELLERS' },
-  ];
-  statCols.forEach((s, i) => {
-    const cx = (oc.width / 2) + (i === 0 ? -80 * SCALE : 80 * SCALE);
-    ctx.fillStyle = '#f5c842';
-    ctx.font = `${32 * SCALE}px 'Bebas Neue', sans-serif`;
-    ctx.letterSpacing = '0';
-    ctx.fillText(s.val, cx, y + 32 * SCALE);
-    ctx.fillStyle = '#777777';
-    ctx.font = `${10 * SCALE}px 'DM Mono', monospace`;
-    ctx.letterSpacing = `${0.06 * 10 * SCALE}px`;
-    ctx.fillText(s.label, cx, y + 32 * SCALE + 16 * SCALE);
-  });
+  y += 32 * SCALE;
 
   const link = document.createElement('a');
   link.download = `cardshow-qr-${slug || 'show'}-signage.png`;
