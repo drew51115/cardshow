@@ -5877,15 +5877,15 @@
           </div>
           <div style="font-family:'Bebas Neue',sans-serif;font-size:1rem;letter-spacing:0.06em;color:#f5c842;margin-bottom:0.4rem">SCAN TO BROWSE ALL INVENTORY</div>
           <div style="background:#1a1a1a;border-radius:6px;padding:0.35rem 0.9rem;display:inline-block;font-family:'DM Mono',monospace;font-size:0.85rem;font-weight:700;letter-spacing:0.14em;color:#f5c842;margin-bottom:0.7rem" id="saqSgnCode">CODE</div>
-          <div style="display:flex;justify-content:center;gap:1.5rem;border-top:1px solid #222;padding-top:0.7rem">
-            <div>
-              <div style="font-family:'Bebas Neue',sans-serif;font-size:1.5rem;color:#f5c842;line-height:1" id="saqSgnCardCount">0</div>
-              <div style="font-size:0.6rem;color:#777;font-family:'DM Mono',monospace;letter-spacing:0.06em;text-transform:uppercase">Cards</div>
-            </div>
-            <div>
-              <div style="font-family:'Bebas Neue',sans-serif;font-size:1.5rem;color:#f5c842;line-height:1" id="saqSgnSellerCount">0</div>
-              <div style="font-size:0.6rem;color:#777;font-family:'DM Mono',monospace;letter-spacing:0.06em;text-transform:uppercase">Sellers</div>
-            </div>
+          <!-- Cards/Sellers counts intentionally not shown on entrance signage —
+               it's meant to be printed and posted at the door before the show's
+               inventory is even fully known; kept for the Marketing tab (saqMkt*)
+               only. These two elements stay in the DOM (hidden) since
+               openShowAccessQr()/its DB-count callback still populate them
+               unconditionally for both tabs. -->
+          <div style="display:none">
+            <span id="saqSgnCardCount">0</span>
+            <span id="saqSgnSellerCount">0</span>
           </div>
         </div>
       </div>
@@ -10802,6 +10802,67 @@ function renderQRFallback(canvasId, seller) {
   ctx.fillText(activeShow ? activeShow.name : '', canvas.width/2, 88);
 }
 
+// ── "Powered by CardShow" footer — shared by every downloadable/printable
+// PNG this app generates (entrance signage, seller QR codes). Loaded once
+// and cached; every composite function awaits this before drawing.
+const CARDSHOW_LOGO_URL = '/assets/cardshow-logo-wordmark.png';
+let _cardShowLogoPromise = null;
+function _loadCardShowLogo() {
+  if (!_cardShowLogoPromise) {
+    _cardShowLogoPromise = new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload  = () => resolve(img);
+      img.onerror = () => reject(new Error('CardShow logo failed to load'));
+      img.src = CARDSHOW_LOGO_URL;
+    });
+  }
+  return _cardShowLogoPromise;
+}
+
+// Fixed height budget (unscaled px) for the footer band below — callers
+// multiply by their own SCALE to size the canvas before drawing.
+const CARDSHOW_FOOTER_H_UNSCALED = 20 + 1 + 16 + 30 + 10 + 14 + 4 + 12 + 28;
+//                                 gap  div  gap  logo gap text gap  site  pad
+
+// Draws the divider → logo → "Powered by CardShow" → "getcardshow.com"
+// footer starting at (centerX, topY) and returns the Y just past it.
+// `dark` selects light-on-dark (signage) vs dark-on-light (seller QR) ink.
+function _drawCardShowFooter(ctx, logoImg, centerX, topY, scale, dark) {
+  let y = topY;
+  const dividerColor = dark ? '#222222' : '#e5e5e5';
+  const poweredColor = dark ? '#999999' : '#666666';
+  const siteColor     = dark ? '#555555' : '#aaaaaa';
+
+  y += 20 * scale;
+  ctx.strokeStyle = dividerColor;
+  ctx.lineWidth = 1 * scale;
+  ctx.beginPath();
+  ctx.moveTo(centerX - 100 * scale, y);
+  ctx.lineTo(centerX + 100 * scale, y);
+  ctx.stroke();
+  y += 1 * scale + 16 * scale;
+
+  const logoW = 130 * scale;
+  const logoH = logoW * (logoImg.naturalHeight / logoImg.naturalWidth);
+  ctx.drawImage(logoImg, centerX - logoW / 2, y, logoW, logoH);
+  y += logoH + 10 * scale;
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = poweredColor;
+  ctx.font = `${11 * scale}px 'DM Mono', monospace`;
+  ctx.letterSpacing = `${0.04 * 11 * scale}px`;
+  ctx.fillText('Powered by CardShow', centerX, y + 11 * scale);
+  y += 14 * scale + 4 * scale;
+
+  ctx.fillStyle = siteColor;
+  ctx.font = `${9 * scale}px 'DM Mono', monospace`;
+  ctx.letterSpacing = '0';
+  ctx.fillText('getcardshow.com', centerX, y + 9 * scale);
+  y += 12 * scale + 28 * scale;
+
+  return y;
+}
+
 function openQRModal() {
   if (!activeQRSeller) return;
   const overlay = document.getElementById('qrModalOverlay');
@@ -11218,24 +11279,47 @@ function closeSellerQRModal() {
   document.body.style.overflow = '';
 }
 
-function downloadSellerQR() {
-  const canvas = document.getElementById('sellerQrCanvas');
-  if (!canvas) return;
+// Composites a raw QR canvas onto a white card with the "Powered by
+// CardShow" footer below it (same footer used on entrance signage).
+// Previously these downloads were just a raw dump of the QR canvas with
+// no branding or context at all.
+async function _downloadBrandedQrPng(qrCanvas, filename) {
+  if (!qrCanvas) return;
+  const logoImg = await _loadCardShowLogo().catch(() => null);
+
+  const SCALE = 2; // crisp/printable, matches the signage composite's convention
+  const PAD = 20;
+  const qrSize = qrCanvas.width;
+  const footerH = logoImg ? CARDSHOW_FOOTER_H_UNSCALED * SCALE : PAD * SCALE;
+
+  const oc = document.createElement('canvas');
+  oc.width  = (qrSize + PAD * 2) * SCALE;
+  oc.height = PAD * SCALE + qrSize * SCALE + footerH;
+  const ctx = oc.getContext('2d');
+
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, oc.width, oc.height);
+  ctx.drawImage(qrCanvas, PAD * SCALE, PAD * SCALE, qrSize * SCALE, qrSize * SCALE);
+
+  if (logoImg) {
+    _drawCardShowFooter(ctx, logoImg, oc.width / 2, PAD * SCALE + qrSize * SCALE, SCALE, false);
+  }
+
   const link = document.createElement('a');
-  link.download = `cardshow-qr-${currentSeller}-${sellerQrMode}.png`;
-  link.href = canvas.toDataURL('image/png');
+  link.download = filename;
+  link.href = oc.toDataURL('image/png');
   link.click();
   showToast('QR code saved');
 }
 
-function downloadSellerQRModal() {
+async function downloadSellerQR() {
+  const canvas = document.getElementById('sellerQrCanvas');
+  await _downloadBrandedQrPng(canvas, `cardshow-qr-${currentSeller}-${sellerQrMode}.png`);
+}
+
+async function downloadSellerQRModal() {
   const canvas = document.getElementById('sellerQrModalCanvas');
-  if (!canvas) return;
-  const link = document.createElement('a');
-  link.download = `cardshow-qr-${currentSeller}-${sellerQrMode}-large.png`;
-  link.href = canvas.toDataURL('image/png');
-  link.click();
-  showToast('QR code saved');
+  await _downloadBrandedQrPng(canvas, `cardshow-qr-${currentSeller}-${sellerQrMode}-large.png`);
 }
 
 // Override renderQR to accept an explicit URL parameter
@@ -12419,19 +12503,21 @@ function downloadShowQr() {
   }
 }
 
-function _downloadSignageComposite(slug) {
+async function _downloadSignageComposite(slug) {
   // Composite the signage card entirely on an offscreen canvas so the QR
   // (which lives in a <canvas> element and is invisible to html2canvas) is
   // always included in the downloaded PNG.
   const qrCanvas = document.getElementById('saqCanvasSignage');
   if (!qrCanvas) return;
 
+  // Non-fatal — a logo load failure (offline, path issue) shouldn't block
+  // the actual signage download, just omit the footer branding this once.
+  const logoImg = await _loadCardShowLogo().catch(() => null);
+
   const show = _saqShowId ? shows[_saqShowId] : null;
   const showName = (document.getElementById('saqSgnName') || {}).textContent || (show ? show.name : 'SHOW NAME');
   const meta     = (document.getElementById('saqSgnMeta') || {}).textContent || '';
   const code     = (document.getElementById('saqSgnCode') || {}).textContent || '';
-  const cards    = (document.getElementById('saqSgnCardCount') || {}).textContent || '0';
-  const sellers  = (document.getElementById('saqSgnSellerCount') || {}).textContent || '0';
 
   const SCALE = 2;
   const W = 480, PAD = 48;
@@ -12455,23 +12541,37 @@ function _downloadSignageComposite(slug) {
   if (line) nameLines.push(line);
   const nameH = nameLines.length * 50 * SCALE;
 
+  // Measure meta (date · location) the same way — it was previously drawn
+  // as a single unwrapped fillText() call, so a long location silently ran
+  // past the canvas edge and got clipped (never actually cut the string,
+  // just rendered off-canvas). Wrapping it fixes that regardless of length.
+  tmpX.font = `${14 * SCALE}px 'DM Mono', monospace`;
+  const metaLines = [];
+  const metaWords = meta.split(' ');
+  let mline = '';
+  for (const w of metaWords) {
+    const test = mline ? mline + ' ' + w : w;
+    if (tmpX.measureText(test).width > (W * SCALE - PAD * SCALE * 2)) {
+      if (mline) metaLines.push(mline);
+      mline = w;
+    } else { mline = test; }
+  }
+  if (mline) metaLines.push(mline);
+  const META_LINE_H = 20 * SCALE;
+  const metaH = metaLines.length * META_LINE_H; // matches the draw loop below exactly, including the (rare) empty-meta case
+
   const totalH = PAD * SCALE              // top pad
     + 14 * SCALE                          // "WELCOME TO" label
     + 8 * SCALE                           // gap
     + nameH                               // show name
     + 8 * SCALE                           // gap
-    + 18 * SCALE                          // meta line
+    + metaH                               // meta line(s) — date · location
     + 20 * SCALE                          // gap before QR
     + QR_SIZE + QR_PAD * 2 + 20 * SCALE  // white QR box + bottom margin
     + 22 * SCALE                          // "SCAN TO BROWSE" label
     + 12 * SCALE                          // gap
     + 32 * SCALE                          // access code pill
-    + 20 * SCALE                          // gap before stats
-    + 1  * SCALE                          // divider
-    + 16 * SCALE                          // gap
-    + 40 * SCALE                          // stat numbers
-    + 14 * SCALE                          // stat labels
-    + PAD * SCALE;                        // bottom pad
+    + (logoImg ? CARDSHOW_FOOTER_H_UNSCALED * SCALE : PAD * SCALE); // branded footer, or a plain bottom pad if the logo didn't load
 
   const oc = document.createElement('canvas');
   oc.width  = W * SCALE;
@@ -12511,12 +12611,15 @@ function _downloadSignageComposite(slug) {
   }
   y += 8 * SCALE;
 
-  // Meta line
+  // Meta line(s) — possibly wrapped
   ctx.fillStyle = '#aaaaaa';
   ctx.font = `${14 * SCALE}px 'DM Mono', monospace`;
   ctx.letterSpacing = '0';
-  ctx.fillText(meta, oc.width / 2, y + 14 * SCALE);
-  y += 18 * SCALE + 20 * SCALE;
+  for (const ml of metaLines) {
+    ctx.fillText(ml, oc.width / 2, y + 14 * SCALE);
+    y += META_LINE_H;
+  }
+  y += 20 * SCALE;
 
   // White QR box
   const qrBoxW = QR_SIZE + QR_PAD * 2;
@@ -12547,33 +12650,12 @@ function _downloadSignageComposite(slug) {
   ctx.font = `bold ${14 * SCALE}px 'DM Mono', monospace`;
   ctx.letterSpacing = `${0.14 * 14 * SCALE}px`;
   ctx.fillText(code, oc.width / 2, y + 20 * SCALE);
-  y += 32 * SCALE + 20 * SCALE;
+  y += 32 * SCALE;
 
-  // Divider
-  ctx.strokeStyle = '#222222';
-  ctx.lineWidth = 1 * SCALE;
-  ctx.beginPath();
-  ctx.moveTo(PAD * SCALE, y);
-  ctx.lineTo(oc.width - PAD * SCALE, y);
-  ctx.stroke();
-  y += 16 * SCALE;
-
-  // Stats: Cards | Sellers
-  const statCols = [
-    { val: cards,   label: 'CARDS'   },
-    { val: sellers, label: 'SELLERS' },
-  ];
-  statCols.forEach((s, i) => {
-    const cx = (oc.width / 2) + (i === 0 ? -80 * SCALE : 80 * SCALE);
-    ctx.fillStyle = '#f5c842';
-    ctx.font = `${32 * SCALE}px 'Bebas Neue', sans-serif`;
-    ctx.letterSpacing = '0';
-    ctx.fillText(s.val, cx, y + 32 * SCALE);
-    ctx.fillStyle = '#777777';
-    ctx.font = `${10 * SCALE}px 'DM Mono', monospace`;
-    ctx.letterSpacing = `${0.06 * 10 * SCALE}px`;
-    ctx.fillText(s.label, cx, y + 32 * SCALE + 16 * SCALE);
-  });
+  // "Powered by CardShow" footer
+  if (logoImg) {
+    y = _drawCardShowFooter(ctx, logoImg, oc.width / 2, y, SCALE, true);
+  }
 
   const link = document.createElement('a');
   link.download = `cardshow-qr-${slug || 'show'}-signage.png`;

@@ -864,43 +864,66 @@ async function fetchSellerProfiles(handles) {
 async function fetchInventoryFromDB(showId) {
   if (!_sb || !showId) return;
   try {
-    const { data, error } = await _sb
+    // Two explicit queries, not a nested FK-embed select() — this codebase has
+    // already hit a case (loadShowSellersAndTables(), see also
+    // _orgFetchInventory() in app.html) where PostgREST's embedded-join syntax
+    // silently returned null for some rows under a stale schema cache. That
+    // failure is row-by-row, not all-or-nothing, so it shows up exactly like
+    // "only some published cards appear" rather than a clean empty result —
+    // the two-step form is the established, proven-reliable pattern here.
+    const { data: siRows, error: siErr } = await _sb
       .from('show_inventory')
-      .select(`
-        inventory (
-          id, card_title, player, year, card_set, card_number, parallel,
-          grader, grade, condition, price, status,
-          item_type, quantity, product_type, language, edition,
-          sellers ( handle )
-        )
-      `)
+      .select('card_id')
       .eq('show_id', showId);
+    if (siErr || !siRows || !siRows.length) return;
 
-    if (error || !data || !data.length) return;
+    const cardIds = [...new Set(siRows.map(r => r.card_id).filter(Boolean))];
+    if (!cardIds.length) return;
 
-    const dbCards = data
-      .map(row => row.inventory)
-      .filter(Boolean)
-      .filter(c => c.status !== 'Sold')
-      .map(c => ({
-        Seller:             c.sellers?.handle || '',
-        'Card Title':       c.card_title || '',
-        Player:             c.player || '',
-        Year:               c.year || null,
-        'Set ':             c.card_set || '',
-        Number:             c.card_number || '',
-        'Parallel/Variant': c.parallel || '',
-        Grader:             c.grader || null,
-        Grade:              c.grade || null,
-        Condition:          c.condition || null,
-        Price:              c.price || 0,
-        Status:             'Available',
-        item_type:          c.item_type || 'card',
-        quantity:           c.quantity || 1,
-        product_type:       c.product_type || '',
-        language:           c.language || '',
-        edition:            c.edition || '',
-      }));
+    const { data: cards, error: invErr } = await _sb
+      .from('inventory')
+      .select(`
+        id, seller_id, card_title, player, year, card_set, card_number, parallel,
+        grader, grade, condition, price, status,
+        item_type, quantity, product_type, language, edition
+      `)
+      .in('id', cardIds);
+    if (invErr || !cards || !cards.length) return;
+
+    const available = cards.filter(c => c.status !== 'Sold');
+    if (!available.length) return;
+
+    // seller_id -> handle, one batched lookup (previously came inline via the
+    // embedded join's sellers(handle), now a separate query — see above)
+    const sellerIds = [...new Set(available.map(c => c.seller_id).filter(Boolean))];
+    let handleById = {};
+    if (sellerIds.length) {
+      const { data: sellerRows } = await _sb
+        .from('sellers')
+        .select('id, handle')
+        .in('id', sellerIds);
+      (sellerRows || []).forEach(s => { handleById[s.id] = s.handle; });
+    }
+
+    const dbCards = available.map(c => ({
+      Seller:             handleById[c.seller_id] || '',
+      'Card Title':       c.card_title || '',
+      Player:             c.player || '',
+      Year:               c.year || null,
+      'Set ':             c.card_set || '',
+      Number:             c.card_number || '',
+      'Parallel/Variant': c.parallel || '',
+      Grader:             c.grader || null,
+      Grade:              c.grade || null,
+      Condition:          c.condition || null,
+      Price:              c.price || 0,
+      Status:             'Available',
+      item_type:          c.item_type || 'card',
+      quantity:           c.quantity || 1,
+      product_type:       c.product_type || '',
+      language:           c.language || '',
+      edition:            c.edition || '',
+    }));
 
     if (!dbCards.length) return;
 
