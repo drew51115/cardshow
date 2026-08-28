@@ -2255,6 +2255,93 @@
   /* DB-fill highlight — green fade for Trading Card API / local db selections */
   .db-filled { border-left: 3px solid rgba(22,163,74,0.6) !important; background: rgba(22,163,74,0.05) !important; }
 
+  /* Photo Scan & Card Fingerprinting — low-confidence field flag + dupe banner */
+  .scan-verify { border-color: #f5a623 !important; background: rgba(245,166,35,0.08) !important; }
+  .scan-dupe-warning {
+    font-size: 12px; color: #f5a623; background: rgba(245,166,35,0.08);
+    border: 1px solid rgba(245,166,35,0.3); border-radius: 8px;
+    padding: 8px 12px; line-height: 1.4;
+  }
+
+  /* ── "The Drop" — post-sale share prompt bar ── */
+  .drop-prompt-bar {
+    /* display:none (not a translateY-off-screen transform) while hidden —
+       a position:fixed element hidden only via transform is a known iOS
+       Safari touch hit-testing hazard: it can still intercept taps at its
+       original position instead of its transformed one, which is exactly
+       where this bar overlaps the Sell Drawer's Confirm Sale/Cancel
+       buttons. display:none is spec-guaranteed to never receive pointer
+       events, so there's no ambiguity. */
+    position: fixed; left: 0; right: 0; bottom: 0;
+    height: 48px; z-index: 970;
+    background: var(--card); border-top: 1px solid var(--border);
+    display: none; align-items: center; gap: 0.75rem;
+    padding: 0 1rem;
+  }
+  .drop-prompt-bar.visible {
+    display: flex;
+    animation: dropPromptSlideUp 0.25s ease;
+  }
+  @keyframes dropPromptSlideUp {
+    from { transform: translateY(100%); }
+    to   { transform: translateY(0); }
+  }
+  .drop-prompt-text {
+    flex: 1; font-size: 0.85rem; color: var(--text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .drop-prompt-yes {
+    background: var(--accent); color: var(--black); border: none;
+    border-radius: 8px; padding: 0.4rem 0.9rem; font-size: 0.78rem;
+    font-weight: 700; font-family: 'DM Sans', sans-serif; cursor: pointer;
+    white-space: nowrap;
+  }
+  .drop-prompt-dismiss {
+    background: none; border: none; color: var(--muted);
+    font-size: 1rem; cursor: pointer; padding: 0.25rem;
+  }
+
+  /* ── "The Drop" — share card modal ── */
+  .drop-share-canvas {
+    width: 100%; height: auto; border-radius: 12px;
+    border: 1px solid var(--border); background: var(--surface);
+  }
+  .drop-style-picker { display: flex; gap: 0.5rem; }
+  .drop-style-chip {
+    flex: 1; border-radius: 8px; padding: 0.55rem 0; cursor: pointer;
+    font-size: 0.75rem; font-weight: 600; font-family: 'DM Sans', sans-serif;
+    border: 2px solid var(--border); color: var(--text);
+    transition: border-color 0.15s;
+  }
+  .drop-style-chip.active { border-color: var(--accent); color: var(--accent); }
+  .drop-style-dark    { background: #07080C; }
+  .drop-style-light   { background: #f4f4f4; color: #111; }
+  .drop-style-minimal { background: #000000; }
+  .drop-style-chip.drop-style-light.active { color: var(--accent); }
+  .drop-caption-textarea {
+    width: 100%; box-sizing: border-box; resize: vertical;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; color: var(--text); font-family: 'DM Sans', sans-serif;
+    font-size: 0.85rem; padding: 0.6rem 0.7rem; line-height: 1.4;
+  }
+  .drop-caption-footer {
+    font-size: 0.75rem; color: var(--muted); white-space: pre-line;
+    padding: 0.4rem 0.1rem; line-height: 1.4;
+  }
+  .drop-caption-counters {
+    display: flex; justify-content: space-between;
+    font-family: 'DM Mono', monospace; font-size: 0.65rem; color: var(--muted);
+  }
+  .drop-caption-counters .over-limit { color: #f87171; }
+  .drop-share-actions { display: flex; gap: 0.6rem; }
+
+  /* ── "The Drop" — opt-in preference radios (Profile modal) ── */
+  .drop-pref-group { display: flex; flex-direction: column; gap: 0.4rem; margin-top: 0.3rem; }
+  .drop-pref-opt {
+    display: flex; align-items: center; gap: 0.5rem;
+    font-size: 0.8rem; color: var(--text); cursor: pointer;
+  }
+
   @keyframes spin { to { transform: rotate(360deg); } }
 
   /* ── Scan modal progress bar ── */
@@ -4599,10 +4686,11 @@
                   <th style="text-align:left;padding:6px 8px;font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--border)">+/-</th>
                   <th style="text-align:left;padding:6px 8px;font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--border)">Payment</th>
                   <th style="text-align:left;padding:6px 8px;font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--border)">Time</th>
+                  <th style="text-align:left;padding:6px 8px;font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--border)">Share</th>
                 </tr>
               </thead>
               <tbody id="rptTxBody">
-                <tr><td colspan="6" style="padding:16px 8px;color:var(--muted);font-size:12px">No sales yet</td></tr>
+                <tr><td colspan="7" style="padding:16px 8px;color:var(--muted);font-size:12px">No sales yet</td></tr>
               </tbody>
             </table>
           </div>
@@ -4649,6 +4737,22 @@
               placeholder="yourhandle">
           </div>
           <div class="profile-field-hint">Shown as a secondary contact option in buyer view</div>
+        </div>
+
+        <div>
+          <div class="profile-field-label">Share Prompt After a Sale</div>
+          <div class="drop-pref-group" id="dropPrefGroup">
+            <label class="drop-pref-opt">
+              <input type="radio" name="dropPref" value="always" onchange="saveDropPref('always')"> Always ask
+            </label>
+            <label class="drop-pref-opt">
+              <input type="radio" name="dropPref" value="manual_only" onchange="saveDropPref('manual_only')"> Only for manual sales
+            </label>
+            <label class="drop-pref-opt">
+              <input type="radio" name="dropPref" value="never" onchange="saveDropPref('never')"> Never
+            </label>
+          </div>
+          <div class="profile-field-hint">Controls the "Share this sale?" prompt after confirming a sale — saved on this device</div>
         </div>
 
       </div>
@@ -5290,6 +5394,9 @@
         <div id="posConfidenceBadge" style="display:none"
           class="pos-confidence-badge"></div>
 
+        <!-- Duplicate fingerprint warning — non-blocking, injected by posShowReview() -->
+        <div id="posDupeWarning" class="scan-dupe-warning" style="display:none"></div>
+
         <!-- Review fields -->
         <div class="pos-fields">
           <div class="pos-field pos-field-full">
@@ -5473,7 +5580,77 @@
 
 <div class="toast" id="toast"></div>
 
+<!-- ═══════════════ "THE DROP" — post-sale share prompt bar ═══════════════ -->
+<div class="drop-prompt-bar" id="dropPromptBar">
+  <span class="drop-prompt-text">🔥 Nice sale! Share it?</span>
+  <button class="drop-prompt-yes" type="button" onclick="_dropPromptYes()">Create Share Card</button>
+  <button class="drop-prompt-dismiss" type="button" onclick="_dropPromptDismiss()" aria-label="Dismiss">✕</button>
+</div>
 
+<!-- ═══════════════ "THE DROP" — share card modal ═══════════════ -->
+<div class="modal-overlay" id="shareCardOverlay" onclick="if(event.target===this)closeShareCardModal()">
+  <div class="modal" id="shareCardModal" style="max-width:420px">
+    <div class="modal-header">
+      <div>
+        <div class="modal-player" style="font-size:1.35rem">Share This Sale</div>
+        <div style="font-size:0.78rem;color:var(--muted);margin-top:0.2rem">Payment method is never shown — just price and venue</div>
+      </div>
+      <button class="modal-close" onclick="closeShareCardModal()">✕</button>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:0.9rem">
+
+      <!-- Photo step — required. Posts always include a picture, so nothing
+           below this is reachable until one is attached. -->
+      <div id="dropPhotoSection">
+        <div class="drawer-field-label">
+          Card Photo
+          <span style="color:#f87171;font-size:10px;margin-left:3px">required</span>
+        </div>
+        <div class="msl-photo-buttons" id="dropPhotoButtons">
+          <button type="button" class="msl-photo-btn" onclick="_dropTriggerCamera()">📷 Take Photo</button>
+          <button type="button" class="msl-photo-btn" onclick="_dropTriggerLibrary()">🖼 Choose from Library</button>
+        </div>
+        <div class="profile-field-hint">A photo of the card makes the post — required before you can share</div>
+      </div>
+      <input type="file" id="dropPhotoInput" accept="image/*" capture="environment"
+        style="display:none" onchange="_dropHandlePhoto(this)">
+      <input type="file" id="dropPhotoLibraryInput" accept="image/*"
+        style="display:none" onchange="_dropHandlePhoto(this)">
+
+      <!-- Share body — hidden until a photo is attached -->
+      <div id="dropShareBody" style="display:none;flex-direction:column;gap:0.9rem">
+
+        <canvas id="dropShareCanvas" class="drop-share-canvas" width="1080" height="1350"></canvas>
+
+        <button type="button" class="msl-photo-retake-btn" onclick="_dropChangePhoto()">Change Photo</button>
+
+        <div class="drop-style-picker" id="dropStylePicker">
+          <button type="button" class="drop-style-chip drop-style-dark"    data-style="dark"    onclick="_dropSetStyle('dark')">Dark</button>
+          <button type="button" class="drop-style-chip drop-style-light"   data-style="light"   onclick="_dropSetStyle('light')">Light</button>
+          <button type="button" class="drop-style-chip drop-style-minimal" data-style="minimal" onclick="_dropSetStyle('minimal')">Minimal</button>
+        </div>
+
+        <div>
+          <div class="drawer-field-label">Caption</div>
+          <textarea id="dropCaptionBody" class="drop-caption-textarea" rows="4" oninput="_dropUpdateCounters()"></textarea>
+          <div class="drop-caption-footer" id="dropCaptionFooter"></div>
+          <div class="drop-caption-counters">
+            <span id="dropCounterIG">0 / 2200 · Instagram</span>
+            <span id="dropCounterX">0 / 280 · X</span>
+          </div>
+        </div>
+
+        <div class="drop-share-actions">
+          <button type="button" class="btn btn-primary" style="flex:1" onclick="_dropCopyCaption()">📋 Copy Caption</button>
+          <button type="button" class="btn btn-ghost" style="flex:1" onclick="_dropDownloadImage()">⬇ Download Image</button>
+        </div>
+        <button type="button" class="btn btn-ghost" id="dropNativeShareBtn" style="display:none;width:100%" onclick="_dropNativeShare()">📤 Share</button>
+
+      </div>
+
+    </div>
+  </div>
+</div>
 
 <!-- ═══════════════ CARD DETAIL MODAL ═══════════════ -->
 <div class="modal-overlay" id="cardModal" onclick="handleModalOverlayClick(event)">
@@ -9235,6 +9412,7 @@ let sdSelectedPayment = null;
 // ── MANUAL SALE MODAL STATE ──
 let _mslPayment     = null;  // selected payment for the manual sale modal
 let _mslVisionAbort = null;  // AbortController for in-flight photo-scan fetch
+let _mslScanConfidence = null;  // raw scan-card.js confidence object, for detected_confidence audit trail
 
 function cycleStatus(realIdx, el) {
   const card = inventory[realIdx];
@@ -9343,6 +9521,17 @@ function sdConfirm() {
   updateReport();
   renderSellerTable(getSellerInventory());
   showToast(`✓ ${card.Player || 'Card'} · $${price.toLocaleString()} · ${sdSelectedPayment}`);
+
+  // "The Drop" — post-sale share prompt. Gated by the opt-in preference;
+  // a POS-originated sale (card._posOrigin, set by posInsertAndOpenDrawer())
+  // is treated the same as a Manual Sale — both are spontaneous/off-catalog,
+  // unlike confirming a sale on a card that was already sitting in
+  // inventory — so it also fires on 'manual_only', not just 'always'.
+  // Never fires for 'never' from this path.
+  const dropPref = getDropPromptPref();
+  if (dropPref === 'always' || (dropPref === 'manual_only' && card._posOrigin)) {
+    showDropPrompt(card, activeShowId);
+  }
 }
 
 function closeSellDrawer() {
@@ -9352,8 +9541,511 @@ function closeSellDrawer() {
 }
 
 // ════════════════════════════════════════════════════════
+// "THE DROP" — post-sale share card
+// Post-sale prompt (sdConfirm/confirmManualSale) → style picker → editable
+// caption → copy/download/share. Payment method is never drawn on the card
+// image or included in the caption — only price and venue.
+// ════════════════════════════════════════════════════════
+
+let _dropPending = null;  // { card, showId } — set by showDropPrompt(), read by openShareCardModal()
+let _dropStyle   = 'dark';
+
+function _dropGetSellerShowCount() {
+  if (!currentSeller) return 0;
+  return Object.values(shows).filter(s => s.sellers instanceof Set && s.sellers.has(currentSeller)).length;
+}
+
+// A seller running their first couple shows gets prompted every time to
+// build the share habit; an established seller (3+ shows) is assumed to
+// already know the feature exists, so the prompt narrows to manual sales
+// (a case they're less likely to have already shared from elsewhere).
+function getDropPromptDefault() {
+  return _dropGetSellerShowCount() >= 3 ? 'manual_only' : 'always';
+}
+
+function getDropPromptPref() {
+  return localStorage.getItem('dropPromptPref') || getDropPromptDefault();
+}
+
+function saveDropPref(value) {
+  localStorage.setItem('dropPromptPref', value);
+}
+
+function showDropPrompt(card, showId) {
+  _dropPending = { card, showId: showId || null };
+  const bar = document.getElementById('dropPromptBar');
+  if (!bar) return;
+  bar.classList.add('visible');
+  clearTimeout(bar._autoHideTimer);
+  bar._autoHideTimer = setTimeout(() => bar.classList.remove('visible'), 6000);
+}
+
+function _dropPromptDismiss() {
+  document.getElementById('dropPromptBar')?.classList.remove('visible');
+}
+
+function _dropPromptYes() {
+  _dropPromptDismiss();
+  if (_dropPending) openShareCardModal(_dropPending.card, _dropPending.showId);
+}
+
+function _dropVenueLabel(showId) {
+  const s = showId ? shows[showId] : null;
+  if (!s) return '';
+  return s.venue || s.city || s.location || '';
+}
+
+// ── Style picker + canvas renderer ──
+// Rendered fresh on every open/style change — no DB write, purely local.
+// Async because a required card photo (see the photo-capture step below)
+// has to load before it can be drawn into the canvas.
+async function renderShareCard(canvas, card, style, venueLabel) {
+  style = style || 'dark';
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+
+  const themes = {
+    dark:    { bg: '#07080C', text: '#FFFFFF', muted: 'rgba(255,255,255,0.55)', accent: '#D4AF37', showLabel: true,  border: true,  goldBg: true  },
+    light:   { bg: '#FFFFFF', text: '#111111', muted: 'rgba(17,17,17,0.55)',    accent: '#B8860B', showLabel: true,  border: true,  goldBg: false },
+    minimal: { bg: '#000000', text: '#FFFFFF', muted: 'rgba(255,255,255,0.6)',  accent: '#FFFFFF', showLabel: false, border: false, goldBg: false },
+  };
+  const t = themes[style] || themes.dark;
+
+  ctx.clearRect(0, 0, W, H);
+  if (t.goldBg) {
+    // Black-and-gold radial glow, centered where the hero price sits, so
+    // the background itself pops on a feed scroll instead of reading as
+    // flat black — fades back to the theme's base color at the edges.
+    const grad = ctx.createRadialGradient(W / 2, H * 0.52, 0, W / 2, H * 0.52, W * 0.85);
+    grad.addColorStop(0,    '#3a2905');
+    grad.addColorStop(0.45, '#160f02');
+    grad.addColorStop(1,    t.bg);
+    ctx.fillStyle = grad;
+  } else {
+    ctx.fillStyle = t.bg;
+  }
+  ctx.fillRect(0, 0, W, H);
+
+  if (t.border) {
+    ctx.strokeStyle = t.accent;
+    ctx.lineWidth = 6;
+    ctx.strokeRect(24, 24, W - 48, H - 48);
+  }
+
+  ctx.textAlign = 'center';
+
+  // "SOLD" + price are the hero figures on this card — sized well above
+  // everything else so they read first on a feed scroll.
+  ctx.font = '700 52px "DM Mono", monospace';
+  ctx.fillStyle = t.accent;
+  ctx.fillText('SOLD', W / 2, 100);
+
+  // Card photo — required (see _dropRenderReady()/openShareCardModal()),
+  // so this always has something to draw once rendering actually happens.
+  let y = 150;
+  if (card._dropPhotoDataUrl) {
+    const img = await _dropLoadImage(card._dropPhotoDataUrl);
+    const boxW = 520, boxH = 660;
+    const boxX = (W - boxW) / 2;
+    ctx.save();
+    ctx.fillStyle = 'rgba(255,255,255,0.03)';
+    ctx.strokeStyle = t.accent;
+    ctx.lineWidth = 3;
+    ctx.fillRect(boxX, y, boxW, boxH);
+    ctx.strokeRect(boxX, y, boxW, boxH);
+    const scale = Math.min(boxW / img.width, boxH / img.height);
+    const dw = img.width * scale, dh = img.height * scale;
+    const dx = boxX + (boxW - dw) / 2, dy = y + (boxH - dh) / 2;
+    ctx.drawImage(img, dx, dy, dw, dh);
+    ctx.restore();
+    y += boxH + 36;
+  }
+
+  ctx.font = '700 56px "Bebas Neue", sans-serif';
+  ctx.fillStyle = t.text;
+  y = _dropWrapText(ctx, card.Player || card['Card Title'] || 'Card', W / 2, y, 920, 56, 60, 2);
+
+  const subParts = [
+    [card.Year, card['Set ']].filter(Boolean).join(' ').trim(),
+    card['Parallel/Variant'],
+    (card.Grader && card.Grade != null) ? `${card.Grader} ${card.Grade}` : null,
+  ].filter(Boolean);
+  ctx.font = '400 26px "DM Sans", sans-serif';
+  ctx.fillStyle = t.muted;
+  // Single line here (not wrapped to 2) — keeps the layout budget
+  // predictable now that the price below is much larger and needs the room.
+  y = _dropWrapText(ctx, subParts.join(' · '), W / 2, y + 14, 900, 26, 34, 1);
+
+  // Price — the hero number on the card, and the whole point of the sale.
+  // Never draw card.PaymentMethod.
+  ctx.font = '700 150px "Bebas Neue", sans-serif';
+  ctx.fillStyle = t.accent;
+  const priceY = y + 150;
+  ctx.fillText('$' + Number(card.SoldPrice || card.Price || 0).toLocaleString(), W / 2, priceY);
+
+  // Venue only — no payment method, ever.
+  if (venueLabel) {
+    ctx.font = '400 26px "DM Sans", sans-serif';
+    ctx.fillStyle = t.muted;
+    ctx.fillText(venueLabel, W / 2, priceY + 55);
+  }
+
+  if (t.showLabel) {
+    ctx.font = '700 56px "Bebas Neue", sans-serif';
+    ctx.fillStyle = t.accent;
+    ctx.fillText('CARDSHOW', W / 2, H - 80);
+    ctx.font = '400 24px "DM Sans", sans-serif';
+    ctx.fillStyle = t.muted;
+    ctx.fillText('getcardshow.com', W / 2, H - 42);
+  }
+}
+
+function _dropLoadImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload  = () => resolve(img);
+    img.onerror = () => reject(new Error('Could not load card photo'));
+    img.src = src;
+  });
+}
+
+// Wraps text to maxWidth (up to maxLines), drawing each line top-anchored
+// starting at topY, and returns the Y just below the last line drawn — so
+// nothing below it (price, venue) is ever placed at a fixed pixel that
+// could collide with a longer-than-expected player name or subtitle.
+function _dropWrapText(ctx, text, cx, topY, maxWidth, fontSize, lineHeight, maxLines) {
+  const words = String(text || '').split(' ');
+  let line = '';
+  const lines = [];
+  for (const word of words) {
+    const test = line ? line + ' ' + word : word;
+    if (ctx.measureText(test).width > maxWidth && line) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = test;
+    }
+  }
+  if (line) lines.push(line);
+  const drawn = lines.slice(0, maxLines || lines.length);
+  drawn.forEach((l, i) => ctx.fillText(l, cx, topY + fontSize * 0.8 + i * lineHeight));
+  return topY + drawn.length * lineHeight;
+}
+
+function _dropSetStyle(style) {
+  _dropStyle = style;
+  document.querySelectorAll('.drop-style-chip').forEach(b =>
+    b.classList.toggle('active', b.dataset.style === style));
+  if (_dropPending) {
+    renderShareCard(document.getElementById('dropShareCanvas'), _dropPending.card, style, _dropVenueLabel(_dropPending.showId));
+  }
+}
+
+// ── Photo capture — required before a share card can be created ──
+// Client-side only, not persisted to Storage/DB (matches this app's
+// existing "photo used in-browser only, then discarded" convention for
+// card-identification photos — see Photo Scan & Card Fingerprinting).
+// Stored on the in-memory card object so it survives reopening the modal
+// for the same sale later in the same session (e.g. from the Report tab),
+// but is lost on page reload like every other in-memory-only field here.
+function _dropTriggerCamera()  { document.getElementById('dropPhotoInput').click(); }
+function _dropTriggerLibrary() { document.getElementById('dropPhotoLibraryInput').click(); }
+
+async function _dropHandlePhoto(inputEl) {
+  const file = inputEl.files?.[0];
+  if (!file) return;
+  inputEl.value = ''; // reset so the same photo can be retried
+
+  if (!_dropPending) return;
+  try {
+    _dropPending.card._dropPhotoDataUrl = await _readFileAsDataURL(file);
+    await _dropRenderReady();
+  } catch (e) {
+    console.error('[Drop photo]', e);
+    showToast('⚠️ Could not read that photo — try again', 'var(--danger)');
+  }
+}
+
+function _dropChangePhoto() {
+  if (!_dropPending) return;
+  delete _dropPending.card._dropPhotoDataUrl;
+  _dropShowPhotoStep();
+}
+
+function _dropShowPhotoStep() {
+  const photoSection = document.getElementById('dropPhotoSection');
+  const shareBody    = document.getElementById('dropShareBody');
+  if (photoSection) photoSection.style.display = 'block';
+  if (shareBody)    shareBody.style.display    = 'none';
+}
+
+// Renders the canvas + caption once a photo is attached, and reveals the
+// rest of the modal (style picker, caption, share actions) — none of
+// which are reachable without a photo first.
+async function _dropRenderReady() {
+  if (!_dropPending) return;
+  const card = _dropPending.card;
+  const venueLabel = _dropVenueLabel(_dropPending.showId);
+
+  // Render before revealing — the share actions (Download/Share in
+  // particular) read the canvas directly, so it must already be finished
+  // drawing before a seller can reach those buttons.
+  document.querySelectorAll('.drop-style-chip').forEach(b => b.classList.toggle('active', b.dataset.style === _dropStyle));
+  await renderShareCard(document.getElementById('dropShareCanvas'), card, _dropStyle, venueLabel);
+
+  const photoSection = document.getElementById('dropPhotoSection');
+  const shareBody    = document.getElementById('dropShareBody');
+  if (photoSection) photoSection.style.display = 'none';
+  if (shareBody)    shareBody.style.display    = 'flex';
+
+  const bodyEl = document.getElementById('dropCaptionBody');
+  if (bodyEl) bodyEl.value = generateCaptionBody(card, venueLabel);
+  const footerEl = document.getElementById('dropCaptionFooter');
+  if (footerEl) footerEl.textContent = generateCaptionFooter(card);
+  _dropUpdateCounters();
+
+  const nativeBtn = document.getElementById('dropNativeShareBtn');
+  if (nativeBtn) nativeBtn.style.display = (navigator.share && navigator.canShare) ? 'block' : 'none';
+}
+
+// ── Caption ──
+// Split into an editable body (the seller's own words) and a fixed footer
+// (CardShow handle + core hashtags) appended after it, not merged into
+// it — so the tracked-on line and hashtags persist even if the seller
+// edits their own caption text.
+function generateCaptionBody(card, venueLabel) {
+  // Autograph status already folds into 'Parallel/Variant' text elsewhere
+  // in this app (e.g. "Gold Refractor Auto"), so no separate Auto tag here.
+  const parallelTag = card['Parallel/Variant'] ? ` ${card['Parallel/Variant']}` : '';
+  const gradeTag    = (card.Grader && card.Grade != null) ? ` ${card.Grader} ${card.Grade}` : '';
+  const price       = Number(card.SoldPrice || card.Price || 0).toLocaleString();
+  const setLine     = [card.Year, card['Set ']].filter(Boolean).join(' ').trim();
+  return `Just sold this ${setLine}${parallelTag} ${card.Player || card['Card Title'] || 'card'}${gradeTag} ` +
+    `for $${price}${venueLabel ? ' at ' + venueLabel : ''} 🔥`;
+}
+
+function generateCaptionFooter(card) {
+  const hashtag  = '#' + (card.Player || card['Card Title'] || 'cardshow').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const graderTag = card.Grader === 'PSA' && card.Grade == 10 ? '#PSA10' : '#gradedcards';
+  return `Tracked on @cardshow.io\n${hashtag} #cardshowhobby ${graderTag} #cardshow`;
+}
+
+function _dropUpdateCounters() {
+  const body   = document.getElementById('dropCaptionBody')?.value || '';
+  const footer = document.getElementById('dropCaptionFooter')?.textContent || '';
+  const total  = (body + '\n' + footer).length;
+
+  const igEl = document.getElementById('dropCounterIG');
+  const xEl  = document.getElementById('dropCounterX');
+  if (igEl) {
+    igEl.textContent = `${total} / 2200 · Instagram`;
+    igEl.classList.toggle('over-limit', total > 2200);
+  }
+  if (xEl) {
+    xEl.textContent = `${total} / 280 · X`;
+    xEl.classList.toggle('over-limit', total > 280);
+  }
+}
+
+// ── Modal open/close ──
+function openShareCardModal(card, showId) {
+  if (!card) return;
+  _dropPending = { card, showId: showId != null ? showId : (card._shows instanceof Set ? [...card._shows][0] : activeShowId) };
+  _dropStyle = 'dark';
+
+  document.getElementById('shareCardOverlay')?.classList.add('open');
+
+  // A photo already attached earlier this session (e.g. reopening from the
+  // Report tab) skips straight to the share body; otherwise the photo step
+  // is required before anything else in the modal is reachable.
+  if (card._dropPhotoDataUrl) {
+    _dropRenderReady();
+  } else {
+    _dropShowPhotoStep();
+  }
+}
+
+function closeShareCardModal() {
+  document.getElementById('shareCardOverlay')?.classList.remove('open');
+  _dropPending = null;
+}
+
+function _dropFullCaption() {
+  const body   = document.getElementById('dropCaptionBody')?.value || '';
+  const footer = document.getElementById('dropCaptionFooter')?.textContent || '';
+  return `${body}\n\n${footer}`;
+}
+
+async function _dropCopyCaption() {
+  try {
+    await navigator.clipboard.writeText(_dropFullCaption());
+    showToast('Caption copied!');
+  } catch (e) {
+    showToast('⚠️ Could not copy — select and copy manually', 'var(--danger)');
+  }
+}
+
+function _dropDownloadImage() {
+  const canvas = document.getElementById('dropShareCanvas');
+  if (!canvas) return;
+  canvas.toBlob(blob => {
+    if (!blob) { showToast('⚠️ Could not export image', 'var(--danger)'); return; }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `cardshow-drop-${Date.now()}.png`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }, 'image/png');
+}
+
+async function _dropNativeShare() {
+  const canvas = document.getElementById('dropShareCanvas');
+  if (!canvas) return;
+  canvas.toBlob(async blob => {
+    if (!blob) return;
+    try {
+      const file = new File([blob], 'cardshow-drop.png', { type: 'image/png' });
+      if (navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], text: _dropFullCaption() });
+      } else {
+        await navigator.share({ text: _dropFullCaption() });
+      }
+    } catch (err) {
+      if (err.name !== 'AbortError') {
+        console.error('[Drop share]', err);
+        showToast('⚠️ Could not open share sheet — try Download instead', 'var(--danger)');
+      }
+    }
+  }, 'image/png');
+}
+
+// ════════════════════════════════════════════════════════
+// PHOTO SCAN & CARD FINGERPRINTING
+// Shared by Scan-to-Sell POS review and the Manual Sale modal's photo
+// capture — both call /.netlify/functions/scan-card (not vision-scan.js;
+// see that function's header comment for why it's a separate endpoint).
+// Computes a fingerprint per scanned card and flags a likely-duplicate
+// warning against the seller's own inventory. Non-blocking — re-scans and
+// previously-sold/re-consigned cards are legitimate, so the seller can
+// always proceed anyway.
+//
+// Deviation from the original spec: "the sell drawer" (price + payment
+// only, for a card already in inventory — see sdConfirm() above) has no
+// card-identity fields to autofill at all. Scan-to-Sell POS is this app's
+// actual equivalent of a "sell flow with manual entry fields" — it already
+// chains photo → identify → review → the real sell drawer — so the scan
+// button lives there instead.
+// ════════════════════════════════════════════════════════
+
+const SCAN_CARD_CONFIDENCE_THRESHOLD = 0.7;
+
+// Max 1600px long edge, JPEG 85% — larger than POS's old 1024px vision-scan
+// cap since grading-label text (cert numbers) needs more resolution to stay
+// legible at that field's size on the card.
+async function _scanCardCompressImage(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const MAX = 1600;
+      let w = img.width, h = img.height;
+      if (w > MAX || h > MAX) {
+        if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+        else       { w = Math.round(w * MAX / h); h = MAX; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', 0.85).split(',')[1]);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Image load failed')); };
+    img.src = url;
+  });
+}
+
+// Cert number + grading company is the strong fingerprint (unique per
+// graded slab). Composite hash is the fallback for raw cards or illegible
+// labels. Accepts the scan-card.js field shape (player_name, set_name, …).
+async function computeCardFingerprint(card) {
+  if (card.cert_number && card.grading_company) {
+    return `${card.grading_company}-${card.cert_number}`.toUpperCase().replace(/\s+/g, '');
+  }
+  const compositeRaw = [
+    card.year, card.set_name, card.subset, card.parallel_name,
+    card.parallel_serial, card.player_name
+  ].filter(Boolean).join('|').toLowerCase().replace(/\s+/g, '');
+  if (!compositeRaw) return null; // nothing usable to fingerprint
+
+  const enc = new TextEncoder().encode(compositeRaw);
+  const digest = await crypto.subtle.digest('SHA-256', enc);
+  return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// Scoped to the current seller's own inventory — a fingerprint match on a
+// different seller's card isn't a duplicate this seller needs to know about.
+async function checkDuplicateFingerprint(fingerprint) {
+  if (typeof db === 'undefined' || !fingerprint || !currentSeller) return null;
+  try {
+    const { data: seller } = await db.from('sellers').select('id').eq('handle', currentSeller).maybeSingle();
+    if (!seller) return null;
+    const { data, error } = await db
+      .from('inventory')
+      .select('id, card_title, player, created_at')
+      .eq('seller_id', seller.id)
+      .eq('fingerprint', fingerprint)
+      .limit(1);
+    if (error) { console.warn('[scan-card] duplicate check failed:', error.message); return null; }
+    return data && data.length ? data[0] : null;
+  } catch (e) {
+    console.warn('[scan-card] duplicate check error:', e.message);
+    return null;
+  }
+}
+
+// Worst-case confidence across the fields scan-card.js scores (0.0-1.0),
+// mapped to the same high/medium/low severity vocabulary used everywhere
+// else in this app's scan UIs.
+function _scanOverallConfidence(card) {
+  const conf = card.confidence || {};
+  const values = ['player_name', 'year', 'set_name', 'grade', 'cert_number']
+    .map(k => conf[k]).filter(v => typeof v === 'number');
+  if (!values.length) return 'medium';
+  const min = Math.min(...values);
+  if (min < 0.5) return 'low';
+  if (min < SCAN_CARD_CONFIDENCE_THRESHOLD) return 'medium';
+  return 'high';
+}
+
+// Applies/clears the yellow "please verify" border on one filled input
+// based on that field's confidence score — never silently trusts a
+// low-confidence guess without the seller seeing it flagged first.
+function _scanFlagConfidence(el, confidenceValue) {
+  if (!el) return;
+  const low = el.value && (typeof confidenceValue !== 'number' || confidenceValue < SCAN_CARD_CONFIDENCE_THRESHOLD);
+  el.classList.toggle('scan-verify', !!low);
+  el.title = low ? 'Low confidence — please verify' : '';
+  el.addEventListener('focus', () => { el.classList.remove('scan-verify'); el.title = ''; }, { once: true });
+}
+
+// Renders a small, non-blocking "looks like a duplicate" banner into the
+// given container. The seller can always proceed anyway.
+function _scanRenderDupeWarning(containerEl, dupe) {
+  if (!containerEl) return;
+  if (!dupe) { containerEl.style.display = 'none'; containerEl.innerHTML = ''; return; }
+  const when = dupe.created_at ? new Date(dupe.created_at).toLocaleDateString() : 'earlier';
+  containerEl.innerHTML =
+    `⚠️ This looks like a card already in your inventory ` +
+    `(${(dupe.player || dupe.card_title || 'card').slice(0, 40)} · added ${when})`;
+  containerEl.style.display = 'block';
+}
+
+// ════════════════════════════════════════════════════════
 // SCAN-TO-SELL POS — Photo-first identification
-// Chains into existing vision-scan.js and the sell drawer. Inserts the
+// Chains into scan-card.js and the sell drawer. Inserts the
 // card as Available, then hands off to openSellDrawer()/sdConfirm() —
 // the exact same path a seller marking an existing card sold takes.
 // ════════════════════════════════════════════════════════
@@ -9398,6 +10090,7 @@ function _posReset() {
 
   const badge = document.getElementById('posConfidenceBadge');
   if (badge) { badge.className = 'pos-confidence-badge'; badge.style.display = 'none'; badge.textContent = ''; }
+  _scanRenderDupeWarning(document.getElementById('posDupeWarning'), null);
 
   // Restore the Confirm button — posInsertAndOpenDrawer() disables it and
   // swaps its label to "Saving…" while the insert is in flight; without
@@ -9468,21 +10161,20 @@ async function posHandlePhoto(inputEl) {
   if (msgEl) msgEl.textContent = 'Reading photo…';
 
   try {
-    const base64    = await _posCompressImage(file);
-    const mediaType = 'image/jpeg';
+    const base64 = await _scanCardCompressImage(file);
 
     if (msgEl) msgEl.textContent = 'Identifying card…';
 
     _posVisionAbort = new AbortController();
 
-    // Calls vision-scan.js directly rather than through _callVisionScan() —
+    // Calls scan-card.js directly rather than through _callVisionScan() —
     // that helper is hard-wired to the Add Card modal's cert-scanner
     // overlay (closeCertScanner(), fillFormFromVision(), its own loading
     // overlay) and would fill the wrong form entirely if reused here.
-    const response = await fetch('/.netlify/functions/vision-scan', {
+    const response = await fetch('/.netlify/functions/scan-card', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image: base64, mediaType }),
+      body: JSON.stringify({ image_base64: base64, media_type: 'image/jpeg' }),
       signal: _posVisionAbort.signal
     });
 
@@ -9494,12 +10186,18 @@ async function posHandlePhoto(inputEl) {
 
     const result = await response.json();
 
-    if (!result.success || result.error === 'low_confidence') {
+    if (!result.success) {
       _posShowLowConfidence(result);
       return;
     }
 
-    posShowReview(result.card, result);
+    const card = result.card || {};
+    if (!card.player_name && !card.set_name && !card.grading_company) {
+      _posShowLowConfidence({ message: 'Could not identify card' });
+      return;
+    }
+
+    await posShowReview(card);
 
   } catch (err) {
     if (err.name === 'AbortError') return; // user cancelled
@@ -9535,49 +10233,46 @@ async function _posCompressImage(file) {
   });
 }
 
-// Overall confidence: worst of the per-field ratings vision-scan.js
-// returns under card.confidence (not a flat value on the card itself —
-// e.g. card.confidence.player, card.confidence.cardSet, etc).
-function _posOverallConfidence(card) {
-  const conf = card.confidence || {};
-  const values = ['player','year','cardSet','cardNumber','parallel','grade']
-    .map(k => conf[k]).filter(Boolean);
-  if (!values.length)        return 'medium';
-  if (values.includes('low'))    return 'low';
-  if (values.includes('medium')) return 'medium';
-  return 'high';
-}
-
-function posShowReview(card, result) {
-  _posLastResult = { card, result };
+async function posShowReview(card) {
+  _posLastResult = { card };
 
   document.getElementById('posPhotoPhase').style.display  = 'none';
   document.getElementById('posReviewPhase').style.display = 'block';
 
-  const fill = (id, val) => {
+  const fill = (id, val, confKey) => {
     const el = document.getElementById(id);
     if (!el) return;
     const v = String(val ?? '').trim();
     el.value = v;
     if (v) el.classList.add('pos-filled');
     el.addEventListener('focus', () => el.classList.remove('pos-filled'), { once: true });
+    if (confKey) _scanFlagConfidence(el, card.confidence?.[confKey]);
   };
 
-  // vision-scan.js field names: cardSet (not "set"), cardNumber, certNumber
-  fill('posRPlayer',   card.player);
-  fill('posRYear',     card.year);
-  fill('posRSet',      card.cardSet);
-  fill('posRCardNum',  card.cardNumber);
-  fill('posRParallel', card.parallel);
-  fill('posRGrade',    card.grade);
-  fill('posRCert',     card.certNumber);
+  // scan-card.js field names: player_name, set_name, card_number, cert_number.
+  // parallel_serial and an Auto flag are folded into the free-text Parallel
+  // field, matching how this field already conflates variant info everywhere
+  // else in this app (e.g. "Gold Refractor Auto").
+  const parallelText = [
+    card.parallel_name,
+    card.autograph ? 'Auto' : null,
+    card.parallel_serial ? '/' + card.parallel_serial : null,
+  ].filter(Boolean).join(' ');
+
+  fill('posRPlayer',   card.player_name, 'player_name');
+  fill('posRYear',     card.year,        'year');
+  fill('posRSet',      card.set_name,    'set_name');
+  fill('posRCardNum',  card.card_number);
+  fill('posRParallel', parallelText);
+  fill('posRGrade',    card.grade,       'grade');
+  fill('posRCert',     card.cert_number, 'cert_number');
 
   const graderEl = document.getElementById('posRGrader');
-  if (graderEl && card.grader) graderEl.value = String(card.grader).toUpperCase();
+  if (graderEl) graderEl.value = card.grading_company ? String(card.grading_company).toUpperCase() : '';
 
   const badge = document.getElementById('posConfidenceBadge');
   if (badge) {
-    const level  = _posOverallConfidence(card);
+    const level  = _scanOverallConfidence(card);
     const icons  = { high: '✓', medium: '⚠', low: '✗' };
     const labels = {
       high:   'High confidence — ready to confirm',
@@ -9591,6 +10286,14 @@ function posShowReview(card, result) {
 
   const scroll = document.getElementById('posScroll');
   if (scroll) scroll.scrollTop = 0;
+
+  // Duplicate fingerprint check — non-blocking, scoped to this seller's own
+  // inventory. Runs after the review fields are already visible so it never
+  // delays getting the form in front of the seller.
+  const fingerprint = await computeCardFingerprint(card);
+  _posLastResult.fingerprint = fingerprint;
+  const dupe = fingerprint ? await checkDuplicateFingerprint(fingerprint) : null;
+  _scanRenderDupeWarning(document.getElementById('posDupeWarning'), dupe);
 }
 
 function posShowManualPhase() {
@@ -9601,6 +10304,7 @@ function posShowManualPhase() {
 
   const badge = document.getElementById('posConfidenceBadge');
   if (badge) badge.style.display = 'none';
+  _scanRenderDupeWarning(document.getElementById('posDupeWarning'), null);
 
   setTimeout(() => document.getElementById('posRPlayer')?.focus(), 100);
 }
@@ -9615,8 +10319,8 @@ function posRetakePhoto() {
 }
 
 function _posShowLowConfidence(result) {
-  // vision-scan.js returns no `card` at all on the low_confidence path —
-  // nothing usable to pre-fill, so just restore the photo UI for a retry.
+  // Nothing usable to pre-fill (scan failed, or every core field came back
+  // null) — just restore the photo UI for a retry.
   _posShowPhotoOptions();
 
   showToast('⚠️ Card not clearly identified — try a closer photo or enter manually', '#f5a623');
@@ -9670,6 +10374,28 @@ async function posInsertAndOpenDrawer() {
 
   const card = validateAndNormalizeCard(rawCard);
   card._shows = new Set();
+
+  // Flags this card as POS-originated so sdConfirm() (below, shared with
+  // every other Sell Drawer confirm) treats its post-sale Drop prompt the
+  // same as a Manual Sale — a walk-up POS sale is just as spontaneous/
+  // off-catalog as a manual entry, unlike confirming a sale on a card that
+  // was already sitting in inventory. Without this, an established seller
+  // (default pref 'manual_only') would never see the prompt after a POS
+  // sale, even though that's exactly the kind of sale worth sharing.
+  card._posOrigin = true;
+
+  // Recomputed from the final (possibly seller-edited) field values rather
+  // than trusting the scan-time fingerprint — matches this app's existing
+  // "read live DOM, not the original scan snapshot" convention (see the
+  // bulk-scan correction pass). The scan-time fingerprint is only used for
+  // the dupe warning shown immediately after the scan.
+  card.Fingerprint = await computeCardFingerprint({
+    cert_number: cert || null, grading_company: grader || null,
+    year: year || null, set_name: cardSet || null,
+    subset: null, parallel_name: parallel || null,
+    parallel_serial: null, player_name: player || null,
+  });
+  card.DetectedConfidence = _posLastResult?.card?.confidence || null; // audit trail of the scan, if one was used
 
   // buildCardTitle() reads cardSet/cardNum (not set/cardNumber) and never
   // uses grader/grade — matches the exact call shape fillFormFromVision() uses.
@@ -9885,13 +10611,16 @@ function updateReport() {
   // ── Transaction log ──
   const tbody = el('rptTxBody');
   if (!soldCards.length) {
-    tbody.innerHTML = '<tr><td colspan="6" style="padding:16px 8px;color:var(--muted);font-size:12px">No sales yet</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" style="padding:16px 8px;color:var(--muted);font-size:12px">No sales yet</td></tr>';
   } else {
     tbody.innerHTML = soldCards.map(r => {
       const delta    = (Number(r.SoldPrice) || 0) - (Number(r.Price) || 0);
       const mslBadge = r._manualSale
         ? '<span class="msl-badge">MANUAL</span>'
         : '';
+      // inventory.indexOf(r) is safe here — getSellerInventory() returns
+      // the same object references it filtered from inventory[], not copies.
+      const invIdx = inventory.indexOf(r);
       return `<tr>
         <td style="padding:7px 8px;border-bottom:1px solid rgba(30,38,64,.5)">
           <div style="font-weight:500;font-size:12px;color:var(--text)">${r.Player || '—'}${mslBadge}</div>
@@ -9902,6 +10631,11 @@ function updateReport() {
         <td style="padding:7px 8px;border-bottom:1px solid rgba(30,38,64,.5);font-family:'DM Mono',monospace;font-size:11px;color:${delta>=0?'#4ade80':'#f87171'}">${delta>=0?'+':'-'}$${Math.abs(delta).toLocaleString()}</td>
         <td style="padding:7px 8px;border-bottom:1px solid rgba(30,38,64,.5)"><span class="pay-chip-sm ${r.PaymentMethod||'Other'}">${r.PaymentMethod||'—'}</span></td>
         <td style="padding:7px 8px;border-bottom:1px solid rgba(30,38,64,.5);font-family:'DM Mono',monospace;font-size:10px;color:var(--muted)">${r.SoldTime||'—'}</td>
+        <td style="padding:7px 8px;border-bottom:1px solid rgba(30,38,64,.5)">
+          <button type="button" onclick="openShareCardModal(inventory[${invIdx}])"
+            style="background:none;border:none;cursor:pointer;font-size:14px;padding:2px 4px"
+            title="Share this sale" aria-label="Share this sale">📤</button>
+        </td>
       </tr>`;
     }).join('');
   }
@@ -14980,6 +15714,12 @@ function openProfile() {
     ? raw.replace(/^1(\d{3})(\d{3})(\d{4})$/, '+1 ($1) $2-$3') || raw
     : '';
   document.getElementById('prof_ig').value = p.instagram || '';
+
+  const dropPref = getDropPromptPref();
+  document.querySelectorAll('#dropPrefGroup input[name="dropPref"]').forEach(r => {
+    r.checked = r.value === dropPref;
+  });
+
   document.getElementById('profileOverlay').classList.add('open');
 }
 
@@ -15733,6 +16473,19 @@ const CARD_TO_DB = Object.fromEntries(
   Object.entries(DB_TO_CARD).map(([k, v]) => [v, k])
 );
 
+// Supabase/PostgREST returns PGRST204 ("Could not find the 'X' column of
+// 'Y' in the schema cache") when a payload key has no matching DB column —
+// expected pre-migration for fingerprint/detected_confidence (see "Pending
+// DB Migrations" in CLAUDE.md). Every insert/update path strips these two
+// keys and retries once on that specific error, so a sale or CSV import
+// never fails outright just because this migration hasn't run yet.
+function _isMissingScanColumnError(error) {
+  return !!error && (
+    error.code === 'PGRST204' ||
+    /column .*(fingerprint|detected_confidence).*schema cache/i.test(error.message || '')
+  );
+}
+
 function cardToDbRow(card) {
   return {
     card_title:   card['Card Title'] || '',
@@ -15750,6 +16503,8 @@ function cardToDbRow(card) {
     location:     card.Location      || null,
     item_type:    card.item_type     || 'card',
     product_type: card.product_type  || null,
+    fingerprint:  card.Fingerprint   || null,
+    detected_confidence: card.DetectedConfidence || null,
   };
 }
 
@@ -15773,6 +16528,8 @@ function dbRowToCard(row) {
     Location:        row.location      || null,
     item_type:       row.item_type     || 'card',
     product_type:    row.product_type  || null,
+    Fingerprint:        row.fingerprint          || null,
+    DetectedConfidence: row.detected_confidence   || null,
     _shows:          new Set(),
   };
   if (row.sold_price     != null) card.SoldPrice     = row.sold_price;
@@ -15852,7 +16609,7 @@ async function fetchSellerInventoryFromDB(sellerHandle) {
 
 function openManualSaleModal() {
   // Reset every field
-  ['mslPlayer','mslYear','mslSet','mslParallel','mslGrade','mslNotes'].forEach(id => {
+  ['mslPlayer','mslYear','mslSet','mslParallel','mslGrade','mslCert','mslNotes'].forEach(id => {
     const el = document.getElementById(id);
     if (el) { el.value = ''; el.classList.remove('db-filled'); }
   });
@@ -15871,6 +16628,7 @@ function openManualSaleModal() {
   const btn = document.getElementById('mslConfirmBtn');
   if (btn) { btn.disabled = false; btn.textContent = '✓ Log Sale'; }
 
+  _scanRenderDupeWarning(document.getElementById('mslDupeWarning'), null);
   _mslResetPhoto();
   _mslPopulateShowSelector();
 
@@ -15903,8 +16661,7 @@ function _mslPopulateShowSelector() {
 }
 
 // ── Manual Sale — photo capture + card identification ──
-// Reuses _posCompressImage() (a generic, state-free utility) and calls
-// vision-scan.js directly, same as posHandlePhoto() — the existing
+// Calls scan-card.js directly, same as posHandlePhoto() — the existing
 // _callVisionScan() helper is hard-wired to the Add Card modal's
 // cert-scanner overlay and would drive the wrong UI entirely if reused here.
 
@@ -15918,6 +16675,7 @@ function mslTriggerLibrary() {
 
 function _mslResetPhoto() {
   if (_mslVisionAbort) { _mslVisionAbort.abort(); _mslVisionAbort = null; }
+  _mslScanConfidence = null;
   _mslShowPhotoIdle();
   const fi = document.getElementById('mslFileInput');
   if (fi) fi.value = '';
@@ -15948,6 +16706,7 @@ function _mslShowPhotoPreview(base64) {
 function mslRetakePhoto() {
   if (_mslVisionAbort) { _mslVisionAbort.abort(); _mslVisionAbort = null; }
   _mslShowPhotoIdle();
+  _scanRenderDupeWarning(document.getElementById('mslDupeWarning'), null);
 }
 
 async function mslHandlePhoto(inputEl) {
@@ -15958,16 +16717,15 @@ async function mslHandlePhoto(inputEl) {
   _mslShowPhotoLoading('Reading photo…');
 
   try {
-    const base64    = await _posCompressImage(file);
-    const mediaType = 'image/jpeg';
+    const base64 = await _scanCardCompressImage(file);
 
     _mslShowPhotoLoading('Identifying card…');
     _mslVisionAbort = new AbortController();
 
-    const response = await fetch('/.netlify/functions/vision-scan', {
+    const response = await fetch('/.netlify/functions/scan-card', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image: base64, mediaType }),
+      body: JSON.stringify({ image_base64: base64, media_type: 'image/jpeg' }),
       signal: _mslVisionAbort.signal,
     });
     _mslVisionAbort = null;
@@ -15975,31 +16733,30 @@ async function mslHandlePhoto(inputEl) {
     if (!response.ok) throw new Error(`Server error ${response.status}`);
     const result = await response.json();
 
-    if (!result.success || result.error === 'low_confidence') {
-      // vision-scan.js returns no `card` at all on this path — nothing
-      // usable to pre-fill, so just restore the photo UI for a retry.
+    const card = result.card || {};
+    if (!result.success || (!card.player_name && !card.set_name && !card.grading_company)) {
+      // Nothing usable to pre-fill — just restore the photo UI for a retry.
       _mslShowPhotoIdle();
       showToast('⚠️ Card not clearly identified — try a closer photo or enter manually', '#f5a623');
       return;
     }
 
-    _mslApplyVisionResult(result.card, base64);
+    await _mslApplyVisionResult(card, base64);
 
   } catch (err) {
     if (err.name === 'AbortError') return; // user retook/closed mid-scan
 
-    console.error('[Manual Sale Vision]', err);
+    console.error('[Manual Sale Scan]', err);
     _mslShowPhotoIdle();
     showToast('⚠️ Could not identify card — try again or enter manually', 'var(--danger)');
   }
 }
 
-// Fills Player/Year/Set/Parallel/Grade/Grader from a vision-scan.js result —
-// the modal's remaining fields (Number, Cert #) are intentionally not part
-// of this quick-entry form (see confirmManualSale()), so nothing from the
-// scan is mapped to them even if vision detected them.
-function _mslApplyVisionResult(card, base64) {
-  const fill = (id, val) => {
+// Fills Player/Year/Set/Parallel/Grade/Grader/Cert# from a scan-card.js
+// result — the modal has no card-number field (see confirmManualSale()),
+// so card_number is ignored here even though scan-card.js returns it.
+async function _mslApplyVisionResult(card, base64) {
+  const fill = (id, val, confKey) => {
     const el = document.getElementById(id);
     if (!el) return;
     const v = String(val ?? '').trim();
@@ -16007,34 +16764,48 @@ function _mslApplyVisionResult(card, base64) {
     el.value = v;
     el.classList.add('db-filled');
     el.addEventListener('focus', () => el.classList.remove('db-filled'), { once: true });
+    if (confKey) _scanFlagConfidence(el, card.confidence?.[confKey]);
   };
 
-  // vision-scan.js field names: cardSet (not "set") — same shape
-  // posShowReview() reads.
-  fill('mslPlayer', card.player);
-  fill('mslYear',   card.year);
-  fill('mslSet',      card.cardSet);
-  fill('mslParallel', card.parallel);
-  fill('mslGrade',    card.grade);
+  // scan-card.js field names: player_name, set_name, cert_number. Serial +
+  // Auto flag are folded into the free-text Parallel field, matching the
+  // existing convention elsewhere in this app.
+  const parallelText = [
+    card.parallel_name,
+    card.autograph ? 'Auto' : null,
+    card.parallel_serial ? '/' + card.parallel_serial : null,
+  ].filter(Boolean).join(' ');
+
+  fill('mslPlayer', card.player_name, 'player_name');
+  fill('mslYear',   card.year,        'year');
+  fill('mslSet',      card.set_name,  'set_name');
+  fill('mslParallel', parallelText);
+  fill('mslGrade',    card.grade,     'grade');
+  fill('mslCert',     card.cert_number, 'cert_number');
 
   const graderEl = document.getElementById('mslGrader');
-  if (graderEl && card.grader) {
-    graderEl.value = String(card.grader).toUpperCase();
+  if (graderEl && card.grading_company) {
+    graderEl.value = String(card.grading_company).toUpperCase();
     graderEl.classList.add('db-filled');
     graderEl.addEventListener('change', () => graderEl.classList.remove('db-filled'), { once: true });
   }
 
   _mslShowPhotoPreview(base64);
+  _mslScanConfidence = card.confidence || null;
 
-  // _posOverallConfidence() is a generic helper — worst of vision's
-  // per-field confidence ratings under card.confidence.
-  const level = _posOverallConfidence(card);
+  const level = _scanOverallConfidence(card);
   showToast(
     level === 'low'
       ? 'Card scanned — please double-check the fields'
       : 'Card identified — fields filled in below',
     level === 'low' ? '#f5a623' : undefined
   );
+
+  // Duplicate fingerprint check — non-blocking, scoped to this seller's own
+  // inventory (same convention as posShowReview()).
+  const fingerprint = await computeCardFingerprint(card);
+  const dupe = fingerprint ? await checkDuplicateFingerprint(fingerprint) : null;
+  _scanRenderDupeWarning(document.getElementById('mslDupeWarning'), dupe);
 }
 
 function mslSelPay(el, method) {
@@ -16074,6 +16845,7 @@ async function confirmManualSale() {
   const parallel = (document.getElementById('mslParallel')?.value || '').trim().toLowerCase();
   const gradeStr = (document.getElementById('mslGrade')?.value    || '').trim();
   const grader   = (document.getElementById('mslGrader')?.value   || '').trim();
+  const cert     = (document.getElementById('mslCert')?.value     || '').trim();
   const notes    = (document.getElementById('mslNotes')?.value    || '').trim();
   const showId   = document.getElementById('mslShow')?.value      || null;
 
@@ -16093,7 +16865,7 @@ async function confirmManualSale() {
     'Parallel/Variant': parallel,
     Grader:             grader    || null,
     Grade:              gradeStr !== '' ? parseFloat(gradeStr) : null,
-    'Cert #':           '',
+    'Cert #':           cert,
     Price:              price,           // asking = sold for manual entries
     Status:             'Sold',          // created sold — no sell drawer step
     Location:           null,
@@ -16121,8 +16893,19 @@ async function confirmManualSale() {
     hour: '2-digit', minute: '2-digit',
   });
 
+  // Recomputed from the final (possibly seller-edited) field values —
+  // matches posInsertAndOpenDrawer()'s same convention. A local SHA-256
+  // digest is sub-millisecond, so this doesn't delay the "instant" push below.
+  card.Fingerprint = await computeCardFingerprint({
+    cert_number: cert || null, grading_company: grader || null,
+    year: year || null, set_name: cardSet || null,
+    subset: null, parallel_name: parallel || null,
+    parallel_serial: null, player_name: player || null,
+  });
+  card.DetectedConfidence = _mslScanConfidence; // audit trail of the scan, if one was used
+
   // ── Step 1: Push to inventory[] ───────────────────────
-  // Before any await — Report tab updates feel instant.
+  // Before any network await — Report tab updates feel instant.
   inventory.push(card);
 
   // ── Step 2: Insert to DB via timeout race ─────────────
@@ -16170,6 +16953,13 @@ async function confirmManualSale() {
   showToast(
     `✓ ${player.slice(0, 28)} · $${price.toLocaleString()} · ${payment} · logged`
   );
+
+  // "The Drop" — post-sale share prompt. 'manual_only' opts in specifically
+  // to this path (as well as 'always'); 'never' suppresses both.
+  const dropPref = getDropPromptPref();
+  if (dropPref === 'always' || dropPref === 'manual_only') {
+    showDropPrompt(card, targetShowId);
+  }
 }
 
 // Writes one row to show_floor_transactions with source:'manual'.
@@ -16301,8 +17091,14 @@ async function insertCardToDB(card, sellerIdOverride) {
     }
 
     const row = { ...cardToDbRow(card), seller_id: sellerId };
-    const { data, error } = await db
+    let { data, error } = await db
       .from('inventory').insert(row).select('id').maybeSingle();
+
+    if (error && _isMissingScanColumnError(error)) {
+      delete row.fingerprint;
+      delete row.detected_confidence;
+      ({ data, error } = await db.from('inventory').insert(row).select('id').maybeSingle());
+    }
 
     if (error) { console.warn('Insert failed:', error.message); return null; }
     return data.id; // return the UUID so we can store it on the card
@@ -16349,10 +17145,16 @@ async function updateCardInDB(card) {
       sale_notes:     card.SaleNotes     ?? null,
       sold_time:      card.SoldTime      ?? null,
     };
-    const { error } = await db
+    let { error } = await db
       .from('inventory')
       .update(payload)
       .eq('id', card._dbId);
+
+    if (error && _isMissingScanColumnError(error)) {
+      delete payload.fingerprint;
+      delete payload.detected_confidence;
+      ({ error } = await db.from('inventory').update(payload).eq('id', card._dbId));
+    }
 
     if (error) console.warn('Update failed:', error.message);
   } catch(e) {
@@ -16528,7 +17330,11 @@ async function upsertCardsToDB(cards) {
     // any concurrent insert from another tab/session.
     let insertedIds = [];
     if (toInsert.length) {
-      const { data: insertedRows, error } = await db.from('inventory').insert(toInsert).select('id');
+      let { data: insertedRows, error } = await db.from('inventory').insert(toInsert).select('id');
+      if (error && _isMissingScanColumnError(error)) {
+        toInsert.forEach(row => { delete row.fingerprint; delete row.detected_confidence; });
+        ({ data: insertedRows, error } = await db.from('inventory').insert(toInsert).select('id'));
+      }
       if (error) console.warn('Batch insert error:', error.message);
       else insertedIds = (insertedRows || []).map(r => r.id);
     }
@@ -16536,7 +17342,13 @@ async function upsertCardsToDB(cards) {
     // Update existing cards one at a time (Supabase upsert requires unique constraint)
     for (const row of toUpdate) {
       const { id, ...updates } = row;
-      await db.from('inventory').update(updates).eq('id', id);
+      let { error } = await db.from('inventory').update(updates).eq('id', id);
+      if (error && _isMissingScanColumnError(error)) {
+        delete updates.fingerprint;
+        delete updates.detected_confidence;
+        ({ error } = await db.from('inventory').update(updates).eq('id', id));
+      }
+      if (error) console.warn('Row update error:', error.message);
     }
 
     console.log(`Upserted ${toInsert.length} new + ${toUpdate.length} updated cards`);
@@ -16766,8 +17578,8 @@ async function upsertCardsToDB(cards) {
 
     <div class="drawer-body">
 
-      <!-- Photo — optional, auto-fills Player/Year/Set/Grade/Grader below.
-           Calls vision-scan.js directly, same as posHandlePhoto() — the
+      <!-- Photo — optional, auto-fills Player/Year/Set/Parallel/Grade/Grader/Cert# below.
+           Calls scan-card.js directly, same as posHandlePhoto() — the
            existing _callVisionScan() helper is hard-wired to the Add Card
            modal's cert-scanner overlay and would fill the wrong form. -->
       <div>
@@ -16878,6 +17690,19 @@ async function upsertCardsToDB(cards) {
           </select>
         </div>
       </div>
+
+      <!-- Cert # — optional, feeds fingerprint-based duplicate detection -->
+      <div>
+        <div class="drawer-field-label">Cert # <span style="color:var(--muted);font-size:10px">(optional)</span></div>
+        <input id="mslCert" class="sold-price-input"
+          style="font-size:15px;padding:9px 12px;
+                 width:100%;box-sizing:border-box;border-radius:7px"
+          type="text" inputmode="numeric" autocomplete="off"
+          placeholder="PSA / BGS / SGC / CGC cert number">
+      </div>
+
+      <!-- Duplicate fingerprint warning — non-blocking, injected by _mslApplyVisionResult() -->
+      <div id="mslDupeWarning" class="scan-dupe-warning" style="display:none"></div>
 
       <!-- Sold price — required -->
       <div>
