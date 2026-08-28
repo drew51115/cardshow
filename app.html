@@ -10068,6 +10068,67 @@ function renderQRFallback(canvasId, seller) {
   ctx.fillText(activeShow ? activeShow.name : '', canvas.width/2, 88);
 }
 
+// ── "Powered by CardShow" footer — shared by every downloadable/printable
+// PNG this app generates (entrance signage, seller QR codes). Loaded once
+// and cached; every composite function awaits this before drawing.
+const CARDSHOW_LOGO_URL = '/assets/cardshow-logo-wordmark.png';
+let _cardShowLogoPromise = null;
+function _loadCardShowLogo() {
+  if (!_cardShowLogoPromise) {
+    _cardShowLogoPromise = new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload  = () => resolve(img);
+      img.onerror = () => reject(new Error('CardShow logo failed to load'));
+      img.src = CARDSHOW_LOGO_URL;
+    });
+  }
+  return _cardShowLogoPromise;
+}
+
+// Fixed height budget (unscaled px) for the footer band below — callers
+// multiply by their own SCALE to size the canvas before drawing.
+const CARDSHOW_FOOTER_H_UNSCALED = 20 + 1 + 16 + 30 + 10 + 14 + 4 + 12 + 28;
+//                                 gap  div  gap  logo gap text gap  site  pad
+
+// Draws the divider → logo → "Powered by CardShow" → "getcardshow.com"
+// footer starting at (centerX, topY) and returns the Y just past it.
+// `dark` selects light-on-dark (signage) vs dark-on-light (seller QR) ink.
+function _drawCardShowFooter(ctx, logoImg, centerX, topY, scale, dark) {
+  let y = topY;
+  const dividerColor = dark ? '#222222' : '#e5e5e5';
+  const poweredColor = dark ? '#999999' : '#666666';
+  const siteColor     = dark ? '#555555' : '#aaaaaa';
+
+  y += 20 * scale;
+  ctx.strokeStyle = dividerColor;
+  ctx.lineWidth = 1 * scale;
+  ctx.beginPath();
+  ctx.moveTo(centerX - 100 * scale, y);
+  ctx.lineTo(centerX + 100 * scale, y);
+  ctx.stroke();
+  y += 1 * scale + 16 * scale;
+
+  const logoW = 130 * scale;
+  const logoH = logoW * (logoImg.naturalHeight / logoImg.naturalWidth);
+  ctx.drawImage(logoImg, centerX - logoW / 2, y, logoW, logoH);
+  y += logoH + 10 * scale;
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = poweredColor;
+  ctx.font = `${11 * scale}px 'DM Mono', monospace`;
+  ctx.letterSpacing = `${0.04 * 11 * scale}px`;
+  ctx.fillText('Powered by CardShow', centerX, y + 11 * scale);
+  y += 14 * scale + 4 * scale;
+
+  ctx.fillStyle = siteColor;
+  ctx.font = `${9 * scale}px 'DM Mono', monospace`;
+  ctx.letterSpacing = '0';
+  ctx.fillText('getcardshow.com', centerX, y + 9 * scale);
+  y += 12 * scale + 28 * scale;
+
+  return y;
+}
+
 function openQRModal() {
   if (!activeQRSeller) return;
   const overlay = document.getElementById('qrModalOverlay');
@@ -10484,24 +10545,47 @@ function closeSellerQRModal() {
   document.body.style.overflow = '';
 }
 
-function downloadSellerQR() {
-  const canvas = document.getElementById('sellerQrCanvas');
-  if (!canvas) return;
+// Composites a raw QR canvas onto a white card with the "Powered by
+// CardShow" footer below it (same footer used on entrance signage).
+// Previously these downloads were just a raw dump of the QR canvas with
+// no branding or context at all.
+async function _downloadBrandedQrPng(qrCanvas, filename) {
+  if (!qrCanvas) return;
+  const logoImg = await _loadCardShowLogo().catch(() => null);
+
+  const SCALE = 2; // crisp/printable, matches the signage composite's convention
+  const PAD = 20;
+  const qrSize = qrCanvas.width;
+  const footerH = logoImg ? CARDSHOW_FOOTER_H_UNSCALED * SCALE : PAD * SCALE;
+
+  const oc = document.createElement('canvas');
+  oc.width  = (qrSize + PAD * 2) * SCALE;
+  oc.height = PAD * SCALE + qrSize * SCALE + footerH;
+  const ctx = oc.getContext('2d');
+
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, oc.width, oc.height);
+  ctx.drawImage(qrCanvas, PAD * SCALE, PAD * SCALE, qrSize * SCALE, qrSize * SCALE);
+
+  if (logoImg) {
+    _drawCardShowFooter(ctx, logoImg, oc.width / 2, PAD * SCALE + qrSize * SCALE, SCALE, false);
+  }
+
   const link = document.createElement('a');
-  link.download = `cardshow-qr-${currentSeller}-${sellerQrMode}.png`;
-  link.href = canvas.toDataURL('image/png');
+  link.download = filename;
+  link.href = oc.toDataURL('image/png');
   link.click();
   showToast('QR code saved');
 }
 
-function downloadSellerQRModal() {
+async function downloadSellerQR() {
+  const canvas = document.getElementById('sellerQrCanvas');
+  await _downloadBrandedQrPng(canvas, `cardshow-qr-${currentSeller}-${sellerQrMode}.png`);
+}
+
+async function downloadSellerQRModal() {
   const canvas = document.getElementById('sellerQrModalCanvas');
-  if (!canvas) return;
-  const link = document.createElement('a');
-  link.download = `cardshow-qr-${currentSeller}-${sellerQrMode}-large.png`;
-  link.href = canvas.toDataURL('image/png');
-  link.click();
-  showToast('QR code saved');
+  await _downloadBrandedQrPng(canvas, `cardshow-qr-${currentSeller}-${sellerQrMode}-large.png`);
 }
 
 // Override renderQR to accept an explicit URL parameter
@@ -11685,12 +11769,16 @@ function downloadShowQr() {
   }
 }
 
-function _downloadSignageComposite(slug) {
+async function _downloadSignageComposite(slug) {
   // Composite the signage card entirely on an offscreen canvas so the QR
   // (which lives in a <canvas> element and is invisible to html2canvas) is
   // always included in the downloaded PNG.
   const qrCanvas = document.getElementById('saqCanvasSignage');
   if (!qrCanvas) return;
+
+  // Non-fatal — a logo load failure (offline, path issue) shouldn't block
+  // the actual signage download, just omit the footer branding this once.
+  const logoImg = await _loadCardShowLogo().catch(() => null);
 
   const show = _saqShowId ? shows[_saqShowId] : null;
   const showName = (document.getElementById('saqSgnName') || {}).textContent || (show ? show.name : 'SHOW NAME');
@@ -11749,7 +11837,7 @@ function _downloadSignageComposite(slug) {
     + 22 * SCALE                          // "SCAN TO BROWSE" label
     + 12 * SCALE                          // gap
     + 32 * SCALE                          // access code pill
-    + PAD * SCALE;                        // bottom pad
+    + (logoImg ? CARDSHOW_FOOTER_H_UNSCALED * SCALE : PAD * SCALE); // branded footer, or a plain bottom pad if the logo didn't load
 
   const oc = document.createElement('canvas');
   oc.width  = W * SCALE;
@@ -11829,6 +11917,11 @@ function _downloadSignageComposite(slug) {
   ctx.letterSpacing = `${0.14 * 14 * SCALE}px`;
   ctx.fillText(code, oc.width / 2, y + 20 * SCALE);
   y += 32 * SCALE;
+
+  // "Powered by CardShow" footer
+  if (logoImg) {
+    y = _drawCardShowFooter(ctx, logoImg, oc.width / 2, y, SCALE, true);
+  }
 
   const link = document.createElement('a');
   link.download = `cardshow-qr-${slug || 'show'}-signage.png`;

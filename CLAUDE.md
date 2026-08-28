@@ -917,6 +917,8 @@ If `insertCardToDB()` times out inside `posInsertAndOpenDrawer()`'s `Promise.rac
 - **Log a Manual Sale (session 2026-08-24)** — "+ Log a Manual Sale" button in the seller Report tab opens a Sell-Drawer-styled modal for recording off-platform sales. Writes through the same three layers a platform sale does (`inventory`, `show_inventory` via `_autoPublishCardToShow()`, `show_floor_transactions` via a dedicated `recordManualSaleTransaction(card, showId)` wrapper — not `recordShowTransaction()`, since that reads `activeShowId` as a global and a manual sale can target a past show). New `show_floor_transactions.source` column (`'platform'`/`'manual'`/`'community_report'`/`'social_extract'`) tags provenance; MANUAL badge shown in the transaction log via `card._manualSale`. Optional photo capture (camera or library) calls `vision-scan.js` directly (same pattern as `posHandlePhoto()`) to auto-fill Player/Year/Set/Parallel/Grade/Grader before the seller confirms. See "Log a Manual Sale" section above. **Requires the `show_floor_transactions.source` DB migration** (see above).
 - **Trading Card API integration (session 2026-08-18/19)** — `TRADING_CARD_API_KEY` went live; see "Trading Card API Integration" section above for full detail. `netlify/functions/tcapi.js` (generic proxy) + `tcapiGet()` helper. Add Card modal's old `#ac_search` free-text box replaced with a 4-step guided picker (player → set → card# → parallel) wired directly to the Player/Set/Card#/Parallel fields. Bulk scan review grid gained a background Trading Card API validation pass (VERIFYING/VERIFIED/UNVERIFIED badge per card, best-effort set/card#/parallel enrichment). Three real API constraints discovered, only the first two on the first pass — the third was found by reproducing a live UI failure end-to-end, not by re-reasoning about the first fix: (1) `filter[x]=` params are non-functional today (silently return the unfiltered collection) on both `/v1/cards` and `/v1/sets`; `trading-card-lookup.js`'s old `filter[name]` search was broken the same way, meaning `#ac_search` had been silently returning wrong results since the key went live — removing it fixed that exposure as a side effect. (2) `filter[player_id]` on `/v1/cards` is real and documented but too slow for interactive use (10s+, no fast alternative). (3) The plain `full_name=`/`name=` params only prefix-match a first-name token — a last-name token never prefix-matches at any length short of complete, and `/v1/sets?name=` has no partial matching at all — so player search reports a "still typing the last name" state instead of substituting an unrelated candidate list when a multi-word query comes up empty, and set search fetches+caches the whole 273-set catalog client-side instead of relying on the server to filter it. An earlier version of the player-search fix tried a first-word-only fallback, which silently showed unrelated players with nothing distinguishing them from real matches — worse than showing nothing, and cut once this was caught.
 - **Trade Zone (session 2026-08-25)** — guest-friendly show-floor trading, fully standalone from the rest of the platform (`trade_zone_shows`/`traders`/`trade_posts`/`trades`/`share_events` never touch `inventory`/`shows`/`show_sellers`/`show_inventory`). Anonymous Supabase Auth for zero-friction guest identity, client-side photo resize + Storage upload, a live board (`trade-board.html`, Realtime `postgres_changes`) plus an interactive personal board in `trade-zone.html`, two-sided trade propose/confirm funneled entirely through `SECURITY DEFINER` RPCs (not direct table writes — see "Trade Zone" section above for why), a client-side Canvas-composited branded share graphic with consent-gated handle display and Web Share API integration, OG-tagged social previews via `netlify/functions/trade-og.js`, and a claim flow that upgrades the anonymous session in place via `supabase.auth.updateUser()` (same `auth.uid()`, zero data migration). Every RLS policy and RPC — including the security-critical paths (forged-post rejection, direct-`trades`-update rejection, non-party confirm rejection, consent-gated handle exposure, share-image URL folder validation) — was verified against a real local Postgres instance with a minimal Supabase-shape stub before shipping. **Requires the `supabase/migrations/20260825120000_trade_zone.sql` migration** (schema, storage buckets, RLS, RPCs) and enabling Anonymous Sign-Ins in the Supabase dashboard (Authentication → Providers → Anonymous).
+- **Entrance signage PNG fixes (session 2026-08-28)** — the meta line (date · location) was drawn as a single unwrapped `fillText()`, so a long location silently ran past the canvas edge and got clipped; wrapped it the same way the show name above it already wraps, with the canvas height computed to match exactly. Also dropped the Cards/Sellers counts from entrance signage (PNG and live preview panel both, to stay consistent) — printed signage goes up before a show's inventory is even fully known; the Marketing tab keeps its own counts.
+- **"Powered by CardShow" PNG branding (session 2026-08-28)** — see "'Powered by CardShow' PNG Branding" section above. Shared footer (logo + "Powered by CardShow" + getcardshow.com) added to entrance signage and both seller QR downloads via new `_loadCardShowLogo()`/`_drawCardShowFooter()`/`_downloadBrandedQrPng()` helpers. New asset: `assets/cardshow-logo-wordmark.png` (transparent background).
 
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`
@@ -969,6 +971,34 @@ Enter the Inferno as a logo tile even after the featured badge is updated.
 `.sp-featured-img` references `/assets/enter-the-inferno-promo.png`, which is now committed
 to the repo (`assets/` is the first image asset directory in this codebase — everything
 else prior to this section is emoji + CSS mockups).
+
+## "Powered by CardShow" PNG Branding
+
+Every printable/downloadable PNG this app generates — entrance signage and both seller
+QR code downloads (sidebar + big modal) — now carries a shared footer: a divider line,
+the CardShow logo (`assets/cardshow-logo-wordmark.png`, transparent background, works on
+both the dark signage card and the white QR card), "Powered by CardShow", and
+"getcardshow.com". Shared helpers live near the QR utility functions (`loadQRLib`/
+`renderQR`/`overlayQRLogo`), not duplicated per call site:
+- `_loadCardShowLogo()` — loads and caches the logo `Image` once per page load (a
+  module-level cached `Promise`, not re-fetched per download).
+- `CARDSHOW_FOOTER_H_UNSCALED` — the footer's fixed height budget in unscaled px; callers
+  multiply by their own `SCALE` to size their canvas correctly *before* drawing (canvas
+  height can't be changed after creation, so every composite function computes its total
+  height upfront rather than drawing top-to-bottom and measuring after the fact).
+- `_drawCardShowFooter(ctx, logoImg, centerX, topY, scale, dark)` — draws the footer at a
+  given position and returns the Y just past it; `dark` selects light-on-dark ink for the
+  signage card vs. dark-on-light ink for the white seller QR cards.
+- Logo load failure (offline, path issue) is non-fatal everywhere it's used — the download
+  still proceeds without the footer rather than blocking on a decorative asset.
+
+`downloadSellerQR()`/`downloadSellerQRModal()` previously just dumped the raw QR `<canvas>`
+with zero branding or composition; both now go through a new shared
+`_downloadBrandedQrPng(qrCanvas, filename)` that composites the QR onto a white card with
+the footer below it (SCALE 2, matching the signage composite's printable-quality
+convention). `_downloadSignageComposite()` gained an `await _loadCardShowLogo()` at its
+start and is now `async` — none of its callers awaited or used its return value, so this
+required no other changes.
 
 ## Scan-to-Sell POS — Photo-First (shipped)
 
