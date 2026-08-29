@@ -10772,20 +10772,39 @@ function renderQR(canvasId, seller, size) {
   });
 }
 
-function overlayQRLogo(canvasId, size) {
+async function overlayQRLogo(canvasId, size) {
+  let img;
+  try {
+    img = await _loadCardShowEmblem();
+  } catch (e) {
+    console.warn('QR emblem overlay skipped:', e.message);
+    return; // the QR itself is already drawn and fully scannable without it
+  }
+
+  // Re-fetch the canvas after the async load — it may have been
+  // re-rendered (or removed) while the emblem image was loading.
   const canvas = document.getElementById(canvasId);
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
-  const s = size * 0.18;
+
+  const s = size * 0.2;
   const x = (size - s) / 2, y = (size - s) / 2;
-  ctx.fillStyle = '#f5c842';
+
+  // White backing plate — keeps the emblem's gold/gray coloring legible
+  // against the QR's black/white modules, and gives the QR's error
+  // correction a predictable, fully-opaque region to cover (rather than
+  // the emblem's own transparent edges letting modules show through
+  // unevenly).
+  ctx.fillStyle = '#ffffff';
   ctx.beginPath();
-  ctx.roundRect(x, y, s, s, 4);
+  ctx.roundRect(x - 4, y - 4, s + 8, s + 8, 4);
   ctx.fill();
-  ctx.fillStyle = '#0a0a0a';
-  ctx.font = `bold ${s * 0.45}px 'Bebas Neue', sans-serif`;
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText('CS', x + s/2, y + s/2);
+
+  // Emblem is 1000x900 — contain-fit within the badge so it's never
+  // stretched or clipped.
+  const scale = Math.min(s / img.width, s / img.height);
+  const dw = img.width * scale, dh = img.height * scale;
+  ctx.drawImage(img, x + (s - dw) / 2, y + (s - dh) / 2, dw, dh);
 }
 
 function renderQRFallback(canvasId, seller) {
@@ -10817,6 +10836,24 @@ function _loadCardShowLogo() {
     });
   }
   return _cardShowLogoPromise;
+}
+
+// CS monogram emblem (transparent PNG, 1000x900) — the small center badge
+// on every seller QR code. Separate asset from the wordmark above: this is
+// a square-ish icon meant to sit inside the QR's quiet zone, not a
+// horizontal logo. Same cached-Promise loading convention.
+const CARDSHOW_EMBLEM_URL = '/assets/cardshow-emblem.png';
+let _cardShowEmblemPromise = null;
+function _loadCardShowEmblem() {
+  if (!_cardShowEmblemPromise) {
+    _cardShowEmblemPromise = new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload  = () => resolve(img);
+      img.onerror = () => reject(new Error('CardShow emblem failed to load'));
+      img.src = CARDSHOW_EMBLEM_URL;
+    });
+  }
+  return _cardShowEmblemPromise;
 }
 
 // Fixed height budget (unscaled px) for the footer band below — callers
