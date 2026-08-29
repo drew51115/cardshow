@@ -15621,6 +15621,21 @@ function _orgRenderPaymentBars(sold) {
   }).join('');
 }
 
+// shows{}.date is freeform display text and, for a multi-day show, often a
+// range like "August 29-30, 2026" (see Show Configuration examples in
+// CLAUDE.md, e.g. "Oct 17-18, 2026"). JS's loose Date parser misreads the
+// embedded day-range hyphen as part of the year — new Date("August 29-30,
+// 2026") silently resolves to August 2030, four years off. Mirrors
+// _parseShowStartDate() in show.html — duplicated, not shared, per this
+// app's convention of not sharing small helpers across files with no
+// build step.
+function _parseShowDate(dateStr) {
+  if (!dateStr) return null;
+  const cleaned = dateStr.replace(/(\d{1,2})\s*-\s*\d{1,2}(\s*,)/, '$1$2');
+  const d = new Date(cleaned);
+  return isNaN(d) ? null : d;
+}
+
 // ── VS. PREVIOUS SHOW ─────────────────────────────────────
 
 async function _orgRenderVsPrev(currentShowId, currentGMV, currentSold, currentSTPct) {
@@ -15630,11 +15645,12 @@ async function _orgRenderVsPrev(currentShowId, currentGMV, currentSold, currentS
   // Find the previous show by date (among all shows this admin manages)
   const allShows    = Object.values(shows).filter(s => s.id !== currentShowId);
   const currentShow = shows[currentShowId];
-  const currentDate = currentShow?.date ? new Date(currentShow.date) : null;
+  const currentDate = currentShow?.date ? _parseShowDate(currentShow.date) : null;
 
   const prevShow = allShows
-    .filter(s => s.date && (!currentDate || new Date(s.date) < currentDate))
-    .sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+    .map(s => ({ s, d: _parseShowDate(s.date) }))
+    .filter(x => x.d && (!currentDate || x.d < currentDate))
+    .sort((a, b) => b.d - a.d)[0]?.s;
 
   if (!prevShow) {
     el.innerHTML = '<div class="org-empty">Only one show on record</div>';
