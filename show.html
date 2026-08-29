@@ -1261,6 +1261,18 @@ function renderSportBreakdown() {
   `).join('');
 }
 
+// showMeta.date is freeform display text and, for a multi-day show, often a
+// range like "August 29-30, 2026" (see Show Configuration examples in
+// CLAUDE.md, e.g. "Oct 17-18, 2026"). JS's loose Date parser misreads the
+// embedded day-range hyphen as part of the year — new Date("August 29-30,
+// 2026") silently resolves to August 2030, four years off — so strip a
+// trailing "-N" day-range down to just the start day before parsing.
+function _parseShowStartDate(dateStr) {
+  const cleaned = dateStr.replace(/(\d{1,2})\s*-\s*\d{1,2}(\s*,)/, '$1$2');
+  const d = new Date(cleaned + (cleaned.includes(':') ? '' : ' 09:00:00'));
+  return isNaN(d) ? null : d;
+}
+
 function renderCountdown() {
   if (!showMeta.date) {
     document.getElementById('countdownSection').style.display = 'none';
@@ -1268,8 +1280,8 @@ function renderCountdown() {
   }
 
   // Parse date — try to extract from string like "May 23, 2026"
-  const parsed = new Date(showMeta.date + (showMeta.date.includes(':') ? '' : ' 09:00:00'));
-  if (isNaN(parsed)) {
+  const parsed = _parseShowStartDate(showMeta.date);
+  if (!parsed) {
     document.getElementById('countdownSection').style.display = 'none';
     return;
   }
