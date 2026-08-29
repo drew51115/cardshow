@@ -1334,12 +1334,15 @@ function renderSellerRoster() {
   document.getElementById('sellerRoster').innerHTML = sellers.map((handle) => {
     const profile     = sellerProfiles[handle] || {};
     const displayName = profile.displayName || handle.replace(/_/g, ' ');
-    const showHandle  = !!profile.displayName;
+    // Show the seller's Instagram handle (if they've set one) — not their
+    // CardShow login handle, which isn't a buyer-facing identifier and
+    // may not match their actual public handle at all.
+    const instagram   = (profile.instagram || '').replace(/^@/, '').trim();
     return `
     <div class="seller-row">
       <div class="seller-dot"></div>
       <div class="seller-row-name">${displayName}</div>
-      ${showHandle ? `<div class="seller-row-handle">@${handle}</div>` : ''}
+      ${instagram ? `<div class="seller-row-handle">@${instagram}</div>` : ''}
     </div>`;
   }).join('');
   // At-show info notice — guard against duplicate injection on second renderPage() call
