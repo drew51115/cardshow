@@ -415,6 +415,20 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    /* Toasts are informational only (plain text, no buttons/links — see
+       showToast()) and must never intercept a tap meant for the real UI
+       beneath them. Like .drop-prompt-bar, this is a position:fixed
+       element hidden only via transform+opacity, which does NOT remove
+       it from touch hit-testing (unlike display:none) — a tall/wrapped
+       toast message, or a mobile viewport whose visible height shrinks
+       (URL bar, on-screen keyboard), can leave its hidden position
+       overlapping real content. With the app's highest z-index (999,
+       above every modal and the Sell Drawer), an overlapping toast would
+       silently swallow the tap. pointer-events:none makes it click-through
+       unconditionally — shown, hidden, or mid-transition — closing that
+       off for good rather than relying on distance-off-screen math holding
+       in every viewport. */
+    pointer-events: none;
   }
   .toast.show { transform: translateY(0); opacity: 1; }
 
