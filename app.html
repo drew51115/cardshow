@@ -9510,6 +9510,14 @@ function sdSyncQBtns() {
 }
 
 function sdSelPay(el, method) {
+  // openSellDrawer() autofocuses #sdPrice, popping the mobile keyboard
+  // immediately on open. iOS Safari doesn't reposition position:fixed
+  // elements when the keyboard appears, so the Confirm Sale button (near
+  // the bottom of the drawer) can render behind it, unreachable, until
+  // the keyboard is dismissed. Payment selection is a required step
+  // before Confirm can succeed, so blurring here guarantees the keyboard
+  // is closed before the seller can reach for that button.
+  document.activeElement?.blur();
   document.querySelectorAll('.pay-opt').forEach(b => b.classList.remove('pay-selected'));
   el.classList.add('pay-selected');
   sdSelectedPayment = method;
@@ -16876,6 +16884,11 @@ async function _mslApplyVisionResult(card, base64) {
 }
 
 function mslSelPay(el, method) {
+  // Same reasoning as sdSelPay(): openManualSaleModal() autofocuses
+  // #mslPlayer, and payment selection is a required gate before Log Sale
+  // can succeed — blur here so the keyboard can't still be covering the
+  // button by the time the seller reaches for it.
+  document.activeElement?.blur();
   document.querySelectorAll('#mslPayGrid .pay-opt')
     .forEach(b => b.classList.remove('pay-selected'));
   el.classList.add('pay-selected');
