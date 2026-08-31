@@ -14827,17 +14827,30 @@ function switchSellerTab(tab) {
 
   [invBtn, rptBtn].forEach(b => b && b.classList.remove('active'));
 
+  // Mobile FABs (Scan to Sell / Add Card) are for building inventory — on
+  // the Report tab they just float over report cards/CTAs (Log a Manual
+  // Sale, Export CSV, the transaction log's Share buttons) that are more
+  // relevant there and don't need a competing floating action on top of
+  // them. Hidden on Report, restored (back to CSS's mobile-only default)
+  // on Inventory — same style.display convention loginAsSeller() etc. use.
+  const fabScan = document.getElementById('fabScanToSell');
+  const fabAdd  = document.getElementById('fabAddCard');
+
   if (tab === 'report') {
     rptBtn && rptBtn.classList.add('active');
     if (tableWrap) tableWrap.style.display = 'none';
     if (rptPanel)  rptPanel.style.display  = 'block';
     if (filterBar) filterBar.classList.remove('visible');
+    if (fabScan) fabScan.style.display = 'none';
+    if (fabAdd)  fabAdd.style.display  = 'none';
     populateReportShowSelector();
     updateReport();
   } else {
     invBtn && invBtn.classList.add('active');
     if (tableWrap) tableWrap.style.display = '';
     if (rptPanel)  rptPanel.style.display  = 'none';
+    if (fabScan) fabScan.style.display = '';
+    if (fabAdd)  fabAdd.style.display  = '';
   }
 }
 
