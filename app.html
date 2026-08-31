@@ -12247,6 +12247,14 @@ function sellerPublishToShow(showId) {
   selected.forEach(card => {
     if (!card._shows) card._shows = new Set();
     if (!card._shows.has(showId)) { card._shows.add(showId); count++; }
+    // Persist to show_inventory (fire-and-forget) — without this, the
+    // in-memory tag above is invisible to hydrateCardShowMembership() on
+    // the next login (this app signs out on every page load), and the
+    // card silently drops out of this show's scoped Report the moment the
+    // session resets, even though it's still counted in lifetime totals.
+    // Confirmed real bug 2026-08-31: this was the only card._shows.add()
+    // call site in the app with no corresponding show_inventory write.
+    if (card._dbId) _autoPublishCardToShow(card, card._dbId, showId);
   });
   activeShowId = showId;
   renderSellerShowsList();
@@ -12256,10 +12264,20 @@ function sellerPublishToShow(showId) {
 
 function sellerRemoveFromShow(showId) {
   const myCards = getSellerInventory();
+  const dbIds = myCards.filter(card => card._shows && card._shows.has(showId) && card._dbId).map(c => c._dbId);
   myCards.forEach(card => { if (card._shows) card._shows.delete(showId); });
   if (activeShowId === showId) activeShowId = null;
   renderSellerShowsList();
   showToast('Cards removed from show');
+
+  // Mirror-image fix to the persistence gap above: remove the corresponding
+  // show_inventory rows so the card doesn't silently reappear under this
+  // show on the seller's next login (hydrateCardShowMembership() would
+  // otherwise re-tag it from a DB row this button never actually deleted).
+  if (dbIds.length && typeof db !== 'undefined') {
+    db.from('show_inventory').delete().eq('show_id', showId).in('card_id', dbIds)
+      .then(({ error }) => { if (error) console.warn('sellerRemoveFromShow DB cleanup failed:', error.message); });
+  }
 }
 
 // ── Buyer: Show picker ──
