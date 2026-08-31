@@ -11029,7 +11029,7 @@ function loginAsSeller(handle) {
   updateProfileUI(handle);
 
   // Fetch from Supabase — loads only this seller's real cards
-  fetchSellerInventoryFromDB(handle).then(loaded => {
+  fetchSellerInventoryFromDB(handle).then(async loaded => {
     if (loaded) {
       renderSellerTable(getSellerInventory());
       updateStats();
@@ -11037,6 +11037,11 @@ function loginAsSeller(handle) {
       if (myCards.length > 0) {
         showToast(`✓ ${myCards.length} cards loaded from your inventory`);
       }
+      // Backfills card._shows from the DB — see hydrateCardShowMembership()'s
+      // comment for why this is required for the Report tab's per-show
+      // filter to work on anything but a never-refreshed session.
+      await hydrateCardShowMembership(handle);
+      updateReport(); // safe even if the seller isn't on the Report tab yet
     }
     checkOnboardingStatus(handle);
   });
@@ -16685,6 +16690,54 @@ async function fetchSellerInventoryFromDB(sellerHandle) {
   } catch(e) {
     console.warn('Supabase fetch failed:', e.message);
     return false;
+  }
+}
+
+// Hydrates card._shows for every one of this seller's loaded cards from the
+// show_inventory junction table. dbRowToCard() always starts a freshly-
+// loaded card with an EMPTY _shows Set — it's only ever populated
+// in-memory afterward, by _autoPublishCardToShow() during the CURRENT
+// session. Without this, a fresh login/page load has no way to know which
+// shows a card was already published to, so the seller Report tab's
+// show-scoped filter (r._shows.has(showId) in updateReport()) silently
+// shows nothing for any past show the moment the session resets — the
+// sale isn't lost (show_inventory/show_floor_transactions are correct all
+// along), it's just invisible client-side until re-hydrated. "All shows
+// (lifetime)" was unaffected because that view never checks _shows at all.
+async function hydrateCardShowMembership(sellerHandle) {
+  if (typeof db === 'undefined') return;
+  try {
+    const myCards = inventory.filter(c => c.Seller === sellerHandle && c._dbId);
+    if (!myCards.length) return;
+
+    // Two explicit queries, not a nested embedded-join select — this
+    // codebase has repeatedly hit PostgREST silently returning null for
+    // some rows on embedded joins under a stale schema cache (see
+    // _orgFetchInventory(), show.html's fetchInventoryFromDB()); the
+    // two-step form is the established, proven-reliable pattern here.
+    const { data: rows, error } = await db
+      .from('show_inventory')
+      .select('show_id, card_id')
+      .in('card_id', myCards.map(c => c._dbId));
+
+    if (error || !rows) {
+      console.warn('hydrateCardShowMembership failed:', error?.message);
+      return;
+    }
+
+    const showIdsByCard = {};
+    rows.forEach(r => {
+      (showIdsByCard[r.card_id] || (showIdsByCard[r.card_id] = [])).push(r.show_id);
+    });
+
+    myCards.forEach(card => {
+      const showIds = showIdsByCard[card._dbId];
+      if (!showIds) return;
+      if (!(card._shows instanceof Set)) card._shows = new Set();
+      showIds.forEach(id => card._shows.add(id));
+    });
+  } catch (e) {
+    console.warn('hydrateCardShowMembership error:', e.message);
   }
 }
 
