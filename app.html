@@ -11100,7 +11100,11 @@ function loginAsSeller(handle) {
   });
 
   // Load shows from Supabase so seller can see which shows they're authorized for
-  loadShowsFromDB().then(() => { renderSellerShowsList(); populateReportShowSelector(); });
+  loadShowsFromDB().then(() => {
+    renderSellerShowsList();
+    populateReportShowSelector();
+    _restoreActiveShowId(handle); // survives a reload mid-show — see comment above the function
+  });
 
   // Load seller profile from Supabase (display name, WhatsApp, Instagram)
   if (typeof db !== 'undefined') {
@@ -12234,6 +12238,40 @@ function renderSellerShowsList() {
   }).join('');
 }
 
+// Persists a seller's activeShowId across a page reload — this app signs
+// out and resets all in-memory state (activeShowId included) on every page
+// load, so without this, any reload during a multi-hour show (a dropped
+// connection, a mobile browser evicting the tab) silently drops the
+// seller's "live show" context back to null. That's more than a UI
+// nicety: recordShowTransaction() (show_floor_transactions) and the
+// Sold/Revenue stat chips both key off activeShowId, and a null value
+// after a reload was confirmed to make show_floor_transactions writes for
+// every subsequent sale silently no-op (2026-08-31 bug report).
+function _persistActiveShowId(handle, showId) {
+  try {
+    if (showId) localStorage.setItem('activeShowId_' + handle, showId);
+    else localStorage.removeItem('activeShowId_' + handle);
+  } catch (e) { /* localStorage unavailable (private browsing, etc.) — non-fatal */ }
+}
+
+// Restores activeShowId from localStorage on login, once shows{} is loaded
+// so the stored id can be validated — a stale id (show deleted, seller no
+// longer authorized) is discarded rather than silently trusted.
+function _restoreActiveShowId(handle) {
+  let stored;
+  try { stored = localStorage.getItem('activeShowId_' + handle); } catch (e) { return; }
+  if (!stored) return;
+  const show = shows[stored];
+  if (show && show.sellers instanceof Set && show.sellers.has(handle)) {
+    activeShowId = stored;
+    renderSellerShowsList();
+    buildSellerQrPanel();
+    updateStats();
+  } else {
+    _persistActiveShowId(handle, null); // clean up a stale reference
+  }
+}
+
 function sellerPublishToShow(showId) {
   const show = shows[showId];
   if (!show) return;
@@ -12257,6 +12295,7 @@ function sellerPublishToShow(showId) {
     if (card._dbId) _autoPublishCardToShow(card, card._dbId, showId);
   });
   activeShowId = showId;
+  _persistActiveShowId(currentSeller, showId);
   renderSellerShowsList();
   buildSellerQrPanel();
   showToast(`${count} cards added to "${show.name}"`);
@@ -12266,7 +12305,7 @@ function sellerRemoveFromShow(showId) {
   const myCards = getSellerInventory();
   const dbIds = myCards.filter(card => card._shows && card._shows.has(showId) && card._dbId).map(c => c._dbId);
   myCards.forEach(card => { if (card._shows) card._shows.delete(showId); });
-  if (activeShowId === showId) activeShowId = null;
+  if (activeShowId === showId) { activeShowId = null; _persistActiveShowId(currentSeller, null); }
   renderSellerShowsList();
   showToast('Cards removed from show');
 
@@ -17445,16 +17484,32 @@ async function updateCardInDB(card) {
 // The sold confirmation UI must complete instantly regardless of
 // Supabase write latency. Failures are logged but never surfaced.
 //
-// Only fires when activeShowId is set (seller is in a live show).
+// Fires when activeShowId is set, or falls back to the card's own single
+// show membership (see comment inside the function for why).
 // Uses detectCardSport() (API routing) not detectSport() (UI only).
 
 async function recordShowTransaction(card) {
   if (typeof db === 'undefined') return;
-  if (!activeShowId)  return;
   if (!currentSeller) return;
 
+  // Prefer the live activeShowId (explicit session context), but fall back
+  // to the card's own show membership when it's unset. activeShowId is a
+  // page-load-scoped global with no persistence across a reload — and this
+  // app signs sellers out and reloads state on every page load — so a
+  // dropped connection or a mobile browser evicting the tab mid-show
+  // silently zeroed it, and every sale afterward no-op'd here with no
+  // warning (confirmed real bug 2026-08-31: a seller found only 1 of many
+  // 8/29 sales in show_floor_transactions). card._shows is reliably
+  // rehydrated from the DB on login (see hydrateCardShowMembership()), so
+  // a card belonging to exactly one show is an unambiguous, reload-proof
+  // source of truth for which show this sale belongs to. A card in zero or
+  // multiple shows still requires the explicit activeShowId context.
+  const showId = activeShowId ||
+    (card._shows instanceof Set && card._shows.size === 1 ? [...card._shows][0] : null);
+  if (!showId) return;
+
   try {
-    const show = shows[activeShowId];
+    const show = shows[showId];
     if (!show) return;
 
     // Prefer DB-populated city/state; fall back to parsing location
@@ -17514,7 +17569,7 @@ async function recordShowTransaction(card) {
       seller_handle: currentSeller,
 
       // Show snapshot — denormalised so record is self-describing
-      show_id:       activeShowId,
+      show_id:       showId,
       show_name:     show.name,
       show_date:     show.date     || null,
       show_location: show.location || null,

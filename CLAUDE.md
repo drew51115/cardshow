@@ -959,6 +959,7 @@ If `insertCardToDB()` times out inside `posInsertAndOpenDrawer()`'s `Promise.rac
 - **Entrance signage PNG fixes (session 2026-08-28)** — the meta line (date · location) was drawn as a single unwrapped `fillText()`, so a long location silently ran past the canvas edge and got clipped; wrapped it the same way the show name above it already wraps, with the canvas height computed to match exactly. Also dropped the Cards/Sellers counts from entrance signage (PNG and live preview panel both, to stay consistent) — printed signage goes up before a show's inventory is even fully known; the Marketing tab keeps its own counts.
 - **"Powered by CardShow" PNG branding (session 2026-08-28)** — see "'Powered by CardShow' PNG Branding" section above. Shared footer (logo + "Powered by CardShow" + getcardshow.com) added to entrance signage and both seller QR downloads via new `_loadCardShowLogo()`/`_drawCardShowFooter()`/`_downloadBrandedQrPng()` helpers. New asset: `assets/cardshow-logo-wordmark.png` (transparent background).
 - **Multi-Day Shows & Transaction Dates (session 2026-08-31)** — Show creation modal replaces its single freeform date text field with Start Date / End Date inputs; a Date column added to the Report tab's transaction log; every sale (Sell Drawer and Log a Manual Sale) now stamps a `SoldDate`, with the Manual Sale modal's new Sale Date picker clamped to the selected show's date range for backdating within a multi-day show. See "Multi-Day Shows & Transaction Dates" section above. **Requires the `shows.start_date`/`shows.end_date` and `inventory.sold_date` DB migrations** (see above) — degrades gracefully (freeform date entry still works via the computed display string; Date column shows "—") if not yet run.
+- **activeShowId resilience (session 2026-08-31)** — fixed two real bugs found investigating missing `show_floor_transactions` rows and sales disappearing from a show's Report: `sellerPublishToShow()`/`sellerRemoveFromShow()` ("Add My Cards"/"Remove" in My Shows) now actually write/delete the `show_inventory` row instead of only tagging `card._shows` in memory; and `activeShowId` — previously wiped to `null` by any page reload, silently breaking `show_floor_transactions` logging for every sale afterward — is now persisted to `localStorage` per seller and restored on login, with `recordShowTransaction()` also falling back to a card's own single-show membership when `activeShowId` is unset. See "activeShowId resilience" section above.
 
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`
@@ -1605,9 +1606,48 @@ a card that failed to auto-publish — see "Auto-Publish on Insert"'s POS timeou
 a date-filtering bug.
 
 ### Does not change
-`updateReport()`'s revenue/sell-through KPIs, `recordShowTransaction()`,
-`recordManualSaleTransaction()`, the organizer analytics dashboard, RLS policies. No new
-Supabase tables.
+`updateReport()`'s revenue/sell-through KPIs, `recordManualSaleTransaction()`, the organizer
+analytics dashboard, RLS policies. No new Supabase tables. (`recordShowTransaction()` itself
+*was* touched — see "activeShowId resilience" below, found while investigating this feature.)
+
+## activeShowId resilience (session 2026-08-31)
+
+Two real bugs found investigating "only 1 sale from a multi-day show appears in
+`show_floor_transactions`" and "sales disappear from a show's Report after re-login":
+
+1. **`sellerPublishToShow()`** ("⚡ Add My Cards" in a seller's My Shows list) tagged
+   `card._shows` in memory only — it never wrote the `show_inventory` row to Supabase. Since
+   this app signs sellers out and resets all state on every page load, `hydrateCardShowMembership()`
+   rebuilds `_shows` purely from `show_inventory` on the next login — cards published this way
+   silently dropped out of that show's scoped Report the moment the session reset, while still
+   correctly counting in lifetime totals (which never check `_shows`). Fixed by calling the
+   existing `_autoPublishCardToShow(card, card._dbId, showId)` per selected card.
+   `sellerRemoveFromShow()` had the mirror-image gap — it never deleted the `show_inventory`
+   row, so a "removed" card would silently reappear on the next login. Fixed by adding a
+   `show_inventory.delete()` call scoped to that show + the seller's card ids.
+2. **`activeShowId` (the in-memory "seller is live at this show" flag) had no persistence
+   across a reload.** `recordShowTransaction()` — the only writer of the immutable
+   `show_floor_transactions` ledger for platform sales — no-ops entirely when `activeShowId`
+   is unset, and the only way a seller ever sets it is clicking "Add My Cards". A dropped
+   connection or a mobile browser evicting the tab mid-show (routine over a multi-hour show)
+   silently reset it to `null` on the next load, and every sale afterward wrote to `inventory`
+   fine but never reached `show_floor_transactions` at all — no error, no warning. Two fixes:
+   - `recordShowTransaction(card)` now falls back to the card's own `card._shows` membership
+     when `activeShowId` is unset, but only when the card belongs to **exactly one** show —
+     `_shows` is reliably rehydrated on login (see `hydrateCardShowMembership()`), so this is
+     an unambiguous, reload-proof source of truth for a single-show card. A card in zero or
+     multiple shows still requires the explicit `activeShowId` context (ambiguous otherwise).
+   - `activeShowId` is now persisted to `localStorage` per seller handle
+     (`_persistActiveShowId()`/`_restoreActiveShowId()`) — set on "Add My Cards", cleared on
+     "Remove", and restored in `loginAsSeller()` once `loadShowsFromDB()` resolves (validated
+     against the seller's current authorized-shows list; a stale id — show deleted, seller
+     deauthorized — is discarded rather than trusted). This also fixes the Sold/Revenue stat
+     chips and seller QR panel silently reverting after a reload, since both key off
+     `activeShowId` too.
+
+### Does not change
+`recordManualSaleTransaction()` (already takes an explicit `showId` param, no `activeShowId`
+dependency), `_autoPublishCardToShow()`, `hydrateCardShowMembership()`, RLS policies.
 
 ### Resilience to a not-yet-run `fingerprint`/`detected_confidence` migration
 `cardToDbRow()` unconditionally includes `fingerprint`/`detected_confidence` in every
