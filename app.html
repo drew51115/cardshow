@@ -10550,6 +10550,26 @@ function populateReportShowSelector() {
   });
 }
 
+// Sortable 'YYYY-MM-DDTHH:MM' key for a sold card — combines SoldDate
+// ('YYYY-MM-DD') with SoldTime (a 12-hour display string like "3:44 PM",
+// converted to zero-padded 24-hour) so the Transaction Log can sort by
+// actual sale order, not just by date. Returns '' when SoldDate is
+// missing (a legacy pre-feature sale) — empty string sorts last in a
+// descending compare, same as SoldDate-only sorting did before.
+function _txSortKey(r) {
+  if (!r.SoldDate) return '';
+  const m = (r.SoldTime || '').match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  let time = '00:00';
+  if (m) {
+    let hour = parseInt(m[1], 10);
+    const ampm = m[3].toUpperCase();
+    if (ampm === 'PM' && hour !== 12) hour += 12;
+    if (ampm === 'AM' && hour === 12) hour = 0;
+    time = String(hour).padStart(2, '0') + ':' + m[2];
+  }
+  return r.SoldDate + 'T' + time;
+}
+
 function updateReport() {
   populateReportShowSelector();
   const showId    = (document.getElementById('rptShowFilter') || {}).value || '';
@@ -10678,10 +10698,16 @@ function updateReport() {
   if (!soldCards.length) {
     tbody.innerHTML = '<tr><td colspan="8" style="padding:16px 8px;color:var(--muted);font-size:12px">No sales yet</td></tr>';
   } else {
-    // Newest sale first — SoldDate ties break by SoldTime is unnecessary here
-    // since we only sort by date; within a date the original array order
-    // (insertion order) is preserved by Array#sort's stability.
-    const sorted = [...soldCards].sort((a, b) => (b.SoldDate || '').localeCompare(a.SoldDate || ''));
+    // Newest sale first — full date+time, not just date. SoldTime is a
+    // 12-hour display string ("3:44 PM"); _txSortKey() converts it to a
+    // zero-padded 24-hour 'YYYY-MM-DDTHH:MM' so string comparison sorts
+    // correctly within a day too (previously same-day rows were left in
+    // whatever order they happened to be pushed to inventory[], which
+    // rarely matched actual sale order once multiple sales came in from
+    // different sources — POS, Sell Drawer, Manual Sale — in one day).
+    // A row with no SoldDate (a legacy pre-feature sale) sorts to the very
+    // bottom, same as before.
+    const sorted = [...soldCards].sort((a, b) => _txSortKey(b).localeCompare(_txSortKey(a)));
     tbody.innerHTML = sorted.map(r => {
       const delta    = (Number(r.SoldPrice) || 0) - (Number(r.Price) || 0);
       const mslBadge = r._manualSale

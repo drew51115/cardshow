@@ -1589,9 +1589,18 @@ with both date inputs blank — the organizer fills them in like a new show; the
 `updateReport()`'s Report tab table gained a **Date** column (between Payment and Time,
 colspan 7→8) showing `card.SoldDate` formatted as `"Aug 29"` — `"—"` for a legacy sale logged
 before this feature shipped (no `SoldDate` ever recorded, so nothing to show — never guessed
-from `SoldTime` or `created_at`). Rows are now sorted newest-`SoldDate`-first rather than
-insertion order. `exportReportCSV()` gained a matching **Sale Date** column (before **Sale
-Time**, both are `card.SoldDate`/`card.SoldTime` respectively).
+from `SoldTime` or `created_at`). `exportReportCSV()` gained a matching **Sale Date** column
+(before **Sale Time**, both are `card.SoldDate`/`card.SoldTime` respectively).
+
+Rows are sorted newest-first by full date **and** time, not date alone — `_txSortKey(r)`
+combines `SoldDate` ('YYYY-MM-DD') with `SoldTime` (a 12-hour display string like "3:44 PM",
+converted to zero-padded 24-hour) into a `'YYYY-MM-DDTHH:MM'` string that sorts correctly via
+plain string comparison. Sorting by date alone (the initial implementation) left same-day
+rows in insertion order, which rarely matched actual sale order once multiple sales in one
+day came from different sources (POS, Sell Drawer, Manual Sale) — confirmed as a real
+ordering bug by a seller's screenshot showing an 8/30 row for 5:02 PM sorted above one for
+3:32 PM. A row with no `SoldDate` (legacy) sorts to the very bottom via `_txSortKey()`
+returning `''`.
 
 ### Multi-day show filtering — no change needed
 `updateReport()`'s per-show filter (`r._shows instanceof Set && r._shows.has(showId)`) was
