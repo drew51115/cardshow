@@ -1008,6 +1008,17 @@ Current entries (as of September 2026):
   own site (thectca.org); the mission-statement sentence in `.sp-featured-body` paraphrases
   thectca.org's own self-description. Enter the Inferno demoted from featured badge to
   logo-tile-only per this section's own documented process below.
+- West Coast Hobby Expo — featured sponsor, second featured badge + logo tile, added
+  September 2026. `assets/wche-partnership.jpg` is a compressed copy of the show's own
+  Instagram profile logo (already a clean 1080×1080 square on black — no cropping needed,
+  just resized to 800×800 and re-encoded at quality 88 to cut ~121KB down to ~91KB). Body
+  copy states CardShow was a featured sponsor and the platform was live on the show floor
+  August 29-30, 2026 at the Lakewood Center Mall in Lakewood, CA, per what the user reported
+  directly (no independently-verifiable source page for this one, unlike CTCA — the user is
+  the primary source for their own company's sponsorships). This is CardShow's **second**
+  featured badge — the section's original single-badge assumption (`.sp-featured-card`
+  singular) no longer holds; both CTCA and WCHE now render as stacked `.sp-featured-card`
+  blocks in the same `#social-proof` section, CTCA first.
 - Enter the Inferno pitch competition, NSCC 2026 (logo tile only — previously the featured badge)
 - The National Sports Collectors Convention (logo tile)
 - InfernoRed Technology (logo tile)
