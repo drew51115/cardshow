@@ -994,8 +994,37 @@ If `insertCardToDB()` times out inside `posInsertAndOpenDrawer()`'s `Promise.rac
 Location: index.html, between the CSV-format stat row and the Final CTA / footer.
 Purpose: Grows over time as CardShow gets press, show partnerships, and industry features.
 
-Current entries (as of August 2026):
-- Enter the Inferno pitch competition, NSCC 2026 (featured badge + logo tile)
+Current entries (as of September 2026):
+- Certified Trading Card Association (CTCA) — official partner, featured badge + logo tile,
+  added September 2026. `assets/ctca-partnership.jpg` is a cropped/compressed version of
+  CTCA's own promo banner (sourced from https://ctca.wildapricot.org/resources/Pictures/
+  file_00000000fa2c820cb2472d0175d22c2c.png) — cropped to a portrait aspect centered on the
+  shield emblem (the source is a wide landscape banner; the `.sp-featured-img` slot expects
+  ~0.8 aspect like `enter-the-inferno-promo.png`, so used as-is it would render as an
+  illegible 140×56px sliver) and converted PNG→JPEG (original was ~3.4MB with a fully-opaque
+  alpha channel — no transparency in use, so JPEG at quality 88 loses nothing visible while
+  cutting the file to ~250KB). Featured card copy — tagline "Safer. Smarter. Stronger.",
+  "Hobby United", "Established 2025" — is quoted directly from the source banner and CTCA's
+  own site (thectca.org); the mission-statement sentence in `.sp-featured-body` paraphrases
+  thectca.org's own self-description. Enter the Inferno demoted from featured badge to
+  logo-tile-only per this section's own documented process below.
+- West Coast Hobby Expo — featured sponsor, second featured badge + logo tile, added
+  September 2026. `assets/wche-partnership.jpg` is a compressed copy of the show's own
+  Instagram profile logo (already a clean 1080×1080 square on black — no cropping needed,
+  just resized to 800×800 and re-encoded at quality 88 to cut ~121KB down to ~91KB). Body
+  copy states CardShow was a featured sponsor and the platform was live on the show floor
+  August 29-30, 2026 at the Lakewood Center Mall in Lakewood, CA, per what the user reported
+  directly (no independently-verifiable source page for this one, unlike CTCA — the user is
+  the primary source for their own company's sponsorships). This is CardShow's **second**
+  featured badge — the section's original single-badge assumption (`.sp-featured-card`
+  singular) no longer holds; CTCA, WCHE, and Enter the Inferno now render as **three** stacked
+  `.sp-featured-card` blocks in the same `#social-proof` section.
+- Enter the Inferno pitch competition, NSCC 2026 — restored as a third featured badge (plus its
+  existing logo tile) per explicit user request, September 2026, after having been demoted to
+  logo-tile-only earlier in the same session to make room for CTCA. Stacked third, below CTCA
+  and West Coast Hobby Expo. Content unchanged from its original featured-badge copy (Hobby
+  Tech Pitch Competition, NSCC 2026, Dr. James Beckett/Scott Lock/Jeremy Lee judges) — still
+  uses `assets/enter-the-inferno-promo.png`, which was never removed from the repo.
 - The National Sports Collectors Convention (logo tile)
 - InfernoRed Technology (logo tile)
 - Sports Cards Live / Jeremy Lee (logo tile)
