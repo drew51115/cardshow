@@ -994,8 +994,21 @@ If `insertCardToDB()` times out inside `posInsertAndOpenDrawer()`'s `Promise.rac
 Location: index.html, between the CSV-format stat row and the Final CTA / footer.
 Purpose: Grows over time as CardShow gets press, show partnerships, and industry features.
 
-Current entries (as of August 2026):
-- Enter the Inferno pitch competition, NSCC 2026 (featured badge + logo tile)
+Current entries (as of September 2026):
+- Certified Trading Card Association (CTCA) — official partner, featured badge + logo tile,
+  added September 2026. `assets/ctca-partnership.jpg` is a cropped/compressed version of
+  CTCA's own promo banner (sourced from https://ctca.wildapricot.org/resources/Pictures/
+  file_00000000fa2c820cb2472d0175d22c2c.png) — cropped to a portrait aspect centered on the
+  shield emblem (the source is a wide landscape banner; the `.sp-featured-img` slot expects
+  ~0.8 aspect like `enter-the-inferno-promo.png`, so used as-is it would render as an
+  illegible 140×56px sliver) and converted PNG→JPEG (original was ~3.4MB with a fully-opaque
+  alpha channel — no transparency in use, so JPEG at quality 88 loses nothing visible while
+  cutting the file to ~250KB). Featured card copy — tagline "Safer. Smarter. Stronger.",
+  "Hobby United", "Established 2025" — is quoted directly from the source banner and CTCA's
+  own site (thectca.org); the mission-statement sentence in `.sp-featured-body` paraphrases
+  thectca.org's own self-description. Enter the Inferno demoted from featured badge to
+  logo-tile-only per this section's own documented process below.
+- Enter the Inferno pitch competition, NSCC 2026 (logo tile only — previously the featured badge)
 - The National Sports Collectors Convention (logo tile)
 - InfernoRed Technology (logo tile)
 - Sports Cards Live / Jeremy Lee (logo tile)
