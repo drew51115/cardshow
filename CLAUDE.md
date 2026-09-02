@@ -1017,9 +1017,14 @@ Current entries (as of September 2026):
   directly (no independently-verifiable source page for this one, unlike CTCA — the user is
   the primary source for their own company's sponsorships). This is CardShow's **second**
   featured badge — the section's original single-badge assumption (`.sp-featured-card`
-  singular) no longer holds; both CTCA and WCHE now render as stacked `.sp-featured-card`
-  blocks in the same `#social-proof` section, CTCA first.
-- Enter the Inferno pitch competition, NSCC 2026 (logo tile only — previously the featured badge)
+  singular) no longer holds; CTCA, WCHE, and Enter the Inferno now render as **three** stacked
+  `.sp-featured-card` blocks in the same `#social-proof` section.
+- Enter the Inferno pitch competition, NSCC 2026 — restored as a third featured badge (plus its
+  existing logo tile) per explicit user request, September 2026, after having been demoted to
+  logo-tile-only earlier in the same session to make room for CTCA. Stacked third, below CTCA
+  and West Coast Hobby Expo. Content unchanged from its original featured-badge copy (Hobby
+  Tech Pitch Competition, NSCC 2026, Dr. James Beckett/Scott Lock/Jeremy Lee judges) — still
+  uses `assets/enter-the-inferno-promo.png`, which was never removed from the repo.
 - The National Sports Collectors Convention (logo tile)
 - InfernoRed Technology (logo tile)
 - Sports Cards Live / Jeremy Lee (logo tile)
