@@ -47,13 +47,15 @@ CLAUDE.md                         → This file
 sellers       — id (uuid PRIMARY KEY = auth.uid()), handle, display_name, whatsapp,
                 instagram, email, created_at
 shows         — id (text), name, date, location, status, access_code, published_at, created_at,
-                city (text), state (text), venue (text)
+                city (text), state (text), venue (text),
+                start_date (date), end_date (date) — see "Pending DB Migrations"
 show_sellers  — show_id, seller_id (uuid → sellers.id), table_number (junction)
 inventory     — id (uuid), seller_id (uuid → sellers.id), card_title, player, year,
                 card_set, parallel, grader, grade, cert_number, condition, price,
                 status, location, item_type, product_type, created_at, updated_at,
                 fingerprint (text, indexed — see "Pending DB Migrations"),
-                detected_confidence (jsonb — raw scan-card.js confidence object, audit trail only)
+                detected_confidence (jsonb — raw scan-card.js confidence object, audit trail only),
+                sold_date (text, ISO 'YYYY-MM-DD' — see "Pending DB Migrations")
 show_inventory — show_id, card_id (junction)
 admins        — id (uuid PRIMARY KEY REFERENCES auth.users) — admin identity gate
 show_floor_transactions — id (uuid), created_at, sold_at (timestamptz),
@@ -128,10 +130,32 @@ CREATE INDEX IF NOT EXISTS idx_inventory_fingerprint ON inventory (fingerprint);
 ```
 `cert_number` already existed on `inventory` before this migration (see schema above) — only `fingerprint` and `detected_confidence` are new. Until this migration runs, `checkDuplicateFingerprint()`'s `.eq('fingerprint', …)` query 404s/errors on the missing column; the function catches that and returns `null` (no warning shown), so the feature degrades gracefully rather than blocking a sale.
 
+Required for multi-day shows (Start Date / End Date in the show creation modal — see
+"Multi-Day Shows & Transaction Dates" below):
+```sql
+ALTER TABLE shows
+  ADD COLUMN IF NOT EXISTS start_date date,
+  ADD COLUMN IF NOT EXISTS end_date   date;
+```
+Until this runs, `upsertShowToDB()` strips `start_date`/`end_date` from the payload and retries
+once on the `PGRST204` "missing column" error (same pattern as the fingerprint columns above) —
+shows still save, just without the structured date range; the modal's Start/End Date inputs
+still work in-memory and still compute the freeform `date` display string either way.
+
+Required for per-transaction sale dates (Date column in the Report tab's transaction log — see
+"Multi-Day Shows & Transaction Dates" below):
+```sql
+ALTER TABLE inventory
+  ADD COLUMN IF NOT EXISTS sold_date text;
+```
+Until this runs, `updateCardInDB()` strips `sold_date` from the payload and retries once on the
+same `PGRST204` error — sales still record, the Transaction Log's Date column just shows "—"
+for every row (no `card.SoldDate` ever made it to the DB, so nothing to read back on reload).
+
 ## Key Data Structures (in-memory runtime cache)
 ```js
 inventory[]          // [{Seller, 'Card Title', Player, Year, 'Set ', Price, Status, item_type, product_type, _dbId, _shows: Set, ...}]
-shows{}              // {showId: {id, name, date, location, status, accessCode, sellers: Set, tables: {}, publishedAt}}
+shows{}              // {showId: {id, name, date, startDate, endDate, location, status, accessCode, sellers: Set, tables: {}, publishedAt}}
 sellerProfiles       // {handle: {displayName, whatsapp, instagram}}
 currentRole          // 'seller' | 'admin' | 'buyer' | null
 currentSeller        // handle string or null
@@ -934,6 +958,8 @@ If `insertCardToDB()` times out inside `posInsertAndOpenDrawer()`'s `Promise.rac
 - **"The Drop" — post-sale share card (session 2026-08-27)** — post-sale prompt bar (`sdConfirm()`/`confirmManualSale()`, gated by a `localStorage` opt-in preference set in the Profile modal) plus a 📤 button on every Report tab transaction row, both opening a share-card modal: a **required card photo step** (Take Photo/Choose from Library, client-side only) gates a three-style canvas renderer (Dark/Light/Minimal) that composites the photo into the card, an editable caption with a fixed CardShow-handle+hashtags footer appended after it, and copy/download/native-share actions. **Payment method is never drawn on the card image or included in the caption** — only price and venue. No new DB table or Storage bucket — fully client-side canvas compositing, matching `js/trade-share.js`'s conventions but duplicated rather than shared (no build step to share a module from). See "The Drop" section above for full detail.
 - **Entrance signage PNG fixes (session 2026-08-28)** — the meta line (date · location) was drawn as a single unwrapped `fillText()`, so a long location silently ran past the canvas edge and got clipped; wrapped it the same way the show name above it already wraps, with the canvas height computed to match exactly. Also dropped the Cards/Sellers counts from entrance signage (PNG and live preview panel both, to stay consistent) — printed signage goes up before a show's inventory is even fully known; the Marketing tab keeps its own counts.
 - **"Powered by CardShow" PNG branding (session 2026-08-28)** — see "'Powered by CardShow' PNG Branding" section above. Shared footer (logo + "Powered by CardShow" + getcardshow.com) added to entrance signage and both seller QR downloads via new `_loadCardShowLogo()`/`_drawCardShowFooter()`/`_downloadBrandedQrPng()` helpers. New asset: `assets/cardshow-logo-wordmark.png` (transparent background).
+- **Multi-Day Shows & Transaction Dates (session 2026-08-31)** — Show creation modal replaces its single freeform date text field with Start Date / End Date inputs; a Date column added to the Report tab's transaction log; every sale (Sell Drawer and Log a Manual Sale) now stamps a `SoldDate`, with the Manual Sale modal's new Sale Date picker clamped to the selected show's date range for backdating within a multi-day show. See "Multi-Day Shows & Transaction Dates" section above. **Requires the `shows.start_date`/`shows.end_date` and `inventory.sold_date` DB migrations** (see above) — degrades gracefully (freeform date entry still works via the computed display string; Date column shows "—") if not yet run.
+- **activeShowId resilience (session 2026-08-31)** — fixed two real bugs found investigating missing `show_floor_transactions` rows and sales disappearing from a show's Report: `sellerPublishToShow()`/`sellerRemoveFromShow()` ("Add My Cards"/"Remove" in My Shows) now actually write/delete the `show_inventory` row instead of only tagging `card._shows` in memory; and `activeShowId` — previously wiped to `null` by any page reload, silently breaking `show_floor_transactions` logging for every sale afterward — is now persisted to `localStorage` per seller and restored on login, with `recordShowTransaction()` also falling back to a card's own single-show membership when `activeShowId` is unset. See "activeShowId resilience" section above.
 
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`
@@ -1511,6 +1537,126 @@ seller settings panel — there is no separate Settings page in this app.
 `sdConfirm()`'s core sale-recording logic, `recordShowTransaction()`, `recordManualSaleTransaction()`,
 `updateReport()`'s stats (only the transaction-log row template gained a Share cell), RLS
 policies, no new Supabase tables or Storage buckets.
+
+## Multi-Day Shows & Transaction Dates
+
+Lets an organizer create a show that spans more than one calendar day (e.g. "West Coast Hobby
+Expo · Aug 29-30"), and lets every sale — platform or manual — carry the actual date it happened
+on, not just a time-of-day string.
+
+### Show creation modal — Start Date / End Date
+`#showModal`'s single freeform `smDate` text input (`"Date (e.g. May 23, 2026)"`) is replaced
+with two real `<input type="date">` fields, `#smStartDate` (required) and `#smEndDate`
+(optional — defaults to the start date when left blank, i.e. a single-day show). `saveShow()`
+still writes the same freeform `shows[id].date` display string everything else in the app
+already reads (`renderAdminShowsDashboard`, `show.html`'s countdown, the buyer show picker,
+etc.) — it's now computed by `_formatShowDateRange(startDate, endDate)` rather than typed by
+hand, so every existing display call site needed no changes. `startDate`/`endDate` (camelCase,
+matching this app's in-memory naming convention) are stored alongside `date` on the show object
+and round-tripped through `showToDbRow()`/`loadShowsFromDB()` as `start_date`/`end_date`.
+
+`_formatShowDateRange()` renders `"Aug 29-30, 2026"` for a same-month range (the common case —
+matches `_parseShowDate()`/`_parseShowStartDate()`'s existing day-range-hyphen parsing used for
+the countdown timer and the organizer analytics "vs. previous show" lookup), `"Aug 29, 2026"`
+for a single day, and falls back to a longer `"Aug 29 - Sep 1, 2026"` / cross-year form for a
+show that spans a month or year boundary — those longer forms are display-only and are not
+guaranteed to round-trip through the older day-range regex, same known limitation those two
+parsers already had for any date string they weren't specifically written to handle.
+
+**Editing a show created before this feature shipped** (no `startDate` stored) opens the modal
+with both date inputs blank — the organizer fills them in like a new show; the old freeform
+`date` string is preserved (not overwritten) until the show is saved with real dates.
+
+### Sale Date on every transaction
+`card.SoldDate` (`'YYYY-MM-DD'`, local time via `_todayISO()`) is stamped on every sale:
+- **Sell Drawer** (`sdConfirm()`, covers both a plain inventory sale and a Scan-to-Sell POS
+  hand-off) always stamps *today* — a Sell Drawer confirmation is a live, happening-now sale,
+  never backdated.
+- **Log a Manual Sale** (`confirmManualSale()`) reads a new `#mslSaleDate` date input, defaulting
+  to today but freely backdatable — a manual sale is explicitly for something that already
+  happened, possibly on an earlier day of a multi-day show. `_mslSyncSaleDateBounds()` (wired to
+  `#mslShow`'s `onchange`, and called once on modal open) clamps `#mslSaleDate`'s `min`/`max` to
+  the selected show's `startDate`/`endDate` when that show has structured dates, snapping an
+  out-of-range leftover value back in bounds rather than allowing an invalid date; a show without
+  structured dates (created before this feature, or "Off-show / no show") leaves the picker
+  unconstrained.
+- Persisted via `cardToDbRow()`'s sibling — `updateCardInDB()` writes `sold_date` directly
+  alongside `sold_price`/`payment_method`/`sale_notes`/`sold_time` (all four are set outside
+  `cardToDbRow()` since they only apply to a sold card), with the same missing-column retry
+  degradation as `fingerprint`/`detected_confidence` (see "Pending DB Migrations").
+
+### Transaction Log — Date column
+`updateReport()`'s Report tab table gained a **Date** column (between Payment and Time,
+colspan 7→8) showing `card.SoldDate` formatted as `"Aug 29"` — `"—"` for a legacy sale logged
+before this feature shipped (no `SoldDate` ever recorded, so nothing to show — never guessed
+from `SoldTime` or `created_at`). `exportReportCSV()` gained a matching **Sale Date** column
+(before **Sale Time**, both are `card.SoldDate`/`card.SoldTime` respectively).
+
+Rows are sorted newest-first by full date **and** time, not date alone — `_txSortKey(r)`
+combines `SoldDate` ('YYYY-MM-DD') with `SoldTime` (a 12-hour display string like "3:44 PM",
+converted to zero-padded 24-hour) into a `'YYYY-MM-DDTHH:MM'` string that sorts correctly via
+plain string comparison. Sorting by date alone (the initial implementation) left same-day
+rows in insertion order, which rarely matched actual sale order once multiple sales in one
+day came from different sources (POS, Sell Drawer, Manual Sale) — confirmed as a real
+ordering bug by a seller's screenshot showing an 8/30 row for 5:02 PM sorted above one for
+3:32 PM. A row with no `SoldDate` (legacy) sorts to the very bottom via `_txSortKey()`
+returning `''`.
+
+### Multi-day show filtering — no change needed
+`updateReport()`'s per-show filter (`r._shows instanceof Set && r._shows.has(showId)`) was
+already day-agnostic — it matches on show membership only, not on which calendar day a card was
+published or sold. A sale from either day of a multi-day show already appears once
+`hydrateCardShowMembership()` (see "Auto-Publish on Insert" / the seller-login hydration fix)
+has correctly tagged the card's `_shows` Set with that show's id — this feature's Date column
+makes that already-correct aggregation auditable per day, it isn't what makes the aggregation
+correct in the first place. If a specific sale is still missing from a show's Report after this
+ships, the cause is the sale never being tagged to that show at all (an off-show manual sale, or
+a card that failed to auto-publish — see "Auto-Publish on Insert"'s POS timeout edge case), not
+a date-filtering bug.
+
+### Does not change
+`updateReport()`'s revenue/sell-through KPIs, `recordManualSaleTransaction()`, the organizer
+analytics dashboard, RLS policies. No new Supabase tables. (`recordShowTransaction()` itself
+*was* touched — see "activeShowId resilience" below, found while investigating this feature.)
+
+## activeShowId resilience (session 2026-08-31)
+
+Two real bugs found investigating "only 1 sale from a multi-day show appears in
+`show_floor_transactions`" and "sales disappear from a show's Report after re-login":
+
+1. **`sellerPublishToShow()`** ("⚡ Add My Cards" in a seller's My Shows list) tagged
+   `card._shows` in memory only — it never wrote the `show_inventory` row to Supabase. Since
+   this app signs sellers out and resets all state on every page load, `hydrateCardShowMembership()`
+   rebuilds `_shows` purely from `show_inventory` on the next login — cards published this way
+   silently dropped out of that show's scoped Report the moment the session reset, while still
+   correctly counting in lifetime totals (which never check `_shows`). Fixed by calling the
+   existing `_autoPublishCardToShow(card, card._dbId, showId)` per selected card.
+   `sellerRemoveFromShow()` had the mirror-image gap — it never deleted the `show_inventory`
+   row, so a "removed" card would silently reappear on the next login. Fixed by adding a
+   `show_inventory.delete()` call scoped to that show + the seller's card ids.
+2. **`activeShowId` (the in-memory "seller is live at this show" flag) had no persistence
+   across a reload.** `recordShowTransaction()` — the only writer of the immutable
+   `show_floor_transactions` ledger for platform sales — no-ops entirely when `activeShowId`
+   is unset, and the only way a seller ever sets it is clicking "Add My Cards". A dropped
+   connection or a mobile browser evicting the tab mid-show (routine over a multi-hour show)
+   silently reset it to `null` on the next load, and every sale afterward wrote to `inventory`
+   fine but never reached `show_floor_transactions` at all — no error, no warning. Two fixes:
+   - `recordShowTransaction(card)` now falls back to the card's own `card._shows` membership
+     when `activeShowId` is unset, but only when the card belongs to **exactly one** show —
+     `_shows` is reliably rehydrated on login (see `hydrateCardShowMembership()`), so this is
+     an unambiguous, reload-proof source of truth for a single-show card. A card in zero or
+     multiple shows still requires the explicit `activeShowId` context (ambiguous otherwise).
+   - `activeShowId` is now persisted to `localStorage` per seller handle
+     (`_persistActiveShowId()`/`_restoreActiveShowId()`) — set on "Add My Cards", cleared on
+     "Remove", and restored in `loginAsSeller()` once `loadShowsFromDB()` resolves (validated
+     against the seller's current authorized-shows list; a stale id — show deleted, seller
+     deauthorized — is discarded rather than trusted). This also fixes the Sold/Revenue stat
+     chips and seller QR panel silently reverting after a reload, since both key off
+     `activeShowId` too.
+
+### Does not change
+`recordManualSaleTransaction()` (already takes an explicit `showId` param, no `activeShowId`
+dependency), `_autoPublishCardToShow()`, `hydrateCardShowMembership()`, RLS policies.
 
 ### Resilience to a not-yet-run `fingerprint`/`detected_confidence` migration
 `cardToDbRow()` unconditionally includes `fingerprint`/`detected_confidence` in every

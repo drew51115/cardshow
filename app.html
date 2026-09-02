@@ -4699,12 +4699,13 @@
                   <th style="text-align:left;padding:6px 8px;font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--border)">Sold</th>
                   <th style="text-align:left;padding:6px 8px;font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--border)">+/-</th>
                   <th style="text-align:left;padding:6px 8px;font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--border)">Payment</th>
+                  <th style="text-align:left;padding:6px 8px;font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--border)">Date</th>
                   <th style="text-align:left;padding:6px 8px;font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--border)">Time</th>
                   <th style="text-align:left;padding:6px 8px;font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--border)">Share</th>
                 </tr>
               </thead>
               <tbody id="rptTxBody">
-                <tr><td colspan="7" style="padding:16px 8px;color:var(--muted);font-size:12px">No sales yet</td></tr>
+                <tr><td colspan="8" style="padding:16px 8px;color:var(--muted);font-size:12px">No sales yet</td></tr>
               </tbody>
             </table>
           </div>
@@ -5772,7 +5773,16 @@
     </div>
     <div class="modal-body" style="display:flex;flex-direction:column;gap:0.65rem">
       <input class="show-input" id="smName"     placeholder="Show name (e.g. MLP Card Show)" style="margin:0">
-      <input class="show-input" id="smDate"     placeholder="Date (e.g. May 23, 2026)" style="margin:0">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.65rem">
+        <div>
+          <div class="section-label" style="margin-bottom:0.35rem">Start Date</div>
+          <input class="show-input" id="smStartDate" type="date" style="margin:0">
+        </div>
+        <div>
+          <div class="section-label" style="margin-bottom:0.35rem">End Date <span style="color:var(--muted);font-weight:400;text-transform:none">(optional)</span></div>
+          <input class="show-input" id="smEndDate" type="date" style="margin:0">
+        </div>
+      </div>
       <input class="show-input" id="smLocation" placeholder="Location (e.g. Grand Hyatt Tampa Bay, FL)" style="margin:0">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.65rem">
         <div>
@@ -7953,6 +7963,32 @@ function parseShowLocation(locationStr) {
   }
 }
 
+// Builds the freeform display string (e.g. "Aug 29-30, 2026") stored in
+// shows[id].date from structured startDate/endDate ('YYYY-MM-DD' inputs) —
+// kept for backward compatibility with every existing date-display call site
+// and with _parseShowDate()/_parseShowStartDate()'s day-range parsing (see
+// those functions) rather than threading startDate/endDate through all of them.
+function _formatShowDateRange(startDate, endDate) {
+  if (!startDate) return '';
+  const start = new Date(startDate + 'T12:00:00');
+  if (isNaN(start)) return '';
+  const end = endDate ? new Date(endDate + 'T12:00:00') : null;
+  const fmtMonth = d => d.toLocaleDateString('en-US', { month: 'short' });
+  const fmtDay   = d => d.getDate();
+  const fmtYear  = d => d.getFullYear();
+
+  if (!end || isNaN(end) || end.getTime() === start.getTime()) {
+    return `${fmtMonth(start)} ${fmtDay(start)}, ${fmtYear(start)}`;
+  }
+  if (fmtYear(start) === fmtYear(end) && fmtMonth(start) === fmtMonth(end)) {
+    return `${fmtMonth(start)} ${fmtDay(start)}-${fmtDay(end)}, ${fmtYear(end)}`;
+  }
+  if (fmtYear(start) === fmtYear(end)) {
+    return `${fmtMonth(start)} ${fmtDay(start)} - ${fmtMonth(end)} ${fmtDay(end)}, ${fmtYear(end)}`;
+  }
+  return `${fmtMonth(start)} ${fmtDay(start)}, ${fmtYear(start)} - ${fmtMonth(end)} ${fmtDay(end)}, ${fmtYear(end)}`;
+}
+
 // ── COMP CHECK ──
 
 // Routes comp lookup to the right API based on card type.
@@ -9523,6 +9559,12 @@ function sdSelPay(el, method) {
   sdSelectedPayment = method;
 }
 
+// Local (not UTC) 'YYYY-MM-DD' — used to stamp card.SoldDate for the
+// Transaction Log's Date column. 'en-CA' formats as ISO by locale convention.
+function _todayISO() {
+  return new Date().toLocaleDateString('en-CA');
+}
+
 function sdConfirm() {
   const price = parseFloat(document.getElementById('sdPrice').value);
   if (!price || price <= 0) { showToast('⚠️ Enter a sold price', 'var(--danger)'); return; }
@@ -9534,6 +9576,7 @@ function sdConfirm() {
   card.PaymentMethod = sdSelectedPayment;
   card.SaleNotes     = document.getElementById('sdNotes').value || null;
   card.SoldTime      = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  card.SoldDate      = _todayISO(); // a Sell Drawer sale is always "now" — no backdating
 
   closeSellDrawer();
   updateCardInDB(card);
@@ -10507,6 +10550,26 @@ function populateReportShowSelector() {
   });
 }
 
+// Sortable 'YYYY-MM-DDTHH:MM' key for a sold card — combines SoldDate
+// ('YYYY-MM-DD') with SoldTime (a 12-hour display string like "3:44 PM",
+// converted to zero-padded 24-hour) so the Transaction Log can sort by
+// actual sale order, not just by date. Returns '' when SoldDate is
+// missing (a legacy pre-feature sale) — empty string sorts last in a
+// descending compare, same as SoldDate-only sorting did before.
+function _txSortKey(r) {
+  if (!r.SoldDate) return '';
+  const m = (r.SoldTime || '').match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  let time = '00:00';
+  if (m) {
+    let hour = parseInt(m[1], 10);
+    const ampm = m[3].toUpperCase();
+    if (ampm === 'PM' && hour !== 12) hour += 12;
+    if (ampm === 'AM' && hour === 12) hour = 0;
+    time = String(hour).padStart(2, '0') + ':' + m[2];
+  }
+  return r.SoldDate + 'T' + time;
+}
+
 function updateReport() {
   populateReportShowSelector();
   const showId    = (document.getElementById('rptShowFilter') || {}).value || '';
@@ -10633,13 +10696,28 @@ function updateReport() {
   // ── Transaction log ──
   const tbody = el('rptTxBody');
   if (!soldCards.length) {
-    tbody.innerHTML = '<tr><td colspan="7" style="padding:16px 8px;color:var(--muted);font-size:12px">No sales yet</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" style="padding:16px 8px;color:var(--muted);font-size:12px">No sales yet</td></tr>';
   } else {
-    tbody.innerHTML = soldCards.map(r => {
+    // Newest sale first — full date+time, not just date. SoldTime is a
+    // 12-hour display string ("3:44 PM"); _txSortKey() converts it to a
+    // zero-padded 24-hour 'YYYY-MM-DDTHH:MM' so string comparison sorts
+    // correctly within a day too (previously same-day rows were left in
+    // whatever order they happened to be pushed to inventory[], which
+    // rarely matched actual sale order once multiple sales came in from
+    // different sources — POS, Sell Drawer, Manual Sale — in one day).
+    // A row with no SoldDate (a legacy pre-feature sale) sorts to the very
+    // bottom, same as before.
+    const sorted = [...soldCards].sort((a, b) => _txSortKey(b).localeCompare(_txSortKey(a)));
+    tbody.innerHTML = sorted.map(r => {
       const delta    = (Number(r.SoldPrice) || 0) - (Number(r.Price) || 0);
       const mslBadge = r._manualSale
         ? '<span class="msl-badge">MANUAL</span>'
         : '';
+      // Legacy rows sold before this feature shipped have no SoldDate — show
+      // "—" rather than guessing (see CLAUDE.md "Add a Date to the Transaction Log").
+      const dateLabel = r.SoldDate
+        ? new Date(r.SoldDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+        : '—';
       // inventory.indexOf(r) is safe here — getSellerInventory() returns
       // the same object references it filtered from inventory[], not copies.
       const invIdx = inventory.indexOf(r);
@@ -10652,6 +10730,7 @@ function updateReport() {
         <td style="padding:7px 8px;border-bottom:1px solid rgba(30,38,64,.5);font-family:'DM Mono',monospace;font-size:12px;color:#4ade80;font-weight:500">$${Number(r.SoldPrice).toLocaleString()}</td>
         <td style="padding:7px 8px;border-bottom:1px solid rgba(30,38,64,.5);font-family:'DM Mono',monospace;font-size:11px;color:${delta>=0?'#4ade80':'#f87171'}">${delta>=0?'+':'-'}$${Math.abs(delta).toLocaleString()}</td>
         <td style="padding:7px 8px;border-bottom:1px solid rgba(30,38,64,.5)"><span class="pay-chip-sm ${r.PaymentMethod||'Other'}">${r.PaymentMethod||'—'}</span></td>
+        <td style="padding:7px 8px;border-bottom:1px solid rgba(30,38,64,.5);font-family:'DM Mono',monospace;font-size:10px;color:var(--muted)">${dateLabel}</td>
         <td style="padding:7px 8px;border-bottom:1px solid rgba(30,38,64,.5);font-family:'DM Mono',monospace;font-size:10px;color:var(--muted)">${r.SoldTime||'—'}</td>
         <td style="padding:7px 8px;border-bottom:1px solid rgba(30,38,64,.5)">
           <button type="button" onclick="openShareCardModal(inventory[${invIdx}])"
@@ -10670,14 +10749,14 @@ function exportReportCSV() {
   const soldCards = showId
     ? all.filter(r => r.Status === 'Sold' && r._shows instanceof Set && r._shows.has(showId))
     : all.filter(r => r.Status === 'Sold');
-  const header = ['Card Title','Player','Year','Set','Grade','Grader','Ask Price','Sold Price','Delta','Payment Method','Sale Time','Notes'];
+  const header = ['Card Title','Player','Year','Set','Grade','Grader','Ask Price','Sold Price','Delta','Payment Method','Sale Date','Sale Time','Notes'];
   const rows   = soldCards.map(r => {
     const delta = (Number(r.SoldPrice) || 0) - (Number(r.Price) || 0);
     return [
       r['Card Title'] || '', r.Player || '', r.Year || '', r['Set '] || r.Set || '',
       r.Grade || '', r.Grader || '',
       Number(r.Price || 0).toFixed(2), Number(r.SoldPrice || 0).toFixed(2),
-      delta.toFixed(2), r.PaymentMethod || '', r.SoldTime || '', r.SaleNotes || ''
+      delta.toFixed(2), r.PaymentMethod || '', r.SoldDate || '', r.SoldTime || '', r.SaleNotes || ''
     ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',');
   });
   const csv  = [header.join(','), ...rows].join('\n');
@@ -11047,7 +11126,11 @@ function loginAsSeller(handle) {
   });
 
   // Load shows from Supabase so seller can see which shows they're authorized for
-  loadShowsFromDB().then(() => { renderSellerShowsList(); populateReportShowSelector(); });
+  loadShowsFromDB().then(() => {
+    renderSellerShowsList();
+    populateReportShowSelector();
+    _restoreActiveShowId(handle); // survives a reload mid-show — see comment above the function
+  });
 
   // Load seller profile from Supabase (display name, WhatsApp, Instagram)
   if (typeof db !== 'undefined') {
@@ -11467,15 +11550,17 @@ function openCreateShowModal(showId) {
   if (showId && shows[showId]) {
     const s = shows[showId];
     title.textContent = 'Edit Show';
-    document.getElementById('smName').value     = s.name || '';
-    document.getElementById('smDate').value     = s.date || '';
-    document.getElementById('smLocation').value = s.location || '';
-    document.getElementById('smStatus').value   = s.status || 'upcoming';
-    document.getElementById('smCode').value     = s.accessCode || '';
+    document.getElementById('smName').value      = s.name || '';
+    document.getElementById('smStartDate').value = s.startDate || '';
+    document.getElementById('smEndDate').value   = s.endDate   || '';
+    document.getElementById('smLocation').value  = s.location || '';
+    document.getElementById('smStatus').value    = s.status || 'upcoming';
+    document.getElementById('smCode').value      = s.accessCode || '';
   } else {
     title.textContent = 'Create Show';
-    document.getElementById('smName').value     = '';
-    document.getElementById('smDate').value     = '';
+    document.getElementById('smName').value      = '';
+    document.getElementById('smStartDate').value = '';
+    document.getElementById('smEndDate').value   = '';
     document.getElementById('smLocation').value = '';
     document.getElementById('smStatus').value   = 'upcoming';
     genAccessCode();
@@ -11520,14 +11605,18 @@ function closeShowModal() {
 }
 
 async function saveShow() {
-  const name     = document.getElementById('smName').value.trim();
-  const date     = document.getElementById('smDate').value.trim();
-  const location = document.getElementById('smLocation').value.trim();
+  const name      = document.getElementById('smName').value.trim();
+  const startDate = document.getElementById('smStartDate').value;
+  const endDate   = document.getElementById('smEndDate').value;
+  const date      = _formatShowDateRange(startDate, endDate);
+  const location  = document.getElementById('smLocation').value.trim();
   const { city, state, venue } = parseShowLocation(location);
   const status   = document.getElementById('smStatus').value;
   const code     = document.getElementById('smCode').value.trim().toUpperCase();
 
   if (!name) { showToast('Show name is required', 'var(--danger)'); return; }
+  if (!startDate) { showToast('Start date is required', 'var(--danger)'); return; }
+  if (endDate && endDate < startDate) { showToast('End date must be on or after the start date', 'var(--danger)'); return; }
   if (!code) { showToast('Access code is required', 'var(--danger)'); return; }
 
   // Check code uniqueness (excluding current show)
@@ -11549,7 +11638,7 @@ async function saveShow() {
   const toRemove = [...oldSellers].filter(h => !newSellers.has(h));
 
   const id = editingShowId || genShowId();
-  shows[id] = { id, name, date, location, status, accessCode: code, sellers: newSellers,
+  shows[id] = { id, name, date, startDate, endDate: endDate || startDate, location, status, accessCode: code, sellers: newSellers,
                 tables: (shows[id] && shows[id].tables) || {},
                 publishedAt: (shows[id] && shows[id].publishedAt) || null,
                 city, state, venue };
@@ -12175,6 +12264,40 @@ function renderSellerShowsList() {
   }).join('');
 }
 
+// Persists a seller's activeShowId across a page reload — this app signs
+// out and resets all in-memory state (activeShowId included) on every page
+// load, so without this, any reload during a multi-hour show (a dropped
+// connection, a mobile browser evicting the tab) silently drops the
+// seller's "live show" context back to null. That's more than a UI
+// nicety: recordShowTransaction() (show_floor_transactions) and the
+// Sold/Revenue stat chips both key off activeShowId, and a null value
+// after a reload was confirmed to make show_floor_transactions writes for
+// every subsequent sale silently no-op (2026-08-31 bug report).
+function _persistActiveShowId(handle, showId) {
+  try {
+    if (showId) localStorage.setItem('activeShowId_' + handle, showId);
+    else localStorage.removeItem('activeShowId_' + handle);
+  } catch (e) { /* localStorage unavailable (private browsing, etc.) — non-fatal */ }
+}
+
+// Restores activeShowId from localStorage on login, once shows{} is loaded
+// so the stored id can be validated — a stale id (show deleted, seller no
+// longer authorized) is discarded rather than silently trusted.
+function _restoreActiveShowId(handle) {
+  let stored;
+  try { stored = localStorage.getItem('activeShowId_' + handle); } catch (e) { return; }
+  if (!stored) return;
+  const show = shows[stored];
+  if (show && show.sellers instanceof Set && show.sellers.has(handle)) {
+    activeShowId = stored;
+    renderSellerShowsList();
+    buildSellerQrPanel();
+    updateStats();
+  } else {
+    _persistActiveShowId(handle, null); // clean up a stale reference
+  }
+}
+
 function sellerPublishToShow(showId) {
   const show = shows[showId];
   if (!show) return;
@@ -12188,8 +12311,17 @@ function sellerPublishToShow(showId) {
   selected.forEach(card => {
     if (!card._shows) card._shows = new Set();
     if (!card._shows.has(showId)) { card._shows.add(showId); count++; }
+    // Persist to show_inventory (fire-and-forget) — without this, the
+    // in-memory tag above is invisible to hydrateCardShowMembership() on
+    // the next login (this app signs out on every page load), and the
+    // card silently drops out of this show's scoped Report the moment the
+    // session resets, even though it's still counted in lifetime totals.
+    // Confirmed real bug 2026-08-31: this was the only card._shows.add()
+    // call site in the app with no corresponding show_inventory write.
+    if (card._dbId) _autoPublishCardToShow(card, card._dbId, showId);
   });
   activeShowId = showId;
+  _persistActiveShowId(currentSeller, showId);
   renderSellerShowsList();
   buildSellerQrPanel();
   showToast(`${count} cards added to "${show.name}"`);
@@ -12197,10 +12329,20 @@ function sellerPublishToShow(showId) {
 
 function sellerRemoveFromShow(showId) {
   const myCards = getSellerInventory();
+  const dbIds = myCards.filter(card => card._shows && card._shows.has(showId) && card._dbId).map(c => c._dbId);
   myCards.forEach(card => { if (card._shows) card._shows.delete(showId); });
-  if (activeShowId === showId) activeShowId = null;
+  if (activeShowId === showId) { activeShowId = null; _persistActiveShowId(currentSeller, null); }
   renderSellerShowsList();
   showToast('Cards removed from show');
+
+  // Mirror-image fix to the persistence gap above: remove the corresponding
+  // show_inventory rows so the card doesn't silently reappear under this
+  // show on the seller's next login (hydrateCardShowMembership() would
+  // otherwise re-tag it from a DB row this button never actually deleted).
+  if (dbIds.length && typeof db !== 'undefined') {
+    db.from('show_inventory').delete().eq('show_id', showId).in('card_id', dbIds)
+      .then(({ error }) => { if (error) console.warn('sellerRemoveFromShow DB cleanup failed:', error.message); });
+  }
 }
 
 // ── Buyer: Show picker ──
@@ -16065,6 +16207,8 @@ function showToDbRow(show) {
     id:           show.id,
     name:         show.name,
     date:         show.date        || null,
+    start_date:   show.startDate   || null,
+    end_date:     show.endDate     || show.startDate || null,
     location:     show.location    || null,
     status:       show.status      || 'upcoming',
     access_code:  show.accessCode  || null,
@@ -16082,9 +16226,20 @@ function showToDbRow(show) {
 async function upsertShowToDB(show) {
   if (typeof db === 'undefined') return true; // no DB — treat as success
   try {
-    const { error } = await db
+    const row = showToDbRow(show);
+    let { error } = await db
       .from('shows')
-      .upsert(showToDbRow(show), { onConflict: 'id' });
+      .upsert(row, { onConflict: 'id' });
+
+    // Degrade gracefully if start_date/end_date haven't been migrated yet —
+    // same PGRST204 "missing column" pattern as _isMissingScanColumnError()
+    // on the inventory table (see CLAUDE.md).
+    if (error && (error.code === 'PGRST204' || /schema cache/i.test(error.message || ''))) {
+      delete row.start_date;
+      delete row.end_date;
+      ({ error } = await db.from('shows').upsert(row, { onConflict: 'id' }));
+    }
+
     if (error) {
       console.error('upsertShowToDB failed:', error.message);
       return false;
@@ -16346,6 +16501,8 @@ async function loadShowsFromDB() {
         id:          row.id,
         name:        row.name,
         date:        row.date        || '',
+        startDate:   row.start_date  || null,
+        endDate:     row.end_date    || null,
         location:    row.location    || '',
         status:      row.status      || 'upcoming',
         accessCode:  row.access_code || '',
@@ -16629,6 +16786,7 @@ function dbRowToCard(row) {
   if (row.payment_method)         card.PaymentMethod = row.payment_method;
   if (row.sale_notes)             card.SaleNotes     = row.sale_notes;
   if (row.sold_time)              card.SoldTime      = row.sold_time;
+  if (row.sold_date)              card.SoldDate      = row.sold_date;
   return validateAndNormalizeCard(card);
 }
 
@@ -16773,6 +16931,10 @@ function openManualSaleModal() {
   _mslResetPhoto();
   _mslPopulateShowSelector();
 
+  const dateEl = document.getElementById('mslSaleDate');
+  if (dateEl) dateEl.value = _todayISO();
+  _mslSyncSaleDateBounds();
+
   document.getElementById('manualSaleOverlay').classList.add('open');
   setTimeout(() => document.getElementById('mslPlayer')?.focus(), 350);
 }
@@ -16799,6 +16961,28 @@ function _mslPopulateShowSelector() {
     });
 
   if (activeShowId) sel.value = activeShowId;  // pre-select active show
+}
+
+// Constrains #mslSaleDate to the selected show's start/end date range —
+// "transactions need to be able to be mapped to a specific date within a
+// given show." Multi-day shows created before this feature (no startDate/
+// endDate) leave the picker unconstrained rather than blocking entry.
+function _mslSyncSaleDateBounds() {
+  const sel     = document.getElementById('mslShow');
+  const dateEl  = document.getElementById('mslSaleDate');
+  if (!sel || !dateEl) return;
+  const show = shows[sel.value];
+  if (show && show.startDate) {
+    dateEl.min = show.startDate;
+    dateEl.max = show.endDate || show.startDate;
+    // Snap an out-of-range date (e.g. left over from a prior show selection)
+    // back within the new bounds rather than leaving an invalid value.
+    if (dateEl.value < dateEl.min) dateEl.value = dateEl.min;
+    if (dateEl.value > dateEl.max) dateEl.value = dateEl.max;
+  } else {
+    dateEl.removeAttribute('min');
+    dateEl.removeAttribute('max');
+  }
 }
 
 // ── Manual Sale — photo capture + card identification ──
@@ -16994,6 +17178,7 @@ async function confirmManualSale() {
   const cert     = (document.getElementById('mslCert')?.value     || '').trim();
   const notes    = (document.getElementById('mslNotes')?.value    || '').trim();
   const showId   = document.getElementById('mslShow')?.value      || null;
+  const saleDate = document.getElementById('mslSaleDate')?.value  || _todayISO();
 
   // ── Disable button ────────────────────────────────────
   const btn = document.getElementById('mslConfirmBtn');
@@ -17038,6 +17223,7 @@ async function confirmManualSale() {
   card.SoldTime      = new Date().toLocaleTimeString([], {
     hour: '2-digit', minute: '2-digit',
   });
+  card.SoldDate      = saleDate;
 
   // Recomputed from the final (possibly seller-edited) field values —
   // matches posInsertAndOpenDrawer()'s same convention. A local SHA-256
@@ -17290,6 +17476,7 @@ async function updateCardInDB(card) {
       payment_method: card.PaymentMethod ?? null,
       sale_notes:     card.SaleNotes     ?? null,
       sold_time:      card.SoldTime      ?? null,
+      sold_date:      card.SoldDate      ?? null,
     };
     let { error } = await db
       .from('inventory')
@@ -17299,6 +17486,13 @@ async function updateCardInDB(card) {
     if (error && _isMissingScanColumnError(error)) {
       delete payload.fingerprint;
       delete payload.detected_confidence;
+      ({ error } = await db.from('inventory').update(payload).eq('id', card._dbId));
+    }
+
+    // Degrade gracefully if sold_date hasn't been migrated yet — same
+    // PGRST204 pattern as the fingerprint/detected_confidence columns above.
+    if (error && (error.code === 'PGRST204' || /sold_date.*schema cache/i.test(error.message || ''))) {
+      delete payload.sold_date;
       ({ error } = await db.from('inventory').update(payload).eq('id', card._dbId));
     }
 
@@ -17316,16 +17510,32 @@ async function updateCardInDB(card) {
 // The sold confirmation UI must complete instantly regardless of
 // Supabase write latency. Failures are logged but never surfaced.
 //
-// Only fires when activeShowId is set (seller is in a live show).
+// Fires when activeShowId is set, or falls back to the card's own single
+// show membership (see comment inside the function for why).
 // Uses detectCardSport() (API routing) not detectSport() (UI only).
 
 async function recordShowTransaction(card) {
   if (typeof db === 'undefined') return;
-  if (!activeShowId)  return;
   if (!currentSeller) return;
 
+  // Prefer the live activeShowId (explicit session context), but fall back
+  // to the card's own show membership when it's unset. activeShowId is a
+  // page-load-scoped global with no persistence across a reload — and this
+  // app signs sellers out and reloads state on every page load — so a
+  // dropped connection or a mobile browser evicting the tab mid-show
+  // silently zeroed it, and every sale afterward no-op'd here with no
+  // warning (confirmed real bug 2026-08-31: a seller found only 1 of many
+  // 8/29 sales in show_floor_transactions). card._shows is reliably
+  // rehydrated from the DB on login (see hydrateCardShowMembership()), so
+  // a card belonging to exactly one show is an unambiguous, reload-proof
+  // source of truth for which show this sale belongs to. A card in zero or
+  // multiple shows still requires the explicit activeShowId context.
+  const showId = activeShowId ||
+    (card._shows instanceof Set && card._shows.size === 1 ? [...card._shows][0] : null);
+  if (!showId) return;
+
   try {
-    const show = shows[activeShowId];
+    const show = shows[showId];
     if (!show) return;
 
     // Prefer DB-populated city/state; fall back to parsing location
@@ -17385,7 +17595,7 @@ async function recordShowTransaction(card) {
       seller_handle: currentSeller,
 
       // Show snapshot — denormalised so record is self-describing
-      show_id:       activeShowId,
+      show_id:       showId,
       show_name:     show.name,
       show_date:     show.date     || null,
       show_location: show.location || null,
@@ -17761,9 +17971,18 @@ async function upsertCardsToDB(cards) {
       <div>
         <div class="drawer-field-label">Show</div>
         <select id="mslShow" class="filter-select"
-          style="width:100%;margin-bottom:0">
+          style="width:100%;margin-bottom:0" onchange="_mslSyncSaleDateBounds()">
           <option value="">Off-show / no show</option>
         </select>
+      </div>
+
+      <!-- Sale date — defaults to today, backdatable for off-platform sales;
+           constrained to the selected show's date range when one is picked -->
+      <div>
+        <div class="drawer-field-label">Sale Date</div>
+        <input id="mslSaleDate" class="sold-price-input" type="date"
+          style="font-size:15px;padding:9px 12px;
+                 width:100%;box-sizing:border-box;border-radius:7px">
       </div>
 
       <!-- Player — required -->
