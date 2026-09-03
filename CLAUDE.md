@@ -477,6 +477,54 @@ Cancel at each state:
 
 ## Comp Pricing — Card Hedge + CardSight AI + PriceCharting + TCG API
 
+### High-confidence-only gating (session 2026-09-03)
+All three sports-card sources in the fallback chain now suppress low-confidence matches
+entirely (returning `{ stub: true }`/`{ stub: true, noData: true }` so the chain falls
+through to the next source) rather than returning a best-guess price. This raised the bar
+from "reject only the worst matches" to "only accept matches we're confident are correct" —
+a comp shown to a seller/buyer is now either high-confidence or absent, never a shaky guess.
+See `CARDSIGHT_HIGH_CONFIDENCE` / `PRICECHARTING_MIN_SCORE` at the top of `comp-lookup.js`
+for the full reasoning; summary per source:
+- **Card Hedge** — already returned a real calibrated 0-1 confidence float, mapped to A/B/C/D
+  (>=0.9/0.7/0.5). Previously only suppressed grade D; now requires grade A (>=0.9) exactly,
+  in both the `card-match` and `card-fmv` response paths. A `null`/unrecognized confidence
+  value is now also suppressed (previously let through unfiltered) — an unknown confidence
+  is treated as not-high-confidence, consistent with the stricter bar.
+- **CardSight** — has no calibrated confidence score at all; `scoreCatalogMatch()`'s points
+  are purely a *tiebreaker* among already-plausible candidates, never returned to the caller
+  before this change. It now returns `{ card, confidence }` where `confidence` reflects HOW
+  the match was resolved: `'exact'` (exactly one candidate had a matching card number —
+  unambiguous), `'tiebreak'` (multiple candidates shared that number, resolved by
+  release-name scoring — ambiguous), or `'fuzzy'` (no usable card number at all, resolved by
+  the general points-based scorer — least certain). A `results.length === 1` search result
+  (only one candidate existed) is tagged `'single'`. Only `'single'` and `'exact'` pass the
+  `CARDSIGHT_HIGH_CONFIDENCE` gate — `'tiebreak'` and `'fuzzy'` are suppressed. The gate is
+  checked immediately after card selection, before the parallel-resolution and pricing API
+  calls, so a low-confidence match no longer burns CardSight's 750/month quota chasing a
+  price it's going to discard anyway. A `cardId` reused from a cached `price_cache` row is
+  tagged `'cached'` and trusted — since this gate only ever writes high-confidence matches to
+  cache going forward, any cached row from this point on is high-confidence by construction
+  (pre-existing cached rows from before this change fall out within the 24h TTL).
+- **PriceCharting** — also has no calibrated confidence score; `scorePCResult()`'s points
+  only ever picked the best candidate among search results, with no minimum threshold. Its
+  realistic scoring ceiling is ~85 (no bracket [+15] + exact card number [+20] + full player
+  match [+15] + sport match [+20] + exact year [+15]) — `PRICECHARTING_MIN_SCORE = 75` demands
+  near-perfect alignment on player, sport, and year at minimum (any single major mismatch —
+  wrong sport -40, wrong player -20, year off by 2+ years -15/-30 — drops well below 75 even
+  with everything else matching). Checked immediately after the best-scored candidate is
+  picked, before `fetchPCPrices()` spends the price-lookup API call. **Known gap, deliberately
+  left as-is:** the existing zero-price-data retry path (search again with just player+year
+  when the originally-picked product has no price data) swaps in `retryProducts[0]` without
+  re-scoring it — that retry only ever fires after the original pick already cleared this
+  gate, and exists to route around a data-completeness gap, not a confidence question, so
+  re-scoring it wasn't judged worth the added complexity here.
+- **Not changed**: `card-correction.js` (the bulk-scan raw-card player-name OCR correction
+  pass) carries its own **duplicated** copy of this scoring logic per its own documented
+  reasoning above ("Duplicated, not shared, logic") and was intentionally left untouched —
+  this session's ask was specifically about comp *pricing* results, not the correction pass.
+  Revisit `card-correction.js` separately if the same high-confidence-only bar should apply
+  there too.
+
 ### Architecture
 - `netlify/functions/comp-lookup.js` — POST `{ cards: [...] }` → `{ results: [...] }`
 - Cards processed **sequentially** (for...of, never Promise.all) to respect PriceCharting's 1 req/s limit
@@ -493,7 +541,7 @@ Cancel at each state:
   - Step 1: `POST /v1/cards/card-match` → `card_id` (4s timeout). Body: `{ query: "year set player parallel grader grade" }` — single free-text string in `query` field (NOT `description`; NOT structured object — 422 if wrong). Response: `{ match: { card_id, confidence: 0-1 float, player, prices: [{grade, price}], reasoning } }`. `card_id` and prices are nested under `match`. If `prices[]` has the correct grade tier, price is extracted immediately and `card-fmv` is skipped entirely. On failure: `POST /v1/cards/90day-prices-by-grade` with `{ query, grade: float, grader }` → returns price directly (early return, 4s timeout).
   - Step 2: `POST /v1/cards/card-fmv` with `{ card_id, query }` → only called when `card-match` succeeded but `prices[]` was empty. `compPrice` from `fmv`/`price`/`fair_market_value` field. 4s timeout.
   - Step 3: `POST /v1/cards/comps` with `{ card_id, query }` → recent sales array (3s timeout, non-fatal). Sales normalised to `{ price, date, source, url, image, isBin }`.
-- Confidence is a 0–1 float from the match response, mapped to A/B/C/D (≥0.9→A, ≥0.7→B, ≥0.5→C, <0.5→D). **D confidence suppressed** — falls through to CardSight.
+- Confidence is a 0–1 float from the match response, mapped to A/B/C/D (≥0.9→A, ≥0.7→B, ≥0.5→C, <0.5→D). **Only grade A accepted** (as of the "High-confidence-only gating" change above) — B/C/D all fall through to CardSight.
 - `extractCardHedgePrice(prices, card)` — selects correct grade tier from `prices[]`: exact label match (`"PSA 10"`), then closest same-grader grade, then Raw fallback.
 - `match.reasoning` maps to `priceExplanation` displayed in buyer modal.
 - Source label in buyer modal: `"Market value · Card Hedge (A confidence)"` when confidence A/B/C; `"Market value · Card Hedge"` otherwise.
@@ -520,7 +568,7 @@ Cancel at each state:
 - `extractReleaseName(cardSet)` maps set name to CardSight's `releaseName` keyword (40-entry signature table; **order matters** — more specific variants listed first, e.g. "Topps Chrome Update" before "Topps Chrome", "Bowman Chrome Draft" before "Bowman Chrome"). Falls back to first long word. Self-test assertions run in `CARDSHOW_DEBUG` mode to catch mapping regressions.
 - `inferManufacturer(cardSet)` maps set name to manufacturer: Topps/Bowman → `'Topps'`; Prizm/Donruss/Select/Mosaic/Contenders/Chronicles/Optic → `'Panini'`; Upper Deck; Fleer. Returns `null` when unknown. Added to attempt 2 and 3 params as `manufacturer=` so Topps Chrome queries never return Panini results even if `releaseName=` is imprecise.
 - `deriveAttributeShortNames(card)` maps cardTitle/parallel to RC/AU codes; AU returned first (more pricing-specific).
-- `scoreCatalogMatch()` is now a tiebreaker — results already pre-filtered by year/release/attr. Fast path on exact number match; then scores solo card (+20), player in name (+10), partial number (+8). No minimum threshold.
+- `scoreCatalogMatch()` is now a tiebreaker — results already pre-filtered by year/release/attr. Fast path on exact number match; then scores solo card (+20), player in name (+10), partial number (+8). No minimum threshold on the score itself, but (as of the "High-confidence-only gating" change above) it now also returns a `confidence` tier alongside the picked card, and only the unambiguous tiers pass the `CARDSIGHT_HIGH_CONFIDENCE` gate.
 - **Exact number tie-break**: when `number=` returns multiple cards sharing the same number across different releases (e.g. Bowman Sterling + Topps Chrome + Triple Threads all sharing "RA-PS"), each is scored by `releaseName` word overlap against the seller's set. The highest-scoring release wins; first result is the safe default.
 - **Draft Picks penalty**: `-30` in `scoreCatalogMatch()` when result's `releaseName` contains "draft picks" and seller's `cardSet` doesn't contain "draft". Prevents Prizm Draft Picks from winning over base Prizm on shared card numbers.
 - Grade matching: finds exact `grade_value` match first, falls back to within ±0.5; falls back to raw sales for ungraded cards.

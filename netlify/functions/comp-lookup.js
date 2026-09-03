@@ -14,6 +14,37 @@ const { createClient } = require('@supabase/supabase-js');
 // ── FEATURE FLAGS ──
 const CARDHEDGE_ENABLED = process.env.CARDHEDGE_ENABLED !== 'false' && !!process.env.CARDHEDGE_API_KEY;
 
+// ── CONFIDENCE GATES ──
+// Only Card Hedge returns a calibrated 0-1 confidence score from its own API
+// (mapped to A/B/C/D below — see the two card-match/card-fmv suppression checks).
+// CardSight and PriceCharting have no equivalent probability; both only expose
+// an internal points-based *selection* score used to pick the best candidate
+// among search results. These constants define this app's own "high enough to
+// trust" bar for each, chosen to approximate Card Hedge's grade-A (>=90%) gate:
+//
+// CARDSIGHT: 'single' (only one search result existed) and 'exact' (search
+// returned several results, but exactly one had a card number matching the
+// seller's) are the only two selection paths where CardSight's own logic
+// resolved the match without any ambiguity. 'tiebreak' (multiple results
+// shared the same card number, resolved by release-name scoring) and 'fuzzy'
+// (no usable card number at all, resolved by the general points-based scorer)
+// both involve real ambiguity and are excluded. 'cached' (a stable card_id
+// reused from a prior price_cache row) is trusted since, once this gate went
+// live, only high-confidence matches are ever written to that cache going
+// forward — see lookupCardSight().
+const CARDSIGHT_HIGH_CONFIDENCE = new Set(['single', 'exact', 'cached']);
+
+// PRICECHARTING: scorePCResult()'s realistic ceiling is ~85 points (no bracket
+// [+15] + exact card number [+20] + full player name match [+15] + sport match
+// [+20] + exact year [+15]). 75 requires near-perfect alignment on player,
+// sport, and year at minimum — any single major mismatch (wrong sport -40,
+// wrong player -20, year off by 2+ years -15/-30) drops a candidate well below
+// this bar even if everything else matches. This is PriceCharting's rough
+// analog to Card Hedge's grade-A gate, tuned against its own scoring ceiling
+// rather than a literal probability, since PriceCharting's API returns no
+// confidence score of its own — see lookupPriceCharting().
+const PRICECHARTING_MIN_SCORE = 75;
+
 // ── RATE LIMITER ──
 // Enforces 1100ms minimum gap between PriceCharting API calls.
 // Resets on cold start — safe since each Netlify invocation is isolated.
@@ -245,6 +276,12 @@ function buildCardSightParams(card, attempt) {
 
 // Tiebreaker for multiple results already pre-filtered by year/release/attribute.
 // Results here are expected to be 2-10 cards, not hundreds.
+// Returns { card, confidence } — confidence reflects HOW the match was
+// resolved, not a numeric score: 'exact' when exactly one candidate had a
+// matching card number (unambiguous), 'tiebreak' when several candidates
+// shared that number and release-name scoring picked one (ambiguous), 'fuzzy'
+// when there was no usable card number at all and the general points-based
+// scorer picked one (least certain). See CARDSIGHT_HIGH_CONFIDENCE above.
 function scoreCatalogMatch(results, card) {
   if (!results?.length) return null;
 
@@ -260,7 +297,7 @@ function scoreCatalogMatch(results, card) {
     if (exactMatches.length === 1) {
       if (process.env.CARDSHOW_DEBUG)
         console.log('[cardsight] exact number match:', exactMatches[0].name, '|', exactMatches[0].releaseName);
-      return exactMatches[0];
+      return { card: exactMatches[0], confidence: 'exact' };
     }
 
     if (exactMatches.length > 1) {
@@ -286,7 +323,7 @@ function scoreCatalogMatch(results, card) {
 
       if (process.env.CARDSHOW_DEBUG)
         console.log('[cardsight] selected from tie-break:', bestMatch.name, '|', bestMatch.releaseName, '| id:', bestMatch.id);
-      return bestMatch;
+      return { card: bestMatch, confidence: 'tiebreak' };
     }
   }
 
@@ -331,8 +368,11 @@ function scoreCatalogMatch(results, card) {
     }
   }
 
-  // No minimum threshold — results already pre-filtered before scoring
-  return bestCard || results[0];
+  // No minimum threshold on the score itself — results already pre-filtered
+  // before scoring. Confidence tier is 'fuzzy' regardless of score: there's
+  // no card number to disambiguate with, so this is always the least certain
+  // path even when the winning score is high relative to its runners-up.
+  return { card: bestCard || results[0], confidence: 'fuzzy' };
 }
 
 // ── CARDSIGHT AI LOOKUP ──
@@ -394,9 +434,10 @@ async function lookupCardSight(card, cached = {}) {
     // attempt 1 because combining it with releaseName= / attributeShortName=
     // triggers 500s for certain card numbers (e.g. RA-PS, BPA-PS2).
     // 401/429 break the loop; 500/404 use continue to try next tier.
-    let selectedCard = null;
-    let cardId       = cached.cardId || null;
-    let matchedName  = null;
+    let selectedCard    = null;
+    let cardId          = cached.cardId || null;
+    let matchedName     = null;
+    let matchConfidence = cached.cardId ? 'cached' : null;
 
     if (!cardId) {
       const hasNumber = card.cardNumber && card.cardNumber.trim().length > 1;
@@ -438,26 +479,34 @@ async function lookupCardSight(card, cached = {}) {
         if (!results.length) continue;
 
         selectedCard = results.length === 1
-          ? results[0]
+          ? { card: results[0], confidence: 'single' }
           : scoreCatalogMatch(results, card);
 
-        if (selectedCard) {
+        if (selectedCard?.card) {
           if (process.env.CARDSHOW_DEBUG)
-            console.log('[cardsight] selected:', selectedCard.name, '| id:', selectedCard.id);
+            console.log('[cardsight] selected:', selectedCard.card.name, '| id:', selectedCard.card.id, '| confidence:', selectedCard.confidence);
           break;
         }
       }
 
-      if (!selectedCard?.id) {
+      if (!selectedCard?.card?.id) {
         if (process.env.CARDSHOW_DEBUG) console.log('[cardsight] no match after all attempts');
         return { stub: true, noData: true };
       }
 
-      cardId      = selectedCard.id;
-      matchedName = selectedCard.name;
+      cardId          = selectedCard.card.id;
+      matchedName     = selectedCard.card.name;
+      matchConfidence = selectedCard.confidence;
     } else {
       if (process.env.CARDSHOW_DEBUG)
         console.log('[cardsight] using cached cardId:', cardId);
+    }
+
+    // Only trust unambiguous matches — see CARDSIGHT_HIGH_CONFIDENCE above.
+    if (!CARDSIGHT_HIGH_CONFIDENCE.has(matchConfidence)) {
+      if (process.env.CARDSHOW_DEBUG)
+        console.log('[cardsight] suppressed: low-confidence match (', matchConfidence, ')', matchedName);
+      return { stub: true, noData: true };
     }
 
     // ── STEP 2: Parallel resolution ─────────────────────────────────────────
@@ -991,6 +1040,12 @@ async function lookupPriceCharting(card) {
     let product = scoredProducts[0].product;
     if (!product?.id) return { stub: true, noData: true };
 
+    if (scoredProducts[0].score < PRICECHARTING_MIN_SCORE) {
+      if (process.env.CARDSHOW_DEBUG)
+        console.log('[PC] suppressed: score', scoredProducts[0].score, '<', PRICECHARTING_MIN_SCORE, '|', product['product-name']);
+      return { stub: true, noData: true };
+    }
+
     if (process.env.CARDSHOW_DEBUG)
       console.log('[PC] best match:', product['product-name'], '|', product['console-name']);
 
@@ -1327,7 +1382,7 @@ function extractCardHedgePrice(prices, card) {
 //   Step 1: POST /v1/cards/card-match  → card_id (5s timeout)
 //           Fallback: POST /v1/cards/90day-prices-by-grade if card-match fails
 //   Step 2: POST /v1/cards/card-fmv   → compPrice, confidence_grade, price_explanation
-//           D confidence suppressed — falls through to CardSight
+//           Only grade-A (>=0.9) accepted — anything else falls through to CardSight
 //   Step 3: POST /v1/cards/comps      → recent sales (4s timeout, non-fatal)
 // Auth: X-API-Key header (NOT Bearer)
 // Note: card-search and card-details endpoints return only TOP grade prices —
@@ -1405,9 +1460,9 @@ async function lookupCardHedge(card) {
           ? (rawConfidence >= 0.9 ? 'A' : rawConfidence >= 0.7 ? 'B' : rawConfidence >= 0.5 ? 'C' : 'D')
           : null;
 
-        // Suppress D-confidence — fall through to CardSight
-        if (confidenceGrade === 'D') {
-          console.log('[cardhedge] suppressed: D confidence (', rawConfidence, ')');
+        // Only accept grade-A (>=0.9) matches — everything else falls through to CardSight
+        if (confidenceGrade !== 'A') {
+          console.log('[cardhedge] suppressed: below grade A confidence (', rawConfidence, confidenceGrade, ')');
           return { stub: true };
         }
 
@@ -1519,8 +1574,8 @@ async function lookupCardHedge(card) {
       : (rawConf ? String(rawConf).toUpperCase() : null);
     const priceExplanation = fmvData?.price_explanation ?? fmvData?.reasoning ?? fmvData?.explanation ?? null;
 
-    if (!compPrice || confidence === 'D') {
-      console.log('[cardhedge] suppressed:', !compPrice ? 'no price' : 'D confidence');
+    if (!compPrice || confidence !== 'A') {
+      console.log('[cardhedge] suppressed:', !compPrice ? 'no price' : `below grade A confidence (${confidence})`);
       return { stub: true };
     }
 
