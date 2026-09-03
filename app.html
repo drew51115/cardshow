@@ -6029,6 +6029,118 @@ async function tcapiGet(path) {
   }
 }
 
+// ── TRADING CARD API — per-resource query builders + known limitations ──
+// Reconciled against the API team's response to a filed bug report (see
+// CLAUDE.md's "Trading Card API Integration" section for the full history).
+// Every builder here returns a PATH ('/v1/...'), never a full URL — every
+// call still goes through tcapiGet() above, which routes through
+// netlify/functions/tcapi.js so TRADING_CARD_API_KEY never reaches the
+// browser. Do not fetch the Trading Card API directly from client code.
+
+// Confirmed-broken/incomplete API behaviors, kept as one flag object so any
+// future UI gating on these has a single source of truth instead of a
+// scattered comment. _tcSearchPlayers()'s stillTyping handling below is the
+// live use of lastNameSearchBroken; the other three flags have no UI surface
+// in this app yet (no brand filter, no /v1/brands picker, nothing follows a
+// relationships.*.links URL) — they're forward-looking guards.
+const TCAPI_KNOWN_LIMITATIONS = {
+  lastNameSearchBroken:             true, // full_name=paul+skene / last_name=like:sken both return 0
+  brandFilterUnavailable:           true, // no filter[brand] / filter[manufacturer] on /v1/sets
+  brandsListDirty:                  true, // /v1/brands includes brands with no published set backing them
+  relationshipLinksMissingV1Prefix: true, // relationships.*.links URLs are missing the /v1/ segment
+};
+
+// /v1/cards — filter[player_id] / filter[set_id] only (bracketed — a
+// different convention from /v1/players and /v1/sets below; the API team
+// confirmed this split is intentional per-resource, not an inconsistency).
+// filter[player_id] is now fast (confirmed: 912 results in ~1.1s for a
+// heavily-printed player) but nothing in this app calls it yet — Step 2 of
+// the guided picker below deliberately stays a manual set search rather than
+// auto-scoping by the selected player; see CLAUDE.md's "Open question" note
+// for why that rework (pagination for a heavily-printed player isn't a
+// single request) is a deliberate, not-yet-made call, not an oversight.
+function _tcBuildCardsPath({ playerId, setId, page, perPage = 100 } = {}) {
+  const params = new URLSearchParams();
+  if (playerId) params.set('filter[player_id]', playerId);
+  if (setId)    params.set('filter[set_id]', setId);
+  if (page)     params.set('page', page);
+  params.set('per_page', perPage);
+  return `/v1/cards?${params.toString()}`;
+}
+
+// Player -> cards is a plain two-step fetch — no include= join path exists
+// from player to cards (confirmed by the API team, not just unimplemented).
+// Unused today (see _tcBuildCardsPath above); added as ready-to-use
+// infrastructure for whenever that Step 2 rework happens.
+async function _tcFetchCardsForPlayer(playerId, opts = {}) {
+  return tcapiGet(_tcBuildCardsPath({ playerId, ...opts }));
+}
+
+// /v1/sets — bare params (name, genre, year, parent_id), plus bracketed
+// filter[status]. name= is an EXACT full-string match unless prefixed with
+// like: (confirmed: name=Bowman -> 0 results, name=like:Bowman Chrome -> 27)
+// — exactName defaults to false since that's what a search box almost always
+// wants. Also serves plain per_page/page pagination (_tcGetAllSets() below)
+// and parent_id parallel lookups, so every /v1/sets call in this app —
+// filtered or not — goes through this one builder.
+function _tcBuildSetsPath({ name, exactName = false, genre, year, parentId, status, page, perPage } = {}) {
+  const params = new URLSearchParams();
+  if (name)     params.set('name', exactName ? name : `like:${name}`);
+  if (genre)    params.set('genre', genre);
+  if (year)     params.set('year', year);
+  if (parentId) params.set('parent_id', parentId);
+  if (status)   params.set('filter[status]', status);
+  if (page)     params.set('page', page);
+  if (perPage)  params.set('per_page', perPage);
+  return `/v1/sets?${params.toString()}`;
+}
+
+// A set's checklist. format=compact is honored on v1 (1668 bytes, 4
+// attributes, no relationships) and silently ignored on v2 (6941 bytes,
+// unchanged) — confirmed by the API team as a v2-specific bug. Always forces
+// v1 regardless of caller. include=checklist is what puts real number/name
+// attributes into the response's `included` array — format=compact alone
+// still returns the set as primary `data` with cards as bare {type,id} refs.
+function _tcBuildChecklistPath(setId, { perPage = 100 } = {}) {
+  return `/v1/sets/${setId}/checklist?format=compact&include=checklist&per_page=${perPage}`;
+}
+
+// /v1/players — bare first_name/last_name/full_name. last_name prefix
+// matching is confirmed broken server-side, including the like: prefix
+// operator (last_name=like:sken -> 0) — see TCAPI_KNOWN_LIMITATIONS.lastNameSearchBroken
+// above. Do not build a last-name typeahead against this until the API team
+// fixes it; _tcSearchPlayers() below reports stillTyping instead of guessing.
+function _tcBuildPlayersPath({ firstName, lastName, fullName, limit } = {}) {
+  const params = new URLSearchParams();
+  if (firstName) params.set('first_name', firstName);
+  if (lastName)  params.set('last_name', lastName);
+  if (fullName)  params.set('full_name', fullName);
+  if (limit)     params.set('limit', limit);
+  return `/v1/players?${params.toString()}`;
+}
+
+// Relationship links returned by the API are missing their /v1/ path segment
+// (confirmed on all eight relationships on a set; filed with the API team,
+// not yet fixed). Nothing in this app follows a relationships.*.links URL
+// today — added as a guard for whenever something does.
+function _tcNormalizeRelationshipLink(url) {
+  if (!url) return url;
+  return url.includes('/v1/') ? url : url.replace(/^(https?:\/\/[^/]+)\//, '$1/v1/');
+}
+
+// A published set's brand — 191 of 273 published base sets return
+// brand:null today; that's the flagship products (plain "Upper Deck",
+// "Upper Deck Series 1"), not an error state. The API team is undecided
+// between keeping null and replacing it with an explicit base-product value,
+// so this stays a one-line change either way. Not wired into any UI yet —
+// this app has no brand-display or brand-filter surface today.
+function getSetBrandDisplay(set) {
+  // TODO: revisit if the API starts returning an explicit base-product
+  // value instead of null (open question from the API team, unresolved as
+  // of this change).
+  return set?.attributes?.brand ?? 'Base';
+}
+
 // ── SHOW EVENT LOGGING (organizer analytics) ──
 // Fire-and-forget — never await, never block the caller (search rendering, show join, etc).
 function _logShowEvent(type, data) {
@@ -7410,8 +7522,8 @@ async function _tcapiValidateOneCard(card) {
     // cards as bare {type,id} refs; include=checklist puts the real
     // number/name attributes into `included`.
     const [checklistData, parallelData] = await Promise.all([
-      tcapiGet(`/v1/sets/${matchedSet.id}/checklist?format=compact&include=checklist&per_page=100`),
-      tcapiGet(`/v1/sets?parent_id=${matchedSet.id}&per_page=100`),
+      tcapiGet(_tcBuildChecklistPath(matchedSet.id)),
+      tcapiGet(_tcBuildSetsPath({ parentId: matchedSet.id, perPage: 100 })),
     ]);
     const parallels = parallelData?.data || [];
 
@@ -14461,7 +14573,7 @@ function tcClearPickerState() {
 // match for what was actually typed. Report that state back explicitly
 // (stillTyping) instead of silently substituting a wrong candidate list.
 async function _tcSearchPlayers(q) {
-  const data = await tcapiGet(`/v1/players?full_name=${q}&limit=8`);
+  const data = await tcapiGet(_tcBuildPlayersPath({ fullName: q, limit: 8 }));
   const results = data?.data || [];
   const isMultiWord = q.trim().split(/\s+/).filter(Boolean).length > 1;
   return { results, stillTyping: isMultiWord && results.length === 0 };
@@ -14525,12 +14637,12 @@ function _tcGetAllSets() {
   if (_tcAllSetsCache) return Promise.resolve(_tcAllSetsCache);
   if (_tcAllSetsPromise) return _tcAllSetsPromise;
   _tcAllSetsPromise = (async () => {
-    const first = await tcapiGet('/v1/sets?per_page=100&page=1');
+    const first = await tcapiGet(_tcBuildSetsPath({ page: 1, perPage: 100 }));
     let all = first?.data || [];
     const totalPages = first?.meta?.pagination?.total_pages || 1;
     if (totalPages > 1) {
       const rest = await Promise.all(
-        Array.from({ length: totalPages - 1 }, (_, i) => tcapiGet(`/v1/sets?per_page=100&page=${i + 2}`))
+        Array.from({ length: totalPages - 1 }, (_, i) => tcapiGet(_tcBuildSetsPath({ page: i + 2, perPage: 100 })))
       );
       rest.forEach(d => { all = all.concat(d?.data || []); });
     }
@@ -14588,7 +14700,7 @@ async function _tcLoadChecklist(setId) {
   // team) -- v1 actually honors it, but returns the set as primary `data`
   // with cards as bare {type,id} refs; include=checklist is what puts the
   // real number/name attributes into `included`.
-  const data = await tcapiGet(`/v1/sets/${setId}/checklist?format=compact&include=checklist&per_page=100`);
+  const data = await tcapiGet(_tcBuildChecklistPath(setId));
   const allCards = data?.included || [];
   const playerName = document.getElementById('ac_player').value.trim().toLowerCase();
   const filtered = playerName
@@ -14622,7 +14734,7 @@ function tcSelectCard(i) {
 async function _tcLoadParallels(setId) {
   const dd = document.getElementById('tc_parallel_dd');
   dd.innerHTML = _tcLoading('LOADING PARALLELS…');
-  const data = await tcapiGet(`/v1/sets?parent_id=${setId}&per_page=100`);
+  const data = await tcapiGet(_tcBuildSetsPath({ parentId: setId, perPage: 100 }));
   _tcParallelResults = data?.data || [];
   if (!_tcParallelResults.length) { dd.innerHTML = _tcNoResults(); return; }
 

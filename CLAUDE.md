@@ -779,6 +779,69 @@ We filed the 9 issues above with Trading Card API's team. Their response, each p
 
 **Open question, not yet acted on:** with `filter[player_id]` now fast, Step 2 (currently a manual set search, not auto-scoped to the player — see above) and the bulk-scan validator's set-matching (currently a substring+year+parallel-veto heuristic against the cached catalog) could both be rebuilt to derive a player's actual sets from their real card data instead of guessing by name. For the validator specifically this would remove the *root cause* of the "wrong sibling product" bug class (the Upper Deck/Black Diamond case), not just the mitigation — but it's a real rework (pagination for a heavily-printed player's cards, e.g. 912 total for the one tested here, isn't a single call), not a small patch. Flagged for a deliberate decision rather than done opportunistically alongside this response.
 
+### Config update — per-resource query builders + confirmed API behaviors (session 2026-09-03)
+A follow-up bug report (`filter[x]=` per-resource conventions, player→cards, `format=compact`,
+relationship links, brand/manufacturer data quality, and a breaking catalog-size change)
+came back with more confirmed findings, reconciled against what this app actually calls —
+most were already correct here, a few were genuinely new information:
+- **Per-resource query builders added** (app.html, right after `tcapiGet()`): `_tcBuildCardsPath()`,
+  `_tcBuildSetsPath()`, `_tcBuildPlayersPath()`, `_tcBuildChecklistPath()` — every one of this
+  app's six `/v1/cards`/`/v1/sets`/`/v1/players` call sites now builds its path through one of
+  these instead of a hand-written template string, so the bracketed-vs-bare `filter[...]`
+  convention per resource (confirmed: `/v1/cards` keeps `filter[player_id]`/`filter[set_id]`;
+  `/v1/players`/`/v1/sets` use bare params) lives in one place. **No behavior change** — this
+  codebase never used `filter[name]`/`filter[x]=` syntax on `/v1/sets`/`/v1/players` to begin
+  with (Step 2's set search and the bulk-scan validator both already used the fetch-whole-catalog-
+  and-filter-client-side approach `CLAUDE.md` documents above, precisely because bracket-filter
+  syntax was unreliable at the time), so this is a consolidation for future call sites, not a fix
+  for live breakage.
+- **`/v1/sets?name=` has a confirmed `like:` prefix operator** (already noted above from the
+  API team's response) — `_tcBuildSetsPath({ name, exactName })` implements it, defaulting to
+  prefix (`like:`) matching. **Not wired into Step 2 or the bulk-scan validator** — both still
+  use the pre-existing whole-catalog-cached-client-side approach (`_tcGetAllSets()`), which
+  remains the right call for a live-typing dropdown per the reasoning already documented in
+  the "Add Card Modal — Guided Picker" section below; the `like:` operator is genuinely useful
+  for a one-shot server-side lookup, which nothing in this app does today.
+- **`_tcBuildChecklistPath(setId)` added** — consolidates the two identical
+  `?format=compact&include=checklist&per_page=100` checklist URLs (Add Card picker Step 3,
+  bulk-scan validator) into one function so "always force v1, always request `include=checklist`"
+  lives in one place instead of two copies. No behavior change.
+- **`_tcFetchCardsForPlayer(playerId)` added** — thin wrapper around `_tcBuildCardsPath({ playerId })`.
+  **Deliberately not wired into anything** — this is exactly the rework flagged as an open
+  question above (Step 2 auto-scoping by player, bulk-scan validator root-cause fix); adding the
+  helper doesn't itself decide to take on that rework.
+- **`_tcNormalizeRelationshipLink(url)` added** — fixes the confirmed missing `/v1/` prefix on
+  `relationships.*.links` URLs. Dead code today — nothing in this app follows a relationship
+  link — kept as a guard for whenever something does, per the API team's confirmation that this
+  is filed but not yet fixed on their end.
+- **`getSetBrandDisplay(set)` added** — new finding: 191 of 273 published base sets return
+  `brand: null` (the flagship products like plain "Upper Deck", not an error state); the API
+  team is still deciding whether to replace `null` with an explicit base-product value.
+  Dead code today — this app has no set-brand display or brand-filter UI at all — added with a
+  `TODO` so a future brand-aware UI has a single point to update if/when that decision lands.
+  Also new: `/v1/brands` is confirmed **not** a clean picklist source (173 brands returned, only
+  52 backed by a published set; no dedup between e.g. "Black Diamond" and "Upper Deck Black
+  Diamond") — noted in `TCAPI_KNOWN_LIMITATIONS.brandsListDirty` below; don't populate a brand
+  dropdown from that endpoint if one is ever built.
+- **`TCAPI_KNOWN_LIMITATIONS` constant added** (app.html) — `{ lastNameSearchBroken,
+  brandFilterUnavailable, brandsListDirty, relationshipLinksMissingV1Prefix }`, all `true`.
+  `lastNameSearchBroken` is the one with a live UI consequence — it's what `_tcSearchPlayers()`'s
+  pre-existing `stillTyping` messaging already implements; the constant exists so that behavior
+  has a named, greppable justification instead of only a comment. The other three have no UI
+  surface in this app yet, so they're forward-looking flags, not active gates.
+- **Confirmed breaking change, already live, no client code change needed:** `/v1/cards`'
+  unfiltered result count dropped from ~1.77M to ~326K in the API's own v0.10.34 (server now
+  excludes cards on unpublished sets by default). Audited per this app's own established
+  pattern (nothing here ever calls unfiltered `/v1/cards`, and `_tcGetAllSets()`'s pagination
+  reads `total_pages` from each response rather than assuming a fixed count) — no hardcoded
+  catalog-size assumption existed to update. The one artifact was a stale comment in
+  `netlify/functions/tcapi.js` citing the old "1.7M+" figure, corrected to reflect the new count
+  and note explicitly that it doesn't affect this app either way.
+- **Not changed:** `netlify/functions/card-correction.js`'s `inferManufacturer()` is a
+  *different* manufacturer-inference heuristic (Topps/Bowman → "Topps", Prizm/Donruss/etc. →
+  "Panini") used for CardSight/PriceCharting queries, unrelated to Trading Card API's
+  `brand`/`manufacturer` set fields — out of scope for this update, not an oversight.
+
 ### Architecture
 All calls are proxied through `netlify/functions/tcapi.js` — a generic `GET ?path=/v1/whatever` passthrough that adds `Authorization: Bearer TRADING_CARD_API_KEY` server-side. 9s internal timeout (`AbortController`), just under Netlify's ~10s synchronous function ceiling (matches `vision-scan.js`'s 10s convention) so our own clean timeout response wins the race against the platform killing the function outright.
 
@@ -1008,6 +1071,16 @@ If `insertCardToDB()` times out inside `posInsertAndOpenDrawer()`'s `Promise.rac
 - **"Powered by CardShow" PNG branding (session 2026-08-28)** — see "'Powered by CardShow' PNG Branding" section above. Shared footer (logo + "Powered by CardShow" + getcardshow.com) added to entrance signage and both seller QR downloads via new `_loadCardShowLogo()`/`_drawCardShowFooter()`/`_downloadBrandedQrPng()` helpers. New asset: `assets/cardshow-logo-wordmark.png` (transparent background).
 - **Multi-Day Shows & Transaction Dates (session 2026-08-31)** — Show creation modal replaces its single freeform date text field with Start Date / End Date inputs; a Date column added to the Report tab's transaction log; every sale (Sell Drawer and Log a Manual Sale) now stamps a `SoldDate`, with the Manual Sale modal's new Sale Date picker clamped to the selected show's date range for backdating within a multi-day show. See "Multi-Day Shows & Transaction Dates" section above. **Requires the `shows.start_date`/`shows.end_date` and `inventory.sold_date` DB migrations** (see above) — degrades gracefully (freeform date entry still works via the computed display string; Date column shows "—") if not yet run.
 - **activeShowId resilience (session 2026-08-31)** — fixed two real bugs found investigating missing `show_floor_transactions` rows and sales disappearing from a show's Report: `sellerPublishToShow()`/`sellerRemoveFromShow()` ("Add My Cards"/"Remove" in My Shows) now actually write/delete the `show_inventory` row instead of only tagging `card._shows` in memory; and `activeShowId` — previously wiped to `null` by any page reload, silently breaking `show_floor_transactions` logging for every sale afterward — is now persisted to `localStorage` per seller and restored on login, with `recordShowTransaction()` also falling back to a card's own single-show membership when `activeShowId` is unset. See "activeShowId resilience" section above.
+- **Comp pricing high-confidence-only gating (session 2026-09-03)** — Card Hedge/CardSight/
+  PriceCharting each now suppress a low-confidence match entirely (falling through to the next
+  source) rather than ever returning a best-guess comp price. See "High-confidence-only gating"
+  under Comp Pricing above.
+- **Trading Card API config update (session 2026-09-03)** — per-resource query builders
+  (`_tcBuildCardsPath`/`_tcBuildSetsPath`/`_tcBuildPlayersPath`/`_tcBuildChecklistPath`) consolidate
+  this app's six `/v1/cards`/`/v1/sets`/`/v1/players` call sites; new `TCAPI_KNOWN_LIMITATIONS`
+  constant, `_tcNormalizeRelationshipLink()`, `getSetBrandDisplay()`, and `_tcFetchCardsForPlayer()`
+  added as forward-looking infrastructure (mostly dead code today — see "Config update" under
+  Trading Card API Integration above for exactly what's wired in vs. deliberately not).
 
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`
