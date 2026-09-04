@@ -949,6 +949,41 @@ async function fetchInventoryFromDB(showId) {
   }
 }
 
+// ── Live show inventory sync ──
+// Lets this page reflect a seller's add/edit/delete/sold change without a
+// manual reload or the organizer re-pushing a new share link. Same two-layer
+// design as app.html's buyer view (_subscribeBuyerShowLive) — a Realtime
+// subscription for near-instant updates, plus a fallback poll timer that
+// self-heals if the socket silently dies on show-floor wifi. See CLAUDE.md's
+// "Live Show Inventory Sync" section for the full reasoning, including why
+// the inventory UPDATE/DELETE subscription below is left unfiltered rather
+// than scoped to this show (Realtime can't filter by a join, only a simple
+// column=eq.value match on the changed table itself).
+let _liveChannel   = null;
+let _livePollTimer = null;
+
+function subscribeShowLive(showId) {
+  if (!_sb || !showId) return;
+  if (_liveChannel)   { _sb.removeChannel(_liveChannel); _liveChannel = null; }
+  if (_livePollTimer) { clearInterval(_livePollTimer); _livePollTimer = null; }
+
+  const refresh = () => fetchInventoryFromDB(showId);
+
+  _liveChannel = _sb.channel(`show_inventory_live_${showId}`)
+    .on('postgres_changes',
+      { event: '*', schema: 'public', table: 'show_inventory', filter: `show_id=eq.${showId}` },
+      refresh)
+    .on('postgres_changes',
+      { event: 'UPDATE', schema: 'public', table: 'inventory' },
+      refresh)
+    .on('postgres_changes',
+      { event: 'DELETE', schema: 'public', table: 'inventory' },
+      refresh)
+    .subscribe();
+
+  _livePollTimer = setInterval(refresh, 40000);
+}
+
 // ── ENTRY POINT ──
 (function init() {
 
@@ -956,7 +991,10 @@ async function fetchInventoryFromDB(showId) {
   hashData = window.location.hash.slice(1); // re-read in case it loaded late
   if (hashData && decodeAndRender(hashData)) {
     // Always fetch from DB to get the full card set — hash may have 0 or only preview cards
-    if (showMeta) fetchInventoryFromDB(showMeta.id);
+    if (showMeta) {
+      fetchInventoryFromDB(showMeta.id);
+      subscribeShowLive(showMeta.id);
+    }
     return;
   }
 
@@ -970,6 +1008,10 @@ async function fetchInventoryFromDB(showId) {
           showMeta  = payload.show;
           inventory = payload.cards || [];
           renderPage();
+          // Cached payload can be up to 7 days stale — upgrade with a fresh
+          // DB fetch immediately, same as the hash path above, then keep it live.
+          fetchInventoryFromDB(showMeta.id);
+          subscribeShowLive(showMeta.id);
           return;
         }
         localStorage.removeItem(`cardshow_show_${showId}`);

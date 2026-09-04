@@ -1081,6 +1081,13 @@ If `insertCardToDB()` times out inside `posInsertAndOpenDrawer()`'s `Promise.rac
   constant, `_tcNormalizeRelationshipLink()`, `getSetBrandDisplay()`, and `_tcFetchCardsForPlayer()`
   added as forward-looking infrastructure (mostly dead code today — see "Config update" under
   Trading Card API Integration above for exactly what's wired in vs. deliberately not).
+- **Live Show Inventory Sync (session 2026-09-04)** — the in-app Buyer view and `show.html`
+  now auto-update when a seller adds/edits/deletes a card or marks one sold mid-show, via a
+  Supabase Realtime subscription with a 40s poll-timer fallback. See "Live Show Inventory Sync"
+  section above for full detail, including a prerequisite embedded-join fix in
+  `loadBuyerInventoryFromDB()` and a related stale-sold-card bug fixed alongside it.
+  **Requires the `20260904120000_live_show_inventory_realtime.sql` migration** — degrades to
+  poll-only (still functional, just up to 40s of lag instead of near-instant) if not yet run.
 
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`
@@ -1822,6 +1829,86 @@ each strip `fingerprint`/`detected_confidence` from their payload and retry once
 error. Running the migration removes the need for the retry but the fallback stays cheap
 and permanent — no reason to special-case "migration not yet run" as a mode to detect and
 warn about.
+
+## Live Show Inventory Sync (session 2026-09-04)
+
+Lets a buyer's already-open page (the in-app Buyer view, and the public `show.html` share-link
+page) reflect a seller's add/edit/delete/sold change during a show automatically — no manual
+reload, and no organizer action required. Before this, both pages fetched inventory once and
+never refreshed; a seller marking a card sold or editing its price mid-show was invisible to a
+buyer already looking at that card until they reloaded.
+
+### Requires the Realtime migration
+`supabase/migrations/20260904120000_live_show_inventory_realtime.sql` — adds `inventory` and
+`show_inventory` to the `supabase_realtime` publication (same `ALTER PUBLICATION ... ADD TABLE`
+idiom the Trade Zone migration already uses, wrapped in `DO` blocks so re-running it doesn't
+error on "already a member"). Until this runs, both subscriptions below silently receive no
+events — degrades to relying on the fallback poll timer alone (see below), not a hard failure.
+
+### Two-layer design — Realtime primary, poll timer fallback
+A single mechanism wasn't trusted here: this codebase has already hit real show-floor-wifi
+failure modes more than once (`activeShowId` getting wiped when a mobile browser evicts the tab
+mid-show; `posInsertAndOpenDrawer()`'s insert timeout). A Realtime `postgres_changes`
+subscription (`db.channel(...).on('postgres_changes', ...).subscribe()` — same syntax
+`trade-board.html`'s `tbWireRealtime()` already established) gives near-instant updates when the
+socket is healthy; a plain `setInterval` fallback poll (40s) self-heals if it silently isn't —
+both call the *same* full-refresh function on any trigger, never an incremental patch.
+
+### Why the `inventory` subscription is unfiltered, not scoped to the current show
+`show_inventory` has a `show_id` column, so its subscription filters server-side
+(`filter: 'show_id=eq.' + showId`) to INSERT/DELETE on that show only — covers a card being
+newly published to, or removed/unpublished from, this show. `inventory` itself has no
+`show_id` column (it's only linked via the `show_inventory` junction), and Supabase Realtime's
+`filter` option only supports a simple `column=eq.value` match on the table actually being
+watched — it can't filter by a join. So the `inventory` UPDATE/DELETE subscription is left
+unfiltered; every event just re-runs the same full refresh, which already re-scopes correctly
+via its own `show_inventory` query. A card edit on some unrelated show triggers one harmless
+extra refetch for a buyer viewing a different show — a deliberate simplification (full-refetch
+over fragile incremental patching, matching this app's convention everywhere else — see e.g.
+`_orgFetchInventory()`'s two-step-query rationale), not an oversight. Worth revisiting only if a
+show's buyer traffic and the platform's total unrelated inventory churn both grow enough for the
+extra refetches to matter.
+
+### Prerequisite fix: `loadBuyerInventoryFromDB()` — embedded join replaced with two-step query
+This function (app.html) is what both the Realtime handler and poll timer call to actually
+refresh a buyer's `inventory[]`. It still used a nested FK-embed `select()`
+(`show_inventory.select('inventory(...)')`)  — the exact PostgREST pattern already documented
+elsewhere in this file (`loadShowSellersAndTables()`, `_orgFetchInventory()`,
+`show.html`'s `fetchInventoryFromDB()`) as intermittently returning `null` for some rows under a
+stale schema cache. That flakiness was latent and effectively invisible when this function only
+ran once per show join; re-running it repeatedly for live-sync would have surfaced it as cards
+randomly flickering in and out of a buyer's grid. Rewritten to the same two-explicit-queries
+form (`show_inventory.select('card_id')` → `inventory.in('id', cardIds)`) already used
+everywhere else — no schema or field changes.
+
+A second, related bug fixed as part of the same prerequisite: `sellerIds` (used to decide which
+sellers' stale cards to clear from `inventory[]` before re-adding fresh ones) was computed from
+the post-sold-filter card list, not the full fetch — so a seller whose *only* card in a show had
+just sold would drop out of `sellerIds` entirely, and their now-sold card would never actually
+be cleared from an already-open buyer page. Invisible on the original one-time load (nothing
+stale existed yet to clear); a real, visible bug once this function runs repeatedly, since a
+sold card disappearing live was one of the explicit goals here. Fixed by deriving `sellerIds`
+from the full fetch result instead.
+
+### Key functions
+- `_subscribeBuyerShowLive(showId)` / `_unsubscribeBuyerShowLive()` (app.html) — wired into
+  `joinShow()` (subscribe, after the initial `loadBuyerInventoryFromDB()` call),
+  `skipBuyerShowPicker()` and `signOut()` (unsubscribe). Idempotent — subscribing always
+  unsubscribes any prior channel first, so a buyer switching shows never runs two subscriptions
+  at once.
+- `subscribeShowLive(showId)` (show.html) — wired into both DB-backed `init()` paths: the
+  primary hash-decode path, and the localStorage same-browser-fallback path (which also gained
+  a `fetchInventoryFromDB()` call it didn't have before, since its cached payload can be up to
+  7 days stale — upgrading it once on load, the same way the hash path already did, was a
+  natural, directly-adjacent fix rather than leaving a stale render with only a live-sync
+  bandaid on top). No unsubscribe path — `show.html` is a single dedicated page per show with no
+  "switch show" concept, so the subscription just lives until the tab closes.
+
+### Does not change
+`fetchInventoryFromDB()`'s own query shape (show.html), `_orgFetchInventory()` or any other
+organizer-analytics function, `recordShowTransaction()`, `sdConfirm()`, RLS policies, Trade
+Zone's own Realtime usage (`trade-board.html`, `js/trade-zone.js` — untouched, just the
+established pattern this borrowed from).
 
 ## Trade Zone
 

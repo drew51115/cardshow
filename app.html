@@ -11363,6 +11363,7 @@ async function signOut() {
   window._currentAdminUid = null;
   sellerQrMode  = 'table';
   buyerShowId   = null;
+  _unsubscribeBuyerShowLive();
   _adminTab     = 'shows';
 
   document.getElementById('navTabSeller').style.display = '';
@@ -12590,12 +12591,72 @@ async function joinShow(showId) {
   // nothing and inventory[] is unchanged. For real shows, cards are loaded from DB.
   if (typeof db !== 'undefined') {
     await loadBuyerInventoryFromDB(showId, show);
+    _subscribeBuyerShowLive(showId);
   }
   renderShowSelectorBuyer();
   filterBuyer();
   switchBuyerTab('browse'); // reset to Browse Cards on new show load
 
   showToast(`Browsing "${show.name}"`);
+}
+
+// ── Live show inventory sync (buyer view) ──
+// Lets a buyer's already-open page reflect a seller's add/edit/delete/sold
+// change without a manual reload or the organizer re-pushing a share link.
+// Two layers, matching the reasoning in CLAUDE.md's "Live Show Inventory
+// Sync" section: a Realtime subscription for near-instant updates, plus a
+// fallback poll timer that self-heals if the socket silently dies on
+// show-floor wifi — this codebase has already hit that exact failure mode
+// (activeShowId resilience, POS insert timeouts) more than once, so a single
+// mechanism with no fallback isn't trusted here.
+let _buyerRealtimeChannel = null;
+let _buyerPollTimer       = null;
+
+function _subscribeBuyerShowLive(showId) {
+  _unsubscribeBuyerShowLive(); // a buyer can switch shows — never run two subscriptions at once
+
+  const refresh = () => {
+    const show = shows[showId];
+    if (!show) return;
+    loadBuyerInventoryFromDB(showId, show).then(() => {
+      renderShowSelectorBuyer();
+      filterBuyer();
+    });
+  };
+
+  // show_inventory can be filtered server-side by show_id (INSERT = a card
+  // newly published to this show, DELETE = removed/unpublished). inventory
+  // itself has no show_id column — it's only linked via the show_inventory
+  // junction — and Supabase Realtime's filter only supports a simple
+  // column=eq.value match on the changed table, not a join. So an
+  // inventory UPDATE/DELETE subscription can't be scoped server-side to
+  // "cards in this show"; it's left unfiltered here and every event just
+  // re-runs the same full refresh() above, which already re-scopes
+  // correctly via its own show_inventory query. A card edit on some other,
+  // unrelated show triggers one harmless extra refetch for a buyer viewing
+  // this show — a deliberate, documented simplification (full-refetch over
+  // fragile incremental patching), not an oversight — see CLAUDE.md.
+  _buyerRealtimeChannel = db.channel(`buyer_show_inventory_${showId}`)
+    .on('postgres_changes',
+      { event: '*', schema: 'public', table: 'show_inventory', filter: `show_id=eq.${showId}` },
+      refresh)
+    .on('postgres_changes',
+      { event: 'UPDATE', schema: 'public', table: 'inventory' },
+      refresh)
+    .on('postgres_changes',
+      { event: 'DELETE', schema: 'public', table: 'inventory' },
+      refresh)
+    .subscribe();
+
+  // Fallback: self-heals if the Realtime socket drops without a visible
+  // error (common on show-floor wifi) — a dead subscription otherwise
+  // leaves a buyer staring at silently-stale inventory for the rest of the show.
+  _buyerPollTimer = setInterval(refresh, 40000);
+}
+
+function _unsubscribeBuyerShowLive() {
+  if (_buyerRealtimeChannel) { db.removeChannel(_buyerRealtimeChannel); _buyerRealtimeChannel = null; }
+  if (_buyerPollTimer) { clearInterval(_buyerPollTimer); _buyerPollTimer = null; }
 }
 
 // Shared helper: fetch sellers + table numbers for a show using two explicit
@@ -12644,26 +12705,49 @@ async function loadShowSellersAndTables(showId) {
 async function loadBuyerInventoryFromDB(showId, show) {
   if (typeof db === 'undefined') return;
   try {
-    // Fetch inventory rows (seller_id included so we can map handles without join)
-    const { data, error } = await db
+    // Two explicit queries, not a nested FK-embed select() — this codebase has
+    // already hit a case (loadShowSellersAndTables(), _orgFetchInventory(),
+    // show.html's fetchInventoryFromDB()) where PostgREST's embedded-join
+    // syntax silently returns null for some rows under a stale schema cache.
+    // That failure is row-by-row, not all-or-nothing, so it shows up exactly
+    // like "only some published cards appear" rather than a clean empty
+    // result — the two-step form is the established, proven-reliable pattern
+    // here. Fixed as a prerequisite for live-sync (below): this function now
+    // re-runs on every Realtime event, so it can't afford the intermittent
+    // flakiness the embedded-join form was already known to have.
+    const { data: siRows, error: siErr } = await db
       .from('show_inventory')
-      .select(`
-        inventory (
-          id, seller_id, card_title, player, year, card_set, card_number, parallel,
-          grader, grade, condition, price, status, location,
-          item_type, quantity, product_type, language, edition
-        )
-      `)
+      .select('card_id')
       .eq('show_id', showId);
+    if (siErr) { console.error('loadBuyerInventoryFromDB failed:', siErr.message); return; }
+    if (!siRows || !siRows.length) return;
+
+    const cardIds = [...new Set(siRows.map(r => r.card_id).filter(Boolean))];
+    if (!cardIds.length) return;
+
+    const { data, error } = await db
+      .from('inventory')
+      .select(`
+        id, seller_id, card_title, player, year, card_set, card_number, parallel,
+        grader, grade, condition, price, status, location,
+        item_type, quantity, product_type, language, edition
+      `)
+      .in('id', cardIds);
 
     if (error) { console.error('loadBuyerInventoryFromDB failed:', error.message); return; }
     if (!data || !data.length) return;
 
-    const dbCards = data.map(row => row.inventory).filter(Boolean).filter(c => c.status !== 'Sold');
-    if (!dbCards.length) return;
+    const dbCards = data.filter(c => c.status !== 'Sold');
 
-    // Resolve seller_id → handle via explicit query
-    const sellerIds = [...new Set(dbCards.map(c => c.seller_id).filter(Boolean))];
+    // sellerIds intentionally comes from the FULL fetch (data), not just the
+    // available-only dbCards — otherwise a seller whose only card in this show
+    // just sold would drop out of sellerIds entirely, and the "clear stale
+    // cards for these sellers" step below would never remove their now-sold
+    // card from a buyer's already-loaded inventory[]. Harmless on the original
+    // one-time show-join load (nothing stale existed yet); this matters once
+    // this function is re-run repeatedly for live-sync (see below), where a
+    // card going Sold must actually disappear from an already-open buyer page.
+    const sellerIds = [...new Set(data.map(c => c.seller_id).filter(Boolean))];
     const { data: sellerRows } = await db.from('sellers').select('id, handle').in('id', sellerIds);
     const idToHandle = {};
     (sellerRows || []).forEach(r => { idToHandle[r.id] = r.handle; });
@@ -12693,6 +12777,7 @@ async function loadBuyerInventoryFromDB(showId, show) {
 
 function skipBuyerShowPicker() {
   buyerShowId = null;
+  _unsubscribeBuyerShowLive();
   document.getElementById('buyerShowPicker').classList.remove('open');
   document.body.style.overflow = '';
   // Show all published cards across all shows
