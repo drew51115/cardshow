@@ -15188,6 +15188,11 @@ function switchSellerTab(tab) {
   // on Inventory — same style.display convention loginAsSeller() etc. use.
   const fabScan = document.getElementById('fabScanToSell');
   const fabAdd  = document.getElementById('fabAddCard');
+  // Select All / Check Comps act on the inventory table rows — meaningless
+  // on the Report tab, which has no rows to select. Hidden here (rather
+  // than relying on loginAsSeller()'s one-time show), restored on Inventory.
+  const selectAllBtn = document.getElementById('selectAllBtn');
+  const compCheckBtn = document.getElementById('compCheckBtn');
 
   if (tab === 'report') {
     rptBtn && rptBtn.classList.add('active');
@@ -15196,6 +15201,8 @@ function switchSellerTab(tab) {
     if (filterBar) filterBar.classList.remove('visible');
     if (fabScan) fabScan.style.display = 'none';
     if (fabAdd)  fabAdd.style.display  = 'none';
+    if (selectAllBtn) selectAllBtn.style.display = 'none';
+    if (compCheckBtn) compCheckBtn.style.display = 'none';
     populateReportShowSelector();
     updateReport();
   } else {
@@ -15204,6 +15211,8 @@ function switchSellerTab(tab) {
     if (rptPanel)  rptPanel.style.display  = 'none';
     if (fabScan) fabScan.style.display = '';
     if (fabAdd)  fabAdd.style.display  = '';
+    if (selectAllBtn) selectAllBtn.style.display = '';
+    if (compCheckBtn) compCheckBtn.style.display = '';
   }
 }
 
