@@ -5065,25 +5065,6 @@
         </button>
       </div>
 
-      <!-- Manual cert entry fallback -->
-      <div style="margin-top:0.75rem;padding-top:0.75rem;border-top:1px solid var(--border)">
-        <div style="font-size:0.65rem;color:var(--muted);font-family:'DM Mono',monospace;letter-spacing:0.08em;margin-bottom:0.4rem">OR ENTER CERT NUMBER MANUALLY</div>
-        <div style="display:flex;gap:0.5rem">
-          <select id="scanGraderSelect" style="padding:0.45rem 0.5rem;border-radius:7px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:0.8rem;font-family:'DM Sans',sans-serif">
-            <option value="PSA">PSA</option>
-            <option value="CGC">CGC</option>
-            <option value="SGC">SGC</option>
-          </select>
-          <input id="scanCertInput" placeholder="Cert #" type="text" inputmode="numeric"
-            style="flex:1;padding:0.45rem 0.6rem;border-radius:7px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:0.85rem;font-family:'DM Mono',monospace"
-            onkeydown="if(event.key==='Enter')lookupManualCert()">
-          <button onclick="lookupManualCert()"
-            style="padding:0.45rem 0.8rem;border-radius:7px;border:1px solid var(--gold);background:#1a1f2e;color:var(--gold);font-weight:700;font-size:0.8rem;cursor:pointer">
-            Look up
-          </button>
-        </div>
-      </div>
-
     </div>
   </div>
 
@@ -13806,7 +13787,6 @@ function openCertScanner() {
   document.getElementById('scannerActions').style.display = 'none';
   document.getElementById('scanRetryBtn').style.display = 'none';
   document.getElementById('scanBadge').textContent = 'Ready';
-  document.getElementById('scanCertInput').value = '';
 
   // Go straight to photo capture — skip the barcode scanning phase
   _enterPhotoMode();
@@ -14018,15 +13998,6 @@ function parseCertBarcode(raw) {
   }
 
   return { cert: null, grader: null };
-}
-
-// ── Manual cert entry ────────────────────────────────────────────────────────
-function lookupManualCert() {
-  const cert   = document.getElementById('scanCertInput').value.trim();
-  const grader = document.getElementById('scanGraderSelect').value;
-  if (!cert) { showToast('Enter a cert number', 'var(--danger)'); return; }
-  setScanStatus(`Looking up ${grader} cert #${cert}…`, false);
-  lookupCert(cert, grader);
 }
 
 // ── API call → form fill ─────────────────────────────────────────────────────

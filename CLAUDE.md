@@ -368,9 +368,9 @@ Supabase URL and anon key are **not** hardcoded in tracked files. `netlify.toml`
 - `scanTakePhoto()` — captures canvas frame, dispatches to `_callVisionScan` (no scan limit check)
 - `scanVisionRetry()` — resends last captured image on retry
 - `scanFallbackToSearch()` — closes scanner, focuses Player input for TCDB text search (Sprint 3 stub)
-- `lookupManualCert()` — manual cert # + grader dropdown fallback
 
 ### Known Constraints
+- **Manual cert # entry removed from the cert scanner overlay (session 2026-09-06)** — the "OR ENTER CERT NUMBER MANUALLY" grader dropdown (PSA/CGC/SGC) + Cert # input + "Look up" button, and its handler `lookupManualCert()`, were removed entirely (not flagged off — no PSA license means it always 403s, so there was no live-toggle case to preserve, unlike `BULK_SCAN_PSA_VERIFY_ENABLED` elsewhere in this file). PSA and SGC both route through `psa-lookup.js`'s PSA branch (`PSA_API_TOKEN`) — only CGC has its own independent token — so both would 403 without a PSA license, not just PSA. `lookupCert(cert, grader)` itself is untouched and still shared with the **background barcode scan** path (`handleBarcodeDetected()` → `parseCertBarcode()` → `lookupCert()`) — a PSA/SGC barcode scanned in the background will still 403 exactly as before; only the manual entry UI was removed, since that's what was asked for. `openCertScanner()`'s `scanCertInput.value = ''` reset line was removed alongside the element.
 - PSA API free tier has very low rate limits (~10 req/hr). Upgrade PSA API account tier if 429s occur frequently at shows.
 - ZXing CDN load adds ~1-2s delay on first open (library is ~400KB). Cached on subsequent opens within the session.
 - `@zxing/browser` ships ESM only — no UMD bundle. Must use `@zxing/library` for CDN UMD loading.
