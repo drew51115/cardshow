@@ -477,6 +477,54 @@ Cancel at each state:
 
 ## Comp Pricing — Card Hedge + CardSight AI + PriceCharting + TCG API
 
+### High-confidence-only gating (session 2026-09-03)
+All three sports-card sources in the fallback chain now suppress low-confidence matches
+entirely (returning `{ stub: true }`/`{ stub: true, noData: true }` so the chain falls
+through to the next source) rather than returning a best-guess price. This raised the bar
+from "reject only the worst matches" to "only accept matches we're confident are correct" —
+a comp shown to a seller/buyer is now either high-confidence or absent, never a shaky guess.
+See `CARDSIGHT_HIGH_CONFIDENCE` / `PRICECHARTING_MIN_SCORE` at the top of `comp-lookup.js`
+for the full reasoning; summary per source:
+- **Card Hedge** — already returned a real calibrated 0-1 confidence float, mapped to A/B/C/D
+  (>=0.9/0.7/0.5). Previously only suppressed grade D; now requires grade A (>=0.9) exactly,
+  in both the `card-match` and `card-fmv` response paths. A `null`/unrecognized confidence
+  value is now also suppressed (previously let through unfiltered) — an unknown confidence
+  is treated as not-high-confidence, consistent with the stricter bar.
+- **CardSight** — has no calibrated confidence score at all; `scoreCatalogMatch()`'s points
+  are purely a *tiebreaker* among already-plausible candidates, never returned to the caller
+  before this change. It now returns `{ card, confidence }` where `confidence` reflects HOW
+  the match was resolved: `'exact'` (exactly one candidate had a matching card number —
+  unambiguous), `'tiebreak'` (multiple candidates shared that number, resolved by
+  release-name scoring — ambiguous), or `'fuzzy'` (no usable card number at all, resolved by
+  the general points-based scorer — least certain). A `results.length === 1` search result
+  (only one candidate existed) is tagged `'single'`. Only `'single'` and `'exact'` pass the
+  `CARDSIGHT_HIGH_CONFIDENCE` gate — `'tiebreak'` and `'fuzzy'` are suppressed. The gate is
+  checked immediately after card selection, before the parallel-resolution and pricing API
+  calls, so a low-confidence match no longer burns CardSight's 750/month quota chasing a
+  price it's going to discard anyway. A `cardId` reused from a cached `price_cache` row is
+  tagged `'cached'` and trusted — since this gate only ever writes high-confidence matches to
+  cache going forward, any cached row from this point on is high-confidence by construction
+  (pre-existing cached rows from before this change fall out within the 24h TTL).
+- **PriceCharting** — also has no calibrated confidence score; `scorePCResult()`'s points
+  only ever picked the best candidate among search results, with no minimum threshold. Its
+  realistic scoring ceiling is ~85 (no bracket [+15] + exact card number [+20] + full player
+  match [+15] + sport match [+20] + exact year [+15]) — `PRICECHARTING_MIN_SCORE = 75` demands
+  near-perfect alignment on player, sport, and year at minimum (any single major mismatch —
+  wrong sport -40, wrong player -20, year off by 2+ years -15/-30 — drops well below 75 even
+  with everything else matching). Checked immediately after the best-scored candidate is
+  picked, before `fetchPCPrices()` spends the price-lookup API call. **Known gap, deliberately
+  left as-is:** the existing zero-price-data retry path (search again with just player+year
+  when the originally-picked product has no price data) swaps in `retryProducts[0]` without
+  re-scoring it — that retry only ever fires after the original pick already cleared this
+  gate, and exists to route around a data-completeness gap, not a confidence question, so
+  re-scoring it wasn't judged worth the added complexity here.
+- **Not changed**: `card-correction.js` (the bulk-scan raw-card player-name OCR correction
+  pass) carries its own **duplicated** copy of this scoring logic per its own documented
+  reasoning above ("Duplicated, not shared, logic") and was intentionally left untouched —
+  this session's ask was specifically about comp *pricing* results, not the correction pass.
+  Revisit `card-correction.js` separately if the same high-confidence-only bar should apply
+  there too.
+
 ### Architecture
 - `netlify/functions/comp-lookup.js` — POST `{ cards: [...] }` → `{ results: [...] }`
 - Cards processed **sequentially** (for...of, never Promise.all) to respect PriceCharting's 1 req/s limit
@@ -493,7 +541,7 @@ Cancel at each state:
   - Step 1: `POST /v1/cards/card-match` → `card_id` (4s timeout). Body: `{ query: "year set player parallel grader grade" }` — single free-text string in `query` field (NOT `description`; NOT structured object — 422 if wrong). Response: `{ match: { card_id, confidence: 0-1 float, player, prices: [{grade, price}], reasoning } }`. `card_id` and prices are nested under `match`. If `prices[]` has the correct grade tier, price is extracted immediately and `card-fmv` is skipped entirely. On failure: `POST /v1/cards/90day-prices-by-grade` with `{ query, grade: float, grader }` → returns price directly (early return, 4s timeout).
   - Step 2: `POST /v1/cards/card-fmv` with `{ card_id, query }` → only called when `card-match` succeeded but `prices[]` was empty. `compPrice` from `fmv`/`price`/`fair_market_value` field. 4s timeout.
   - Step 3: `POST /v1/cards/comps` with `{ card_id, query }` → recent sales array (3s timeout, non-fatal). Sales normalised to `{ price, date, source, url, image, isBin }`.
-- Confidence is a 0–1 float from the match response, mapped to A/B/C/D (≥0.9→A, ≥0.7→B, ≥0.5→C, <0.5→D). **D confidence suppressed** — falls through to CardSight.
+- Confidence is a 0–1 float from the match response, mapped to A/B/C/D (≥0.9→A, ≥0.7→B, ≥0.5→C, <0.5→D). **Only grade A accepted** (as of the "High-confidence-only gating" change above) — B/C/D all fall through to CardSight.
 - `extractCardHedgePrice(prices, card)` — selects correct grade tier from `prices[]`: exact label match (`"PSA 10"`), then closest same-grader grade, then Raw fallback.
 - `match.reasoning` maps to `priceExplanation` displayed in buyer modal.
 - Source label in buyer modal: `"Market value · Card Hedge (A confidence)"` when confidence A/B/C; `"Market value · Card Hedge"` otherwise.
@@ -520,7 +568,7 @@ Cancel at each state:
 - `extractReleaseName(cardSet)` maps set name to CardSight's `releaseName` keyword (40-entry signature table; **order matters** — more specific variants listed first, e.g. "Topps Chrome Update" before "Topps Chrome", "Bowman Chrome Draft" before "Bowman Chrome"). Falls back to first long word. Self-test assertions run in `CARDSHOW_DEBUG` mode to catch mapping regressions.
 - `inferManufacturer(cardSet)` maps set name to manufacturer: Topps/Bowman → `'Topps'`; Prizm/Donruss/Select/Mosaic/Contenders/Chronicles/Optic → `'Panini'`; Upper Deck; Fleer. Returns `null` when unknown. Added to attempt 2 and 3 params as `manufacturer=` so Topps Chrome queries never return Panini results even if `releaseName=` is imprecise.
 - `deriveAttributeShortNames(card)` maps cardTitle/parallel to RC/AU codes; AU returned first (more pricing-specific).
-- `scoreCatalogMatch()` is now a tiebreaker — results already pre-filtered by year/release/attr. Fast path on exact number match; then scores solo card (+20), player in name (+10), partial number (+8). No minimum threshold.
+- `scoreCatalogMatch()` is now a tiebreaker — results already pre-filtered by year/release/attr. Fast path on exact number match; then scores solo card (+20), player in name (+10), partial number (+8). No minimum threshold on the score itself, but (as of the "High-confidence-only gating" change above) it now also returns a `confidence` tier alongside the picked card, and only the unambiguous tiers pass the `CARDSIGHT_HIGH_CONFIDENCE` gate.
 - **Exact number tie-break**: when `number=` returns multiple cards sharing the same number across different releases (e.g. Bowman Sterling + Topps Chrome + Triple Threads all sharing "RA-PS"), each is scored by `releaseName` word overlap against the seller's set. The highest-scoring release wins; first result is the safe default.
 - **Draft Picks penalty**: `-30` in `scoreCatalogMatch()` when result's `releaseName` contains "draft picks" and seller's `cardSet` doesn't contain "draft". Prevents Prizm Draft Picks from winning over base Prizm on shared card numbers.
 - Grade matching: finds exact `grade_value` match first, falls back to within ±0.5; falls back to raw sales for ungraded cards.
@@ -730,6 +778,69 @@ We filed the 9 issues above with Trading Card API's team. Their response, each p
 - **`/v1/` prefix inconsistency on relationship links → confirmed, filed on their side.** No code change — nothing here constructs URLs from `relationships.*.links`.
 
 **Open question, not yet acted on:** with `filter[player_id]` now fast, Step 2 (currently a manual set search, not auto-scoped to the player — see above) and the bulk-scan validator's set-matching (currently a substring+year+parallel-veto heuristic against the cached catalog) could both be rebuilt to derive a player's actual sets from their real card data instead of guessing by name. For the validator specifically this would remove the *root cause* of the "wrong sibling product" bug class (the Upper Deck/Black Diamond case), not just the mitigation — but it's a real rework (pagination for a heavily-printed player's cards, e.g. 912 total for the one tested here, isn't a single call), not a small patch. Flagged for a deliberate decision rather than done opportunistically alongside this response.
+
+### Config update — per-resource query builders + confirmed API behaviors (session 2026-09-03)
+A follow-up bug report (`filter[x]=` per-resource conventions, player→cards, `format=compact`,
+relationship links, brand/manufacturer data quality, and a breaking catalog-size change)
+came back with more confirmed findings, reconciled against what this app actually calls —
+most were already correct here, a few were genuinely new information:
+- **Per-resource query builders added** (app.html, right after `tcapiGet()`): `_tcBuildCardsPath()`,
+  `_tcBuildSetsPath()`, `_tcBuildPlayersPath()`, `_tcBuildChecklistPath()` — every one of this
+  app's six `/v1/cards`/`/v1/sets`/`/v1/players` call sites now builds its path through one of
+  these instead of a hand-written template string, so the bracketed-vs-bare `filter[...]`
+  convention per resource (confirmed: `/v1/cards` keeps `filter[player_id]`/`filter[set_id]`;
+  `/v1/players`/`/v1/sets` use bare params) lives in one place. **No behavior change** — this
+  codebase never used `filter[name]`/`filter[x]=` syntax on `/v1/sets`/`/v1/players` to begin
+  with (Step 2's set search and the bulk-scan validator both already used the fetch-whole-catalog-
+  and-filter-client-side approach `CLAUDE.md` documents above, precisely because bracket-filter
+  syntax was unreliable at the time), so this is a consolidation for future call sites, not a fix
+  for live breakage.
+- **`/v1/sets?name=` has a confirmed `like:` prefix operator** (already noted above from the
+  API team's response) — `_tcBuildSetsPath({ name, exactName })` implements it, defaulting to
+  prefix (`like:`) matching. **Not wired into Step 2 or the bulk-scan validator** — both still
+  use the pre-existing whole-catalog-cached-client-side approach (`_tcGetAllSets()`), which
+  remains the right call for a live-typing dropdown per the reasoning already documented in
+  the "Add Card Modal — Guided Picker" section below; the `like:` operator is genuinely useful
+  for a one-shot server-side lookup, which nothing in this app does today.
+- **`_tcBuildChecklistPath(setId)` added** — consolidates the two identical
+  `?format=compact&include=checklist&per_page=100` checklist URLs (Add Card picker Step 3,
+  bulk-scan validator) into one function so "always force v1, always request `include=checklist`"
+  lives in one place instead of two copies. No behavior change.
+- **`_tcFetchCardsForPlayer(playerId)` added** — thin wrapper around `_tcBuildCardsPath({ playerId })`.
+  **Deliberately not wired into anything** — this is exactly the rework flagged as an open
+  question above (Step 2 auto-scoping by player, bulk-scan validator root-cause fix); adding the
+  helper doesn't itself decide to take on that rework.
+- **`_tcNormalizeRelationshipLink(url)` added** — fixes the confirmed missing `/v1/` prefix on
+  `relationships.*.links` URLs. Dead code today — nothing in this app follows a relationship
+  link — kept as a guard for whenever something does, per the API team's confirmation that this
+  is filed but not yet fixed on their end.
+- **`getSetBrandDisplay(set)` added** — new finding: 191 of 273 published base sets return
+  `brand: null` (the flagship products like plain "Upper Deck", not an error state); the API
+  team is still deciding whether to replace `null` with an explicit base-product value.
+  Dead code today — this app has no set-brand display or brand-filter UI at all — added with a
+  `TODO` so a future brand-aware UI has a single point to update if/when that decision lands.
+  Also new: `/v1/brands` is confirmed **not** a clean picklist source (173 brands returned, only
+  52 backed by a published set; no dedup between e.g. "Black Diamond" and "Upper Deck Black
+  Diamond") — noted in `TCAPI_KNOWN_LIMITATIONS.brandsListDirty` below; don't populate a brand
+  dropdown from that endpoint if one is ever built.
+- **`TCAPI_KNOWN_LIMITATIONS` constant added** (app.html) — `{ lastNameSearchBroken,
+  brandFilterUnavailable, brandsListDirty, relationshipLinksMissingV1Prefix }`, all `true`.
+  `lastNameSearchBroken` is the one with a live UI consequence — it's what `_tcSearchPlayers()`'s
+  pre-existing `stillTyping` messaging already implements; the constant exists so that behavior
+  has a named, greppable justification instead of only a comment. The other three have no UI
+  surface in this app yet, so they're forward-looking flags, not active gates.
+- **Confirmed breaking change, already live, no client code change needed:** `/v1/cards`'
+  unfiltered result count dropped from ~1.77M to ~326K in the API's own v0.10.34 (server now
+  excludes cards on unpublished sets by default). Audited per this app's own established
+  pattern (nothing here ever calls unfiltered `/v1/cards`, and `_tcGetAllSets()`'s pagination
+  reads `total_pages` from each response rather than assuming a fixed count) — no hardcoded
+  catalog-size assumption existed to update. The one artifact was a stale comment in
+  `netlify/functions/tcapi.js` citing the old "1.7M+" figure, corrected to reflect the new count
+  and note explicitly that it doesn't affect this app either way.
+- **Not changed:** `netlify/functions/card-correction.js`'s `inferManufacturer()` is a
+  *different* manufacturer-inference heuristic (Topps/Bowman → "Topps", Prizm/Donruss/etc. →
+  "Panini") used for CardSight/PriceCharting queries, unrelated to Trading Card API's
+  `brand`/`manufacturer` set fields — out of scope for this update, not an oversight.
 
 ### Architecture
 All calls are proxied through `netlify/functions/tcapi.js` — a generic `GET ?path=/v1/whatever` passthrough that adds `Authorization: Bearer TRADING_CARD_API_KEY` server-side. 9s internal timeout (`AbortController`), just under Netlify's ~10s synchronous function ceiling (matches `vision-scan.js`'s 10s convention) so our own clean timeout response wins the race against the platform killing the function outright.
@@ -960,6 +1071,23 @@ If `insertCardToDB()` times out inside `posInsertAndOpenDrawer()`'s `Promise.rac
 - **"Powered by CardShow" PNG branding (session 2026-08-28)** — see "'Powered by CardShow' PNG Branding" section above. Shared footer (logo + "Powered by CardShow" + getcardshow.com) added to entrance signage and both seller QR downloads via new `_loadCardShowLogo()`/`_drawCardShowFooter()`/`_downloadBrandedQrPng()` helpers. New asset: `assets/cardshow-logo-wordmark.png` (transparent background).
 - **Multi-Day Shows & Transaction Dates (session 2026-08-31)** — Show creation modal replaces its single freeform date text field with Start Date / End Date inputs; a Date column added to the Report tab's transaction log; every sale (Sell Drawer and Log a Manual Sale) now stamps a `SoldDate`, with the Manual Sale modal's new Sale Date picker clamped to the selected show's date range for backdating within a multi-day show. See "Multi-Day Shows & Transaction Dates" section above. **Requires the `shows.start_date`/`shows.end_date` and `inventory.sold_date` DB migrations** (see above) — degrades gracefully (freeform date entry still works via the computed display string; Date column shows "—") if not yet run.
 - **activeShowId resilience (session 2026-08-31)** — fixed two real bugs found investigating missing `show_floor_transactions` rows and sales disappearing from a show's Report: `sellerPublishToShow()`/`sellerRemoveFromShow()` ("Add My Cards"/"Remove" in My Shows) now actually write/delete the `show_inventory` row instead of only tagging `card._shows` in memory; and `activeShowId` — previously wiped to `null` by any page reload, silently breaking `show_floor_transactions` logging for every sale afterward — is now persisted to `localStorage` per seller and restored on login, with `recordShowTransaction()` also falling back to a card's own single-show membership when `activeShowId` is unset. See "activeShowId resilience" section above.
+- **Comp pricing high-confidence-only gating (session 2026-09-03)** — Card Hedge/CardSight/
+  PriceCharting each now suppress a low-confidence match entirely (falling through to the next
+  source) rather than ever returning a best-guess comp price. See "High-confidence-only gating"
+  under Comp Pricing above.
+- **Trading Card API config update (session 2026-09-03)** — per-resource query builders
+  (`_tcBuildCardsPath`/`_tcBuildSetsPath`/`_tcBuildPlayersPath`/`_tcBuildChecklistPath`) consolidate
+  this app's six `/v1/cards`/`/v1/sets`/`/v1/players` call sites; new `TCAPI_KNOWN_LIMITATIONS`
+  constant, `_tcNormalizeRelationshipLink()`, `getSetBrandDisplay()`, and `_tcFetchCardsForPlayer()`
+  added as forward-looking infrastructure (mostly dead code today — see "Config update" under
+  Trading Card API Integration above for exactly what's wired in vs. deliberately not).
+- **Live Show Inventory Sync (session 2026-09-04)** — the in-app Buyer view and `show.html`
+  now auto-update when a seller adds/edits/deletes a card or marks one sold mid-show, via a
+  Supabase Realtime subscription with a 40s poll-timer fallback. See "Live Show Inventory Sync"
+  section above for full detail, including a prerequisite embedded-join fix in
+  `loadBuyerInventoryFromDB()` and a related stale-sold-card bug fixed alongside it.
+  **Requires the `20260904120000_live_show_inventory_realtime.sql` migration** — degrades to
+  poll-only (still functional, just up to 40s of lag instead of near-instant) if not yet run.
 
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`
@@ -1701,6 +1829,112 @@ each strip `fingerprint`/`detected_confidence` from their payload and retry once
 error. Running the migration removes the need for the retry but the fallback stays cheap
 and permanent — no reason to special-case "migration not yet run" as a mode to detect and
 warn about.
+
+### sellerPublishToShow() — skip already-published cards (session 2026-09-06)
+Real production symptom: a seller clicking "⚡ Add My Cards" (`sellerPublishToShow()`) saw a
+wall of `401` / `"new row violates row-level security policy (USING expression) for table
+show_inventory"` console errors, even though cards were genuinely updating live for buyers.
+Root cause: this function loops over the seller's *entire* non-sold inventory on every click,
+not just cards new to the show, and unconditionally called `_autoPublishCardToShow()` — an
+`upsert(..., { onConflict: 'show_id,card_id' })` — for each one. `show_inventory` does have a
+working INSERT policy (a genuinely new card publishes fine, which is why live sync still
+worked), but **no working UPDATE policy** — contradicting this file's "all tables use
+permissive `using(true)`" claim, discovered live rather than in a migration file (this app's
+core schema predates the `supabase/migrations/` folder and was set up directly in the Supabase
+dashboard, so there's no tracked SQL to grep for the actual policy). An upsert against an
+already-existing row compiles to `INSERT ... ON CONFLICT DO UPDATE`, and that `DO UPDATE`
+branch needs a permissive UPDATE policy to pass — re-publishing an already-published card hit
+exactly that path and got rejected every time.
+No data was ever actually lost — the rejected "update" would have rewritten the same
+`show_id`/`card_id` values a row already had — but it's a real, easily-reachable RLS gap
+worth closing at the call site rather than only in Supabase. Fixed by skipping the
+`_autoPublishCardToShow()` call entirely for a card whose `card._shows` Set already contains
+the target `showId` (the same reliable, reload-proof signal `recordShowTransaction()`'s
+single-show fallback already trusts — see "activeShowId resilience" above) — a card new to
+the show still hits `_autoPublishCardToShow()`'s plain-INSERT path exactly as before. The
+`show_inventory` UPDATE policy gap itself is untouched — this is a client-side workaround, not
+a schema fix; add a permissive UPDATE policy on `show_inventory` in the Supabase dashboard if
+some other future write path needs to actually update an existing row.
+
+## Live Show Inventory Sync (session 2026-09-04)
+
+Lets a buyer's already-open page (the in-app Buyer view, and the public `show.html` share-link
+page) reflect a seller's add/edit/delete/sold change during a show automatically — no manual
+reload, and no organizer action required. Before this, both pages fetched inventory once and
+never refreshed; a seller marking a card sold or editing its price mid-show was invisible to a
+buyer already looking at that card until they reloaded.
+
+### Requires the Realtime migration
+`supabase/migrations/20260904120000_live_show_inventory_realtime.sql` — adds `inventory` and
+`show_inventory` to the `supabase_realtime` publication (same `ALTER PUBLICATION ... ADD TABLE`
+idiom the Trade Zone migration already uses, wrapped in `DO` blocks so re-running it doesn't
+error on "already a member"). Until this runs, both subscriptions below silently receive no
+events — degrades to relying on the fallback poll timer alone (see below), not a hard failure.
+
+### Two-layer design — Realtime primary, poll timer fallback
+A single mechanism wasn't trusted here: this codebase has already hit real show-floor-wifi
+failure modes more than once (`activeShowId` getting wiped when a mobile browser evicts the tab
+mid-show; `posInsertAndOpenDrawer()`'s insert timeout). A Realtime `postgres_changes`
+subscription (`db.channel(...).on('postgres_changes', ...).subscribe()` — same syntax
+`trade-board.html`'s `tbWireRealtime()` already established) gives near-instant updates when the
+socket is healthy; a plain `setInterval` fallback poll (40s) self-heals if it silently isn't —
+both call the *same* full-refresh function on any trigger, never an incremental patch.
+
+### Why the `inventory` subscription is unfiltered, not scoped to the current show
+`show_inventory` has a `show_id` column, so its subscription filters server-side
+(`filter: 'show_id=eq.' + showId`) to INSERT/DELETE on that show only — covers a card being
+newly published to, or removed/unpublished from, this show. `inventory` itself has no
+`show_id` column (it's only linked via the `show_inventory` junction), and Supabase Realtime's
+`filter` option only supports a simple `column=eq.value` match on the table actually being
+watched — it can't filter by a join. So the `inventory` UPDATE/DELETE subscription is left
+unfiltered; every event just re-runs the same full refresh, which already re-scopes correctly
+via its own `show_inventory` query. A card edit on some unrelated show triggers one harmless
+extra refetch for a buyer viewing a different show — a deliberate simplification (full-refetch
+over fragile incremental patching, matching this app's convention everywhere else — see e.g.
+`_orgFetchInventory()`'s two-step-query rationale), not an oversight. Worth revisiting only if a
+show's buyer traffic and the platform's total unrelated inventory churn both grow enough for the
+extra refetches to matter.
+
+### Prerequisite fix: `loadBuyerInventoryFromDB()` — embedded join replaced with two-step query
+This function (app.html) is what both the Realtime handler and poll timer call to actually
+refresh a buyer's `inventory[]`. It still used a nested FK-embed `select()`
+(`show_inventory.select('inventory(...)')`)  — the exact PostgREST pattern already documented
+elsewhere in this file (`loadShowSellersAndTables()`, `_orgFetchInventory()`,
+`show.html`'s `fetchInventoryFromDB()`) as intermittently returning `null` for some rows under a
+stale schema cache. That flakiness was latent and effectively invisible when this function only
+ran once per show join; re-running it repeatedly for live-sync would have surfaced it as cards
+randomly flickering in and out of a buyer's grid. Rewritten to the same two-explicit-queries
+form (`show_inventory.select('card_id')` → `inventory.in('id', cardIds)`) already used
+everywhere else — no schema or field changes.
+
+A second, related bug fixed as part of the same prerequisite: `sellerIds` (used to decide which
+sellers' stale cards to clear from `inventory[]` before re-adding fresh ones) was computed from
+the post-sold-filter card list, not the full fetch — so a seller whose *only* card in a show had
+just sold would drop out of `sellerIds` entirely, and their now-sold card would never actually
+be cleared from an already-open buyer page. Invisible on the original one-time load (nothing
+stale existed yet to clear); a real, visible bug once this function runs repeatedly, since a
+sold card disappearing live was one of the explicit goals here. Fixed by deriving `sellerIds`
+from the full fetch result instead.
+
+### Key functions
+- `_subscribeBuyerShowLive(showId)` / `_unsubscribeBuyerShowLive()` (app.html) — wired into
+  `joinShow()` (subscribe, after the initial `loadBuyerInventoryFromDB()` call),
+  `skipBuyerShowPicker()` and `signOut()` (unsubscribe). Idempotent — subscribing always
+  unsubscribes any prior channel first, so a buyer switching shows never runs two subscriptions
+  at once.
+- `subscribeShowLive(showId)` (show.html) — wired into both DB-backed `init()` paths: the
+  primary hash-decode path, and the localStorage same-browser-fallback path (which also gained
+  a `fetchInventoryFromDB()` call it didn't have before, since its cached payload can be up to
+  7 days stale — upgrading it once on load, the same way the hash path already did, was a
+  natural, directly-adjacent fix rather than leaving a stale render with only a live-sync
+  bandaid on top). No unsubscribe path — `show.html` is a single dedicated page per show with no
+  "switch show" concept, so the subscription just lives until the tab closes.
+
+### Does not change
+`fetchInventoryFromDB()`'s own query shape (show.html), `_orgFetchInventory()` or any other
+organizer-analytics function, `recordShowTransaction()`, `sdConfirm()`, RLS policies, Trade
+Zone's own Realtime usage (`trade-board.html`, `js/trade-zone.js` — untouched, just the
+established pattern this borrowed from).
 
 ## Trade Zone
 

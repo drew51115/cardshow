@@ -7,8 +7,11 @@
 // #ac_search box — that function has its own key handling and cache table.
 
 const TCG_API_ORIGIN = 'https://api.tradingcardapi.com';
-// filter[player_id] on /v1/cards is a real join (direct + via player-team) across a
-// 1.7M+ card catalog and can run noticeably slower than a simple attribute lookup —
+// filter[player_id] on /v1/cards is a real join (direct + via player-team) across the
+// card catalog and can run noticeably slower than a simple attribute lookup — the
+// catalog itself dropped from ~1.77M to ~326K cards in the API's own v0.10.34 (server
+// now filters out cards on unpublished sets by default; this app never called the
+// unfiltered endpoint either way, so no client-side change was needed for that) —
 // give it real headroom, but stay under Netlify's ~10s synchronous function ceiling
 // (matches vision-scan.js's 10s convention elsewhere in this repo) so our own abort
 // fires with a clean response instead of the platform hard-killing the function first.
