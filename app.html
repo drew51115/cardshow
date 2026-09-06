@@ -12423,7 +12423,9 @@ function sellerPublishToShow(showId) {
   let count = 0;
   selected.forEach(card => {
     if (!card._shows) card._shows = new Set();
-    if (!card._shows.has(showId)) { card._shows.add(showId); count++; }
+    if (card._shows.has(showId)) return; // already published to this show — see note below
+    card._shows.add(showId);
+    count++;
     // Persist to show_inventory (fire-and-forget) — without this, the
     // in-memory tag above is invisible to hydrateCardShowMembership() on
     // the next login (this app signs out on every page load), and the
@@ -12431,6 +12433,13 @@ function sellerPublishToShow(showId) {
     // session resets, even though it's still counted in lifetime totals.
     // Confirmed real bug 2026-08-31: this was the only card._shows.add()
     // call site in the app with no corresponding show_inventory write.
+    // Only called for cards not already tagged with this show — re-upserting
+    // an existing row's onConflict path requires an UPDATE RLS policy that
+    // show_inventory doesn't actually have (confirmed live 2026-09-06:
+    // re-clicking "Add My Cards" over already-published cards produced a
+    // wall of "new row violates row-level security policy" 401s on the
+    // ON CONFLICT DO UPDATE branch). Skipping already-published cards avoids
+    // that path entirely — a genuinely new insert never hits it.
     if (card._dbId) _autoPublishCardToShow(card, card._dbId, showId);
   });
   activeShowId = showId;

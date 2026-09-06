@@ -1830,6 +1830,32 @@ error. Running the migration removes the need for the retry but the fallback sta
 and permanent — no reason to special-case "migration not yet run" as a mode to detect and
 warn about.
 
+### sellerPublishToShow() — skip already-published cards (session 2026-09-06)
+Real production symptom: a seller clicking "⚡ Add My Cards" (`sellerPublishToShow()`) saw a
+wall of `401` / `"new row violates row-level security policy (USING expression) for table
+show_inventory"` console errors, even though cards were genuinely updating live for buyers.
+Root cause: this function loops over the seller's *entire* non-sold inventory on every click,
+not just cards new to the show, and unconditionally called `_autoPublishCardToShow()` — an
+`upsert(..., { onConflict: 'show_id,card_id' })` — for each one. `show_inventory` does have a
+working INSERT policy (a genuinely new card publishes fine, which is why live sync still
+worked), but **no working UPDATE policy** — contradicting this file's "all tables use
+permissive `using(true)`" claim, discovered live rather than in a migration file (this app's
+core schema predates the `supabase/migrations/` folder and was set up directly in the Supabase
+dashboard, so there's no tracked SQL to grep for the actual policy). An upsert against an
+already-existing row compiles to `INSERT ... ON CONFLICT DO UPDATE`, and that `DO UPDATE`
+branch needs a permissive UPDATE policy to pass — re-publishing an already-published card hit
+exactly that path and got rejected every time.
+No data was ever actually lost — the rejected "update" would have rewritten the same
+`show_id`/`card_id` values a row already had — but it's a real, easily-reachable RLS gap
+worth closing at the call site rather than only in Supabase. Fixed by skipping the
+`_autoPublishCardToShow()` call entirely for a card whose `card._shows` Set already contains
+the target `showId` (the same reliable, reload-proof signal `recordShowTransaction()`'s
+single-show fallback already trusts — see "activeShowId resilience" above) — a card new to
+the show still hits `_autoPublishCardToShow()`'s plain-INSERT path exactly as before. The
+`show_inventory` UPDATE policy gap itself is untouched — this is a client-side workaround, not
+a schema fix; add a permissive UPDATE policy on `show_inventory` in the Supabase dashboard if
+some other future write path needs to actually update an existing row.
+
 ## Live Show Inventory Sync (session 2026-09-04)
 
 Lets a buyer's already-open page (the in-app Buyer view, and the public `show.html` share-link
