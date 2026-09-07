@@ -264,28 +264,34 @@ Fonts: Bebas Neue (headlines), DM Sans (body), DM Mono (labels/badges), Barlow C
 30. **card_fingerprint on show_floor_transactions is 7-field format** matching `price_cache` exactly — joinable without transformation.
 31. **detectCardSport() used in recordShowTransaction()** — not `detectSport()`. `detectSport()` is UI-only. `detectCardSport()` is API routing with full TCG keyword detection.
 
-## Cert Scanner — Sprint 1 + 2 Architecture (Shipped)
+## Cert Scanner — Photo-First Architecture (Shipped)
 
-### Scan Cascade (full, Sprint 1 + 2)
+**Barcode/cert-number scanning removed (session 2026-09-06).** The original Sprint 1 design
+opened the scanner into a barcode-detection phase (BarcodeDetector API on Chrome/Android,
+ZXing-js fallback on iOS Safari/Firefox) that ran in the background while the photo-capture UI
+was already showing, hoping to catch a graded slab's barcode before the seller tapped "Take
+Photo." With no PSA or CGC API license provisioned, that path could never succeed for any
+grader — PSA and SGC barcodes both route through `psa-lookup.js`'s PSA branch (needs
+`PSA_API_TOKEN`), and only CGC has its own independent token (`CGC_API_TOKEN`) — so it was pure
+camera/CPU overhead producing a silent 403 in the console on every detected barcode, never
+surfaced to the seller. Removed entirely rather than flagged off (unlike
+`BULK_SCAN_PSA_VERIFY_ENABLED` elsewhere in this file) since there was no working state to
+preserve without a license. Removed: `startNativeScan()`, `startZXingScan()`,
+`handleBarcodeDetected()`, `parseCertBarcode()`, `lookupCert()`, `fillFormFromScan()`,
+`loadScript()` (only used to lazy-load the ZXing UMD bundle), `_enterBarcodeScanMode()`, the
+`#scanAimGuide`/`#scanLine`/`#scanRetryBtn` HTML elements, and the `scanAnim` CSS keyframe.
+`_enterPhotoMode()` was renamed to `_resetScannerUI()` since "photo mode" is no longer one of
+two modes — it's the only mode. The manual "OR ENTER CERT NUMBER MANUALLY" grader dropdown +
+Cert # input (`lookupManualCert()`) had already been removed the same session for the same
+underlying reason (see "Manual cert # entry removed" below). **`psa-lookup.js` itself is
+untouched** — still actively used by the Bulk Scan review grid's PSA/CGC/SGC verify buttons
+(`bsVerifyGrader()`), which is a separate feature from this single-card cert scanner.
+
+### Scan Cascade (current, photo-only)
 ```
 openCertScanner()
-  └─ _enterPhotoMode() immediately — skips barcode phase, goes straight to photo capture
-  └─ startScannerCamera()
-       ├─ BarcodeDetector API available? (Chrome/Android)
-       │    └─ getUserMedia → video.srcObject → startNativeScan() (250ms polling)
-       │         └─ handleBarcodeDetected(raw)
-       └─ No BarcodeDetector? (iOS Safari, Firefox)
-            └─ startZXingScan()
-                 └─ lazy-load @zxing/library@0.20.0 from jsdelivr (unpkg fallback)
-                 └─ ZXing.BrowserMultiFormatReader.decodeFromVideoDevice(null, video, cb)
-                      └─ handleBarcodeDetected(raw)
-
-handleBarcodeDetected(raw)
-  └─ parseCertBarcode(raw) → { cert, grader }   (PSA 8-9 digits, CGC 10 digits, SGC 7 digits)
-       └─ lookupCert(cert, grader)
-            └─ POST /.netlify/functions/psa-lookup { cert, grader }
-                 ├─ 429 rate limit → retry 3× with 1s/2s/4s backoff; show Retry button on client
-                 └─ fillFormFromScan(card) → reads DOM after fills → buildCardTitle() → .scan-filled highlight
+  └─ _resetScannerUI() — resets title/status/photo button, always photo mode (no other mode exists)
+  └─ startScannerCamera() — plain getUserMedia, no barcode branching
 
 Seller taps "📷 Take Photo"
   └─ capture video frame → canvas → JPEG 85% → max 1024px → base64
@@ -320,7 +326,7 @@ Seller taps "📷 Take Photo"
 Border removed automatically after 60 seconds or on `clearVisionData()`.
 
 ### buildCardTitle(card) — Sport-aware title generation
-Called from `fillFormFromScan` (barcode) and `fillFormFromVision` (vision). Generates Card Title field from normalised scan fields. **Uses `String(val ?? '').trim()` for all fields** — Claude vision API returns `year` as an integer; calling `.trim()` on a number throws a TypeError that silently aborts title generation.
+Called from `fillFormFromVision` (vision) and several other card-creation paths (POS, Manual Sale, bulk scan). Generates Card Title field from normalised scan fields. **Uses `String(val ?? '').trim()` for all fields** — Claude vision API returns `year` as an integer; calling `.trim()` on a number throws a TypeError that silently aborts title generation.
 - **Sports:** `{year} {set} {player} {parallel}` → `"2024 Bowman Chrome Dylan Crews Fuchsia Refractor"`
 - **Pokemon:** `{year} Pokemon {set} {name} #{cardNum} {rarity}` → `"2023 Pokemon Scarlet & Violet 151 Charizard ex #006/165 SIR"`
 - **MTG:** `{year} Magic The Gathering {set} {name} {foil}` → `"2024 Magic The Gathering Bloomburrow Ral, Crackling Wit Foil"`
@@ -328,7 +334,7 @@ Called from `fillFormFromScan` (barcode) and `fillFormFromVision` (vision). Gene
 - Game prefix is suppressed when PSA's set name already starts with the game name (avoids "Pokemon Pokemon Scarlet & Violet…")
 
 ### Netlify Functions
-- **`psa-lookup.js`** — POST `{ cert, grader }` → `{ player, cardSet, year, cardNum, parallel, grade, grader, certNum, sport, rawTitle }`. Routes PSA/SGC to PSA API, CGC to CGC API. Retries 3× on 429. Requires `PSA_API_TOKEN` and `CGC_API_TOKEN` env vars set in Netlify dashboard.
+- **`psa-lookup.js`** — POST `{ cert, grader }` → `{ player, cardSet, year, cardNum, parallel, grade, grader, certNum, sport, rawTitle }`. Routes PSA/SGC to PSA API, CGC to CGC API. Retries 3× on 429. Requires `PSA_API_TOKEN` and `CGC_API_TOKEN` env vars set in Netlify dashboard. No longer called by the single-card cert scanner (barcode scanning removed — see above) — its only remaining caller is the Bulk Scan review grid's `bsVerifyGrader()`.
 - **`vision-scan.js`** — POST `{ image, mediaType }` → `{ success, card, isTCG, promptVariant, rawResponse }`. Calls Claude claude-sonnet-4-6 via Anthropic API. Two-prompt strategy (sports then TCG). 10s timeout. Requires `ANTHROPIC_API_KEY` in Netlify dashboard.
 
 ### Environment Variables (set in Netlify dashboard)
@@ -351,16 +357,11 @@ Called from `fillFormFromScan` (barcode) and `fillFormFromVision` (vision). Gene
 Supabase URL and anon key are **not** hardcoded in tracked files. `netlify.toml` has a `command` that runs `sed` to replace `SUPABASE_URL_PLACEHOLDER` / `SUPABASE_ANON_KEY_PLACEHOLDER` in all three HTML files at deploy time. `SECRETS_SCAN_OMIT_KEYS = "SUPABASE_URL,SUPABASE_ANON_KEY"` prevents Netlify's secrets scanner from blocking the build on the injected values (they are intentionally public publishable keys).
 
 ### Key Scanner Functions (app.html)
-- `openCertScanner()` / `closeCertScanner()` — open/close overlay; goes straight to photo mode (`_enterPhotoMode()`) on open
-- `_enterBarcodeScanMode()` / `_enterPhotoMode()` — UI state toggles between barcode aim guide and card aim guide
-- `startScannerCamera()` — branches on BarcodeDetector availability; starts camera for photo capture
-- `startNativeScan()` — BarcodeDetector polling every 250ms
-- `startZXingScan()` — loads @zxing/library@0.20.0 UMD from CDN (jsdelivr → unpkg fallback)
-- `stopScannerCamera()` — clears interval/timeout, resets ZXing reader, stops all MediaStream tracks
-- `parseCertBarcode(raw)` — digit-length heuristic: PSA 8-9 digits, CGC 10 digits, SGC 7 digits; URL pattern fallback
-- `lookupCert(cert, grader)` — POST to psa-lookup; on 429 shows Retry button wired to re-call lookupCert
+- `openCertScanner()` / `closeCertScanner()` — open/close overlay; always opens straight into photo capture (`_resetScannerUI()`)
+- `_resetScannerUI()` (formerly `_enterPhotoMode()`, renamed since there's no other mode anymore) — resets title/status text and the Take Photo button to their default state
+- `startScannerCamera()` — plain `getUserMedia`, no barcode-detection branching
+- `stopScannerCamera()` — stops all MediaStream tracks, clears `video.srcObject`
 - `buildCardTitle(card)` — sport-aware title builder; uses `String(val ?? '')` to handle integer `year` from vision API
-- `fillFormFromScan(card, cert, grader)` — barcode result: populates Add Card fields via forEach, then reads DOM values into `buildCardTitle()` for title; `.scan-filled` highlight
 - `fillFormFromVision(card, result)` — vision result: `cardTitle` excluded from fieldMap; title always synthesized via `buildCardTitle()`; confidence color coding, confirm banner, analytics toast
 - `_applyVisionConfidence(el, level)` — applies vision-high/medium/low CSS class; auto-removes after 60s
 - `_showVisionConfirmBanner(filledFields)` — injects banner above form with legend and "Clear scan data" link
@@ -368,26 +369,22 @@ Supabase URL and anon key are **not** hardcoded in tracked files. `netlify.toml`
 - `scanTakePhoto()` — captures canvas frame, dispatches to `_callVisionScan` (no scan limit check)
 - `scanVisionRetry()` — resends last captured image on retry
 - `scanFallbackToSearch()` — closes scanner, focuses Player input for TCDB text search (Sprint 3 stub)
-- `lookupManualCert()` — manual cert # + grader dropdown fallback
 
 ### Known Constraints
-- PSA API free tier has very low rate limits (~10 req/hr). Upgrade PSA API account tier if 429s occur frequently at shows.
-- ZXing CDN load adds ~1-2s delay on first open (library is ~400KB). Cached on subsequent opens within the session.
-- `@zxing/browser` ships ESM only — no UMD bundle. Must use `@zxing/library` for CDN UMD loading.
+- **Manual cert # entry removed from the cert scanner overlay (session 2026-09-06)** — the "OR ENTER CERT NUMBER MANUALLY" grader dropdown (PSA/CGC/SGC) + Cert # input + "Look up" button, and its handler `lookupManualCert()`, were removed. PSA and SGC both route through `psa-lookup.js`'s PSA branch (`PSA_API_TOKEN`) — only CGC has its own independent token — so both would 403 without a PSA license, not just PSA.
+- **Barcode/cert-number scanning removed from the cert scanner overlay (same session)** — see "Cert Scanner — Photo-First Architecture" above for full detail. Between this and the manual-entry removal above, the cert scanner is now vision-only: it needs no grading API of any kind.
+- PSA API free tier has very low rate limits (~10 req/hr). Upgrade PSA API account tier if 429s occur frequently at shows. (Still relevant to Bulk Scan's `bsVerifyGrader()`, which still calls `psa-lookup.js`.)
 - Vision API adds ~1-3s latency per scan. Showing the loading overlay keeps UX responsive.
 - Claude vision is good at reading PSA/CGC/BGS labels and raw card fronts; accuracy drops for small text, glare, or very dark backgrounds.
 
 ## Sprint 3 — Live Card Database Autocomplete + Full Cascade Wiring
 
-### Full Three-Stage Cascade (Sprints 1 + 2 + 3)
+### Full Three-Stage Cascade (Sprints 2 + 3 — Sprint 1 barcode stage removed, see "Cert Scanner — Photo-First Architecture" above)
 ```
 ["SCAN CARD" button tapped on Add Card modal]
         ↓
-Open scanner overlay → _enterPhotoMode() immediately (data-state="photo")
-Camera starts live — barcode detection runs in background
-        ↓
-Barcode found (background)?
-  YES → POST /psa-lookup → fillFormFromScan() → DOM-read title → confirm toast → DONE
+Open scanner overlay → _resetScannerUI() immediately (data-state="photo")
+Camera starts live
 
 Seller taps "📷 Take Photo"
         ↓
@@ -1088,6 +1085,13 @@ If `insertCardToDB()` times out inside `posInsertAndOpenDrawer()`'s `Promise.rac
   `loadBuyerInventoryFromDB()` and a related stale-sold-card bug fixed alongside it.
   **Requires the `20260904120000_live_show_inventory_realtime.sql` migration** — degrades to
   poll-only (still functional, just up to 40s of lag instead of near-instant) if not yet run.
+- **Seller Add Card cert scanner simplified to photo-only (session 2026-09-06)** — removed the
+  manual "OR ENTER CERT NUMBER MANUALLY" grader dropdown/Cert #/Look-up UI and the entire
+  BarcodeDetector/ZXing background barcode-scanning subsystem, since no PSA or CGC grading API
+  license is provisioned and both paths could only ever 403. See "Cert Scanner — Photo-First
+  Architecture" above for full detail. The scanner is now vision-only (Claude vision via
+  `vision-scan.js`) and needs no grading API at all. `psa-lookup.js` is untouched — still used
+  by Bulk Scan's `bsVerifyGrader()` verify buttons, a separate feature.
 
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`

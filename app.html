@@ -2248,12 +2248,6 @@
     to   { opacity:1; transform: translateY(0); }
   }
 
-  @keyframes scanAnim {
-    0%   { top: 35%; opacity: 0.4; }
-    50%  { top: 65%; opacity: 1;   }
-    100% { top: 35%; opacity: 0.4; }
-  }
-
   /* Auto-fill highlight — yellow fade for scanned fields */
   .scan-filled {
     border-color: var(--gold) !important;
@@ -5001,8 +4995,8 @@
 
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
         <div>
-          <div style="font-family:'Bebas Neue',sans-serif;font-size:1.2rem;letter-spacing:0.06em;color:var(--text)" id="scannerTitle">SCAN CARD</div>
-          <div style="font-size:0.72rem;color:var(--muted);font-family:'DM Mono',monospace" id="scannerStatusText">Point camera at the barcode on the slab</div>
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:1.2rem;letter-spacing:0.06em;color:var(--text)" id="scannerTitle">IDENTIFY CARD</div>
+          <div style="font-size:0.72rem;color:var(--muted);font-family:'DM Mono',monospace" id="scannerStatusText">Point at the card front — fill in the details automatically</div>
         </div>
         <button class="modal-close" onclick="closeCertScanner()" style="position:static">✕</button>
       </div>
@@ -5011,16 +5005,10 @@
       <div style="position:relative;border-radius:10px;overflow:hidden;background:#000;aspect-ratio:4/3;margin-bottom:0.9rem">
         <video id="scannerVideo" autoplay playsinline muted
                style="width:100%;height:100%;object-fit:cover"></video>
-        <!-- Aim guide (barcode mode) -->
-        <div id="scanAimGuide" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none">
-          <div style="width:70%;height:22%;border:2px solid rgba(245,200,66,0.7);border-radius:6px;box-shadow:0 0 0 9999px rgba(0,0,0,0.35)"></div>
-        </div>
-        <!-- Card aim guide (photo mode) — shows card outline instead of barcode strip -->
-        <div id="photoAimGuide" style="display:none;position:absolute;inset:0;align-items:center;justify-content:center;pointer-events:none">
+        <!-- Card aim guide — shows card outline -->
+        <div id="photoAimGuide" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none">
           <div style="width:55%;height:80%;border:2px solid rgba(245,200,66,0.7);border-radius:8px;box-shadow:0 0 0 9999px rgba(0,0,0,0.35)"></div>
         </div>
-        <!-- Scanning line animation -->
-        <div id="scanLine" style="position:absolute;left:15%;right:15%;height:2px;background:linear-gradient(90deg,transparent,var(--gold),transparent);border-radius:1px;animation:scanAnim 2s ease-in-out infinite;top:50%"></div>
         <!-- Vision loading overlay -->
         <div id="visionLoadingOverlay" style="display:none;position:absolute;inset:0;background:rgba(7,8,12,0.82);align-items:center;justify-content:center;flex-direction:column;gap:0.6rem;z-index:10">
           <div style="width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--gold);border-radius:50%;animation:spin 0.8s linear infinite"></div>
@@ -5028,18 +5016,15 @@
         </div>
         <!-- Status badge -->
         <div id="scanBadge" style="position:absolute;bottom:0.6rem;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.7);color:var(--gold);font-family:'DM Mono',monospace;font-size:0.65rem;padding:0.2rem 0.65rem;border-radius:20px;white-space:nowrap">
-          Scanning…
+          Ready
         </div>
       </div>
 
       <!-- Hidden canvas for frame capture -->
       <canvas id="scannerCanvas" style="display:none"></canvas>
 
-      <!-- Timeout action buttons (hidden until timeout or detect) -->
+      <!-- Photo capture actions -->
       <div id="scannerActions" style="display:none;flex-direction:column;gap:0.5rem">
-        <button id="scanRetryBtn" style="display:none;padding:0.7rem;border-radius:8px;border:none;background:#f5c842;color:#07080c;font-family:'Barlow Condensed',sans-serif;font-size:1rem;letter-spacing:0.06em;font-weight:700;cursor:pointer">
-          ↺ Retry Lookup
-        </button>
         <!-- photo mode helper text -->
         <div id="scanPhotoHelper" style="display:none;text-align:center;font-size:0.72rem;color:var(--muted);font-family:'DM Sans',sans-serif;padding:0 0.25rem">
           Point at the card front — fill in the details automatically
@@ -5063,25 +5048,6 @@
           style="padding:0.55rem;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:0.8rem;cursor:pointer">
           Cancel
         </button>
-      </div>
-
-      <!-- Manual cert entry fallback -->
-      <div style="margin-top:0.75rem;padding-top:0.75rem;border-top:1px solid var(--border)">
-        <div style="font-size:0.65rem;color:var(--muted);font-family:'DM Mono',monospace;letter-spacing:0.08em;margin-bottom:0.4rem">OR ENTER CERT NUMBER MANUALLY</div>
-        <div style="display:flex;gap:0.5rem">
-          <select id="scanGraderSelect" style="padding:0.45rem 0.5rem;border-radius:7px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:0.8rem;font-family:'DM Sans',sans-serif">
-            <option value="PSA">PSA</option>
-            <option value="CGC">CGC</option>
-            <option value="SGC">SGC</option>
-          </select>
-          <input id="scanCertInput" placeholder="Cert #" type="text" inputmode="numeric"
-            style="flex:1;padding:0.45rem 0.6rem;border-radius:7px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:0.85rem;font-family:'DM Mono',monospace"
-            onkeydown="if(event.key==='Enter')lookupManualCert()">
-          <button onclick="lookupManualCert()"
-            style="padding:0.45rem 0.8rem;border-radius:7px;border:1px solid var(--gold);background:#1a1f2e;color:var(--gold);font-weight:700;font-size:0.8rem;cursor:pointer">
-            Look up
-          </button>
-        </div>
       </div>
 
     </div>
@@ -13782,17 +13748,20 @@ async function _acEnrichFromCardSight() {
 }
 
 // ── CERT SCANNER ─────────────────────────────────────────────────────────────
-// Sprint 1: BarcodeDetector API (Chrome/Android) → ZXing-js fallback (iOS Safari)
-// Sprint 2: vision AI fallback via Take Photo → Claude vision API
+// Photo-first: camera opens straight into card-photo capture → Claude vision
+// API. Barcode/cert-number lookup (BarcodeDetector + ZXing + psa-lookup.js)
+// was removed (session 2026-09-06) — no PSA/CGC grading API license is
+// provisioned, so it could never succeed for any grader (PSA and SGC both
+// route through psa-lookup.js's PSA branch; only CGC has its own token) and
+// was pure dead camera/CPU overhead. This vision-based flow needs no grading
+// API at all. psa-lookup.js itself is untouched — still used by the Bulk
+// Scan review grid's PSA/CGC/SGC verify buttons (`bsVerifyGrader()`).
 
-let _scanStream          = null;  // active MediaStream
-let _scanInterval        = null;  // polling interval handle
-let _scanTimeout         = null;  // 3-second no-detect timeout
-let _zxingReader         = null;  // ZXing reader instance (loaded lazily)
 let _visionRetryCount    = 0;     // consecutive vision API failures
 let _visionCapturedImage = null;  // base64 image for retry
 let _visionCapturedType  = 'image/jpeg';
 let _visionAbortCtrl     = null;  // AbortController for in-flight vision call
+let _scanStream          = null;  // active MediaStream
 let _scanHistory         = [];    // session-only scan history (last 5)
 
 function openCertScanner() {
@@ -13803,48 +13772,20 @@ function openCertScanner() {
 
   const overlay = document.getElementById('certScannerOverlay');
   overlay.style.display = 'flex';
-  document.getElementById('scannerActions').style.display = 'none';
-  document.getElementById('scanRetryBtn').style.display = 'none';
+  document.getElementById('scannerActions').style.display = 'flex';
   document.getElementById('scanBadge').textContent = 'Ready';
-  document.getElementById('scanCertInput').value = '';
 
-  // Go straight to photo capture — skip the barcode scanning phase
-  _enterPhotoMode();
+  _resetScannerUI();
   startScannerCamera();
 }
 
-function _enterBarcodeScanMode() {
-  const overlay = document.getElementById('certScannerOverlay');
-  if (overlay) overlay.dataset.state = 'scanning';
-  const title = document.getElementById('scannerTitle');
-  if (title) title.textContent = 'SCAN CARD';
-  const aimBarcode = document.getElementById('scanAimGuide');
-  const aimPhoto   = document.getElementById('photoAimGuide');
-  const scanLine   = document.getElementById('scanLine');
-  const helper     = document.getElementById('scanPhotoHelper');
-  const photoBtn   = document.getElementById('scanPhotoBtn');
-  if (aimBarcode) aimBarcode.style.display = 'flex';
-  if (aimPhoto)   aimPhoto.style.display   = 'none';
-  if (scanLine)   scanLine.style.display   = 'block';
-  if (helper)     helper.style.display     = 'none';
-  if (photoBtn)   { photoBtn.textContent = '📷 Take Photo'; photoBtn.disabled = false; photoBtn.style.opacity = ''; }
-}
-
-function _enterPhotoMode() {
+function _resetScannerUI() {
   const overlay = document.getElementById('certScannerOverlay');
   if (overlay) overlay.dataset.state = 'photo';
-  const title = document.getElementById('scannerTitle');
-  if (title) title.textContent = 'IDENTIFY CARD';
-  const aimBarcode = document.getElementById('scanAimGuide');
-  const aimPhoto   = document.getElementById('photoAimGuide');
-  const scanLine   = document.getElementById('scanLine');
-  const helper     = document.getElementById('scanPhotoHelper');
-  const photoBtn   = document.getElementById('scanPhotoBtn');
-  if (aimBarcode) aimBarcode.style.display = 'none';
-  if (aimPhoto)   { aimPhoto.style.display = 'flex'; }
-  if (scanLine)   scanLine.style.display   = 'none';
-  if (helper)     helper.style.display     = 'block';
-  if (photoBtn)   { photoBtn.textContent = '📷 Take Photo'; photoBtn.disabled = false; photoBtn.style.opacity = ''; }
+  const helper   = document.getElementById('scanPhotoHelper');
+  const photoBtn = document.getElementById('scanPhotoBtn');
+  if (helper)   helper.style.display = 'block';
+  if (photoBtn) { photoBtn.textContent = '📷 Take Photo'; photoBtn.disabled = false; photoBtn.style.opacity = ''; }
   setScanStatus('Point at the card front — fill in the details automatically', false);
 }
 
@@ -13857,214 +13798,26 @@ function closeCertScanner() {
 
 async function startScannerCamera() {
   stopScannerCamera(); // clean up any prior stream
-
-  // Native BarcodeDetector path (Chrome, Android): own the stream ourselves
-  if (typeof BarcodeDetector !== 'undefined') {
-    try {
-      _scanStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
-      });
-      const video = document.getElementById('scannerVideo');
-      video.srcObject = _scanStream;
-      await video.play();
-    } catch (err) {
-      setScanStatus('Camera access denied — use manual entry below', true);
-      document.getElementById('scannerActions').style.display = 'flex';
-      return;
-    }
-
-    // After 3s with no barcode: transition to photo mode (Sprint 2)
-    _scanTimeout = setTimeout(() => {
-      _enterPhotoMode();
-      document.getElementById('scannerActions').style.display = 'flex';
-      document.getElementById('scanBadge').textContent = 'Tap photo or enter cert below';
-    }, 3000);
-
-    startNativeScan();
-  } else {
-    // ZXing path (iOS Safari, Firefox): let ZXing own the camera lifecycle
-    startZXingScan();
+  try {
+    _scanStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+    });
+    const video = document.getElementById('scannerVideo');
+    video.srcObject = _scanStream;
+    await video.play();
+  } catch (err) {
+    setScanStatus('Camera access denied — enter card details manually', true);
+    document.getElementById('scannerActions').style.display = 'flex';
   }
 }
 
 function stopScannerCamera() {
-  clearInterval(_scanInterval);
-  clearTimeout(_scanTimeout);
-  _scanInterval = null;
-  _scanTimeout  = null;
-  if (_zxingReader) { try { _zxingReader.reset(); } catch {} }
   if (_scanStream) {
     _scanStream.getTracks().forEach(t => t.stop());
     _scanStream = null;
   }
   const video = document.getElementById('scannerVideo');
   if (video) { video.srcObject = null; }
-}
-
-// ── Native BarcodeDetector (Chrome, Android WebView) ────────────────────────
-function startNativeScan() {
-  const detector = new BarcodeDetector({ formats: ['code_128', 'code_39', 'qr_code', 'pdf417', 'ean_13', 'ean_8'] });
-  const video = document.getElementById('scannerVideo');
-
-  _scanInterval = setInterval(async () => {
-    if (!video.videoWidth) return;
-    try {
-      const codes = await detector.detect(video);
-      if (codes.length) {
-        const raw = codes[0].rawValue;
-        handleBarcodeDetected(raw);
-      }
-    } catch { /* detector not ready yet */ }
-  }, 250);
-}
-
-// ── ZXing-js fallback (iOS Safari, Firefox) ──────────────────────────────────
-// Uses @zxing/library (UMD build) — @zxing/browser ships ESM only and has no
-// reliable CDN UMD bundle. ZXing owns the camera via decodeFromVideoDevice to
-// avoid stream conflicts from pre-attaching getUserMedia ourselves.
-async function startZXingScan() {
-  setScanStatus('Loading scanner…', false);
-  if (!_zxingReader) {
-    // jsdelivr primary, unpkg fallback
-    const cdnUrls = [
-      'https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js',
-      'https://unpkg.com/@zxing/library@0.20.0/umd/index.min.js',
-    ];
-    let loaded = false;
-    for (const url of cdnUrls) {
-      try { await loadScript(url); loaded = true; break; } catch {}
-    }
-    if (!loaded || typeof ZXing === 'undefined') {
-      setScanStatus('Barcode library failed to load — use manual entry', true);
-      document.getElementById('scannerActions').style.display = 'flex';
-      return;
-    }
-    _zxingReader = new ZXing.BrowserMultiFormatReader();
-  }
-
-  const video = document.getElementById('scannerVideo');
-  setScanStatus('Point camera at the barcode on the slab', false);
-
-  // After 3s with no barcode: transition to photo mode (Sprint 2)
-  _scanTimeout = setTimeout(() => {
-    _enterPhotoMode();
-    document.getElementById('scannerActions').style.display = 'flex';
-    document.getElementById('scanBadge').textContent = 'Tap photo or enter cert below';
-  }, 3000);
-
-  try {
-    // null deviceId = browser picks rear/environment camera
-    await _zxingReader.decodeFromVideoDevice(null, video, (result, err) => {
-      if (result) handleBarcodeDetected(result.getText());
-    });
-  } catch (err) {
-    clearTimeout(_scanTimeout);
-    setScanStatus('Camera access denied — use manual entry below', true);
-    document.getElementById('scannerActions').style.display = 'flex';
-  }
-}
-
-function loadScript(src) {
-  return new Promise((resolve, reject) => {
-    if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
-    const s = document.createElement('script');
-    s.src = src;
-    s.onload = resolve;
-    s.onerror = reject;
-    document.head.appendChild(s);
-  });
-}
-
-// ── Barcode → cert extraction ─────────────────────────────────────────────────
-function handleBarcodeDetected(raw) {
-  clearTimeout(_scanTimeout);
-  clearInterval(_scanInterval);
-  if (_zxingReader) { try { _zxingReader.reset(); } catch {} }
-  stopScannerCamera();
-
-  const { cert, grader } = parseCertBarcode(raw);
-  if (!cert) {
-    setScanStatus(`Couldn't parse barcode: ${raw}`, true);
-    document.getElementById('scannerActions').style.display = 'flex';
-    startScannerCamera(); // retry
-    return;
-  }
-
-  setScanStatus(`Detected ${grader} cert #${cert} — looking up…`, false);
-  document.getElementById('scanBadge').textContent = `${grader} #${cert}`;
-  lookupCert(cert, grader);
-}
-
-function parseCertBarcode(raw) {
-  // PSA: numeric, 8-9 digits
-  const psaMatch = raw.match(/^(\d{8,9})$/);
-  if (psaMatch) return { cert: psaMatch[1], grader: 'PSA' };
-
-  // CGC: 10-digit numeric, sometimes prefixed with "CGC"
-  const cgcMatch = raw.match(/(?:CGC[- ]?)?(\d{10})/i);
-  if (cgcMatch) return { cert: cgcMatch[1], grader: 'CGC' };
-
-  // SGC: 7-digit numeric
-  const sgcMatch = raw.match(/^(\d{7})$/);
-  if (sgcMatch) return { cert: sgcMatch[1], grader: 'SGC' };
-
-  // URL-embedded cert (e.g. QR codes on slabs)
-  const urlMatch = raw.match(/[?&/](?:cert|id|num)[=\/](\d{7,10})/i);
-  if (urlMatch) {
-    const cert = urlMatch[1];
-    const grader = raw.toLowerCase().includes('cgc') ? 'CGC'
-                 : raw.toLowerCase().includes('sgc') ? 'SGC' : 'PSA';
-    return { cert, grader };
-  }
-
-  return { cert: null, grader: null };
-}
-
-// ── Manual cert entry ────────────────────────────────────────────────────────
-function lookupManualCert() {
-  const cert   = document.getElementById('scanCertInput').value.trim();
-  const grader = document.getElementById('scanGraderSelect').value;
-  if (!cert) { showToast('Enter a cert number', 'var(--danger)'); return; }
-  setScanStatus(`Looking up ${grader} cert #${cert}…`, false);
-  lookupCert(cert, grader);
-}
-
-// ── API call → form fill ─────────────────────────────────────────────────────
-async function lookupCert(cert, grader) {
-  _acProgressStart(); // animate modal progress bar during API call
-  try {
-    const res = await fetch('/.netlify/functions/psa-lookup', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ cert, grader }),
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      if (res.status === 429) {
-        setScanStatus('PSA rate limit — tap Retry in a few seconds', true);
-        // Show a Retry button alongside the existing actions
-        const retryBtn = document.getElementById('scanRetryBtn');
-        if (retryBtn) {
-          retryBtn.style.display = 'block';
-          retryBtn.onclick = () => { retryBtn.style.display = 'none'; lookupCert(cert, grader); };
-        }
-      } else {
-        setScanStatus(err.error || `Lookup failed (${res.status})`, true);
-      }
-      document.getElementById('scannerActions').style.display = 'flex';
-      return;
-    }
-
-    const card = await res.json();
-    fillFormFromScan(card, cert, grader);
-    closeCertScanner();
-    showToast(`✓ ${grader} #${cert} auto-filled — review and save`);
-
-  } catch (err) {
-    setScanStatus(`Network error: ${err.message}`, true);
-    document.getElementById('scannerActions').style.display = 'flex';
-  }
 }
 
 // Build a clean card title from normalised scan fields.
@@ -14102,85 +13855,6 @@ function buildCardTitle(card) {
 
   // Sports: year · set · player · parallel
   return [year, set, name, parallel].filter(Boolean).join(' ');
-}
-
-function fillFormFromScan(card, cert, grader) {
-  // Switch to card mode
-  acSetType('card');
-  _acProgressDone(); // complete the progress bar if showing
-
-  const fills = {
-    ac_player:  card.player   || '',
-    ac_year:    card.year     || '',
-    ac_set:     card.cardSet  || '',
-    ac_number:  card.cardNum  || '',
-    ac_parallel: card.parallel || '',
-    ac_cert:    card.certNum  || cert,
-  };
-
-  Object.entries(fills).forEach(([id, val]) => {
-    const el = document.getElementById(id);
-    if (!el || !val) return;
-    el.value = val;
-    el.classList.add('scan-filled');
-    setTimeout(() => el.classList.remove('scan-filled'), 3000);
-  });
-
-  // Build title from the DOM values that were just populated — this is
-  // the most reliable source since the forEach already resolved all
-  // field-name fallbacks from the PSA/CGC response.
-  const titleEl = document.getElementById('ac_title');
-  if (titleEl) {
-    const year     = (document.getElementById('ac_year')    ?.value || '').trim();
-    const set      = (document.getElementById('ac_set')     ?.value || '').trim();
-    const player   = (document.getElementById('ac_player')  ?.value || '').trim();
-    const parallel = (document.getElementById('ac_parallel')?.value || '').trim();
-    const cardNum  = (document.getElementById('ac_number')  ?.value || '').trim();
-    const titleVal = buildCardTitle({
-      player, year, cardSet: set, parallel, cardNum,
-      sport:    card.sport    || '',
-      rawTitle: card.rawTitle || '',
-    }) || card.rawTitle || '';
-    if (titleVal) {
-      titleEl.value = titleVal;
-      titleEl.classList.add('scan-filled');
-      setTimeout(() => titleEl.classList.remove('scan-filled'), 3000);
-    }
-  }
-
-  // Set grader + grade
-  if (grader) {
-    const graderEl = document.getElementById('ac_grader');
-    if (graderEl) {
-      graderEl.value = grader;
-      acToggle();
-    }
-  }
-  if (card.grade != null) {
-    const gradeEl = document.getElementById('ac_grade');
-    if (gradeEl) {
-      gradeEl.value = card.grade;
-      gradeEl.classList.add('scan-filled');
-      setTimeout(() => gradeEl.classList.remove('scan-filled'), 3000);
-    }
-  }
-
-  // Add to scan history
-  _addScanHistory({
-    player:     card.player    || '',
-    year:       card.year      || '',
-    grader:     grader         || null,
-    grade:      card.grade     || null,
-    cardSet:    card.cardSet   || '',
-    parallel:   card.parallel  || '',
-    cardNumber: card.cardNum   || '',
-    certNumber: cert           || null,
-    itemType:   'card',
-    sport:      card.sport     || '',
-  });
-
-  // Fetch inline comp for the just-filled form
-  _acFetchComp();
 }
 
 // ── Sprint 2: Vision AI card identification ───────────────────────────────────
@@ -15188,6 +14862,11 @@ function switchSellerTab(tab) {
   // on Inventory — same style.display convention loginAsSeller() etc. use.
   const fabScan = document.getElementById('fabScanToSell');
   const fabAdd  = document.getElementById('fabAddCard');
+  // Select All / Check Comps act on the inventory table rows — meaningless
+  // on the Report tab, which has no rows to select. Hidden here (rather
+  // than relying on loginAsSeller()'s one-time show), restored on Inventory.
+  const selectAllBtn = document.getElementById('selectAllBtn');
+  const compCheckBtn = document.getElementById('compCheckBtn');
 
   if (tab === 'report') {
     rptBtn && rptBtn.classList.add('active');
@@ -15196,6 +14875,8 @@ function switchSellerTab(tab) {
     if (filterBar) filterBar.classList.remove('visible');
     if (fabScan) fabScan.style.display = 'none';
     if (fabAdd)  fabAdd.style.display  = 'none';
+    if (selectAllBtn) selectAllBtn.style.display = 'none';
+    if (compCheckBtn) compCheckBtn.style.display = 'none';
     populateReportShowSelector();
     updateReport();
   } else {
@@ -15204,6 +14885,8 @@ function switchSellerTab(tab) {
     if (rptPanel)  rptPanel.style.display  = 'none';
     if (fabScan) fabScan.style.display = '';
     if (fabAdd)  fabAdd.style.display  = '';
+    if (selectAllBtn) selectAllBtn.style.display = '';
+    if (compCheckBtn) compCheckBtn.style.display = '';
   }
 }
 
