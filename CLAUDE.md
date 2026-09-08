@@ -1092,6 +1092,12 @@ If `insertCardToDB()` times out inside `posInsertAndOpenDrawer()`'s `Promise.rac
   Architecture" above for full detail. The scanner is now vision-only (Claude vision via
   `vision-scan.js`) and needs no grading API at all. `psa-lookup.js` is untouched — still used
   by Bulk Scan's `bsVerifyGrader()` verify buttons, a separate feature.
+- **Export Inventory (session 2026-09-08)** — "⬇ Export Inventory" button in the seller's My
+  Inventory toolbar, downloads live (non-sold) inventory as CSV or Excel in the same canonical
+  column shape (`CS_FIELDS`) the CSV/XLSX importer already reads — round-trips back into
+  CardShow with zero mapping, and hand-maps easily into Shopify/TCGplayer/Ludex/Flipwise's own
+  import UIs. Fingerprint fields only, no comp-pricing data. See "Export Inventory" section
+  above for full detail.
 
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`
@@ -1939,6 +1945,65 @@ from the full fetch result instead.
 organizer-analytics function, `recordShowTransaction()`, `sdConfirm()`, RLS policies, Trade
 Zone's own Realtime usage (`trade-board.html`, `js/trade-zone.js` — untouched, just the
 established pattern this borrowed from).
+
+## Export Inventory (session 2026-09-08)
+
+Lets a seller download their own inventory as a spreadsheet — distinct from the Report tab's
+`exportReportCSV()`, which exports *sold* transactions, not live listings. This is for moving
+inventory into (or backing up from) another platform: Shopify, TCGplayer, Ludex, Flipwise, or
+any spreadsheet-based tool.
+
+### Entry point
+**"⬇ Export Inventory"** button in the seller's My Inventory toolbar (`#exportInventoryWrap`,
+right after `#compCheckBtn`) — seller-only, hidden on the Report tab, following the exact same
+show/hide wiring as `#selectAllBtn`/`#compCheckBtn` in `loginAsSeller()`/`loginAsAdmin()`/
+`signOut()`/`switchSellerTab()`. Clicking it opens a small dropdown (`#exportInventoryMenu`,
+reuses the `.tc-dropdown`/`.tc-dropdown-item` CSS from the Add Card guided picker) with two
+choices — **CSV (.csv)** and **Excel (.xlsx)** — closed on an outside click via a
+`document`-level listener (`toggleExportInventoryMenu()`/`closeExportInventoryMenu()`).
+
+### Column format — reuses the import spreadsheet's own shape
+`EXPORT_INVENTORY_HEADER` is `CS_FIELDS`' exact key order (`Seller, Card Title, Player, Year,
+Set, Number, Parallel/Variant, Grade, Grader, Cert #, Condition, Price, Status, Location, Image
+URL`) — the same canonical shape `openMapper()`/`applyMapping()` already read on import, and the
+shape `ALIAS_MAP`'s "CardShow native" tier auto-matches at `'high'` confidence with zero manual
+mapping. Two deliberate consequences of reusing that exact shape rather than inventing a new
+export-specific one: (1) re-importing an exported file back into CardShow round-trips perfectly
+with no mapping step, and (2) every column header is a generic, recognizable label ("Player",
+"Grade", "Price", …) that a seller can hand-map in Shopify's/TCGplayer's/Ludex's/Flipwise's own
+import UI — there's no realistic way to build one export shape that auto-matches all four
+platforms' own importers natively, so "reuse our own already-proven-portable canonical shape"
+was the practical target, not a bespoke per-platform format. **Fingerprint data only, by
+design** — `_exportInventoryRowValues(r)` reads straight off the card's identity/asking-price
+fields; none of comp-lookup's pricing fields (`compPrice`, `lowPrice`, `highPrice`,
+`matchedCard`, `source`, `recentSales`, etc.) are ever written, since those live only in
+ephemeral in-memory comp-check state and were never persisted to the card object to begin with.
+`Image URL` is always blank — this app doesn't persist card photos anywhere (see "Photo Scan &
+Card Fingerprinting" above) — but the column is still emitted so the shape matches the import
+template exactly, and other platforms' importers commonly expect that column to exist even when
+empty.
+
+### Row scoping
+`getExportInventoryCards()` — same checkbox-scoping convention as `getCompCheckCards()`:
+checked rows if any are checked, else the seller's whole inventory; **Sold cards are excluded
+even from an explicit checked selection**, since this export exists to seed another platform's
+*live* listings and a sold card has no business being re-listed there. (Sold history already has
+its own export — `exportReportCSV()` on the Report tab.)
+
+### CSV vs. Excel
+`exportInventoryCSV()` builds a quoted-CSV string by hand (same `"..."`-escaping convention as
+`exportReportCSV()`) and downloads it via a shared `_downloadBlob(blob, filename)` helper.
+`exportInventoryXLSX()` uses the same self-hosted SheetJS (`XLSX` global, already loaded via
+`/xlsx.full.min.js` for CSV/XLSX *import* — see "XLSX self-hosting" in Shipped below) rather than
+adding a second spreadsheet library: `XLSX.utils.aoa_to_sheet()` → `XLSX.utils.book_new()` +
+`book_append_sheet()` → `XLSX.write(wb, { bookType: 'xlsx', type: 'array' })` → the same
+`_downloadBlob()` path. Filename for both: `cardshow-inventory-{seller}-{date}.{csv|xlsx}`.
+
+### Does not change
+`exportReportCSV()`, `openMapper()`/`applyMapping()`/`CS_FIELDS`/`ALIAS_MAP` (read from, never
+modified), `getCompCheckCards()` (a separate, near-identical helper — not reused directly,
+since export and comp-check are conceptually distinct actions that happen to share the same
+checkbox-scoping shape), RLS policies, no new Supabase tables.
 
 ## Trade Zone
 
