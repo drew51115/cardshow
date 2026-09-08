@@ -255,7 +255,7 @@ Fonts: Bebas Neue (headlines), DM Sans (body), DM Mono (labels/badges), Barlow C
 21. **Seller-only sidebar visibility** — `#sellerUploadSection` (wraps the Upload Inventory drop zone + "+ Add Card" button) and `#sellerStatsRow` (the `.stats-row` stat chips) are hidden via `style.display='none'` in `loginAsAdmin()` and restored via `style.display=''` in both `loginAsSeller()` and `signOut()`. The admin sidebar shows only `#adminShowsPanel` (Quick Actions) and `#sellerQrPanel` is already correctly toggled via `.visible` class. This was a targeted display-toggle fix — the Shows dashboard, asc-header/asc-stats, and action bars in the main content area were not changed.
 22. **Seller tab bar vs admin tab bar** — `#sellerTabBar` (My Inventory / Report) is shown only for sellers; `#adminTabBar` (Shows / All Inventory) is shown only for admins. `adminTabReport` is permanently hidden from the admin tab bar — sellers use `switchSellerTab('report')` for their dedicated Report tab. `loginAsSeller()` shows `#sellerTabBar` and defaults to inventory tab; `loginAsAdmin()` and `signOut()` hide it.
 23. **Report show filter populates after DB load** — `populateReportShowSelector()` is called inside the `loadShowsFromDB().then()` callback in `loginAsSeller()` so the dropdown reflects the seller's authorized shows from Supabase, not just in-memory state at login time.
-24. **`initSidebarState()` must be called on login** — Defined in app.html; adds `sidebar-open` on desktop (>768px) and removes it on mobile. Called from both `loginAsSeller()` and `loginAsAdmin()`. Sidebar HTML starts without `sidebar-open` class; desktop CSS shows sidebar unconditionally so the class only matters on mobile.
+24. **`initSidebarState()` must be called on login** — Defined in app.html; adds `sidebar-open` on desktop (>768px) and removes it on mobile. Called from both `loginAsSeller()` and `loginAsAdmin()`. Sidebar HTML starts without `sidebar-open` class; desktop CSS shows sidebar unconditionally so the class only matters on mobile. **The mobile trigger for this class is `#sidebarToggle`, which lives in the sticky `<nav>` bar (session 2026-09-08), not inside `.seller-layout`** — see "Mobile sidebar toggle moved into nav" below for why.
 25. **Admin sidebar hidden on mobile** — `body.role-admin #mainSidebar { display: none !important }` in `≤599px` media query. Quick Actions (Create New Show, Back to Shows) are redundant with main content on mobile. Admin grid uses `grid-template-columns: 1fr` on mobile so main content fills full width.
 26. **FAB (`#fabAddCard`) is seller-only** — Shown via `style.display=''` in `loginAsSeller()`, hidden in `loginAsAdmin()` and `signOut()`. Only visible at `≤767px` via CSS. Black background + gold border + gold "+" text for maximum contrast against dark UI. A secondary stacked FAB for Bulk Scan was tried and then removed — all card-add actions on mobile (including Bulk Scan, via the shortcut link in `#ac_scan_row`) now live behind this single primary FAB → Add Card modal, rather than multiple competing entry points.
 27. **Comp search includes parallel** — `comp-lookup.js` search query: `[player, year, cardSet, parallel].filter(Boolean).join(' ')`. Cache fingerprint: `player|year|cardSet|cardNumber|parallel|grade|grader`. Both changes ensure autos/variants get correct prices instead of base card prices.
@@ -1098,6 +1098,15 @@ If `insertCardToDB()` times out inside `posInsertAndOpenDrawer()`'s `Promise.rac
   CardShow with zero mapping, and hand-maps easily into Shopify/TCGplayer/Ludex/Flipwise's own
   import UIs. Fingerprint fields only, no comp-pricing data. See "Export Inventory" section
   above for full detail.
+- **Mobile sidebar toggle moved into nav (session 2026-09-08)** — real seller feedback: the
+  seller sidebar (My Shows/stats/QR) appeared to "disappear" on an iOS home-screen-saved
+  ("Add to Home Screen") launch unless the phone was rotated to landscape. Not a rendering bug
+  — a working mobile toggle already existed, it was just a scroll-away accordion header easy to
+  miss with no browser chrome around it to cue a user toward hunting for controls. Moved
+  `#sidebarToggle` into the sticky `<nav>` bar as a persistent icon button; also fixed its
+  role-visibility to use the same proven JS `style.display` pattern every other role-gated nav
+  element uses, replacing a CSS rule keyed on a `body.role-admin` class that was never actually
+  applied anywhere in this codebase. See "Mobile sidebar toggle moved into nav" section above.
 
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`
@@ -2004,6 +2013,57 @@ adding a second spreadsheet library: `XLSX.utils.aoa_to_sheet()` → `XLSX.utils
 modified), `getCompCheckCards()` (a separate, near-identical helper — not reused directly,
 since export and comp-check are conceptually distinct actions that happen to share the same
 checkbox-scoping shape), RLS policies, no new Supabase tables.
+
+## Mobile sidebar toggle moved into nav (session 2026-09-08)
+
+Real seller feedback: saving the app to an iOS home screen ("Add to Home Screen," which opens
+in a standalone window with zero browser chrome) made the seller sidebar — My Shows, seller
+stats, QR panel — effectively disappear in portrait, only reappearing in landscape.
+
+### Root cause
+Not a rendering bug — `#mainSidebar` already had a working mobile toggle
+(`toggleSidebar()`/`initSidebarState()`), and the sidebar genuinely does show automatically via
+plain CSS at ≥600px width with no toggle needed (nothing hides it above that breakpoint — see
+the 600–899px and 900–1023px tablet media queries, which only adjust padding/sizing). Most
+modern iPhones' landscape width (852px on iPhone 14/15, for example) sits comfortably above
+600px, so rotating to landscape reveals the sidebar for free, with no JS involved. Portrait
+width never crosses that threshold, so the sidebar always collapses there — correctly, by
+design. The actual problem was **discoverability**: the toggle that opens it in portrait
+(previously `"☰ Tools & Stats"`) was a full-width, scroll-away accordion header sitting at the
+very top of `.seller-layout`'s content column — not pinned, and not styled like a menu button.
+On a real "app-like" iOS home-screen launch there's no browser chrome to teach a user "controls
+might be somewhere off-screen," so the expectation resets to native-app conventions: a
+persistent header hamburger icon. A plain-text accordion row that scrolls out of view the
+moment you touch the page doesn't read as that, so sellers simply never found it.
+
+### Fix
+`#sidebarToggle` moved from inside `#view-seller` → `.seller-layout` (only present while that
+view was active, and only ever visible above the fold) into `<nav>` itself, which is
+`position: sticky; top: 0` and therefore always on-screen regardless of scroll position. Same
+element `id`, same `onclick="toggleSidebar()"` — `toggleSidebar()`/`initSidebarState()` needed
+**zero changes**, since both already look the element up by ID rather than assuming a DOM
+location. Restyled from a full-width text bar (`"☰ Tools & Stats ▾"`, with a `::after`
+▾/▴ swap keyed on `.open`) to a small square icon button (`"☰"` only, 34×34px, rounded border) —
+`.sidebar-toggle.open` now just fills the button gold instead of swapping glyph content, a
+simpler and clearer "currently open" affordance for an icon-only button. Same mobile-only
+breakpoints as before (`display:flex` only at ≤599px, `display:none` desktop default) — this
+is a relocation and restyle, not a new breakpoint.
+
+**Role visibility switched from CSS to the same JS pattern every other role-gated nav element
+already uses** (`#compCheckBtn`, `#exportInventoryWrap`, `#fabAddCard`, etc.) —
+`sidebarToggleBtn.style.display = ''` in `loginAsSeller()`, `'none'` in `loginAsAdmin()`/
+`signOut()`. The old CSS-only approach (`body.role-admin .sidebar-toggle { display: none
+!important }`, inside the ≤479px and ≤599px media queries) relied on a `body.role-admin` class
+**that nothing in this codebase actually ever adds to `<body>`** — confirmed by grepping for
+`classList.add('role-admin')` and finding no match anywhere. That CSS rule was dead code before
+this change and is left in place (harmless, matches a class that's never applied) rather than
+touched — removing genuinely-dead CSS elsewhere in this same block was out of scope for this
+fix and not something to fix opportunistically without being asked.
+
+### Does not change
+`toggleSidebar()`, `initSidebarState()`, `#mainSidebar`'s own show/hide logic, the sidebar's
+content (My Shows / stats / QR panel), the 600–899px/900–1023px tablet breakpoints (already
+correct — sidebar shows unconditionally there), desktop behavior at all.
 
 ## Trade Zone
 

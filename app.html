@@ -840,7 +840,7 @@
   /* ── Small tablet portrait / large phone (sm) 480–599px ── */
   @media (max-width: 599px) and (min-width: 480px) {
     .seller-layout { grid-template-columns: 1fr; min-height: unset; }
-    .sidebar-toggle { display: block; }
+    .sidebar-toggle { display: flex; }
     .sidebar {
       display: none;
       border-right: none; border-bottom: 1px solid var(--border);
@@ -902,7 +902,7 @@
   /* ── Mobile (xs) < 480px ─────────────────────── */
   @media (max-width: 479px) {
     .seller-layout { grid-template-columns: 1fr; min-height: unset; }
-    .sidebar-toggle { display: block; }
+    .sidebar-toggle { display: flex; }
     .sidebar {
       display: none;
       border-right: none; border-bottom: 1px solid var(--border);
@@ -2152,32 +2152,32 @@
      SELLER / ADMIN — MOBILE RESPONSIVE
   ════════════════════════════════════ */
 
-  /* Sidebar toggle button — hidden on desktop */
+  /* Sidebar toggle — persistent hamburger icon in the sticky top nav, not
+     a scroll-away bar in the content column. It was previously an inline
+     accordion header sitting at the top of .seller-layout — easy to miss
+     entirely once scrolled past, and especially easy to miss in an iOS
+     "Add to Home Screen" standalone window, which has no browser chrome to
+     cue a user toward hunting for extra controls. Moved into <nav> (which
+     is position:sticky) so it's always visible and reads as a real app
+     menu button. Hidden on desktop — shown only ≤599px, see below. */
   .sidebar-toggle {
     display: none;
-    width: 100%;
+    width: 34px;
+    height: 34px;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
     background: var(--surface);
-    border: none;
-    border-bottom: 1px solid var(--border);
+    border: 1px solid var(--border);
+    border-radius: 8px;
     color: var(--text);
-    font-family: 'DM Sans', sans-serif;
-    font-weight: 600;
-    font-size: 0.85rem;
-    padding: 0.7rem 1rem;
-    text-align: left;
+    font-size: 1.1rem;
+    line-height: 1;
     cursor: pointer;
-    transition: background 0.15s;
-    letter-spacing: 0.02em;
+    transition: background 0.15s, border-color 0.15s;
   }
   .sidebar-toggle:hover { background: var(--card); }
-  .sidebar-toggle::after {
-    content: ' ▾';
-    float: right;
-    font-size: 0.75rem;
-    color: var(--muted);
-    transition: transform 0.2s;
-  }
-  .sidebar-toggle.open::after { content: ' ▴'; }
+  .sidebar-toggle.open { background: var(--accent); border-color: var(--accent); color: var(--black); }
 
   /* Buyer mobile — kept separately for buyer view */
   @media (max-width: 640px) {
@@ -4141,6 +4141,8 @@
 
 
 <nav>
+  <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()"
+    style="display:none" aria-label="Toggle menu" title="Menu">☰</button>
   <div class="logo">Card<span>Show</span></div>
   <div class="nav-tabs" id="navTabs">
     <button class="nav-tab active" id="navTabSeller" onclick="switchView('seller')">⬡ Seller</button>
@@ -4182,11 +4184,6 @@
 <!-- ═══════════════ SELLER VIEW ═══════════════ -->
 <div id="view-seller" class="view active">
   <div class="seller-layout">
-
-    <!-- Mobile sidebar toggle -->
-    <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()">
-      ☰ Tools &amp; Stats
-    </button>
 
     <aside class="sidebar sidebar-open" id="mainSidebar">
 
@@ -11156,6 +11153,8 @@ function loginAsSeller(handle) {
   if (compBtn) compBtn.style.display = '';
   const exportInvWrap = document.getElementById('exportInventoryWrap');
   if (exportInvWrap) exportInvWrap.style.display = '';
+  const sidebarToggleBtn = document.getElementById('sidebarToggle');
+  if (sidebarToggleBtn) sidebarToggleBtn.style.display = '';
   const fabAdd = document.getElementById('fabAddCard');
   if (fabAdd) fabAdd.style.display = '';
   const fabScan = document.getElementById('fabScanToSell');
@@ -11281,6 +11280,8 @@ function loginAsAdmin() {
   if (compBtnAdm) compBtnAdm.style.display = 'none';
   const exportInvWrapAdm = document.getElementById('exportInventoryWrap');
   if (exportInvWrapAdm) { exportInvWrapAdm.style.display = 'none'; closeExportInventoryMenu(); }
+  const sidebarToggleBtnAdm = document.getElementById('sidebarToggle');
+  if (sidebarToggleBtnAdm) sidebarToggleBtnAdm.style.display = 'none';
   const fabAddAdm = document.getElementById('fabAddCard');
   if (fabAddAdm) fabAddAdm.style.display = 'none';
   const fabScanAdm = document.getElementById('fabScanToSell');
@@ -11372,6 +11373,8 @@ async function signOut() {
   if (compBtnSO) compBtnSO.style.display = 'none';
   const exportInvWrapSO = document.getElementById('exportInventoryWrap');
   if (exportInvWrapSO) { exportInvWrapSO.style.display = 'none'; closeExportInventoryMenu(); }
+  const sidebarToggleBtnSO = document.getElementById('sidebarToggle');
+  if (sidebarToggleBtnSO) sidebarToggleBtnSO.style.display = 'none';
   const fabAddSO = document.getElementById('fabAddCard');
   if (fabAddSO) fabAddSO.style.display = 'none';
   const fabScanSO = document.getElementById('fabScanToSell');
