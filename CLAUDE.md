@@ -655,6 +655,34 @@ for the full reasoning; summary per source:
 - **`getCompCheckCards()`** — returns checked cards when any checkboxes are checked; falls back to all non-sold inventory when nothing is checked. The "💲 Check Comps" button calls this instead of always using all available cards.
 - Checkbox selection now serves three purposes: show inventory inclusion, bulk delete, and comp check scoping.
 
+### "Done" silently discarded staged prices (session 2026-09-08)
+Real seller bug report: staged a comp price via "✓ Use $X" (toast: `"Staged $X — hit 'Apply' to
+save"`), clicked **"Done,"** got a toast, but the price never changed on the inventory screen.
+Root cause: the modal footer has two separate buttons — **"Apply N price changes"**
+(`commitCompPrices()`, the only path that ever wrote `card.Price`/called `updateCardInDB()`) and
+**"Done"** (`closeCompResults()`, which only removed the `.open` class — no check for staged
+changes, no warning, no commit). A seller who staged a price and then clicked "Done" — reading
+"Staged" as "saved," which is a reasonable reading — had that change silently thrown away the
+moment the modal closed. The ✕ button and clicking outside the modal hit the same
+`closeCompResults()` path and had the identical silent-discard bug.
+
+Fixed by making `closeCompResults()` apply any staged changes before closing:
+```js
+function closeCompResults() {
+  if (_pendingCompChanges && _pendingCompChanges.size) {
+    commitCompPrices(); // applies staged changes, then closes the modal itself
+    return;
+  }
+  document.getElementById('compResultsOverlay').classList.remove('open');
+}
+```
+No recursion risk — `commitCompPrices()` resets `_pendingCompChanges = new Map()` *before* its
+own internal `closeCompResults()` call, so that inner call always sees size 0 and takes the
+plain-close branch. This one change fixes all three close paths (Done, ✕, click-outside) at
+once, since they all route through `closeCompResults()`. "Done" now matches what a seller
+actually means by it — "I picked my price, I'm done" — instead of requiring a second, easy-to-miss
+explicit "Apply" click that nothing in the UI strongly signals is mandatory.
+
 ### Cancelled Infrastructure (do not build)
 - `netlify/functions/sync-pricecharting.mjs` — cancelled; API-only approach used instead
 - `pricecharting_prices` Supabase table — not needed; only `price_cache` is used
@@ -1107,6 +1135,13 @@ If `insertCardToDB()` times out inside `posInsertAndOpenDrawer()`'s `Promise.rac
   role-visibility to use the same proven JS `style.display` pattern every other role-gated nav
   element uses, replacing a CSS rule keyed on a `body.role-admin` class that was never actually
   applied anywhere in this codebase. See "Mobile sidebar toggle moved into nav" section above.
+- **"Done" silently discarded staged comp prices (session 2026-09-08)** — real seller bug
+  report: staging a comp price via "✓ Use $X" then clicking "Done" showed a toast but never
+  actually changed the price. Root cause: "Done" only closed the modal (`closeCompResults()`)
+  — it never checked for or applied staged-but-uncommitted changes; only the separate "Apply N
+  price changes" button did. Fixed by making `closeCompResults()` apply any staged changes
+  before closing, so Done/✕/click-outside all now save staged prices instead of silently
+  discarding them. See "'Done' silently discarded staged prices" under Comp Pricing above.
 
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`

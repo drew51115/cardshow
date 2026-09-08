@@ -8191,6 +8191,18 @@ function showCompCheckSummary(results, rangePct) {
 }
 
 function closeCompResults() {
+  // "Done" (and the ✕ button, and clicking outside the modal) all route
+  // here. Previously this silently discarded any staged-but-unapplied
+  // price changes — a seller who tapped "Use $X" (which only stages, per
+  // the toast "Staged $X — hit 'Apply' to save") then hit "Done" without
+  // noticing the separate "Apply N price changes" button lost their price
+  // change with no warning. "Done" now applies any staged changes first —
+  // matching what a seller actually means by "I picked my price, I'm
+  // done" — rather than requiring the extra explicit Apply click.
+  if (_pendingCompChanges && _pendingCompChanges.size) {
+    commitCompPrices(); // applies staged changes, then closes the modal itself
+    return;
+  }
   document.getElementById('compResultsOverlay').classList.remove('open');
 }
 
