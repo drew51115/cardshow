@@ -840,7 +840,7 @@
   /* ── Small tablet portrait / large phone (sm) 480–599px ── */
   @media (max-width: 599px) and (min-width: 480px) {
     .seller-layout { grid-template-columns: 1fr; min-height: unset; }
-    .sidebar-toggle { display: block; }
+    .sidebar-toggle { display: flex; }
     .sidebar {
       display: none;
       border-right: none; border-bottom: 1px solid var(--border);
@@ -902,7 +902,7 @@
   /* ── Mobile (xs) < 480px ─────────────────────── */
   @media (max-width: 479px) {
     .seller-layout { grid-template-columns: 1fr; min-height: unset; }
-    .sidebar-toggle { display: block; }
+    .sidebar-toggle { display: flex; }
     .sidebar {
       display: none;
       border-right: none; border-bottom: 1px solid var(--border);
@@ -2152,32 +2152,31 @@
      SELLER / ADMIN — MOBILE RESPONSIVE
   ════════════════════════════════════ */
 
-  /* Sidebar toggle button — hidden on desktop */
+  /* Sidebar toggle — persistent hamburger icon in the sticky top nav, not
+     a scroll-away bar in the content column. It was previously an inline
+     accordion header sitting at the top of .seller-layout — easy to miss
+     entirely once scrolled past, and especially easy to miss in an iOS
+     "Add to Home Screen" standalone window, which has no browser chrome to
+     cue a user toward hunting for extra controls. Moved into <nav> (which
+     is position:sticky) so it's always visible and reads as a real app
+     menu button. Hidden on desktop — shown only ≤599px, see below. */
   .sidebar-toggle {
-    display: none;
-    width: 100%;
+    width: 34px;
+    height: 34px;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
     background: var(--surface);
-    border: none;
-    border-bottom: 1px solid var(--border);
+    border: 1px solid var(--border);
+    border-radius: 8px;
     color: var(--text);
-    font-family: 'DM Sans', sans-serif;
-    font-weight: 600;
-    font-size: 0.85rem;
-    padding: 0.7rem 1rem;
-    text-align: left;
+    font-size: 1.1rem;
+    line-height: 1;
     cursor: pointer;
-    transition: background 0.15s;
-    letter-spacing: 0.02em;
+    transition: background 0.15s, border-color 0.15s;
   }
   .sidebar-toggle:hover { background: var(--card); }
-  .sidebar-toggle::after {
-    content: ' ▾';
-    float: right;
-    font-size: 0.75rem;
-    color: var(--muted);
-    transition: transform 0.2s;
-  }
-  .sidebar-toggle.open::after { content: ' ▴'; }
+  .sidebar-toggle.open { background: var(--accent); border-color: var(--accent); color: var(--black); }
 
   /* Buyer mobile — kept separately for buyer view */
   @media (max-width: 640px) {
@@ -4141,6 +4140,8 @@
 
 
 <nav>
+  <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()"
+    style="display:none" aria-label="Toggle menu" title="Menu">☰</button>
   <div class="logo">Card<span>Show</span></div>
   <div class="nav-tabs" id="navTabs">
     <button class="nav-tab active" id="navTabSeller" onclick="switchView('seller')">⬡ Seller</button>
@@ -4182,11 +4183,6 @@
 <!-- ═══════════════ SELLER VIEW ═══════════════ -->
 <div id="view-seller" class="view active">
   <div class="seller-layout">
-
-    <!-- Mobile sidebar toggle -->
-    <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()">
-      ☰ Tools &amp; Stats
-    </button>
 
     <aside class="sidebar sidebar-open" id="mainSidebar">
 
@@ -4554,6 +4550,13 @@
           <input type="text" class="search-input" id="sellerSearchInput" placeholder="Search cards…" oninput="applyInventoryFilters()">
           <button class="btn btn-ghost" id="selectAllBtn" onclick="selectAll()" style="display:none">Select All</button>
           <button class="btn btn-ghost" id="compCheckBtn" onclick="runCompCheck(getCompCheckCards())" style="display:none;font-size:0.8rem" title="Look up market prices for selected cards (or all available if none selected)">💲 Check Comps</button>
+          <div style="position:relative;display:none" id="exportInventoryWrap">
+            <button class="btn btn-ghost" id="exportInventoryBtn" style="font-size:0.8rem" onclick="toggleExportInventoryMenu(event)" title="Export your inventory for Shopify, TCGplayer, Ludex, Flipwise, and other platforms">⬇ Export Inventory</button>
+            <div id="exportInventoryMenu" class="tc-dropdown" style="display:none;width:200px">
+              <div class="tc-dropdown-item" onclick="exportInventoryCSV()">⬇ CSV (.csv)</div>
+              <div class="tc-dropdown-item" onclick="exportInventoryXLSX()">⬇ Excel (.xlsx)</div>
+            </div>
+          </div>
           <button class="btn-bulk-delete" id="bulkDeleteBtn" onclick="confirmBulkDelete()">🗑 Delete Selected</button>
           <button class="btn btn-ghost" id="backToShowsBtn" style="display:none;font-size:0.8rem" onclick="switchAdminTab('shows')">← Shows</button>
         </div>
@@ -8187,6 +8190,18 @@ function showCompCheckSummary(results, rangePct) {
 }
 
 function closeCompResults() {
+  // "Done" (and the ✕ button, and clicking outside the modal) all route
+  // here. Previously this silently discarded any staged-but-unapplied
+  // price changes — a seller who tapped "Use $X" (which only stages, per
+  // the toast "Staged $X — hit 'Apply' to save") then hit "Done" without
+  // noticing the separate "Apply N price changes" button lost their price
+  // change with no warning. "Done" now applies any staged changes first —
+  // matching what a seller actually means by "I picked my price, I'm
+  // done" — rather than requiring the extra explicit Apply click.
+  if (_pendingCompChanges && _pendingCompChanges.size) {
+    commitCompPrices(); // applies staged changes, then closes the modal itself
+    return;
+  }
   document.getElementById('compResultsOverlay').classList.remove('open');
 }
 
@@ -11147,6 +11162,10 @@ function loginAsSeller(handle) {
   document.getElementById('sellerStatsRow').style.display        = '';
   const compBtn = document.getElementById('compCheckBtn');
   if (compBtn) compBtn.style.display = '';
+  const exportInvWrap = document.getElementById('exportInventoryWrap');
+  if (exportInvWrap) exportInvWrap.style.display = '';
+  const sidebarToggleBtn = document.getElementById('sidebarToggle');
+  if (sidebarToggleBtn) sidebarToggleBtn.style.display = '';
   const fabAdd = document.getElementById('fabAddCard');
   if (fabAdd) fabAdd.style.display = '';
   const fabScan = document.getElementById('fabScanToSell');
@@ -11270,6 +11289,10 @@ function loginAsAdmin() {
   document.getElementById('sellerStatsRow').style.display       = 'none';
   const compBtnAdm = document.getElementById('compCheckBtn');
   if (compBtnAdm) compBtnAdm.style.display = 'none';
+  const exportInvWrapAdm = document.getElementById('exportInventoryWrap');
+  if (exportInvWrapAdm) { exportInvWrapAdm.style.display = 'none'; closeExportInventoryMenu(); }
+  const sidebarToggleBtnAdm = document.getElementById('sidebarToggle');
+  if (sidebarToggleBtnAdm) sidebarToggleBtnAdm.style.display = 'none';
   const fabAddAdm = document.getElementById('fabAddCard');
   if (fabAddAdm) fabAddAdm.style.display = 'none';
   const fabScanAdm = document.getElementById('fabScanToSell');
@@ -11359,6 +11382,10 @@ async function signOut() {
   document.getElementById('sellerStatsRow').style.display       = '';
   const compBtnSO = document.getElementById('compCheckBtn');
   if (compBtnSO) compBtnSO.style.display = 'none';
+  const exportInvWrapSO = document.getElementById('exportInventoryWrap');
+  if (exportInvWrapSO) { exportInvWrapSO.style.display = 'none'; closeExportInventoryMenu(); }
+  const sidebarToggleBtnSO = document.getElementById('sidebarToggle');
+  if (sidebarToggleBtnSO) sidebarToggleBtnSO.style.display = 'none';
   const fabAddSO = document.getElementById('fabAddCard');
   if (fabAddSO) fabAddSO.style.display = 'none';
   const fabScanSO = document.getElementById('fabScanToSell');
@@ -14865,8 +14892,9 @@ function switchSellerTab(tab) {
   // Select All / Check Comps act on the inventory table rows — meaningless
   // on the Report tab, which has no rows to select. Hidden here (rather
   // than relying on loginAsSeller()'s one-time show), restored on Inventory.
-  const selectAllBtn = document.getElementById('selectAllBtn');
-  const compCheckBtn = document.getElementById('compCheckBtn');
+  const selectAllBtn  = document.getElementById('selectAllBtn');
+  const compCheckBtn  = document.getElementById('compCheckBtn');
+  const exportInvWrap = document.getElementById('exportInventoryWrap');
 
   if (tab === 'report') {
     rptBtn && rptBtn.classList.add('active');
@@ -14877,6 +14905,7 @@ function switchSellerTab(tab) {
     if (fabAdd)  fabAdd.style.display  = 'none';
     if (selectAllBtn) selectAllBtn.style.display = 'none';
     if (compCheckBtn) compCheckBtn.style.display = 'none';
+    if (exportInvWrap) { exportInvWrap.style.display = 'none'; closeExportInventoryMenu(); }
     populateReportShowSelector();
     updateReport();
   } else {
@@ -14887,6 +14916,7 @@ function switchSellerTab(tab) {
     if (fabAdd)  fabAdd.style.display  = '';
     if (selectAllBtn) selectAllBtn.style.display = '';
     if (compCheckBtn) compCheckBtn.style.display = '';
+    if (exportInvWrap) exportInvWrap.style.display = '';
   }
 }
 
@@ -16507,6 +16537,117 @@ function getCompCheckCards() {
       .filter(c => c && c.Status !== 'Sold');
   }
   return getSellerInventory().filter(c => c.Status !== 'Sold');
+}
+
+// ── Export Inventory (Shopify / TCGplayer / Ludex / Flipwise compatible) ──
+// Same checkbox-scoping convention as getCompCheckCards() — checked rows if
+// any are checked, else the seller's whole non-sold inventory. Sold cards
+// are excluded even from an explicit selection: this export is meant to
+// seed another platform's *live* listings, and a sold card has no business
+// being re-listed there.
+function getExportInventoryCards() {
+  const checked = document.querySelectorAll('.card-check:checked');
+  if (checked.length > 0) {
+    return [...checked]
+      .map(cb => inventory[parseInt(cb.dataset.idx)])
+      .filter(c => c && c.Status !== 'Sold');
+  }
+  return getSellerInventory().filter(c => c.Status !== 'Sold');
+}
+
+// Column order matches CS_FIELDS exactly — the same canonical shape the CSV/
+// XLSX importer (openMapper/applyMapping) reads, and the shape ALIAS_MAP's
+// "CardShow native" tier auto-matches at 'high' confidence with zero manual
+// mapping. Re-importing this file into CardShow round-trips perfectly, and
+// every field name here is generic enough to hand-map in Shopify's/
+// TCGplayer's/Ludex's/Flipwise's own import UI. Deliberately fingerprint
+// fields only (identity + asking price) — no comp/market-pricing data
+// (compPrice, matchedCard, source, recentSales, etc.) is ever included.
+const EXPORT_INVENTORY_HEADER = [
+  'Seller', 'Card Title', 'Player', 'Year', 'Set', 'Number',
+  'Parallel/Variant', 'Grade', 'Grader', 'Cert #', 'Condition',
+  'Price', 'Status', 'Location', 'Image URL',
+];
+
+function _exportInventoryRowValues(r) {
+  return [
+    r.Seller || currentSeller || '',
+    r['Card Title'] || '',
+    r.Player || '',
+    r.Year || '',
+    getSet(r),
+    r.Number || '',
+    r['Parallel/Variant'] || '',
+    r.Grade != null ? r.Grade : '',
+    r.Grader || '',
+    r['Cert #'] || '',
+    r.Condition || '',
+    r.Price != null && r.Price !== '' ? Number(r.Price).toFixed(2) : '',
+    r.Status || 'Available',
+    r.Location || '',
+    '', // Image URL — this app doesn't persist card photos anywhere; left blank
+  ];
+}
+
+function _exportInventoryFilename(ext) {
+  const seller = (currentSeller || 'inventory').replace(/[^a-z0-9]/gi, '-').toLowerCase();
+  const date   = new Date().toISOString().slice(0, 10);
+  return `cardshow-inventory-${seller}-${date}.${ext}`;
+}
+
+function _downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a   = document.createElement('a');
+  a.href = url; a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function toggleExportInventoryMenu(e) {
+  if (e) e.stopPropagation();
+  const menu = document.getElementById('exportInventoryMenu');
+  if (!menu) return;
+  const opening = menu.style.display === 'none';
+  menu.style.display = opening ? 'block' : 'none';
+}
+
+function closeExportInventoryMenu() {
+  const menu = document.getElementById('exportInventoryMenu');
+  if (menu) menu.style.display = 'none';
+}
+
+document.addEventListener('click', (e) => {
+  const wrap = document.getElementById('exportInventoryWrap');
+  if (wrap && !wrap.contains(e.target)) closeExportInventoryMenu();
+});
+
+function exportInventoryCSV() {
+  const cards = getExportInventoryCards();
+  if (!cards.length) { showToast('No cards to export', 'var(--danger)'); closeExportInventoryMenu(); return; }
+  const rows = cards.map(r =>
+    _exportInventoryRowValues(r).map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')
+  );
+  const csv  = [EXPORT_INVENTORY_HEADER.join(','), ...rows].join('\n');
+  _downloadBlob(new Blob([csv], { type: 'text/csv' }), _exportInventoryFilename('csv'));
+  showToast(`✓ ${cards.length} card${cards.length !== 1 ? 's' : ''} exported`);
+  closeExportInventoryMenu();
+}
+
+function exportInventoryXLSX() {
+  const cards = getExportInventoryCards();
+  if (!cards.length) { showToast('No cards to export', 'var(--danger)'); closeExportInventoryMenu(); return; }
+  if (typeof XLSX === 'undefined') { showToast('Excel export unavailable — try CSV instead', 'var(--danger)'); closeExportInventoryMenu(); return; }
+  const aoa = [EXPORT_INVENTORY_HEADER, ...cards.map(_exportInventoryRowValues)];
+  const ws  = XLSX.utils.aoa_to_sheet(aoa);
+  const wb  = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Inventory');
+  const arrayBuf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  _downloadBlob(
+    new Blob([arrayBuf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+    _exportInventoryFilename('xlsx')
+  );
+  showToast(`✓ ${cards.length} card${cards.length !== 1 ? 's' : ''} exported`);
+  closeExportInventoryMenu();
 }
 
 function cemToggle() {

@@ -255,7 +255,7 @@ Fonts: Bebas Neue (headlines), DM Sans (body), DM Mono (labels/badges), Barlow C
 21. **Seller-only sidebar visibility** — `#sellerUploadSection` (wraps the Upload Inventory drop zone + "+ Add Card" button) and `#sellerStatsRow` (the `.stats-row` stat chips) are hidden via `style.display='none'` in `loginAsAdmin()` and restored via `style.display=''` in both `loginAsSeller()` and `signOut()`. The admin sidebar shows only `#adminShowsPanel` (Quick Actions) and `#sellerQrPanel` is already correctly toggled via `.visible` class. This was a targeted display-toggle fix — the Shows dashboard, asc-header/asc-stats, and action bars in the main content area were not changed.
 22. **Seller tab bar vs admin tab bar** — `#sellerTabBar` (My Inventory / Report) is shown only for sellers; `#adminTabBar` (Shows / All Inventory) is shown only for admins. `adminTabReport` is permanently hidden from the admin tab bar — sellers use `switchSellerTab('report')` for their dedicated Report tab. `loginAsSeller()` shows `#sellerTabBar` and defaults to inventory tab; `loginAsAdmin()` and `signOut()` hide it.
 23. **Report show filter populates after DB load** — `populateReportShowSelector()` is called inside the `loadShowsFromDB().then()` callback in `loginAsSeller()` so the dropdown reflects the seller's authorized shows from Supabase, not just in-memory state at login time.
-24. **`initSidebarState()` must be called on login** — Defined in app.html; adds `sidebar-open` on desktop (>768px) and removes it on mobile. Called from both `loginAsSeller()` and `loginAsAdmin()`. Sidebar HTML starts without `sidebar-open` class; desktop CSS shows sidebar unconditionally so the class only matters on mobile.
+24. **`initSidebarState()` must be called on login** — Defined in app.html; adds `sidebar-open` on desktop (>768px) and removes it on mobile. Called from both `loginAsSeller()` and `loginAsAdmin()`. Sidebar HTML starts without `sidebar-open` class; desktop CSS shows sidebar unconditionally so the class only matters on mobile. **The mobile trigger for this class is `#sidebarToggle`, which lives in the sticky `<nav>` bar (session 2026-09-08), not inside `.seller-layout`** — see "Mobile sidebar toggle moved into nav" below for why.
 25. **Admin sidebar hidden on mobile** — `body.role-admin #mainSidebar { display: none !important }` in `≤599px` media query. Quick Actions (Create New Show, Back to Shows) are redundant with main content on mobile. Admin grid uses `grid-template-columns: 1fr` on mobile so main content fills full width.
 26. **FAB (`#fabAddCard`) is seller-only** — Shown via `style.display=''` in `loginAsSeller()`, hidden in `loginAsAdmin()` and `signOut()`. Only visible at `≤767px` via CSS. Black background + gold border + gold "+" text for maximum contrast against dark UI. A secondary stacked FAB for Bulk Scan was tried and then removed — all card-add actions on mobile (including Bulk Scan, via the shortcut link in `#ac_scan_row`) now live behind this single primary FAB → Add Card modal, rather than multiple competing entry points.
 27. **Comp search includes parallel** — `comp-lookup.js` search query: `[player, year, cardSet, parallel].filter(Boolean).join(' ')`. Cache fingerprint: `player|year|cardSet|cardNumber|parallel|grade|grader`. Both changes ensure autos/variants get correct prices instead of base card prices.
@@ -654,6 +654,34 @@ for the full reasoning; summary per source:
 ### Comp Check — Selection Scoping
 - **`getCompCheckCards()`** — returns checked cards when any checkboxes are checked; falls back to all non-sold inventory when nothing is checked. The "💲 Check Comps" button calls this instead of always using all available cards.
 - Checkbox selection now serves three purposes: show inventory inclusion, bulk delete, and comp check scoping.
+
+### "Done" silently discarded staged prices (session 2026-09-08)
+Real seller bug report: staged a comp price via "✓ Use $X" (toast: `"Staged $X — hit 'Apply' to
+save"`), clicked **"Done,"** got a toast, but the price never changed on the inventory screen.
+Root cause: the modal footer has two separate buttons — **"Apply N price changes"**
+(`commitCompPrices()`, the only path that ever wrote `card.Price`/called `updateCardInDB()`) and
+**"Done"** (`closeCompResults()`, which only removed the `.open` class — no check for staged
+changes, no warning, no commit). A seller who staged a price and then clicked "Done" — reading
+"Staged" as "saved," which is a reasonable reading — had that change silently thrown away the
+moment the modal closed. The ✕ button and clicking outside the modal hit the same
+`closeCompResults()` path and had the identical silent-discard bug.
+
+Fixed by making `closeCompResults()` apply any staged changes before closing:
+```js
+function closeCompResults() {
+  if (_pendingCompChanges && _pendingCompChanges.size) {
+    commitCompPrices(); // applies staged changes, then closes the modal itself
+    return;
+  }
+  document.getElementById('compResultsOverlay').classList.remove('open');
+}
+```
+No recursion risk — `commitCompPrices()` resets `_pendingCompChanges = new Map()` *before* its
+own internal `closeCompResults()` call, so that inner call always sees size 0 and takes the
+plain-close branch. This one change fixes all three close paths (Done, ✕, click-outside) at
+once, since they all route through `closeCompResults()`. "Done" now matches what a seller
+actually means by it — "I picked my price, I'm done" — instead of requiring a second, easy-to-miss
+explicit "Apply" click that nothing in the UI strongly signals is mandatory.
 
 ### Cancelled Infrastructure (do not build)
 - `netlify/functions/sync-pricecharting.mjs` — cancelled; API-only approach used instead
@@ -1092,6 +1120,28 @@ If `insertCardToDB()` times out inside `posInsertAndOpenDrawer()`'s `Promise.rac
   Architecture" above for full detail. The scanner is now vision-only (Claude vision via
   `vision-scan.js`) and needs no grading API at all. `psa-lookup.js` is untouched — still used
   by Bulk Scan's `bsVerifyGrader()` verify buttons, a separate feature.
+- **Export Inventory (session 2026-09-08)** — "⬇ Export Inventory" button in the seller's My
+  Inventory toolbar, downloads live (non-sold) inventory as CSV or Excel in the same canonical
+  column shape (`CS_FIELDS`) the CSV/XLSX importer already reads — round-trips back into
+  CardShow with zero mapping, and hand-maps easily into Shopify/TCGplayer/Ludex/Flipwise's own
+  import UIs. Fingerprint fields only, no comp-pricing data. See "Export Inventory" section
+  above for full detail.
+- **Mobile sidebar toggle moved into nav (session 2026-09-08)** — real seller feedback: the
+  seller sidebar (My Shows/stats/QR) appeared to "disappear" on an iOS home-screen-saved
+  ("Add to Home Screen") launch unless the phone was rotated to landscape. Not a rendering bug
+  — a working mobile toggle already existed, it was just a scroll-away accordion header easy to
+  miss with no browser chrome around it to cue a user toward hunting for controls. Moved
+  `#sidebarToggle` into the sticky `<nav>` bar as a persistent icon button; also fixed its
+  role-visibility to use the same proven JS `style.display` pattern every other role-gated nav
+  element uses, replacing a CSS rule keyed on a `body.role-admin` class that was never actually
+  applied anywhere in this codebase. See "Mobile sidebar toggle moved into nav" section above.
+- **"Done" silently discarded staged comp prices (session 2026-09-08)** — real seller bug
+  report: staging a comp price via "✓ Use $X" then clicking "Done" showed a toast but never
+  actually changed the price. Root cause: "Done" only closed the modal (`closeCompResults()`)
+  — it never checked for or applied staged-but-uncommitted changes; only the separate "Apply N
+  price changes" button did. Fixed by making `closeCompResults()` apply any staged changes
+  before closing, so Done/✕/click-outside all now save staged prices instead of silently
+  discarding them. See "'Done' silently discarded staged prices" under Comp Pricing above.
 
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`
@@ -1939,6 +1989,140 @@ from the full fetch result instead.
 organizer-analytics function, `recordShowTransaction()`, `sdConfirm()`, RLS policies, Trade
 Zone's own Realtime usage (`trade-board.html`, `js/trade-zone.js` — untouched, just the
 established pattern this borrowed from).
+
+## Export Inventory (session 2026-09-08)
+
+Lets a seller download their own inventory as a spreadsheet — distinct from the Report tab's
+`exportReportCSV()`, which exports *sold* transactions, not live listings. This is for moving
+inventory into (or backing up from) another platform: Shopify, TCGplayer, Ludex, Flipwise, or
+any spreadsheet-based tool.
+
+### Entry point
+**"⬇ Export Inventory"** button in the seller's My Inventory toolbar (`#exportInventoryWrap`,
+right after `#compCheckBtn`) — seller-only, hidden on the Report tab, following the exact same
+show/hide wiring as `#selectAllBtn`/`#compCheckBtn` in `loginAsSeller()`/`loginAsAdmin()`/
+`signOut()`/`switchSellerTab()`. Clicking it opens a small dropdown (`#exportInventoryMenu`,
+reuses the `.tc-dropdown`/`.tc-dropdown-item` CSS from the Add Card guided picker) with two
+choices — **CSV (.csv)** and **Excel (.xlsx)** — closed on an outside click via a
+`document`-level listener (`toggleExportInventoryMenu()`/`closeExportInventoryMenu()`).
+
+### Column format — reuses the import spreadsheet's own shape
+`EXPORT_INVENTORY_HEADER` is `CS_FIELDS`' exact key order (`Seller, Card Title, Player, Year,
+Set, Number, Parallel/Variant, Grade, Grader, Cert #, Condition, Price, Status, Location, Image
+URL`) — the same canonical shape `openMapper()`/`applyMapping()` already read on import, and the
+shape `ALIAS_MAP`'s "CardShow native" tier auto-matches at `'high'` confidence with zero manual
+mapping. Two deliberate consequences of reusing that exact shape rather than inventing a new
+export-specific one: (1) re-importing an exported file back into CardShow round-trips perfectly
+with no mapping step, and (2) every column header is a generic, recognizable label ("Player",
+"Grade", "Price", …) that a seller can hand-map in Shopify's/TCGplayer's/Ludex's/Flipwise's own
+import UI — there's no realistic way to build one export shape that auto-matches all four
+platforms' own importers natively, so "reuse our own already-proven-portable canonical shape"
+was the practical target, not a bespoke per-platform format. **Fingerprint data only, by
+design** — `_exportInventoryRowValues(r)` reads straight off the card's identity/asking-price
+fields; none of comp-lookup's pricing fields (`compPrice`, `lowPrice`, `highPrice`,
+`matchedCard`, `source`, `recentSales`, etc.) are ever written, since those live only in
+ephemeral in-memory comp-check state and were never persisted to the card object to begin with.
+`Image URL` is always blank — this app doesn't persist card photos anywhere (see "Photo Scan &
+Card Fingerprinting" above) — but the column is still emitted so the shape matches the import
+template exactly, and other platforms' importers commonly expect that column to exist even when
+empty.
+
+### Row scoping
+`getExportInventoryCards()` — same checkbox-scoping convention as `getCompCheckCards()`:
+checked rows if any are checked, else the seller's whole inventory; **Sold cards are excluded
+even from an explicit checked selection**, since this export exists to seed another platform's
+*live* listings and a sold card has no business being re-listed there. (Sold history already has
+its own export — `exportReportCSV()` on the Report tab.)
+
+### CSV vs. Excel
+`exportInventoryCSV()` builds a quoted-CSV string by hand (same `"..."`-escaping convention as
+`exportReportCSV()`) and downloads it via a shared `_downloadBlob(blob, filename)` helper.
+`exportInventoryXLSX()` uses the same self-hosted SheetJS (`XLSX` global, already loaded via
+`/xlsx.full.min.js` for CSV/XLSX *import* — see "XLSX self-hosting" in Shipped below) rather than
+adding a second spreadsheet library: `XLSX.utils.aoa_to_sheet()` → `XLSX.utils.book_new()` +
+`book_append_sheet()` → `XLSX.write(wb, { bookType: 'xlsx', type: 'array' })` → the same
+`_downloadBlob()` path. Filename for both: `cardshow-inventory-{seller}-{date}.{csv|xlsx}`.
+
+### Does not change
+`exportReportCSV()`, `openMapper()`/`applyMapping()`/`CS_FIELDS`/`ALIAS_MAP` (read from, never
+modified), `getCompCheckCards()` (a separate, near-identical helper — not reused directly,
+since export and comp-check are conceptually distinct actions that happen to share the same
+checkbox-scoping shape), RLS policies, no new Supabase tables.
+
+## Mobile sidebar toggle moved into nav (session 2026-09-08)
+
+Real seller feedback: saving the app to an iOS home screen ("Add to Home Screen," which opens
+in a standalone window with zero browser chrome) made the seller sidebar — My Shows, seller
+stats, QR panel — effectively disappear in portrait, only reappearing in landscape.
+
+### Root cause
+Not a rendering bug — `#mainSidebar` already had a working mobile toggle
+(`toggleSidebar()`/`initSidebarState()`), and the sidebar genuinely does show automatically via
+plain CSS at ≥600px width with no toggle needed (nothing hides it above that breakpoint — see
+the 600–899px and 900–1023px tablet media queries, which only adjust padding/sizing). Most
+modern iPhones' landscape width (852px on iPhone 14/15, for example) sits comfortably above
+600px, so rotating to landscape reveals the sidebar for free, with no JS involved. Portrait
+width never crosses that threshold, so the sidebar always collapses there — correctly, by
+design. The actual problem was **discoverability**: the toggle that opens it in portrait
+(previously `"☰ Tools & Stats"`) was a full-width, scroll-away accordion header sitting at the
+very top of `.seller-layout`'s content column — not pinned, and not styled like a menu button.
+On a real "app-like" iOS home-screen launch there's no browser chrome to teach a user "controls
+might be somewhere off-screen," so the expectation resets to native-app conventions: a
+persistent header hamburger icon. A plain-text accordion row that scrolls out of view the
+moment you touch the page doesn't read as that, so sellers simply never found it.
+
+### Fix
+`#sidebarToggle` moved from inside `#view-seller` → `.seller-layout` (only present while that
+view was active, and only ever visible above the fold) into `<nav>` itself, which is
+`position: sticky; top: 0` and therefore always on-screen regardless of scroll position. Same
+element `id`, same `onclick="toggleSidebar()"` — `toggleSidebar()`/`initSidebarState()` needed
+**zero changes**, since both already look the element up by ID rather than assuming a DOM
+location. Restyled from a full-width text bar (`"☰ Tools & Stats ▾"`, with a `::after`
+▾/▴ swap keyed on `.open`) to a small square icon button (`"☰"` only, 34×34px, rounded border) —
+`.sidebar-toggle.open` now just fills the button gold instead of swapping glyph content, a
+simpler and clearer "currently open" affordance for an icon-only button. Same mobile-only
+breakpoints as before (`display:flex` only at ≤599px, `display:none` desktop default) — this
+is a relocation and restyle, not a new breakpoint.
+
+**Role visibility switched from CSS to the same JS pattern every other role-gated nav element
+already uses** (`#compCheckBtn`, `#exportInventoryWrap`, `#fabAddCard`, etc.) —
+`sidebarToggleBtn.style.display = ''` in `loginAsSeller()`, `'none'` in `loginAsAdmin()`/
+`signOut()`. The old CSS-only approach (`body.role-admin .sidebar-toggle { display: none
+!important }`, inside the ≤479px and ≤599px media queries) relied on a `body.role-admin` class
+**that nothing in this codebase actually ever adds to `<body>`** — confirmed by grepping for
+`classList.add('role-admin')` and finding no match anywhere. That CSS rule was dead code before
+this change and is left in place (harmless, matches a class that's never applied) rather than
+touched — removing genuinely-dead CSS elsewhere in this same block was out of scope for this
+fix and not something to fix opportunistically without being asked.
+
+### Follow-up fix: cascade regression made the toggle invisible on every viewport (same session)
+The restyle above landed with a real bug that made the whole fix a no-op: the new icon-button
+rule block (`width: 34px; height: 34px; ...`) also redeclared `display: none;` as its own base
+property. That declaration has no media query, and it sits **after** both mobile
+`.sidebar-toggle { display: flex; }` overrides in the file — so by plain CSS cascade (equal
+specificity, later source wins), it silently overrode both mobile breakpoints unconditionally,
+regardless of viewport width, login state, or the inline-style JS gating above. The seller who
+reported the original issue re-tested against a real deploy preview and still saw no hamburger
+icon at all; multiple rounds of ruling out deploy staleness and browser caching (confirmed via
+direct `curl` against the preview URL's served bytes, and confirmed cache headers were
+`must-revalidate`) turned up nothing, because the served code was correct — the bug was a
+genuine CSS defect present in that exact code from the first push. Found by loading the page in
+a headless browser at a mobile viewport and diffing computed `display` before/after manually
+clearing the inline style: it stayed `none` either way, then enumerating every CSS rule
+matching the element (via `document.styleSheets`) surfaced the duplicate unconditional
+`display: none`. **Fixed by deleting the redundant declaration** — the class's hidden-by-default
+state was already correctly established by the original, correctly-positioned base rule earlier
+in the file (see "Root cause" above); the new block never needed to redeclare it. Verified via
+the same headless-browser check that computed `display` now resolves to `flex` at ≤599px once
+the inline style is cleared. **Lesson for future CSS edits to this class**: any rule affecting
+`.sidebar-toggle`'s `display` property must stay before the two mobile media-query overrides in
+source order, or be scoped inside a media query itself — an unconditional rule added after them,
+for any reason, silently wins the cascade at all viewports.
+
+### Does not change
+`toggleSidebar()`, `initSidebarState()`, `#mainSidebar`'s own show/hide logic, the sidebar's
+content (My Shows / stats / QR panel), the 600–899px/900–1023px tablet breakpoints (already
+correct — sidebar shows unconditionally there), desktop behavior at all.
 
 ## Trade Zone
 
