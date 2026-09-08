@@ -2095,6 +2095,30 @@ this change and is left in place (harmless, matches a class that's never applied
 touched — removing genuinely-dead CSS elsewhere in this same block was out of scope for this
 fix and not something to fix opportunistically without being asked.
 
+### Follow-up fix: cascade regression made the toggle invisible on every viewport (same session)
+The restyle above landed with a real bug that made the whole fix a no-op: the new icon-button
+rule block (`width: 34px; height: 34px; ...`) also redeclared `display: none;` as its own base
+property. That declaration has no media query, and it sits **after** both mobile
+`.sidebar-toggle { display: flex; }` overrides in the file — so by plain CSS cascade (equal
+specificity, later source wins), it silently overrode both mobile breakpoints unconditionally,
+regardless of viewport width, login state, or the inline-style JS gating above. The seller who
+reported the original issue re-tested against a real deploy preview and still saw no hamburger
+icon at all; multiple rounds of ruling out deploy staleness and browser caching (confirmed via
+direct `curl` against the preview URL's served bytes, and confirmed cache headers were
+`must-revalidate`) turned up nothing, because the served code was correct — the bug was a
+genuine CSS defect present in that exact code from the first push. Found by loading the page in
+a headless browser at a mobile viewport and diffing computed `display` before/after manually
+clearing the inline style: it stayed `none` either way, then enumerating every CSS rule
+matching the element (via `document.styleSheets`) surfaced the duplicate unconditional
+`display: none`. **Fixed by deleting the redundant declaration** — the class's hidden-by-default
+state was already correctly established by the original, correctly-positioned base rule earlier
+in the file (see "Root cause" above); the new block never needed to redeclare it. Verified via
+the same headless-browser check that computed `display` now resolves to `flex` at ≤599px once
+the inline style is cleared. **Lesson for future CSS edits to this class**: any rule affecting
+`.sidebar-toggle`'s `display` property must stay before the two mobile media-query overrides in
+source order, or be scoped inside a media query itself — an unconditional rule added after them,
+for any reason, silently wins the cascade at all viewports.
+
 ### Does not change
 `toggleSidebar()`, `initSidebarState()`, `#mainSidebar`'s own show/hide logic, the sidebar's
 content (My Shows / stats / QR panel), the 600–899px/900–1023px tablet breakpoints (already
