@@ -821,16 +821,6 @@
     .search-input { max-width: 220px; font-size: 0.8rem; }
     .toolbar .btn { font-size: 0.75rem; padding: 0.4rem 0.7rem; }
 
-    /* Admin filter bar — two column wrap */
-    .admin-filter-bar { gap: 0.4rem; padding: 0.55rem 0.7rem; flex-wrap: wrap; }
-    .admin-filter-search { min-width: 100%; }
-    .admin-filter-select {
-      min-width: calc(50% - 0.2rem); flex: 1;
-      font-size: 0.76rem; padding: 0.4rem 0.55rem;
-    }
-    .admin-filter-results { font-size: 0.68rem; }
-    .btn-clear-filters { font-size: 0.7rem; padding: 0.35rem 0.55rem; }
-
     /* Table: keep horizontal scroll, just tighten */
     .table-wrap { overflow-x: auto; }
     th { padding: 0.55rem 0.7rem; font-size: 0.62rem; }
@@ -853,10 +843,6 @@
     .toolbar h2 { font-size: 1.1rem; flex: 1 0 100%; }
     .search-input { max-width: 100%; flex: 1; font-size: 0.8rem; }
     .toolbar .btn { font-size: 0.72rem; padding: 0.4rem 0.65rem; }
-
-    .admin-filter-bar { flex-wrap: wrap; gap: 0.4rem; padding: 0.55rem 0.7rem; }
-    .admin-filter-search { min-width: 100%; }
-    .admin-filter-select { min-width: calc(50% - 0.2rem); flex: 1; font-size: 0.76rem; }
 
     /* Table card rows */
     .table-wrap thead { display: none; }
@@ -915,10 +901,6 @@
     .toolbar h2 { font-size: 1rem; flex: 1 0 100%; }
     .search-input { max-width: 100%; flex: 1; font-size: 0.78rem; padding: 0.45rem 0.7rem; }
     .toolbar .btn { font-size: 0.7rem; padding: 0.38rem 0.6rem; }
-
-    .admin-filter-bar { flex-wrap: wrap; gap: 0.4rem; padding: 0.5rem; }
-    .admin-filter-search { min-width: 100%; }
-    .admin-filter-select { min-width: 100%; font-size: 0.74rem; }
 
     /* Table card rows */
     .table-wrap thead { display: none; }
@@ -1594,77 +1576,6 @@
   body.role-admin .admin-only-block { display: block; }
 
 
-  /* ── ADMIN FILTER BAR ── */
-  .admin-filter-bar {
-    display: none;
-    flex-wrap: wrap;
-    gap: 0.6rem;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 0.9rem 1rem;
-    margin-bottom: 1rem;
-    align-items: center;
-  }
-  .admin-filter-bar.visible { display: flex; }
-
-  .admin-filter-search {
-    position: relative;
-    flex: 1; min-width: 180px;
-  }
-  .admin-filter-search input {
-    width: 100%;
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 0.55rem 0.9rem 0.55rem 2rem;
-    color: var(--text);
-    font-family: 'DM Sans', sans-serif;
-    font-size: 0.84rem;
-    outline: none;
-    transition: border-color 0.2s;
-  }
-  .admin-filter-search input:focus { border-color: var(--accent); }
-  .admin-filter-search input::placeholder { color: var(--muted); }
-  .admin-filter-search .af-icon {
-    position: absolute; left: 0.65rem; top: 50%;
-    transform: translateY(-50%);
-    color: var(--muted); font-size: 0.8rem; pointer-events: none;
-  }
-  .admin-filter-select {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 0.55rem 0.8rem;
-    color: var(--text);
-    font-family: 'DM Sans', sans-serif;
-    font-size: 0.82rem;
-    outline: none; cursor: pointer;
-    transition: border-color 0.2s;
-    min-width: 130px;
-  }
-  .admin-filter-select:focus { border-color: var(--accent); }
-
-  .admin-filter-results {
-    font-family: 'DM Mono', monospace;
-    font-size: 0.72rem; color: var(--muted);
-    letter-spacing: 0.04em; white-space: nowrap;
-    margin-left: auto;
-  }
-  .admin-filter-results span { color: var(--accent); font-weight: 600; }
-
-  .btn-clear-filters {
-    background: transparent;
-    border: 1px solid var(--border);
-    color: var(--muted); border-radius: 8px;
-    padding: 0.5rem 0.8rem;
-    font-size: 0.78rem; cursor: pointer;
-    font-family: 'DM Sans', sans-serif;
-    transition: all 0.15s; white-space: nowrap;
-  }
-  .btn-clear-filters:hover { border-color: var(--accent); color: var(--accent); }
-
-
   /* ── SELLER QR PANEL ── */
   .seller-qr-panel {
     display: none;
@@ -1852,6 +1763,63 @@
     color: var(--muted); cursor: default;
   }
   .seller-dropdown li.empty-state:hover, .seller-dropdown li.more-hint:hover { background: none; }
+
+  /* Show Floor Phase 2 — organizer floor layout editor + buyer map view */
+  .floor-layout-body { display: flex; gap: 1rem; margin-top: 0.75rem; flex-wrap: wrap; }
+  .floor-plan-container {
+    position: relative; flex: 1 1 320px; min-width: 260px;
+    border: 1px solid var(--border); border-radius: 8px;
+    overflow: hidden; background: var(--surface); min-height: 260px;
+  }
+  .floor-plan-image { display: block; width: 100%; height: auto; }
+  .floor-plan-placeholder {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    color: var(--muted); font-size: 0.8rem; text-align: center; padding: 1rem;
+  }
+  .floor-marker-layer { position: absolute; inset: 0; cursor: crosshair; }
+  .floor-marker {
+    position: absolute; transform: translate(-50%, -50%);
+    background: var(--accent); color: var(--black);
+    font-family: 'DM Mono', monospace; font-size: 0.68rem; font-weight: 700;
+    min-width: 22px; height: 22px; padding: 0 0.35rem; border-radius: 11px;
+    display: flex; align-items: center; justify-content: center;
+    pointer-events: none; box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+  }
+  .floor-marker.clickable {
+    pointer-events: auto; cursor: pointer; border: 1px solid var(--black);
+  }
+  .floor-sidebar { flex: 0 0 220px; max-height: 420px; overflow-y: auto; }
+  .floor-sidebar h4 {
+    font-size: 0.7rem; font-family: 'DM Mono', monospace; letter-spacing: 0.06em;
+    text-transform: uppercase; color: var(--muted); margin: 0.6rem 0 0.35rem;
+  }
+  .floor-sidebar h4:first-child { margin-top: 0; }
+  .floor-seller-list { list-style: none; margin: 0 0 0.5rem; padding: 0; }
+  .floor-seller-item {
+    display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
+    padding: 0.45rem 0.6rem; border-radius: 6px; cursor: pointer;
+    font-size: 0.78rem; color: var(--text);
+  }
+  .floor-seller-item:hover, .floor-seller-item.armed { background: rgba(245,200,66,0.12); }
+  .floor-seller-table {
+    font-family: 'DM Mono', monospace; color: var(--accent); margin-right: 0.35rem;
+  }
+  .floor-seller-clear {
+    background: none; border: none; color: var(--muted);
+    font-size: 0.68rem; cursor: pointer; text-decoration: underline;
+  }
+  .floor-seller-clear:hover { color: var(--text); }
+  .floor-empty-state { font-size: 0.75rem; color: var(--muted); padding: 0.4rem 0.6rem; }
+  .floor-layout-hint {
+    font-size: 0.72rem; color: var(--muted); margin-top: 0.6rem;
+    font-family: 'DM Mono', monospace;
+  }
+  .view-toggle-btn {
+    background: var(--card); border: 1px solid var(--border); border-radius: 6px;
+    color: var(--muted); padding: 0.35rem 0.8rem; font-size: 0.78rem; cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .view-toggle-btn.active { border-color: var(--accent); color: var(--accent); }
 
   .access-code-badge {
     display: inline-flex; align-items: center; gap: 0.35rem;
@@ -4348,9 +4316,6 @@
           <button class="admin-tab active" id="adminTabShows" onclick="switchAdminTab('shows')">
             🎪 Shows
           </button>
-          <button class="admin-tab" id="adminTabInventory" onclick="switchAdminTab('inventory')">
-            📋 All Inventory
-          </button>
           <button class="admin-tab" id="adminTabReport" onclick="switchAdminTab('report')" style="display:none">
             📊 Report
           </button>
@@ -4575,6 +4540,46 @@
         </div><!-- /orgDashContent -->
       </div><!-- /showAnalyticsPanel -->
 
+      <!-- ═══════════════════════════════════════════════
+           SHOW FLOOR LAYOUT EDITOR (Phase 2)
+           Opened per-show via 🗺️ Floor Map button.
+           Click a seller in the sidebar to arm them, then click a spot on
+           the uploaded venue image to place them there — not drag/drop,
+           since that doesn't work reliably on touch devices and this is a
+           one-time setup task per show.
+      ═══════════════════════════════════════════════ -->
+      <div id="floorLayoutPanel" style="display:none">
+        <div class="org-dash-nav">
+          <button class="org-back-btn" onclick="closeFloorLayoutEditor()">
+            ← Back to Shows
+          </button>
+          <div class="org-dash-show-name" id="floorDashShowName"></div>
+        </div>
+
+        <div style="margin:1rem 0">
+          <input type="file" id="floorPlanUpload" accept="image/*" hidden>
+          <button type="button" id="floorPlanUploadBtn" class="btn btn-ghost">📤 Upload Floor Plan</button>
+        </div>
+
+        <div class="floor-layout-body">
+          <div class="floor-plan-container" id="floorPlanContainer">
+            <img id="floorPlanImage" class="floor-plan-image" alt="Venue floor plan" style="display:none">
+            <div class="floor-marker-layer" id="floorMarkerLayer"></div>
+            <div class="floor-plan-placeholder" id="floorPlanPlaceholder">Upload a floor plan image to get started</div>
+          </div>
+
+          <aside class="floor-sidebar">
+            <h4>Unplaced (<span id="floorUnplacedCount">0</span>)</h4>
+            <ul id="floorUnplacedList" class="floor-seller-list"></ul>
+
+            <h4>Placed (<span id="floorPlacedCount">0</span>)</h4>
+            <ul id="floorPlacedList" class="floor-seller-list"></ul>
+          </aside>
+        </div>
+
+        <p class="floor-layout-hint" id="floorLayoutHint">Click a seller, then click their spot on the map.</p>
+      </div><!-- /floorLayoutPanel -->
+
       <!-- Seller / Admin Inventory view -->
       <div id="adminInventoryPanel">
         <!-- Seller tab bar — hidden for admin, shown for seller -->
@@ -4600,46 +4605,6 @@
           <button class="btn-bulk-delete" id="bulkDeleteBtn" onclick="confirmBulkDelete()">🗑 Delete Selected</button>
           <button class="btn btn-ghost" id="backToShowsBtn" style="display:none;font-size:0.8rem" onclick="switchAdminTab('shows')">← Shows</button>
         </div>
-
-        <!-- Admin-only filter bar -->
-        <div class="admin-filter-bar" id="adminFilterBar">
-        <div class="admin-filter-search">
-          <span class="af-icon">🔍</span>
-          <input type="text" id="afPlayer" placeholder="Player name…" oninput="applyInventoryFilters()">
-        </div>
-        <select class="admin-filter-select" id="afShow" onchange="applyInventoryFilters()" style="min-width:160px">
-          <option value="">All shows</option>
-          <option value="__unassigned__">Unassigned (no show)</option>
-        </select>
-        <select class="admin-filter-select" id="afSeller" onchange="applyInventoryFilters()">
-          <option value="">All sellers</option>
-        </select>
-        <select class="admin-filter-select" id="afGrader" onchange="applyInventoryFilters()">
-          <option value="">All grades</option>
-          <option value="graded">Graded only</option>
-          <option value="raw">Raw only</option>
-          <option value="PSA">PSA</option>
-          <option value="BGS">BGS</option>
-          <option value="CGC">CGC</option>
-          <option value="SGC">SGC</option>
-        </select>
-        <select class="admin-filter-select" id="afStatus" onchange="applyInventoryFilters()">
-          <option value="">All statuses</option>
-          <option value="Available">Available</option>
-          <option value="On Hold">On Hold</option>
-          <option value="Sold">Sold</option>
-        </select>
-        <select class="admin-filter-select" id="afPrice" onchange="applyInventoryFilters()">
-          <option value="">Any price</option>
-          <option value="0-50">Under $50</option>
-          <option value="50-200">$50–$200</option>
-          <option value="200-1000">$200–$1,000</option>
-          <option value="1000-10000">$1K–$10K</option>
-          <option value="10000+">$10K+</option>
-        </select>
-        <div class="admin-filter-results">Showing <span id="afResultCount">0</span> cards</div>
-        <button class="btn-clear-filters" onclick="clearAdminFilters()">✕ Clear</button>
-      </div>
 
       <div class="table-wrap">
         <table>
@@ -5578,25 +5543,42 @@
     </div>
 
     <div id="buyerDirectoryPanel" style="display:none">
-      <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center">
-        <div class="filter-search" style="flex:1;min-width:180px">
-          <span class="search-icon">🔍</span>
-          <input type="text" id="directorySearch" placeholder="Search sellers or table number…" oninput="filterDirectory()" style="width:100%">
+      <!-- Show Floor Phase 2 — List/Map toggle. Hidden unless the show has a
+           floor plan uploaded AND at least one seller placed on it (see
+           _initDirectoryMapToggle()); List-only otherwise. -->
+      <div id="directoryViewToggle" style="display:none;gap:8px;margin-bottom:10px">
+        <button type="button" class="view-toggle-btn active" data-view="list" onclick="setDirectoryView('list')">List</button>
+        <button type="button" class="view-toggle-btn" data-view="map" onclick="setDirectoryView('map')">Map</button>
+      </div>
+
+      <div id="directoryListView">
+        <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center">
+          <div class="filter-search" style="flex:1;min-width:180px">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="directorySearch" placeholder="Search sellers or table number…" oninput="filterDirectory()" style="width:100%">
+          </div>
+          <select id="directoryFilter" class="filter-select" onchange="filterDirectory()">
+            <option value="">All categories</option>
+            <option value="Sports">Sports</option>
+            <option value="Pokemon">Pokemon</option>
+            <option value="TCG">TCG</option>
+            <option value="Graded">Graded</option>
+            <option value="Raw">Raw</option>
+            <option value="Sealed">Sealed</option>
+          </select>
         </div>
-        <select id="directoryFilter" class="filter-select" onchange="filterDirectory()">
-          <option value="">All categories</option>
-          <option value="Sports">Sports</option>
-          <option value="Pokemon">Pokemon</option>
-          <option value="TCG">TCG</option>
-          <option value="Graded">Graded</option>
-          <option value="Raw">Raw</option>
-          <option value="Sealed">Sealed</option>
-        </select>
+        <div class="results-meta" style="margin-bottom:8px">
+          <div class="results-count"><span id="directoryCount">0</span> sellers at this show</div>
+        </div>
+        <div id="directoryList" style="display:flex;flex-direction:column;gap:8px"></div>
       </div>
-      <div class="results-meta" style="margin-bottom:8px">
-        <div class="results-count"><span id="directoryCount">0</span> sellers at this show</div>
+
+      <div id="directoryMapView" style="display:none">
+        <div class="floor-plan-container" id="buyerFloorPlanContainer">
+          <img id="buyerFloorPlanImage" class="floor-plan-image" alt="Venue floor plan">
+          <div class="floor-marker-layer" id="buyerFloorMarkerLayer"></div>
+        </div>
       </div>
-      <div id="directoryList" style="display:flex;flex-direction:column;gap:8px"></div>
     </div>
 
   </div>
@@ -6325,9 +6307,7 @@ function enterAsBuyer() {
   document.getElementById('navProfileBtn').style.display = 'none';
   document.getElementById('buyerSignOut').style.display  = 'block';
 
-  const adminFilterBar = document.getElementById('adminFilterBar');
   const sellerQrPanel  = document.getElementById('sellerQrPanel');
-  if (adminFilterBar) adminFilterBar.classList.remove('visible');
   if (sellerQrPanel)  sellerQrPanel.classList.remove('visible');
 
   switchView('buyer');
@@ -8754,46 +8734,7 @@ function applyInventoryFilters() {
     (r.Seller || '').toLowerCase().includes(q)
   );
 
-  // Admin-only filters
-  if (currentRole === 'admin') {
-    const player = (document.getElementById('afPlayer')?.value || '').toLowerCase().trim();
-    const showId = document.getElementById('afShow')?.value || '';
-    const seller = document.getElementById('afSeller')?.value || '';
-    const grader = document.getElementById('afGrader')?.value || '';
-    const status = document.getElementById('afStatus')?.value || '';
-    const price  = document.getElementById('afPrice')?.value || '';
-
-    if (player) filtered = filtered.filter(r => (r.Player||'').toLowerCase().includes(player));
-    if (showId) filtered = filtered.filter(r => r._shows && r._shows.has(showId));
-    if (seller) filtered = filtered.filter(r => (r.Seller||'') === seller);
-    if (grader) filtered = filtered.filter(r => (r.Grader||'') === grader);
-    if (status) filtered = filtered.filter(r => (r.Status||'') === status);
-    if (price) {
-      filtered = filtered.filter(r => {
-        const p = Number(r.Price || 0);
-        if (price === '0-50')       return p < 50;
-        if (price === '50-200')     return p >= 50  && p < 200;
-        if (price === '200-1000')   return p >= 200 && p < 1000;
-        if (price === '1000-10000') return p >= 1000 && p < 10000;
-        if (price === '10000+')     return p >= 10000;
-        return true;
-      });
-    }
-  }
-
   renderSellerTable(filtered);
-  const afResult = document.getElementById('afResultCount');
-  if (afResult) afResult.textContent = filtered.length;
-}
-
-function clearAdminFilters() {
-  ['afPlayer','afShow','afSeller','afGrader','afStatus','afPrice'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.value = '';
-  });
-  const search = document.getElementById('sellerSearchInput');
-  if (search) search.value = '';
-  applyInventoryFilters();
 }
 
 function updateStats() {
@@ -8825,37 +8766,6 @@ function updateStats() {
   const revBox     = el('statRevenueBox');
   if (soldBox) soldBox.style.display = showActive ? '' : 'none';
   if (revBox)  revBox.style.display  = showActive ? '' : 'none';
-}
-
-function populateAdminFilterOptions() {
-  // Populate show dropdown from shows registry
-  const afShow = document.getElementById('afShow');
-  if (afShow) {
-    const current = afShow.value;
-    afShow.innerHTML = '<option value="">All shows</option><option value="__unassigned__">Unassigned (no show)</option>';
-    Object.values(shows).forEach(s => {
-      const opt = document.createElement('option');
-      opt.value = s.id;
-      opt.textContent = s.name + (s.date ? ' · ' + s.date : '');
-      afShow.appendChild(opt);
-    });
-    afShow.value = current;
-  }
-
-  // Populate seller dropdown from unique sellers in inventory
-  const afSeller = document.getElementById('afSeller');
-  if (afSeller) {
-    const current = afSeller.value;
-    const sellers = [...new Set(inventory.map(r => r.Seller).filter(Boolean))].sort();
-    afSeller.innerHTML = '<option value="">All sellers</option>';
-    sellers.forEach(h => {
-      const opt = document.createElement('option');
-      opt.value = h;
-      opt.textContent = '@' + h;
-      afSeller.appendChild(opt);
-    });
-    afSeller.value = current;
-  }
 }
 
 function renderBuyerGrid(rows) {
@@ -11205,12 +11115,11 @@ function loginAsSeller(handle) {
   const partnerLink = document.getElementById('partnershipLink');
   if (partnerLink) partnerLink.style.display = 'none';
 
-  // Hide admin-only panels + filter bar; restore seller-only sidebar modules
+  // Hide admin-only panels; restore seller-only sidebar modules
   document.getElementById('adminTabBar').style.display           = 'none';
   document.getElementById('adminShowsPanel').style.display       = 'none';
   document.getElementById('activeShowBadge').style.display       = 'none';
   document.getElementById('qrPanel').style.display               = 'none';
-  document.getElementById('adminFilterBar').classList.remove('visible');
   document.getElementById('sellerQrPanel').classList.add('visible');
   document.getElementById('sellerShowsPanel').style.display      = 'block';
   document.getElementById('sellerUploadSection').style.display   = '';
@@ -11363,7 +11272,6 @@ function loginAsAdmin() {
   initSidebarState();
   window.scrollTo(0, 0);
   updateStats();
-  populateAdminFilterOptions();
 
   // Load real shows + seller handles from Supabase, then render
   Promise.all([loadShowsFromDB(), refreshSellerHandlesCache(), refreshShowCardCounts()]).then(([loaded]) => {
@@ -11429,7 +11337,6 @@ async function signOut() {
   if (soHandle) soHandle.textContent = '';
 
   document.getElementById('adminTabBar').style.display          = 'none';
-  document.getElementById('adminFilterBar').classList.remove('visible');
   document.getElementById('sellerQrPanel').classList.remove('visible');
   document.getElementById('adminShowsPanel').style.display      = 'none';
   document.getElementById('sellerShowsPanel').style.display     = 'none';
@@ -11455,7 +11362,8 @@ async function signOut() {
   if (dash) dash.style.display = 'none';
 
   document.getElementById('inventoryTitle').textContent = 'Inventory';
-  clearAdminFilters();
+  const searchSO = document.getElementById('sellerSearchInput');
+  if (searchSO) searchSO.value = '';
   document.getElementById('authOverlay').classList.remove('hidden');
   document.getElementById('authEmail').value            = '';
   document.getElementById('authPassword').value         = '';
@@ -12003,7 +11911,6 @@ async function saveShow() {
   closeShowModal();
   if (typeof renderAdminShowsDashboard === 'function' && _adminTab === 'shows') renderAdminShowsDashboard();
   renderSellerShowsList();
-  if (currentRole === 'admin') populateAdminFilterOptions();
 
   // Await show row first so FK constraint is satisfied before writing show_sellers
   const showSaved = await upsertShowToDB(shows[id]);
@@ -12554,7 +12461,6 @@ function deleteShow(showId) {
   delete shows[showId];
   if (activeShowId === showId) activeShowId = Object.keys(shows)[0] || null;
   renderAdminShowsList(); if(typeof renderAdminShowsDashboard==="function" && _adminTab==="shows") renderAdminShowsDashboard();
-  if (currentRole === 'admin') populateAdminFilterOptions();
 
   // Delete from Supabase (cascades to show_sellers and show_inventory)
   deleteShowFromDB(showId);
@@ -12576,7 +12482,6 @@ async function publishSelectedToShow(showId) {
   renderAdminShowsList(); if(typeof renderAdminShowsDashboard==="function" && _adminTab==="shows") renderAdminShowsDashboard();
   updateAscHeader(showId);
   buildQRPanel();
-  if (currentRole === 'admin') populateAdminFilterOptions();
 
   upsertShowToDB(show);
   // publishShowInventoryToDB now queries DB directly — no need to pre-load inventory[]
@@ -14947,7 +14852,73 @@ function switchBuyerTab(tab) {
     if (buyerGrid)   buyerGrid.style.display    = 'none';
     if (dirPanel)    dirPanel.style.display     = 'block';
     renderDirectory();
+    _initDirectoryMapToggle();
   }
+}
+
+// ── SHOW FLOOR PHASE 2 — BUYER MAP VIEW ──
+// Extends the "Find a Table" directory (above) with a List/Map toggle.
+// Deliberately lives here, not on show.html (the public pre-show share
+// link) — show.html's own copy says twice that table numbers are
+// "revealed at the show," and this directory is already the gated, joined-
+// the-show surface that reveal applies to. See CLAUDE.md "Show Floor
+// Phase 2" for the full reasoning (same one behind Phase 1's table finder
+// placement).
+let _buyerFloorPlanUrl = null;
+let _buyerFloorMarkers = [];
+
+async function _initDirectoryMapToggle() {
+  const toggle = document.getElementById('directoryViewToggle');
+  if (!buyerShowId) { if (toggle) toggle.style.display = 'none'; return; }
+
+  _buyerFloorPlanUrl = null;
+  if (typeof db !== 'undefined') {
+    const { data: show } = await db.from('shows').select('floor_plan_url').eq('id', buyerShowId).maybeSingle();
+    _buyerFloorPlanUrl = show?.floor_plan_url || null;
+  }
+  const sellers = await _floorFetchSellers(buyerShowId);
+  _buyerFloorMarkers = sellers.filter(s => s.xPct != null && s.yPct != null);
+
+  const hasMap = !!_buyerFloorPlanUrl && _buyerFloorMarkers.length > 0;
+  if (toggle) toggle.style.display = hasMap ? 'flex' : 'none';
+
+  if (hasMap) {
+    const img = document.getElementById('buyerFloorPlanImage');
+    if (img) img.src = _buyerFloorPlanUrl;
+    _renderBuyerFloorMarkers();
+    setDirectoryView('map'); // default to map when one exists
+  } else {
+    setDirectoryView('list');
+  }
+}
+
+function setDirectoryView(view) {
+  const listView = document.getElementById('directoryListView');
+  const mapView  = document.getElementById('directoryMapView');
+  if (listView) listView.style.display = view === 'list' ? '' : 'none';
+  if (mapView)  mapView.style.display  = view === 'map'  ? '' : 'none';
+  document.querySelectorAll('#directoryViewToggle .view-toggle-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.view === view);
+  });
+}
+
+function _renderBuyerFloorMarkers() {
+  const layer = document.getElementById('buyerFloorMarkerLayer');
+  if (!layer) return;
+  layer.innerHTML = '';
+  _buyerFloorMarkers.forEach(s => {
+    const marker = document.createElement('div');
+    marker.className = 'floor-marker clickable';
+    marker.style.left = s.xPct + '%';
+    marker.style.top  = s.yPct + '%';
+    marker.title = `${s.tableNumber} — @${s.handle}`;
+    marker.textContent = s.tableNumber;
+    marker.setAttribute('role', 'button');
+    marker.tabIndex = 0;
+    marker.addEventListener('click', () => directoryOpenSeller(s.handle));
+    marker.addEventListener('keydown', (e) => { if (e.key === 'Enter') directoryOpenSeller(s.handle); });
+    layer.appendChild(marker);
+  });
 }
 
 // ── TABLE DIRECTORY DATA ──
@@ -15136,7 +15107,6 @@ function switchSellerTab(tab) {
   const invPanel  = document.getElementById('adminInventoryPanel');
   const rptPanel  = document.getElementById('adminReportPanel');
   const tableWrap = invPanel ? invPanel.querySelector('.table-wrap') : null;
-  const filterBar = document.getElementById('adminFilterBar');
 
   [invBtn, rptBtn].forEach(b => b && b.classList.remove('active'));
 
@@ -15159,7 +15129,6 @@ function switchSellerTab(tab) {
     rptBtn && rptBtn.classList.add('active');
     if (tableWrap) tableWrap.style.display = 'none';
     if (rptPanel)  rptPanel.style.display  = 'block';
-    if (filterBar) filterBar.classList.remove('visible');
     if (fabScan) fabScan.style.display = 'none';
     if (fabAdd)  fabAdd.style.display  = 'none';
     if (selectAllBtn) selectAllBtn.style.display = 'none';
@@ -15180,39 +15149,34 @@ function switchSellerTab(tab) {
 }
 
 // ── ADMIN TAB SYSTEM ──
-let _adminTab = 'shows'; // 'shows' | 'inventory'
+let _adminTab = 'shows'; // 'shows' (only reachable value today — see switchAdminTab())
 
 function switchAdminTab(tab) {
   _adminTab = tab;
 
-  // Hide analytics panel when switching tabs — restored via openShowAnalytics()
+  // Hide analytics/floor-map panels when switching tabs — restored via
+  // openShowAnalytics()/openFloorLayoutEditor()
   const analyticsPanel = document.getElementById('showAnalyticsPanel');
   if (analyticsPanel) analyticsPanel.style.display = 'none';
+  const floorPanel = document.getElementById('floorLayoutPanel');
+  if (floorPanel) floorPanel.style.display = 'none';
 
   const showsTab    = document.getElementById('adminTabShows');
-  const invTab      = document.getElementById('adminTabInventory');
   const reportTab   = document.getElementById('adminTabReport');
   const dashboard   = document.getElementById('adminShowsDashboard');
   const invPanel    = document.getElementById('adminInventoryPanel');
   const reportPanel = document.getElementById('adminReportPanel');
-  const filterBar   = document.getElementById('adminFilterBar');
   const tableWrap   = invPanel ? invPanel.querySelector('.table-wrap') : null;
 
-  [showsTab, invTab, reportTab].forEach(t => t && t.classList.remove('active'));
+  [showsTab, reportTab].forEach(t => t && t.classList.remove('active'));
   [dashboard, invPanel, reportPanel].forEach(p => p && (p.style.display = 'none'));
 
-  if (tab === 'shows') {
-    showsTab && showsTab.classList.add('active');
-    if (dashboard) dashboard.style.display = 'block';
-    renderAdminShowsDashboard();
-
-  } else if (tab === 'report') {
+  if (tab === 'report') {
     reportTab && reportTab.classList.add('active');
     if (invPanel) {
       invPanel.style.display = 'block';
       if (tableWrap) tableWrap.style.display = 'none';
       if (reportPanel) reportPanel.style.display = 'block';
-      if (filterBar) filterBar.classList.remove('visible');
     }
     const backBtn = document.getElementById('backToShowsBtn');
     const selectAllBtn = document.getElementById('selectAllBtn');
@@ -15221,17 +15185,12 @@ function switchAdminTab(tab) {
     updateReport();
 
   } else {
-    invTab && invTab.classList.add('active');
-    if (invPanel) invPanel.style.display = 'block';
-    if (reportPanel) reportPanel.style.display = 'none';
-    if (tableWrap) tableWrap.style.display = '';
-    const backBtn      = document.getElementById('backToShowsBtn');
-    const selectAllBtn = document.getElementById('selectAllBtn');
-    if (backBtn)      backBtn.style.display      = currentRole === 'admin' ? '' : 'none';
-    if (selectAllBtn) selectAllBtn.style.display = currentRole === 'admin' ? 'none' : '';
-    if (filterBar) filterBar.classList.add('visible');
-    renderSellerTable(getSellerInventory());
-    applyInventoryFilters();
+    // 'shows' — the only tab reachable via the admin tab bar today (the
+    // former 'inventory'/All Inventory tab was removed; 'report' above is
+    // unreachable dead code left in place — see CLAUDE.md).
+    showsTab && showsTab.classList.add('active');
+    if (dashboard) dashboard.style.display = 'block';
+    renderAdminShowsDashboard();
   }
 }
 
@@ -15332,6 +15291,9 @@ function renderAdminShowsDashboard() {
         </button>
         <button class="asc-action-secondary" onclick="event.stopPropagation();openShowAnalytics('${s.id}')">
           📊 Analytics
+        </button>
+        <button class="asc-action-secondary" onclick="event.stopPropagation();openFloorLayoutEditor('${s.id}')">
+          🗺️ Floor Map
         </button>
         <button class="asc-action-secondary" onclick="event.stopPropagation();openCreateShowModal('${s.id}')">
           ✏ Edit
@@ -15517,6 +15479,246 @@ function closeShowAnalytics() {
 
 function reloadShowAnalytics() {
   if (_orgActiveShowId) openShowAnalytics(_orgActiveShowId);
+}
+
+// ══════════════════════════════════════════════
+//  SHOW FLOOR PHASE 2 — VISUAL FLOOR MAP
+//  Organizer editor (this section) + buyer map toggle (near switchBuyerTab).
+//  Writes to shows.floor_plan_url and show_sellers.x_pct/y_pct — no new
+//  tables. See CLAUDE.md "Show Floor Phase 2" for why this reuses the
+//  existing show_sellers junction instead of the spec's proposed
+//  show_authorized_sellers table (that table doesn't exist in this app —
+//  see the Phase 1 CLAUDE.md entry).
+// ══════════════════════════════════════════════
+
+// Two-step query (show_sellers -> sellers), not a nested embed — this
+// codebase has repeatedly hit stale-schema-cache failures with PostgREST's
+// embedded-join select() (see loadShowSellersAndTables(), _orgFetchInventory()
+// in CLAUDE.md); shared by the organizer editor and the buyer map toggle.
+async function _floorFetchSellers(showId) {
+  if (typeof db === 'undefined') return [];
+  const { data: rows, error } = await db
+    .from('show_sellers')
+    .select('seller_id, table_number, x_pct, y_pct')
+    .eq('show_id', showId)
+    .not('table_number', 'is', null);
+  if (error) { console.warn('_floorFetchSellers:', error.message); return []; }
+  if (!rows || !rows.length) return [];
+
+  const sellerIds = rows.map(r => r.seller_id);
+  const { data: sellerRows, error: sErr } = await db
+    .from('sellers').select('id, handle').in('id', sellerIds);
+  if (sErr) console.warn('_floorFetchSellers (sellers):', sErr.message);
+  const handleById = {};
+  (sellerRows || []).forEach(s => { handleById[s.id] = s.handle; });
+
+  return rows.map(r => ({
+    sellerId: r.seller_id,
+    handle: handleById[r.seller_id] || r.seller_id,
+    tableNumber: r.table_number,
+    xPct: r.x_pct == null ? null : Number(r.x_pct),
+    yPct: r.y_pct == null ? null : Number(r.y_pct),
+  }));
+}
+
+async function _floorUploadPlan(showId, file) {
+  if (typeof db === 'undefined') throw new Error('No database connection');
+  const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+  const path = `${showId}/floor-plan.${ext}`;
+  const { error: uploadError } = await db.storage.from('floor-plans').upload(path, file, { upsert: true });
+  if (uploadError) throw uploadError;
+  const { data } = db.storage.from('floor-plans').getPublicUrl(path);
+  const { error: updateError } = await db.from('shows').update({ floor_plan_url: data.publicUrl }).eq('id', showId);
+  if (updateError) throw updateError;
+  return data.publicUrl;
+}
+
+// Fires immediately per click, not batched behind a "Save Layout" button —
+// same fire-and-forget-per-action philosophy as _autoPublishCardToShow(),
+// so a dropped connection loses at most one placement, not a whole
+// session's setup work.
+async function _floorPlaceMarker(showId, sellerId, xPct, yPct) {
+  if (typeof db === 'undefined') return;
+  const { error } = await db.from('show_sellers')
+    .update({ x_pct: xPct.toFixed(2), y_pct: yPct.toFixed(2) })
+    .eq('show_id', showId).eq('seller_id', sellerId);
+  if (error) console.error('_floorPlaceMarker failed:', error.message);
+}
+
+async function _floorClearMarker(showId, sellerId) {
+  if (typeof db === 'undefined') return;
+  const { error } = await db.from('show_sellers')
+    .update({ x_pct: null, y_pct: null })
+    .eq('show_id', showId).eq('seller_id', sellerId);
+  if (error) console.error('_floorClearMarker failed:', error.message);
+}
+
+let _floorShowId = null;
+let _floorArmedSellerId = null;
+let _floorSellers = [];
+let _floorEditorBound = false; // guards one-time listener binding — same
+                                // pattern as _smBindSellerComboboxOnce(),
+                                // since this panel's DOM persists across opens
+
+function openFloorLayoutEditor(showId) {
+  _floorShowId = showId;
+  _floorArmedSellerId = null;
+
+  const mainDash = document.getElementById('adminShowsDashboard');
+  const panel    = document.getElementById('floorLayoutPanel');
+  if (mainDash) mainDash.style.display = 'none';
+  if (panel)    panel.style.display    = 'block';
+
+  const show   = shows[showId];
+  const nameEl = document.getElementById('floorDashShowName');
+  if (nameEl) nameEl.textContent = show?.name || showId;
+
+  const img = document.getElementById('floorPlanImage');
+  const placeholder = document.getElementById('floorPlanPlaceholder');
+  if (img) { img.style.display = 'none'; img.src = ''; }
+  if (placeholder) placeholder.style.display = 'flex';
+  const hint = document.getElementById('floorLayoutHint');
+  if (hint) hint.textContent = 'Click a seller, then click their spot on the map.';
+
+  _floorBindEditorOnce();
+  _floorLoadAndRender(showId);
+}
+
+function closeFloorLayoutEditor() {
+  _floorShowId = null;
+  _floorArmedSellerId = null;
+  document.getElementById('floorLayoutPanel').style.display = 'none';
+  document.getElementById('adminShowsDashboard').style.display = 'block';
+}
+
+async function _floorLoadAndRender(showId) {
+  if (typeof db !== 'undefined') {
+    const { data: show } = await db.from('shows').select('floor_plan_url').eq('id', showId).maybeSingle();
+    const img = document.getElementById('floorPlanImage');
+    const placeholder = document.getElementById('floorPlanPlaceholder');
+    if (show?.floor_plan_url && img) {
+      img.src = show.floor_plan_url;
+      img.style.display = 'block';
+      if (placeholder) placeholder.style.display = 'none';
+    }
+  }
+  _floorSellers = await _floorFetchSellers(showId);
+  _floorRenderEditor();
+}
+
+function _floorBindEditorOnce() {
+  if (_floorEditorBound) return;
+  const uploadBtn    = document.getElementById('floorPlanUploadBtn');
+  const uploadInput  = document.getElementById('floorPlanUpload');
+  const markerLayer  = document.getElementById('floorMarkerLayer');
+  const container    = document.getElementById('floorPlanContainer');
+  if (!uploadBtn || !uploadInput || !markerLayer || !container) return;
+
+  uploadBtn.addEventListener('click', () => uploadInput.click());
+
+  uploadInput.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    uploadInput.value = '';
+    if (!file || !_floorShowId) return;
+    try {
+      const url = await _floorUploadPlan(_floorShowId, file);
+      const img = document.getElementById('floorPlanImage');
+      const placeholder = document.getElementById('floorPlanPlaceholder');
+      if (img) { img.src = url; img.style.display = 'block'; }
+      if (placeholder) placeholder.style.display = 'none';
+      showToast('Floor plan uploaded');
+    } catch (err) {
+      console.error('Floor plan upload failed:', err.message);
+      showToast('Upload failed — check your connection and try again', 'var(--danger)');
+    }
+  });
+
+  markerLayer.addEventListener('click', async (e) => {
+    if (!_floorArmedSellerId || !_floorShowId) return;
+    const rect = container.getBoundingClientRect();
+    const xPct = Math.min(100, Math.max(0, ((e.clientX - rect.left) / rect.width) * 100));
+    const yPct = Math.min(100, Math.max(0, ((e.clientY - rect.top) / rect.height) * 100));
+    const sellerId = _floorArmedSellerId;
+    _floorArmedSellerId = null;
+    const hint = document.getElementById('floorLayoutHint');
+    if (hint) hint.textContent = 'Click a seller, then click their spot on the map.';
+
+    await _floorPlaceMarker(_floorShowId, sellerId, xPct, yPct);
+    _floorSellers = await _floorFetchSellers(_floorShowId);
+    _floorRenderEditor();
+  });
+
+  _floorEditorBound = true;
+}
+
+function _floorRenderEditor() {
+  const unplaced = _floorSellers.filter(s => s.xPct == null || s.yPct == null);
+  const placed   = _floorSellers.filter(s => s.xPct != null && s.yPct != null);
+
+  const unplacedCountEl = document.getElementById('floorUnplacedCount');
+  const placedCountEl   = document.getElementById('floorPlacedCount');
+  if (unplacedCountEl) unplacedCountEl.textContent = unplaced.length;
+  if (placedCountEl)   placedCountEl.textContent   = placed.length;
+
+  _floorRenderSellerList('floorUnplacedList', unplaced, false);
+  _floorRenderSellerList('floorPlacedList', placed, true);
+  _floorRenderMarkers(placed);
+}
+
+function _floorRenderSellerList(listId, list, isPlaced) {
+  const el = document.getElementById(listId);
+  if (!el) return;
+  el.innerHTML = '';
+  if (!list.length) {
+    const li = document.createElement('li');
+    li.className = 'floor-empty-state';
+    li.textContent = isPlaced ? 'No sellers placed yet' : 'No tabled sellers left to place';
+    el.appendChild(li);
+    return;
+  }
+  list.forEach(s => {
+    const li = document.createElement('li');
+    li.className = 'floor-seller-item';
+    if (s.sellerId === _floorArmedSellerId) li.classList.add('armed');
+    li.innerHTML = `<span class="floor-seller-table">${_escHtml(s.tableNumber)}</span> ${_escHtml(s.handle)}`;
+    li.addEventListener('click', () => {
+      _floorArmedSellerId = _floorArmedSellerId === s.sellerId ? null : s.sellerId;
+      const hint = document.getElementById('floorLayoutHint');
+      if (hint) hint.textContent = _floorArmedSellerId
+        ? `Click the map to place @${s.handle}`
+        : 'Click a seller, then click their spot on the map.';
+      _floorRenderEditor();
+    });
+    if (isPlaced) {
+      const clearBtn = document.createElement('button');
+      clearBtn.type = 'button';
+      clearBtn.className = 'floor-seller-clear';
+      clearBtn.textContent = 'Clear';
+      clearBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        await _floorClearMarker(_floorShowId, s.sellerId);
+        _floorSellers = await _floorFetchSellers(_floorShowId);
+        _floorRenderEditor();
+      });
+      li.appendChild(clearBtn);
+    }
+    el.appendChild(li);
+  });
+}
+
+function _floorRenderMarkers(placed) {
+  const layer = document.getElementById('floorMarkerLayer');
+  if (!layer) return;
+  layer.innerHTML = '';
+  placed.forEach(s => {
+    const marker = document.createElement('div');
+    marker.className = 'floor-marker';
+    marker.style.left = s.xPct + '%';
+    marker.style.top  = s.yPct + '%';
+    marker.title = `${s.tableNumber} — @${s.handle}`;
+    marker.textContent = s.tableNumber;
+    layer.appendChild(marker);
+  });
 }
 
 function _orgSetState(state) {

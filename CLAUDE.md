@@ -48,8 +48,11 @@ sellers       — id (uuid PRIMARY KEY = auth.uid()), handle, display_name, what
                 instagram, email, created_at
 shows         — id (text), name, date, location, status, access_code, published_at, created_at,
                 city (text), state (text), venue (text),
-                start_date (date), end_date (date) — see "Pending DB Migrations"
-show_sellers  — show_id, seller_id (uuid → sellers.id), table_number (junction)
+                start_date (date), end_date (date), floor_plan_url (text)
+                — see "Pending DB Migrations"
+show_sellers  — show_id, seller_id (uuid → sellers.id), table_number,
+                x_pct (numeric(5,2)), y_pct (numeric(5,2)) — see "Pending DB Migrations"
+                (junction)
 inventory     — id (uuid), seller_id (uuid → sellers.id), card_title, player, year,
                 card_set, parallel, grader, grade, cert_number, condition, price,
                 status, location, item_type, product_type, created_at, updated_at,
@@ -151,6 +154,21 @@ ALTER TABLE inventory
 Until this runs, `updateCardInDB()` strips `sold_date` from the payload and retries once on the
 same `PGRST204` error — sales still record, the Transaction Log's Date column just shows "—"
 for every row (no `card.SoldDate` ever made it to the DB, so nothing to read back on reload).
+
+Required for the Show Floor Phase 2 visual floor map (see that section below):
+```sql
+ALTER TABLE show_sellers
+  ADD COLUMN IF NOT EXISTS x_pct numeric(5,2),
+  ADD COLUMN IF NOT EXISTS y_pct numeric(5,2);
+ALTER TABLE shows ADD COLUMN IF NOT EXISTS floor_plan_url text;
+```
+Also requires a **manual, non-SQL step**: create a public `floor-plans` Storage bucket in the
+Supabase dashboard (Storage → New bucket → Public) before the organizer floor editor's upload
+button will work — same category of manual prerequisite as enabling Anonymous Sign-Ins for
+Trade Zone. Until both the migration and the bucket exist, `_floorUploadPlan()`'s upload call
+fails and the organizer sees a toast ("Upload failed…") rather than a silent no-op; the
+Unplaced/Placed seller lists (which only depend on `show_sellers.table_number`, already
+migrated in Phase 1) still work regardless.
 
 ## Key Data Structures (in-memory runtime cache)
 ```js
@@ -1138,6 +1156,156 @@ the buyer's currently active show — same live-update convention `ascSetTable()
 `buildFullSellerDirectory()`, `renderDirectory()`), `show.html`'s reveal-gating copy/design,
 RLS policies, no new Supabase tables or migrations.
 
+## All Inventory Tab Removed (session 2026-09-12)
+
+The admin dashboard's `📋 All Inventory` tab was removed at the user's request, bundled into
+the same session as Show Floor Phase 2 below. `switchAdminTab('shows')` was already the
+default on admin login, so no default-tab repoint was needed.
+
+### What was actually removed vs. what only looked removable
+`#adminInventoryPanel` — the container the old tab displayed — is **not** a self-contained
+admin-only panel; it's the same DOM the seller's own "My Inventory" tab renders into
+(`.table-wrap`, `renderSellerTable()`, `getSellerInventory()`), and `#adminReportPanel`
+inside it is also the seller Report tab's live content. None of that shared infrastructure
+was touched. What was actually removed, since it existed *only* to feed the admin-only
+advanced filter bar sitting above that shared table:
+- The `#adminTabInventory` tab button and the `switchAdminTab()` branch that displayed it
+  (the function's final `else` is now just the `'shows'` branch — `'report'` stays as the
+  pre-existing unreachable dead code documented under item 22 in "Critical Implementation
+  Notes," untouched since removing it wasn't asked for).
+- `#adminFilterBar` and its player/show/seller/grader/status/price filter inputs (HTML),
+  the "Admin-only filters" block inside `applyInventoryFilters()` (the function itself is
+  kept — sellers' own search input still calls it), `clearAdminFilters()`,
+  `populateAdminFilterOptions()` and its four call sites, and every associated CSS rule
+  (base + three responsive breakpoints).
+- Two real crash bugs caught in the process: `loginAsSeller()` and `signOut()` both called
+  `document.getElementById('adminFilterBar').classList.remove('visible')` **without a null
+  guard**, unlike the equivalent line already guarded elsewhere (`enterAsBuyer()`'s
+  `if (adminFilterBar) …`). Deleting `#adminFilterBar`'s HTML without also removing these two
+  lines would have thrown `TypeError: Cannot read properties of null` and silently aborted
+  the rest of both functions — every synchronous statement after that line (auth field
+  resets, sign-out cleanup) would never have run. Fixed by removing both lines; the third
+  removed call site in `signOut()`, `clearAdminFilters()` itself (used there only to clear the
+  search input on the next login), was replaced with a direct
+  `sellerSearchInput.value = ''`.
+- Confirmed while investigating: admin's `inventory[]` array is explicitly emptied on login
+  (`loginAsAdmin()`'s `inventory.length = 0`) and nothing ever repopulated it with all
+  sellers' cards — there was no dedicated "fetch every seller's inventory" function feeding
+  this tab, only `refreshShowCardCounts()` (which just counts, populates `showCardCounts{}`,
+  never `inventory[]`). The tab most likely rendered empty in practice already; removing it
+  loses no working functionality.
+
+### Does not change
+`renderSellerTable()`, `getSellerInventory()`, `applyInventoryFilters()`'s own search-input
+filtering, `#adminReportPanel`/seller Report tab, `switchSellerTab()`, RLS policies.
+
+## Show Floor Phase 2 — Visual Floor Map (session 2026-09-12)
+
+Lets an organizer upload a venue image and place each tabled seller on it with a click, and
+lets buyers toggle the existing "Find a Table" directory to a map view. Builds on Phase 1
+above (which already put table numbers on `show_sellers.table_number`).
+
+### Deviations from the build spec, and why
+Same root cause as Phase 1's deviations — the spec assumes a `show_authorized_sellers` table
+that doesn't exist here — plus one new one:
+- **Schema targets `show_sellers`, not `show_authorized_sellers`.** `x_pct`/`y_pct` were
+  added to the real junction table:
+  ```sql
+  ALTER TABLE show_sellers
+    ADD COLUMN IF NOT EXISTS x_pct numeric(5,2),
+    ADD COLUMN IF NOT EXISTS y_pct numeric(5,2);
+  ALTER TABLE shows ADD COLUMN IF NOT EXISTS floor_plan_url text;
+  ```
+  Percentages of image width/height (0–100), not pixels, per the spec's own reasoning —
+  markers stay correctly positioned regardless of the rendered image size.
+- **Manual step, not yet done: create a public `floor-plans` Storage bucket** in the
+  Supabase dashboard, same category of manual prerequisite as enabling Anonymous Sign-Ins
+  for Trade Zone or setting `ANTHROPIC_API_KEY`. The upload code assumes it exists and will
+  fail with a clear console error (surfaced to the organizer as a toast) until it's created.
+- **Two-step queries, not the spec's nested `sellers(username)` embed.** `_floorFetchSellers()`
+  (shared by the organizer editor and the buyer map toggle) fetches `show_sellers` and
+  `sellers` as two separate queries, joined client-side — this codebase has repeatedly hit
+  PostgREST embedded-join reliability issues under a stale schema cache (see
+  `loadShowSellersAndTables()`, `_orgFetchInventory()`, `show.html`'s
+  `fetchInventoryFromDB()` in this file), so a fresh embed wasn't worth reintroducing that
+  risk for a new feature. `handle` is used throughout, not `username` — this app has no
+  username field.
+- **No public `show.html` map view.** Per the same reveal-gating reasoning as Phase 1's table
+  finder: `show.html` explicitly defers table numbers and seller contact until "at the show."
+  The List/Map toggle was added to the existing in-app **buyer "Find a Table" tab**
+  (`#buyerDirectoryPanel`, gated behind `joinShow()`) instead of a new public surface.
+- **Markers navigate via `directoryOpenSeller(handle)`**, not the spec's `<a href="/sellers/
+  ${id}">` — this app has no per-seller page route; that existing function already does the
+  right thing (switches to Browse, filters to that seller, scrolls the grid into view).
+
+### Organizer editor (`#floorLayoutPanel`)
+Opened via a new **🗺️ Floor Map** button on each show card, alongside the existing
+📊 Analytics button — `openFloorLayoutEditor(showId)` / `closeFloorLayoutEditor()` mirror
+`openShowAnalytics()`/`closeShowAnalytics()`'s panel-swap pattern exactly (hide
+`#adminShowsDashboard`, show the new panel, restore on Back). `switchAdminTab()` force-hides
+`#floorLayoutPanel` on every tab switch, same as it already does for `#showAnalyticsPanel`.
+
+Click-to-arm-then-place, not drag-and-drop, per the spec's own reasoning (HTML5 drag/drop is
+unreliable on touch devices, and this is a one-time setup task): clicking a sidebar seller
+toggles `_floorArmedSellerId` and highlights that row (`.armed`); clicking anywhere on
+`#floorMarkerLayer` while a seller is armed computes `xPct`/`yPct` from the click position
+relative to `#floorPlanContainer`'s bounding rect (clamped to 0–100) and writes it
+immediately via `_floorPlaceMarker()` — fire-and-forget per click, not batched behind a
+"Save Layout" button, same philosophy as `_autoPublishCardToShow()`: a dropped connection
+loses at most one placement. "Clear" on a placed seller (`_floorClearMarker()`) nulls both
+columns and moves them back to Unplaced. Only sellers with a `table_number` set (Phase 1)
+appear in either list — matches the spec's own scoping (`not('table_number', 'is', null)`).
+
+Listeners on the upload button/input and the marker layer are bound once
+(`_floorEditorBound` guard), same reasoning as `_smBindSellerComboboxOnce()` from Phase 1 —
+this panel's DOM persists across open/close cycles, and rebinding every open would stack
+duplicate click handlers.
+
+**Real bug caught in testing, not in the original draft:** the image and placeholder
+elements were originally toggled via the `hidden` HTML attribute (`img.hidden = true/false`).
+This silently didn't work — `.floor-plan-image`/`.floor-plan-placeholder`'s own CSS rules set
+an explicit `display` value, and author-origin CSS always wins over the user-agent
+stylesheet's `[hidden] { display: none }` rule at equal specificity, regardless of source
+order (a well-documented MDN gotcha, and the same category of cascade bug as the mobile
+sidebar toggle regression from session 2026-09-08 — see that section above). A Playwright
+test clicking through the "hidden" placeholder caught it: the element reported `hidden=""` in
+the DOM but still intercepted pointer events because it was still visually `display:flex`.
+Fixed by switching both elements to explicit `style.display` toggling instead of the `hidden`
+attribute, matching this codebase's dominant convention everywhere else.
+
+### Buyer map toggle (extends the Phase 1 "Find a Table" tab)
+`#buyerDirectoryPanel` gained a `#directoryViewToggle` (List/Map buttons, hidden by default)
+above the existing search/filter row, which is now wrapped in `#directoryListView`, plus a
+sibling `#directoryMapView` holding the image + marker layer. `_initDirectoryMapToggle()`
+fires from `switchBuyerTab('directory')` — fetches fresh (`shows.floor_plan_url` +
+`_floorFetchSellers()`) every time the tab opens, same "always fetch fresh, no synced
+in-memory cache" convention `_orgFetchAndRender()` already uses for Analytics. The toggle
+only appears, and Map is only the default view, when a floor plan URL exists **and** at
+least one seller has a placed marker — otherwise the tab silently stays List-only, exactly
+matching the acceptance criteria. `setDirectoryView(view)` toggles the two containers and the
+toggle buttons' `.active` class. Marker clicks call `directoryOpenSeller(handle)`.
+
+### Key functions (app.html)
+- `_floorFetchSellers(showId)` — shared two-step query (see above)
+- `_floorUploadPlan(showId, file)` — Storage upload to `floor-plans/{showId}/floor-plan.{ext}`
+  (upsert, so re-uploading replaces the same show's plan) + `shows.floor_plan_url` update
+- `_floorPlaceMarker(showId, sellerId, xPct, yPct)` / `_floorClearMarker(showId, sellerId)`
+- `openFloorLayoutEditor(showId)` / `closeFloorLayoutEditor()` / `_floorLoadAndRender(showId)`
+- `_floorBindEditorOnce()` / `_floorRenderEditor()` / `_floorRenderSellerList()` /
+  `_floorRenderMarkers()`
+- `_initDirectoryMapToggle()` / `setDirectoryView(view)` / `_renderBuyerFloorMarkers()`
+
+### Does not change
+`_orgFetchInventory()`/organizer analytics, `showAnalyticsPanel`, `buildSellerDirectory()`/
+`buildFullSellerDirectory()`/`renderDirectory()` (the List view itself is untouched — only
+wrapped in a new container), `show.html`, RLS policies. No changes to `show_authorized_sellers`
+since that table doesn't exist and was never created — see Phase 1's deviation notes.
+
+### Not in scope (per spec)
+Scan/GMV heatmap overlay by table position (Phase 3) · multiple floors or images per show ·
+reusing a floor plan across shows · custom pan/zoom beyond native pinch-zoom · drag-and-drop
+placement · seller day-of check-in.
+
 ## Backlog Priority
 
 ### Shipped ✅
@@ -1282,6 +1450,18 @@ RLS policies, no new Supabase tables or migrations.
   `show.html` (would contradict its existing "revealed at the show" design) — the buyer
   in-app "Find a Table" tab already covers this. See "Show Floor Phase 1 — Table
   Assignment in the Combobox" above for full detail.
+- **All Inventory tab removed (session 2026-09-12)** — admin dashboard's `📋 All Inventory`
+  tab and its admin-only filter bar removed at user request; the underlying inventory table
+  is shared with the seller's own "My Inventory" tab and was untouched. Two unguarded
+  `getElementById('adminFilterBar')` crash bugs in `loginAsSeller()`/`signOut()` were caught
+  and fixed in the process. See "All Inventory Tab Removed" above for full detail.
+- **Show Floor Phase 2 — visual floor map (session 2026-09-12)** — organizers upload a venue
+  image and click-to-arm-then-place each tabled seller on it (`🗺️ Floor Map` button per show
+  card); buyers get a List/Map toggle on the existing in-app "Find a Table" tab, shown only
+  once a floor plan and at least one placed marker exist. Writes to new `show_sellers.x_pct`/
+  `y_pct` and `shows.floor_plan_url` columns — no new tables. Requires a manually-created
+  public `floor-plans` Storage bucket. See "Show Floor Phase 2 — Visual Floor Map" above for
+  full detail, including a real `hidden`-attribute-vs-CSS cascade bug caught by testing.
 
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`
