@@ -1819,6 +1819,17 @@
     cursor: pointer; font-size: 0.85rem; line-height: 1; padding: 0 0.15rem;
   }
   .seller-chip button:hover { color: var(--text); }
+  .chip-username { white-space: nowrap; }
+  .chip-table-input {
+    width: 56px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 4px; color: var(--text); font-size: 0.68rem;
+    font-family: 'DM Mono', monospace; padding: 0.1rem 0.3rem;
+    text-align: center; outline: none;
+  }
+  .chip-table-input:focus { border-color: var(--accent); }
+  .chip-table-input::placeholder { color: var(--muted); }
+  .seller-chip.table-conflict { border-color: rgba(245,158,11,0.7); }
+  .seller-chip.table-conflict .chip-table-input { border-color: rgba(245,158,11,0.7); }
   .seller-search-input {
     flex: 1 1 120px; min-width: 120px;
     background: transparent; border: none; outline: none;
@@ -11721,7 +11732,8 @@ function openCreateShowModal(showId) {
   // (see _smBindSellerComboboxOnce) — each open only resets selection/list state,
   // so repeated open/edit cycles never accumulate duplicate handlers.
   const authorizedSet = (showId && shows[showId]) ? shows[showId].sellers : new Set();
-  _smSelectedSellers = new Set(authorizedSet);
+  const existingTables = (showId && shows[showId] && shows[showId].tables) || {};
+  _smSelectedSellers = new Map([...authorizedSet].map(h => [h, existingTables[h] || '']));
   _smAllSellers = [];
   _smBindSellerComboboxOnce();
   _smResetSellerSearchUI();
@@ -11741,9 +11753,14 @@ function openCreateShowModal(showId) {
 }
 
 // ── Authorized Sellers search-to-add combobox (Edit/Create Show modal) ──
-let _smAllSellers = [];              // full seller handle list, refreshed on each modal open
-let _smSelectedSellers = new Set();  // handles currently chipped/authorized
-let _smComboboxBound = false;        // guards one-time event binding across repeated modal opens
+// Table numbers live on the same show_sellers.table_number column the dashboard's
+// inline ascSetTable()/setTableNumber() already read/write — no new schema, no new
+// join table. _smSelectedSellers is a Map so each chip can carry its own table number
+// alongside the handle (Map preserves insertion order, same iteration behavior the
+// prior Set-based version relied on for "remove most recently added" on Backspace).
+let _smAllSellers = [];                  // full seller handle list, refreshed on each modal open
+let _smSelectedSellers = new Map();      // handle -> table number string ('' = unassigned)
+let _smComboboxBound = false;            // guards one-time event binding across repeated modal opens
 let _smActiveDropdownIndex = -1;
 let _smCurrentMatches = [];
 const SM_DROPDOWN_MAX_RESULTS = 8;
@@ -11759,18 +11776,45 @@ function _smRenderSellerChips() {
   const input = document.getElementById('smSellerSearchInput');
   if (!chipRow || !input) return;
   chipRow.querySelectorAll('.seller-chip').forEach(el => el.remove());
-  [...(_smSelectedSellers instanceof Set ? _smSelectedSellers : [])].forEach(handle => {
+  _smSelectedSellers.forEach((tableNumber, handle) => {
     const chip = document.createElement('span');
     chip.className = 'seller-chip';
     chip.dataset.handle = handle;
-    chip.innerHTML = `${_escHtml(handle)} <button type="button" aria-label="Remove ${_escHtml(handle)}">×</button>`;
+    chip.innerHTML = `
+      <span class="chip-username">${_escHtml(handle)}</span>
+      <input type="text" class="chip-table-input" placeholder="Table #"
+        value="${_escHtml(tableNumber || '')}" aria-label="Table number for ${_escHtml(handle)}">
+      <button type="button" aria-label="Remove ${_escHtml(handle)}">×</button>`;
+    chip.querySelector('.chip-table-input').addEventListener('input', (e) => {
+      _smSelectedSellers.set(handle, e.target.value);
+      _smCheckTableConflicts();
+    });
     chip.querySelector('button').addEventListener('click', () => _smRemoveSeller(handle));
     chipRow.insertBefore(chip, input);
+  });
+  _smCheckTableConflicts();
+}
+
+// Soft, non-blocking nudge — organizers sometimes split a table intentionally, so a
+// shared table number only gets a visual flag, never a save-blocking validation error.
+function _smCheckTableConflicts() {
+  const chipRow = document.getElementById('smSellerChipRow');
+  if (!chipRow) return;
+  const counts = {};
+  _smSelectedSellers.forEach((tableNumber) => {
+    const num = (tableNumber || '').trim();
+    if (num) counts[num] = (counts[num] || 0) + 1;
+  });
+  chipRow.querySelectorAll('.seller-chip').forEach(chip => {
+    const num = (_smSelectedSellers.get(chip.dataset.handle) || '').trim();
+    const conflict = !!num && counts[num] > 1;
+    chip.classList.toggle('table-conflict', conflict);
+    chip.title = conflict ? 'Table already assigned to another seller' : '';
   });
 }
 
 function _smAddSeller(handle) {
-  _smSelectedSellers.add(handle);
+  _smSelectedSellers.set(handle, '');
   _smRenderSellerChips();
   const input = document.getElementById('smSellerSearchInput');
   if (input) { input.value = ''; input.focus(); }
@@ -11873,7 +11917,7 @@ function _smBindSellerComboboxOnce() {
 
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Backspace' && input.value === '' && _smSelectedSellers.size > 0) {
-      const lastHandle = [..._smSelectedSellers].pop();
+      const lastHandle = [..._smSelectedSellers.keys()].pop();
       _smRemoveSeller(lastHandle);
       return;
     }
@@ -11930,18 +11974,29 @@ async function saveShow() {
 
   const isNew = !editingShowId;
 
-  // Always read sellers from the combobox's selection state — source of truth for both create and edit
-  const newSellers = new Set(_smSelectedSellers);
+  // Always read sellers (and their table numbers) from the combobox's selection
+  // state — source of truth for both create and edit
+  const newSellers = new Set(_smSelectedSellers.keys());
+  const newTables  = {};
+  _smSelectedSellers.forEach((tableNumber, handle) => {
+    const trimmed = (tableNumber || '').trim();
+    if (trimmed) newTables[handle] = trimmed;
+  });
 
   // Diff against existing sellers so we know what to add/remove in DB
   const existingShow = editingShowId ? shows[editingShowId] : null;
   const oldSellers = (existingShow && existingShow.sellers instanceof Set) ? existingShow.sellers : new Set();
+  const oldTables  = (existingShow && existingShow.tables) || {};
   const toAdd    = [...newSellers].filter(h => !oldSellers.has(h));
   const toRemove = [...oldSellers].filter(h => !newSellers.has(h));
+  // Sellers staying authorized whose table number actually changed — persisted via
+  // the existing updateTableNumberInDB() (same function ascSetTable()/setTableNumber()
+  // already use), not a bulk upsert to a separate table.
+  const tableChanges = [...newSellers].filter(h => (oldTables[h] || '') !== (newTables[h] || ''));
 
   const id = editingShowId || genShowId();
   shows[id] = { id, name, date, startDate, endDate: endDate || startDate, location, status, accessCode: code, sellers: newSellers,
-                tables: (shows[id] && shows[id].tables) || {},
+                tables: newTables,
                 publishedAt: (shows[id] && shows[id].publishedAt) || null,
                 city, state, venue };
 
@@ -11967,8 +12022,16 @@ async function saveShow() {
     ]);
   }
 
-  // Refresh stat chips to reflect any seller changes
+  // Persist table-number edits made in the combobox chips. Must run after the
+  // add/remove block above — a newly-authorized seller's show_sellers row has to
+  // exist before its table_number can be updated.
+  if (tableChanges.length) {
+    await Promise.all(tableChanges.map(h => updateTableNumberInDB(id, h, newTables[h] || null)));
+  }
+
+  // Refresh stat chips to reflect any seller/table changes
   updateAscHeader(id);
+  if (buyerShowId === id) filterBuyer();
 
   showToast(`Show "${name}" ${isNew ? 'created' : 'updated'}`);
 }

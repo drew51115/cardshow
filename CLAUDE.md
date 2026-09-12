@@ -1033,8 +1033,9 @@ search-to-add combobox: type to filter, click or Enter to add a chip, click a ch
   match this modal's other fields — `smName`, `smStartDate`, etc. — and to avoid colliding
   with the unrelated pre-existing `#sellerSearchInput` inventory-table search box elsewhere
   in the page; a real collision hit during testing before the rename).
-- JS: `_smAllSellers` (full handle list, refreshed on every open), `_smSelectedSellers` (a
-  `Set`, seeded from `shows[showId].sellers` on edit / empty on create), plus
+- JS: `_smAllSellers` (full handle list, refreshed on every open), `_smSelectedSellers`
+  (a `Map<handle, tableNumber>` as of the table-assignment extension below — see that
+  section for why it's a Map rather than the original Set), plus
   `_smAddSeller()`/`_smRemoveSeller()`/`_smRenderSellerChips()`/`_smGetSellerMatches()`
   (case-insensitive substring, prefix matches sorted first)/`_smRenderSellerDropdown()`
   (caps at 8 results + a "+N more — refine your search" hint) and keyboard handling
@@ -1058,6 +1059,84 @@ search-to-add combobox: type to filter, click or Enter to add a chip, click a ch
 ### Not in scope (per spec)
 Server-side seller search (client-side filtering is fine at hundreds of sellers) · saved
 rosters / clone-from-previous-show.
+
+## Show Floor Phase 1 — Table Assignment in the Combobox (session 2026-09-12)
+
+Extends the search-to-add combobox above so each chip carries an inline, editable table
+number, with a soft (non-blocking) visual nudge when two sellers share a table number.
+This is Phase 1 of a larger "show floor" effort — no visual map yet (that's a later phase).
+
+### Deviations from the build spec, and why
+The spec assumed either a flat `authorized_sellers` array column on `shows` or a fresh
+`show_authorized_sellers` join table, and asked for a new "public show page" table finder.
+Neither matches this codebase, and following the spec literally would have created a
+**second, conflicting** seller/table data path alongside the one already shipped:
+- **No schema change.** `show_sellers` (`show_id, seller_id, table_number`) already exists
+  and already has `table_number` — see "Database Schema" above. `updateTableNumberInDB()`,
+  `addShowSellerToDB()`, `removeShowSellerFromDB()` already read/write it, and the admin
+  dashboard's inline table-number inputs (`ascSetTable()`, `setTableNumber()`,
+  `autoAssignTables()` — see "Key Functions Reference") already use them. Creating a new
+  `show_authorized_sellers` table per the spec would have split table-number storage across
+  two tables with no reconciliation. This extension writes to the existing `show_sellers`
+  table through the existing functions — nothing new to migrate, nothing to backfill.
+- **No public `show.html` table finder.** The spec's Phase D wanted a searchable table
+  finder mounted on "the public show page." `show.html` is CardShow's pre-show, no-login
+  share link — its own copy says, twice, that table numbers and seller contact are
+  "revealed at the show" (see the Browse Inventory and CTA Footer sections in show.html).
+  Building an unrestricted table finder there would leak table locations before the show,
+  directly contradicting that existing, deliberate reveal-gating design. The actual
+  in-app "at the show" surface — reached via QR scan / access code through `joinShow()` —
+  already has this exact feature: the buyer view's **"Find a Table" tab**
+  (`buyerDirectoryPanel` / `buildFullSellerDirectory()` / `renderDirectory()`, see
+  "Shipped ✅" below), which already searches by seller name or table number and already
+  sorts naturally (`localeCompare(..., { numeric: true })`, so "A2" sorts before "A10").
+  One intentional difference from the spec's Phase D: that directory does **not** exclude
+  sellers with no table number assigned — it still lists them (with a "—" badge and
+  "Table not yet assigned") so a buyer can still browse their inventory before a table is
+  set. Narrowing that to match the spec's "excluded" behavior would have been a regression
+  of shipped, working functionality for a narrower requirement invented for a data shape
+  this app doesn't have — left as-is.
+
+### `_smSelectedSellers` is now a `Map<handle, tableNumber>`, not a `Set<handle>`
+Each chip needs to carry its own table-number value alongside the handle. Insertion order
+is preserved the same way a `Set` did, so Backspace-removes-last-added still works
+(`[..._smSelectedSellers.keys()].pop()`).
+
+### Chip UI
+`_smRenderSellerChips()` renders each chip as `<span class="chip-username">` + a
+`.chip-table-input` text input (placeholder "Table #") + the existing remove `×` button.
+The table-number input has its **own** `input` listener that writes straight into the Map
+and calls `_smCheckTableConflicts()` — it deliberately does **not** trigger a full
+`_smRenderSellerChips()` re-render, since destroying/recreating the `<input>` mid-keystroke
+would drop focus and cursor position. Only add/remove still triggers a full chip re-render.
+
+`_smCheckTableConflicts()` — counts non-empty trimmed table-number values across the Map;
+any chip whose value collides with another gets `.table-conflict` (amber border, matching
+this codebase's existing amber-for-caution convention from the vision-confidence color
+coding, since `--warning` isn't a real CSS variable here) plus a tooltip. This is a nudge,
+not a gate — organizers sometimes split a table intentionally, so a conflict never blocks
+Save.
+
+### `saveShow()` — table-number diffing
+Alongside the existing `toAdd`/`toRemove` seller diff, `saveShow()` now also computes
+`tableChanges` — sellers staying authorized whose table number actually changed vs.
+`existingShow.tables` — and persists only those via `updateTableNumberInDB(id, handle, val)`
+(the same function the dashboard's inline inputs already call), run **after** the
+add/remove `Promise.all` resolves so a newly-authorized seller's `show_sellers` row exists
+before its `table_number` gets updated. `shows[id].tables` is now built fresh from the
+Map's non-empty trimmed values on every save (previously just carried the old `tables`
+object through untouched, since the toggle grid had no table-number concept at all).
+Verified end-to-end with a mocked `db.from(...)` call log: an unchanged seller/table
+combination produces zero DB calls; only the seller(s) actually added or table-edited hit
+`show_sellers`. A table-number edit also triggers `filterBuyer()` when the edited show is
+the buyer's currently active show — same live-update convention `ascSetTable()`/
+`setTableNumber()` already follow.
+
+### Does not change
+`show_sellers` schema, `ascSetTable()`, `setTableNumber()`, `autoAssignTables()`,
+`updateTableNumberInDB()`, the buyer "Find a Table" directory (`buildSellerDirectory()`,
+`buildFullSellerDirectory()`, `renderDirectory()`), `show.html`'s reveal-gating copy/design,
+RLS policies, no new Supabase tables or migrations.
 
 ## Backlog Priority
 
@@ -1195,6 +1274,14 @@ rosters / clone-from-previous-show.
   modal's toggle-pill seller grid replaced with a type-to-filter combobox (chips, keyboard
   nav, 8-result cap). Same data source and saved field as before — see "Authorized Sellers
   — Search-to-Add Combobox" above for full detail.
+- **Show Floor Phase 1 — table assignment in the combobox (session 2026-09-12)** — each
+  Authorized Sellers chip now has an inline, editable table-number field with a soft
+  (non-blocking) conflict indicator when two sellers share a number. Writes through the
+  existing `show_sellers.table_number` column and `updateTableNumberInDB()` — no new
+  schema. A public, unrestricted table finder was deliberately **not** added to
+  `show.html` (would contradict its existing "revealed at the show" design) — the buyer
+  in-app "Find a Table" tab already covers this. See "Show Floor Phase 1 — Table
+  Assignment in the Combobox" above for full detail.
 
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`
