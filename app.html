@@ -15628,8 +15628,9 @@ function _floorBindEditorOnce() {
       if (placeholder) placeholder.style.display = 'none';
       showToast('Floor plan uploaded');
     } catch (err) {
-      console.error('Floor plan upload failed:', err.message);
-      showToast('Upload failed — check your connection and try again', 'var(--danger)');
+      console.error('Floor plan upload failed:', err);
+      const reason = err?.message || 'Unknown error';
+      showToast(`Upload failed — ${reason}`, 'var(--danger)');
     }
   });
 

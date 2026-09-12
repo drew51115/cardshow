@@ -162,13 +162,17 @@ ALTER TABLE show_sellers
   ADD COLUMN IF NOT EXISTS y_pct numeric(5,2);
 ALTER TABLE shows ADD COLUMN IF NOT EXISTS floor_plan_url text;
 ```
-Also requires a **manual, non-SQL step**: create a public `floor-plans` Storage bucket in the
-Supabase dashboard (Storage → New bucket → Public) before the organizer floor editor's upload
-button will work — same category of manual prerequisite as enabling Anonymous Sign-Ins for
-Trade Zone. Until both the migration and the bucket exist, `_floorUploadPlan()`'s upload call
-fails and the organizer sees a toast ("Upload failed…") rather than a silent no-op; the
-Unplaced/Placed seller lists (which only depend on `show_sellers.table_number`, already
-migrated in Phase 1) still work regardless.
+Also requires `supabase/migrations/20260912120000_floor_plans_storage.sql` — creates the
+public `floor-plans` Storage bucket **and** its `storage.objects` RLS policies (public read +
+authenticated insert/update). This migration exists precisely because of a real production bug
+(see "Floor plan upload failure — missing storage RLS policy" below): a bucket marked "Public"
+in the dashboard only makes reads public, it grants no INSERT permission on its own, so a
+bucket created by hand via Storage → New Bucket → Public still rejects every upload with an
+RLS error. Until this migration (and the `x_pct`/`y_pct`/`floor_plan_url` column migration
+above) have both been run, `_floorUploadPlan()`'s upload call fails and the organizer sees a
+toast surfacing the real Supabase error message (see below); the Unplaced/Placed seller lists
+(which only depend on `show_sellers.table_number`, already migrated in Phase 1) still work
+regardless.
 
 ## Key Data Structures (in-memory runtime cache)
 ```js
@@ -1306,6 +1310,58 @@ Scan/GMV heatmap overlay by table position (Phase 3) · multiple floors or image
 reusing a floor plan across shows · custom pan/zoom beyond native pinch-zoom · drag-and-drop
 placement · seller day-of check-in.
 
+### Floor plan upload failure — missing storage RLS policy (session 2026-09-12)
+
+Real production bug report: uploading a floor plan JPG always failed with a generic
+"Upload Failed — check your connection" toast, immediately after Phase 2 shipped.
+
+**Root cause: a "Public" Storage bucket only makes reads public.** It grants no INSERT
+permission by itself — Supabase Storage authorization is enforced by RLS policies on the
+`storage.objects` table, completely separate from the bucket's own public/private flag (which
+only affects unauthenticated `SELECT`/download access). The original Phase 2 rollout
+documented creating the `floor-plans` bucket as a manual dashboard step (Storage → New Bucket
+→ Public) with no accompanying policy — so even a correctly-created bucket rejected every
+`upload()` call with an RLS error (`new row violates row-level security policy for table
+"objects"`, or similar), which `_floorUploadPlan()` threw and its caller caught, but the catch
+block only ever showed a hardcoded generic message (`'Upload failed — check your connection
+and try again'`) regardless of what `err.message` actually said — so the real cause was
+invisible to both the organizer and (via a screenshot alone) to debugging this from a chat
+session with no direct access to the live Supabase project's dashboard or policies.
+
+This exact bucket-vs-policy gap was already solved once in this same codebase — the Trade
+Zone migration (`supabase/migrations/20260825120000_trade_zone.sql`) creates its two buckets
+*and* explicit `storage.objects` policies (public read + `to authenticated` insert) in the same
+SQL file — but that precedent wasn't followed for `floor-plans`, which shipped as dashboard-
+only manual steps with no equivalent policy guidance.
+
+**Two fixes:**
+1. **`supabase/migrations/20260912120000_floor_plans_storage.sql`** (new) — creates the
+   `floor-plans` bucket via SQL (`insert into storage.buckets`, `on conflict do nothing`, so
+   it's safe to run even if the bucket was already created by hand) plus three
+   `storage.objects` policies: public read, `to authenticated` insert, and `to authenticated`
+   update (upload's own `{ upsert: true }` option compiles to an `UPDATE` when the object
+   already exists — matches the `INSERT`-works-but-`UPDATE`-doesn't RLS gap already documented
+   under "sellerPublishToShow() — skip already-published cards" above, which is exactly the
+   failure shape a second policy gap would otherwise reproduce here on a re-upload). This
+   migration **replaces** the old "manual, non-SQL step" instruction — running it from the
+   Supabase SQL editor creates the bucket and its policies in one paste, no dashboard clicking
+   required (though a bucket created by hand beforehand doesn't conflict with it either).
+2. **`_floorBindEditorOnce()`'s upload catch block now surfaces the real error message** —
+   `showToast(\`Upload failed — ${err?.message || 'Unknown error'}\`, ...)` instead of a
+   hardcoded string — so the next time any upload fails for any reason (missing bucket, missing
+   policy, missing `floor_plan_url` column, file-size limit, network), the organizer sees
+   Supabase's actual reason rather than an undifferentiated "check your connection," which
+   pointed everyone (including this debugging session) toward a network problem that was never
+   the real cause.
+
+**If the upload still fails after running the new migration**, the toast now shows the actual
+Supabase error text — check it against: the `x_pct`/`y_pct`/`floor_plan_url` column migration
+above (if `shows.floor_plan_url` doesn't exist yet, the *storage* upload itself will still
+succeed, but the follow-up `shows.update({ floor_plan_url: ... })` call will fail with a
+`PGRST204` "column not found" error); a file over Supabase Storage's default per-bucket size
+limit; or (least likely, given the bucket now ships with policies) a project-level Storage
+configuration issue.
+
 ## Backlog Priority
 
 ### Shipped ✅
@@ -1459,9 +1515,18 @@ placement · seller day-of check-in.
   image and click-to-arm-then-place each tabled seller on it (`🗺️ Floor Map` button per show
   card); buyers get a List/Map toggle on the existing in-app "Find a Table" tab, shown only
   once a floor plan and at least one placed marker exist. Writes to new `show_sellers.x_pct`/
-  `y_pct` and `shows.floor_plan_url` columns — no new tables. Requires a manually-created
-  public `floor-plans` Storage bucket. See "Show Floor Phase 2 — Visual Floor Map" above for
-  full detail, including a real `hidden`-attribute-vs-CSS cascade bug caught by testing.
+  `y_pct` and `shows.floor_plan_url` columns — no new tables. Requires the
+  `floor-plans` Storage bucket + policies (see below). See "Show Floor Phase 2 — Visual Floor
+  Map" above for full detail, including a real `hidden`-attribute-vs-CSS cascade bug caught by
+  testing.
+- **Floor plan upload failure fix (session 2026-09-12)** — real production bug: uploading a
+  floor plan always failed with a generic "Upload Failed — check your connection" toast. Root
+  cause was a missing `storage.objects` RLS policy — a "Public" bucket only makes reads public,
+  not uploads. New `supabase/migrations/20260912120000_floor_plans_storage.sql` creates the
+  bucket and its read/insert/update policies in one script (replacing the old manual-bucket-
+  only instruction); the upload error toast now also surfaces the real Supabase error message
+  instead of a hardcoded string. See "Floor plan upload failure — missing storage RLS policy"
+  above for full detail.
 
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`
