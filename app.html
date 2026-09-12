@@ -1798,20 +1798,49 @@
   .show-status-dot.upcoming { background: var(--accent); }
   .show-status-dot.past     { background: var(--muted); }
 
+  /* Authorized Sellers — search-to-add combobox (Edit Show modal) */
+  .seller-combobox { position: relative; }
+  .seller-chip-row {
+    display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center;
+    padding: 0.5rem 0.6rem;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; min-height: 42px;
+  }
+  .seller-chip-row:focus-within { border-color: var(--accent); }
   .seller-chip {
     display: inline-flex; align-items: center; gap: 0.3rem;
-    padding: 0.25rem 0.6rem;
-    border-radius: 20px; font-size: 0.72rem;
-    font-family: 'DM Mono', monospace;
-    border: 1px solid var(--border);
-    background: var(--card); color: var(--muted);
-    cursor: pointer; transition: all 0.12s; user-select: none;
+    padding: 0.22rem 0.35rem 0.22rem 0.6rem;
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 999px; font-size: 0.72rem;
+    font-family: 'DM Mono', monospace; color: var(--text);
   }
-  .seller-chip.selected {
-    border-color: var(--accent); color: var(--accent);
-    background: rgba(245,200,66,0.08);
+  .seller-chip button {
+    background: none; border: none; color: var(--muted);
+    cursor: pointer; font-size: 0.85rem; line-height: 1; padding: 0 0.15rem;
   }
-  .seller-chip .chip-check { font-size: 0.65rem; }
+  .seller-chip button:hover { color: var(--text); }
+  .seller-search-input {
+    flex: 1 1 120px; min-width: 120px;
+    background: transparent; border: none; outline: none;
+    color: var(--text); font-family: 'DM Sans', sans-serif;
+    font-size: 0.82rem; padding: 0.2rem 0.1rem;
+  }
+  .seller-dropdown {
+    position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+    max-height: 220px; overflow-y: auto;
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 8px; list-style: none; margin: 0; padding: 0.25rem;
+    z-index: 20;
+  }
+  .seller-dropdown li {
+    padding: 0.5rem 0.6rem; border-radius: 6px; cursor: pointer;
+    font-size: 0.8rem; font-family: 'DM Mono', monospace; color: var(--text);
+  }
+  .seller-dropdown li.active, .seller-dropdown li:hover { background: var(--surface); }
+  .seller-dropdown li.empty-state, .seller-dropdown li.more-hint {
+    color: var(--muted); cursor: default;
+  }
+  .seller-dropdown li.empty-state:hover, .seller-dropdown li.more-hint:hover { background: none; }
 
   .access-code-badge {
     display: inline-flex; align-items: center; gap: 0.35rem;
@@ -5772,7 +5801,22 @@
       </div>
       <div>
         <div class="section-label" style="margin-bottom:0.5rem">Authorized Sellers</div>
-        <div id="smSellerList" style="display:flex;flex-wrap:wrap;gap:0.4rem;max-height:120px;overflow-y:auto;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:0.6rem"></div>
+        <div class="seller-combobox" id="smSellerCombobox">
+          <div class="seller-chip-row" id="smSellerChipRow">
+            <!-- selected seller chips render here, input is always the last child -->
+            <input
+              type="text"
+              id="smSellerSearchInput"
+              class="seller-search-input"
+              placeholder="Search sellers to add…"
+              autocomplete="off"
+              role="combobox"
+              aria-expanded="false"
+              aria-controls="smSellerDropdown"
+            />
+          </div>
+          <ul class="seller-dropdown" id="smSellerDropdown" role="listbox" hidden></ul>
+        </div>
       </div>
     </div>
     <div class="modal-actions">
@@ -11672,11 +11716,16 @@ function openCreateShowModal(showId) {
     genAccessCode();
   }
 
-  // Build seller checkboxes — load from DB so all registered sellers appear,
-  // not just those who already have cards in inventory
+  // Authorized Sellers combobox — load from DB so all registered sellers appear,
+  // not just those who already have cards in inventory. Listeners are bound once
+  // (see _smBindSellerComboboxOnce) — each open only resets selection/list state,
+  // so repeated open/edit cycles never accumulate duplicate handlers.
   const authorizedSet = (showId && shows[showId]) ? shows[showId].sellers : new Set();
-  const list = document.getElementById('smSellerList');
-  list.innerHTML = '<span style="font-size:0.78rem;color:var(--muted)">Loading sellers…</span>';
+  _smSelectedSellers = new Set(authorizedSet);
+  _smAllSellers = [];
+  _smBindSellerComboboxOnce();
+  _smResetSellerSearchUI();
+  _smRenderSellerChips();
 
   modal.classList.add('open');
   document.body.style.overflow = 'hidden';
@@ -11686,22 +11735,170 @@ function openCreateShowModal(showId) {
       const dbHandles = (data || []).map(r => r.handle).filter(Boolean);
       // Merge with any in-memory sellers (e.g. demo mode)
       const memHandles = [...new Set(inventory.map(r => r.Seller).filter(Boolean))];
-      const allSellers = [...new Set([...dbHandles, ...memHandles])].sort();
-      if (!allSellers.length) {
-        list.innerHTML = '<span style="font-size:0.78rem;color:var(--muted)">No registered sellers yet</span>';
-      } else {
-        list.innerHTML = allSellers.map(s => `
-          <div class="seller-chip ${authorizedSet.has(s) ? 'selected' : ''}" onclick="toggleSellerChip(this,'${s}')">
-            <span class="chip-check">${authorizedSet.has(s) ? '✓' : '+'}</span>${s}
-          </div>`).join('');
-      }
+      _smAllSellers = [...new Set([...dbHandles, ...memHandles])].sort();
     });
   }
 }
 
-function toggleSellerChip(el, seller) {
-  el.classList.toggle('selected');
-  el.querySelector('.chip-check').textContent = el.classList.contains('selected') ? '✓' : '+';
+// ── Authorized Sellers search-to-add combobox (Edit/Create Show modal) ──
+let _smAllSellers = [];              // full seller handle list, refreshed on each modal open
+let _smSelectedSellers = new Set();  // handles currently chipped/authorized
+let _smComboboxBound = false;        // guards one-time event binding across repeated modal opens
+let _smActiveDropdownIndex = -1;
+let _smCurrentMatches = [];
+const SM_DROPDOWN_MAX_RESULTS = 8;
+
+function _smResetSellerSearchUI() {
+  const input = document.getElementById('smSellerSearchInput');
+  if (input) input.value = '';
+  _smCloseSellerDropdown();
+}
+
+function _smRenderSellerChips() {
+  const chipRow = document.getElementById('smSellerChipRow');
+  const input = document.getElementById('smSellerSearchInput');
+  if (!chipRow || !input) return;
+  chipRow.querySelectorAll('.seller-chip').forEach(el => el.remove());
+  [...(_smSelectedSellers instanceof Set ? _smSelectedSellers : [])].forEach(handle => {
+    const chip = document.createElement('span');
+    chip.className = 'seller-chip';
+    chip.dataset.handle = handle;
+    chip.innerHTML = `${_escHtml(handle)} <button type="button" aria-label="Remove ${_escHtml(handle)}">×</button>`;
+    chip.querySelector('button').addEventListener('click', () => _smRemoveSeller(handle));
+    chipRow.insertBefore(chip, input);
+  });
+}
+
+function _smAddSeller(handle) {
+  _smSelectedSellers.add(handle);
+  _smRenderSellerChips();
+  const input = document.getElementById('smSellerSearchInput');
+  if (input) { input.value = ''; input.focus(); }
+  _smCloseSellerDropdown();
+}
+
+function _smRemoveSeller(handle) {
+  _smSelectedSellers.delete(handle);
+  _smRenderSellerChips();
+  const input = document.getElementById('smSellerSearchInput');
+  if (input) input.focus();
+}
+
+function _smGetSellerMatches(query) {
+  const q = query.trim().toLowerCase();
+  if (!q) return [];
+  const candidates = _smAllSellers.filter(s => !_smSelectedSellers.has(s) && s.toLowerCase().includes(q));
+  candidates.sort((a, b) => {
+    const aStarts = a.toLowerCase().startsWith(q);
+    const bStarts = b.toLowerCase().startsWith(q);
+    if (aStarts !== bStarts) return aStarts ? -1 : 1;
+    return a.localeCompare(b);
+  });
+  return candidates;
+}
+
+function _smRenderSellerDropdown(matches) {
+  const dropdown = document.getElementById('smSellerDropdown');
+  if (!dropdown) return;
+  _smCurrentMatches = matches.slice(0, SM_DROPDOWN_MAX_RESULTS);
+  _smActiveDropdownIndex = -1;
+  dropdown.innerHTML = '';
+
+  if (!matches.length) {
+    const li = document.createElement('li');
+    li.className = 'empty-state';
+    li.textContent = 'No sellers found';
+    dropdown.appendChild(li);
+  } else {
+    _smCurrentMatches.forEach((handle, i) => {
+      const li = document.createElement('li');
+      li.setAttribute('role', 'option');
+      li.dataset.index = i;
+      li.textContent = handle;
+      li.addEventListener('mousedown', (e) => { e.preventDefault(); _smAddSeller(handle); });
+      dropdown.appendChild(li);
+    });
+    if (matches.length > SM_DROPDOWN_MAX_RESULTS) {
+      const hint = document.createElement('li');
+      hint.className = 'more-hint';
+      hint.textContent = `+${matches.length - SM_DROPDOWN_MAX_RESULTS} more — refine your search`;
+      dropdown.appendChild(hint);
+    }
+  }
+  _smOpenSellerDropdown();
+}
+
+function _smOpenSellerDropdown() {
+  const dropdown = document.getElementById('smSellerDropdown');
+  const input = document.getElementById('smSellerSearchInput');
+  if (dropdown) dropdown.hidden = false;
+  if (input) input.setAttribute('aria-expanded', 'true');
+}
+
+function _smCloseSellerDropdown() {
+  const dropdown = document.getElementById('smSellerDropdown');
+  const input = document.getElementById('smSellerSearchInput');
+  if (dropdown) dropdown.hidden = true;
+  if (input) input.setAttribute('aria-expanded', 'false');
+  _smActiveDropdownIndex = -1;
+}
+
+function _smSetActiveDropdownItem(index) {
+  const dropdown = document.getElementById('smSellerDropdown');
+  if (!dropdown) return;
+  const items = dropdown.querySelectorAll('li[role="option"]');
+  items.forEach(el => el.classList.remove('active'));
+  if (index >= 0 && items[index]) {
+    items[index].classList.add('active');
+    _smActiveDropdownIndex = index;
+  }
+}
+
+// Binds combobox listeners exactly once (guarded by _smComboboxBound). The modal's
+// seller-search elements persist across open/close cycles — binding on every
+// openCreateShowModal() call would stack duplicate handlers, so state (selection,
+// seller list, input value) is reset per-open instead via the functions above.
+function _smBindSellerComboboxOnce() {
+  if (_smComboboxBound) return;
+  const combobox = document.getElementById('smSellerCombobox');
+  const input = document.getElementById('smSellerSearchInput');
+  const dropdown = document.getElementById('smSellerDropdown');
+  if (!combobox || !input || !dropdown) return;
+
+  input.addEventListener('input', () => {
+    const matches = _smGetSellerMatches(input.value);
+    if (input.value.trim()) _smRenderSellerDropdown(matches);
+    else _smCloseSellerDropdown();
+  });
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Backspace' && input.value === '' && _smSelectedSellers.size > 0) {
+      const lastHandle = [..._smSelectedSellers].pop();
+      _smRemoveSeller(lastHandle);
+      return;
+    }
+    if (dropdown.hidden) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      _smSetActiveDropdownItem(Math.min(_smActiveDropdownIndex + 1, _smCurrentMatches.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      _smSetActiveDropdownItem(Math.max(_smActiveDropdownIndex - 1, 0));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (_smActiveDropdownIndex >= 0 && _smCurrentMatches[_smActiveDropdownIndex]) {
+        _smAddSeller(_smCurrentMatches[_smActiveDropdownIndex]);
+      }
+    } else if (e.key === 'Escape') {
+      _smCloseSellerDropdown();
+    }
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!document.getElementById('smSellerCombobox')?.contains(e.target)) _smCloseSellerDropdown();
+  });
+
+  _smComboboxBound = true;
 }
 
 function closeShowModal() {
@@ -11733,9 +11930,8 @@ async function saveShow() {
 
   const isNew = !editingShowId;
 
-  // Always read sellers from chip UI — source of truth for both create and edit
-  const selectedChips = document.querySelectorAll('#smSellerList .seller-chip.selected');
-  const newSellers = new Set([...selectedChips].map(c => c.textContent.replace(/^[✓+\s]+/, '').trim()).filter(Boolean));
+  // Always read sellers from the combobox's selection state — source of truth for both create and edit
+  const newSellers = new Set(_smSelectedSellers);
 
   // Diff against existing sellers so we know what to add/remove in DB
   const existingShow = editingShowId ? shows[editingShowId] : null;

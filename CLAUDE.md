@@ -1010,6 +1010,55 @@ Cards added mid-show (Add Card, Scan-to-Sell POS, bulk scan review, CSV/XLSX imp
 ### POS timeout edge case
 If `insertCardToDB()` times out inside `posInsertAndOpenDrawer()`'s `Promise.race` (`POS_INSERT_TIMEOUT_MS` = 8000ms), `dbId` is `null`, auto-publish is skipped (no `show_inventory` row), and the card won't appear via `_orgFetchInventory()`. It's still recorded in `show_floor_transactions` via `recordShowTransaction()`, which reads the in-memory card object directly and doesn't depend on `_dbId` — so the sale itself isn't lost, just temporarily absent from the show-scoped Analytics view until the organizer republishes. Same graceful-degradation shape as every other `dbId === null` path in this app.
 
+## Authorized Sellers — Search-to-Add Combobox (session 2026-09-12)
+
+Replaced the Edit/Create Show modal's toggle-pill seller grid (every registered seller
+rendered as a `+handle`/`✓ handle` pill, unusable past a couple dozen sellers) with a
+search-to-add combobox: type to filter, click or Enter to add a chip, click a chip's ×
+(or Backspace on an empty input) to remove it.
+
+### What stayed the same
+- **Data source** — still the existing `db.from('sellers').select('handle')` fetch (merged
+  with any in-memory/demo `inventory[]` sellers) already made inside `openCreateShowModal()`.
+  No second fetch added.
+- **Saved field** — still `shows[id].sellers`, a `Set` of seller **handles** (not a DB-row
+  array field — persisted per-show via the existing `addShowSellerToDB()`/
+  `removeShowSellerFromDB()` diff in `saveShow()`). Not renamed.
+- **Sellers are plain handle strings** in this codebase (no `{id, username}` object shape),
+  so the combobox works off a flat `string[]`/`Set<string>` rather than objects.
+
+### Implementation
+- HTML: `#smSellerCombobox` / `#smSellerChipRow` / `#smSellerSearchInput` /
+  `#smSellerDropdown` inside the existing "Authorized Sellers" field group (`sm`-prefixed to
+  match this modal's other fields — `smName`, `smStartDate`, etc. — and to avoid colliding
+  with the unrelated pre-existing `#sellerSearchInput` inventory-table search box elsewhere
+  in the page; a real collision hit during testing before the rename).
+- JS: `_smAllSellers` (full handle list, refreshed on every open), `_smSelectedSellers` (a
+  `Set`, seeded from `shows[showId].sellers` on edit / empty on create), plus
+  `_smAddSeller()`/`_smRemoveSeller()`/`_smRenderSellerChips()`/`_smGetSellerMatches()`
+  (case-insensitive substring, prefix matches sorted first)/`_smRenderSellerDropdown()`
+  (caps at 8 results + a "+N more — refine your search" hint) and keyboard handling
+  (ArrowUp/Down, Enter, Escape, Backspace-on-empty removes the most recently added chip).
+- **Listeners bound once, not per open** — `#smSellerCombobox`'s input/dropdown/document-click
+  listeners are attached a single time, guarded by `_smComboboxBound`, since the modal's DOM
+  persists across open/close cycles (only hidden via the `.open` class) and this modal is
+  reused repeatedly across edits. `openCreateShowModal()` only resets *state* on each open
+  (`_smSelectedSellers`, `_smAllSellers`, search input value, closed dropdown) rather than
+  rebinding handlers — re-binding every open would have stacked duplicate listeners after a
+  few edits, firing each keystroke/click N times. Verified with a headless-browser test that
+  opened/edited several shows in a row and confirmed a single keystroke still yields exactly
+  one dropdown render each time.
+- `saveShow()` now reads `_smSelectedSellers` directly as the source of truth instead of
+  querying `.seller-chip.selected` elements from the old toggle grid — same diff-against-
+  `oldSellers` add/remove logic afterward, untouched.
+- CSS uses this file's real `:root` variables (`--card`, `--border`, `--text`, `--muted`,
+  `--accent`, `--surface`) — the original build spec's CSS sample used placeholder var names
+  (`--input-bg`, `--chip-bg`, `--text-muted`, `--font-mono`) that don't exist in this codebase.
+
+### Not in scope (per spec)
+Server-side seller search (client-side filtering is fine at hundreds of sellers) · saved
+rosters / clone-from-previous-show.
+
 ## Backlog Priority
 
 ### Shipped ✅
@@ -1046,7 +1095,7 @@ If `insertCardToDB()` times out inside `posInsertAndOpenDrawer()`'s `Promise.rac
 - **Take Photo / Look Up button contrast fix** — both buttons styled with `background:#1a1f2e; color:var(--gold); border:solid var(--gold)` so gold copy is readable on dark background.
 - **Admin show seller/card counts** — `updateAscHeader(showId)` now updates all three stat chips (Cards, Sellers, Tables) using `showCardCounts[showId]` for card count (not `inventory[]` which is empty for admins). `addSellerToShow`/`removeSellerFromShow` use surgical DOM updates (no full re-render) to preserve expanded state and call `updateAscHeader()` after each change.
 - **renderAdminShowsList() is dead code** — targets `#adminShowsList` which does not exist; all real renders go through `renderAdminShowsDashboard()` targeting `#adminShowsGrid`. Do not call or rely on `renderAdminShowsList()`.
-- **saveShow() reads chips for edits** — always reads `#smSellerList .seller-chip.selected` as source of truth; diffs against existing sellers; applies add/remove to DB. Previously ignored chip UI for existing shows.
+- **saveShow() reads chips for edits** — reads the Authorized Sellers combobox's selection state (`_smSelectedSellers` — see "Authorized Sellers — Search-to-Add Combobox" below) as source of truth; diffs against existing sellers; applies add/remove to DB. Previously ignored chip UI for existing shows; before that, read `.seller-chip.selected` from the now-removed toggle-pill grid.
 - **Seller Report tab** — `#sellerTabBar` with `switchSellerTab()`; show-scoped filter, Best sale / Most discounted stat cards, Top 5 by revenue, CSV export via `exportReportCSV()`.
 - **XLSX self-hosting** — SheetJS v0.18.5 (`xlsx.full.min.js`) copied to repo root and loaded via `<script src="/xlsx.full.min.js" defer>`. CDN dependency eliminated. `readXLSX()` wraps parse in try/catch; `handleFileUpload()` shows immediate toast and 500ms fallback check.
 - **XLSX import `cardFingerprint` fix** — `r.Number` from SheetJS is a JS number; wrapped with `String()` before `.trim()` to prevent TypeError aborting import.
@@ -1142,6 +1191,10 @@ If `insertCardToDB()` times out inside `posInsertAndOpenDrawer()`'s `Promise.rac
   price changes" button did. Fixed by making `closeCompResults()` apply any staged changes
   before closing, so Done/✕/click-outside all now save staged prices instead of silently
   discarding them. See "'Done' silently discarded staged prices" under Comp Pricing above.
+- **Authorized Sellers search-to-add combobox (session 2026-09-12)** — Edit/Create Show
+  modal's toggle-pill seller grid replaced with a type-to-filter combobox (chips, keyboard
+  nav, 8-result cap). Same data source and saved field as before — see "Authorized Sellers
+  — Search-to-Add Combobox" above for full detail.
 
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`
