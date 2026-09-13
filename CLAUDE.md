@@ -1362,6 +1362,121 @@ succeed, but the follow-up `shows.update({ floor_plan_url: ... })` call will fai
 limit; or (least likely, given the bucket now ships with policies) a project-level Storage
 configuration issue.
 
+## Show Floor Phase 3 — Engagement Heatmap (session 2026-09-13)
+
+Read-only overlay inside the **Organizer Analytics Dashboard** (`#showAnalyticsPanel`, not the
+Edit Show / floor layout editor — a viewing tool, not a setup tool, per the spec's own framing)
+showing which placed tables (Phase 2's `show_sellers.x_pct`/`y_pct`) got scanned and which
+converted to sales, with a Scans / GMV / GMV-per-Scan mode toggle.
+
+### What "Before starting" actually found — the real gap in this build
+The spec asked three schema questions to confirm before writing queries. Two were minor; the
+third was a real blocker that required building new infrastructure, not just adapting a query:
+
+1. **`show_floor_transactions` seller attribution** — confirmed a **direct `seller_id` column**
+   already exists (nullable, → `sellers.id`; see "Database Schema" above). No join through
+   `inventory` needed — the spec's own Phase A query shape was already correct here.
+2. **GMV amount column name** — it's **`sold_price`**, not `amount`. `show_floor_transactions`
+   also has `asking_price` and a generated `price_delta`, but `sold_price` is the one every other
+   GMV computation in this app reads (`_orgRender`'s own north-star GMV KPI, `_orgRenderSellerTable`,
+   `_orgRenderTablePerformance`, etc. — all off `inventory.sold_price` via the `show_inventory`
+   join, not `show_floor_transactions` at all; see the caveat below). Fixed in `fetchFloorMetrics()`.
+3. **`show_events.qr_type` and `.seller_id` columns — do not exist, and there is no
+   "earlier QR scan tracking build."** `show_events` (see "DB Migration: show_events" above) has
+   exactly `id, show_id, event_type, event_data (jsonb), created_at` — two event types exist
+   today, `'buyer_search'` and a single generic `'qr_scan'` fired once per `joinShow()` (a buyer
+   entering the show at all, via access code or the show's own QR — see "Show Organizer Analytics
+   Dashboard" above). **Nothing in this codebase has ever logged a scan attributable to a specific
+   seller or table.** The seller's own "QR code for table" (`getSellerInventoryUrl()`,
+   `sellerQrMode === 'table'`) is a bare static link straight to `seller-browse.html` — confirmed
+   by reading both `getSellerInventoryUrl()` and `seller-browse.html`'s `init()` before this
+   session, neither wrote to `show_events` in any form. Without per-seller scan data, the Scans
+   and GMV-per-Scan modes are not "adapt the query" work — they're permanently-empty stubs.
+
+   Since the acceptance criteria require the mode toggle to actually work, this session **built
+   the missing per-seller scan logging** rather than shipping two dead modes:
+   - `getSellerInventoryUrl()` (app.html) now appends `&show_id=<activeShow.id>` to the **table**
+     QR link only (not the `share` link, which isn't a show-floor booth scan) — `activeShow` is
+     the existing `Object.defineProperty` getter (`shows[activeShowId]`), so this needed no new
+     state, just a longer URL.
+   - `seller-browse.html` reads the new `show_id` param and, once it resolves the seller row it
+     already fetches for inventory filtering, fires `_logSellerQrScan(seller.id, SHOW_ID)` —
+     fire-and-forget insert of `{ show_id, event_type: 'qr_scan_seller', event_data: { seller_id } }`.
+     **No DB migration** — `seller_id` rides inside the existing `event_data` jsonb column rather
+     than a new top-level column, since jsonb already has the flexibility the spec assumed a
+     schema change would provide. Deduped per browser session via `sessionStorage` keyed on
+     `show_id`+`seller_id`, so a buyer reloading the seller's page mid-visit doesn't inflate the
+     scan count — this also means scan counts are "distinct visits this session," not "distinct
+     buyers" (no buyer auth exists to count real uniques; documented limitation, not a bug).
+   - This event type is a new, separate `'qr_scan'`-sibling (`'qr_scan_seller'`), not a
+     `qr_type` discriminator column on the existing one — keeps the existing `joinShow()`-level
+     "buyer entered this show" metric (`orgQRScans` KPI, "Show Organizer Analytics Dashboard"
+     above) completely untouched.
+
+### `fetchFloorMetrics(showId)` (app.html)
+Two parallel queries, matching the spec's own reasoning for client-side aggregation over an RPC
+(one show's volume is small) — but reading the corrected sources: `show_events` filtered to
+`event_type = 'qr_scan_seller'` with `seller_id` pulled out of `event_data` per row (no jsonb
+filter pushed to Postgres — reading rows and reducing client-side is simpler and this is already
+scoped to one show), and `show_floor_transactions.select('seller_id, sold_price')` — a direct
+column, no join, exactly per point 1 above.
+
+**A caveat worth carrying forward**: this heatmap's per-table GMV total will not always exactly
+match the dashboard's own headline "Total Show Floor GMV" KPI a few rows up, because that KPI is
+computed from `inventory.sold_price` (via `_orgFetchInventory()`'s `show_inventory` join) while
+the heatmap reads `show_floor_transactions.sold_price` — two different immutable-vs-mutable
+write paths that are both updated on every sale but aren't the same table (see
+`recordShowTransaction()`'s fire-and-forget, non-fatal-on-error nature in "Critical
+Implementation Notes" — a dropped connection can in principle write one and silently miss the
+other). Followed the spec's explicit direction to read `show_floor_transactions` here (it has
+the `seller_id` column the join-free query needs) rather than reconciling the two sources —
+flagging the discrepancy risk rather than "fixing" it, since the two dashboards asking slightly
+different questions ("total show revenue" vs. "revenue attributable to a specific table") is a
+smaller problem than silently picking one source as universally authoritative.
+
+### Render (mounts in `#showAnalyticsPanel`, below the existing two-column body)
+`initFloorHeatmap(showId)` — fired from `openShowAnalytics()` right after `_orgFetchAndRender()`,
+as an independent, non-blocking fetch (its own loading/error handling, doesn't share
+`orgLoading`/`orgError` state with the main dashboard). Reuses Phase 2's `_floorFetchSellers()`
+directly (two-step `show_sellers`→`sellers` query, same PostgREST-embedded-join avoidance
+already established) rather than the spec's hypothetical separate `fetchFloorSellers()` — no
+reason to duplicate a function that already returns exactly `{ sellerId, handle, tableNumber,
+xPct, yPct }`. Field names adapted from the spec's placeholder shape: `m.handle` not
+`m.username` (this app has no username field, see earlier phases), `db` not `supabase`.
+
+Empty state, mode toggle, halo sizing (relative to the max value among placed tables in *this*
+show, not a fixed scale), zero-value markers rendering with no halo, and the "GMV per Scan" →
+"No scans" divide-by-zero guard are all implemented per the spec's own Phase B logic — that part
+of the spec matched this app's conventions once the data-source fixes above were made. `.floor-marker`,
+`.floor-plan-container`, `.floor-plan-image`, `.floor-marker-layer` CSS classes are reused
+unchanged from Phase 2 (already `pointer-events: none` by default, exactly as the spec noted is
+fine for a read-only view). Listener binding for the mode toggle buttons is guarded by
+`_heatModeBound` (same one-time-bind reasoning as `_smComboboxBound`/`_floorEditorBound` — this
+panel's DOM persists across `openShowAnalytics()` calls for different shows).
+
+The spec's own suggested inline caveat about scan-count wifi reliability is included verbatim in
+the UI (`.heat-caveat` paragraph under the legend) — genuinely useful given the new scan-logging
+path depends on a buyer's phone completing a Supabase insert over venue wifi, unlike GMV which
+inherits `show_floor_transactions`' existing reliability story.
+
+### Key functions (app.html)
+- `_logSellerQrScan(sellerId, showId)` (seller-browse.html) — fire-and-forget scan logger,
+  session-deduped
+- `fetchFloorMetrics(showId)` — scan counts + GMV totals per seller_id
+- `initFloorHeatmap(showId)` / `_renderHeatmap()` — mount, fetch, render, mode-switch re-render
+- `HEAT_MODES` — scans / gmv / conversion mode definitions (label, color, value getter, formatter)
+
+### Does not change
+`_orgFetchAndRender()`/every other organizer-analytics function, `_floorFetchSellers()`/
+`_floorPlaceMarker()`/`_floorClearMarker()`/the organizer floor layout editor (Phase 2),
+the existing generic `'qr_scan'` event type or `orgQRScans` KPI, `show.html`, RLS policies.
+No new Supabase tables; no migration required (the new event type rides the existing
+`show_events.event_data` jsonb column).
+
+### Not in scope (per spec)
+Live/auto-refreshing heatmap during the show · exporting the heatmap as an image · a raw
+conversion-rate mode (% of scans resulting in any sale) · per-table drill-down timeline.
+
 ## Backlog Priority
 
 ### Shipped ✅
@@ -1527,6 +1642,13 @@ configuration issue.
   only instruction); the upload error toast now also surfaces the real Supabase error message
   instead of a hardcoded string. See "Floor plan upload failure — missing storage RLS policy"
   above for full detail.
+- **Show Floor Phase 3 — engagement heatmap (session 2026-09-13)** — read-only Scans/GMV/GMV-
+  per-Scan heatmap inside the Organizer Analytics Dashboard, built on Phase 2's table positions.
+  Required building genuinely new infrastructure the spec assumed already existed: per-seller QR
+  scan logging (`_logSellerQrScan()` in seller-browse.html, a new `qr_scan_seller` event type
+  carrying `seller_id` inside `show_events.event_data` jsonb — no migration needed). See "Show
+  Floor Phase 3 — Engagement Heatmap" above for full detail, including a documented GMV-source
+  discrepancy risk between this heatmap and the dashboard's own headline GMV KPI.
 
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`

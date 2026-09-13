@@ -1788,6 +1788,25 @@
   .floor-marker.clickable {
     pointer-events: auto; cursor: pointer; border: 1px solid var(--black);
   }
+
+  /* Show Floor Phase 3 — engagement heatmap (read-only, mounts in Organizer Analytics) */
+  .heat-mode-toggle { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; }
+  .heat-mode-btn {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+    color: var(--muted); padding: 0.4rem 0.75rem; font-size: 0.78rem; cursor: pointer;
+  }
+  .heat-mode-btn.active { border-color: var(--accent); color: var(--accent); }
+  .heat-marker-wrapper { position: absolute; transform: translate(-50%, -50%); }
+  .heat-halo {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    border-radius: 50%; opacity: 0.28; pointer-events: none;
+  }
+  .heat-legend {
+    margin-top: 0.5rem; font-size: 0.75rem; color: var(--muted);
+    font-family: 'DM Mono', monospace;
+  }
+  .heat-caveat { margin-top: 0.35rem; font-size: 0.72rem; color: var(--muted); }
+
   .floor-sidebar { flex: 0 0 220px; max-height: 420px; overflow-y: auto; }
   .floor-sidebar h4 {
     font-size: 0.7rem; font-family: 'DM Mono', monospace; letter-spacing: 0.06em;
@@ -4536,6 +4555,37 @@
 
             </div>
           </div><!-- /org-two-col -->
+
+          <!-- ── SHOW FLOOR PHASE 3 — ENGAGEMENT HEATMAP ── -->
+          <div class="org-section-label" style="margin-top:1.5rem">Floor Engagement</div>
+          <div class="org-card" id="floorHeatmapCard">
+            <div class="org-card-head">
+              Engagement Heatmap
+              <span class="org-card-head-sub">which tables buyers scan and buy at</span>
+            </div>
+            <div class="heat-mode-toggle" id="heatModeToggle" style="display:none">
+              <button type="button" class="heat-mode-btn active" data-mode="scans">Scans</button>
+              <button type="button" class="heat-mode-btn" data-mode="gmv">GMV</button>
+              <button type="button" class="heat-mode-btn" data-mode="conversion">GMV per Scan</button>
+            </div>
+            <div id="heatmapEmptyState" class="org-empty">
+              Upload a floor plan and place at least one table (🗺️ Floor Map) to see engagement data here.
+            </div>
+            <div id="heatmapMapWrapper" style="display:none">
+              <div class="floor-plan-container" id="heatmapPlanContainer">
+                <img id="heatmapFloorPlanImage" class="floor-plan-image" alt="Venue floor plan" style="display:none">
+                <div class="floor-marker-layer" id="heatmapMarkerLayer"></div>
+              </div>
+              <p class="heat-legend">
+                <span id="heatmapLegendLabel">Scans</span> — highest: <span id="heatmapLegendMax">–</span>
+              </p>
+              <p class="heat-caveat">
+                Scan counts depend on buyer wifi completing the QR redirect and may undercount on
+                bad-connectivity days — GMV is written the same reliable way as the rest of this
+                dashboard and isn't affected.
+              </p>
+            </div>
+          </div>
 
         </div><!-- /orgDashContent -->
       </div><!-- /showAnalyticsPanel -->
@@ -11409,8 +11459,12 @@ function getSellerInventoryUrl(handle, mode) {
     return `${base}?seller=${slug}`;
   }
   const showSlug = activeShow ? encodeURIComponent(activeShow.name) : '';
+  // show_id (not just the display-name slug) lets seller-browse.html attribute
+  // a QR scan to this specific show for the Phase 3 heatmap — see
+  // _logSellerQrScan() there and CLAUDE.md "Show Floor Phase 3".
+  const showIdParam = activeShow?.id ? `&show_id=${encodeURIComponent(activeShow.id)}` : '';
   return showSlug
-    ? `${base}?seller=${slug}&show=${showSlug}`
+    ? `${base}?seller=${slug}&show=${showSlug}${showIdParam}`
     : `${base}?seller=${slug}`;
 }
 
@@ -15469,6 +15523,10 @@ function openShowAnalytics(showId) {
 
   // Fetch and render
   _orgFetchAndRender(showId);
+
+  // Show Floor Phase 3 — engagement heatmap. Own independent fetch, doesn't
+  // gate or share loading/error state with the main dashboard above.
+  initFloorHeatmap(showId);
 }
 
 function closeShowAnalytics() {
@@ -15720,6 +15778,167 @@ function _floorRenderMarkers(placed) {
     marker.textContent = s.tableNumber;
     layer.appendChild(marker);
   });
+}
+
+// ══════════════════════════════════════════════
+//  SHOW FLOOR PHASE 3 — ENGAGEMENT HEATMAP
+//  Read-only overlay inside the Organizer Analytics Dashboard, built on top
+//  of Phase 2's table positions (show_sellers.x_pct/y_pct). See CLAUDE.md
+//  "Show Floor Phase 3" for the schema deviations from the original spec —
+//  short version: show_events has no qr_type/seller_id columns, so per-seller
+//  scans are a new event_type ('qr_scan_seller') with seller_id carried in
+//  the existing event_data jsonb column (no migration needed); GMV reads
+//  show_floor_transactions.sold_price, not a nonexistent "amount" column.
+// ══════════════════════════════════════════════
+
+async function fetchFloorMetrics(showId) {
+  if (typeof db === 'undefined') return { scanCounts: {}, gmvTotals: {} };
+
+  const [{ data: scanRows, error: scanError }, { data: txRows, error: txError }] = await Promise.all([
+    db.from('show_events')
+      .select('event_data')
+      .eq('show_id', showId)
+      .eq('event_type', 'qr_scan_seller'),
+    db.from('show_floor_transactions')
+      .select('seller_id, sold_price')
+      .eq('show_id', showId),
+  ]);
+
+  if (scanError) console.warn('[floor-heatmap] scan fetch:', scanError.message);
+  if (txError)   console.warn('[floor-heatmap] tx fetch:', txError.message);
+
+  const scanCounts = {};
+  (scanRows || []).forEach((r) => {
+    const sellerId = r.event_data?.seller_id;
+    if (!sellerId) return;
+    scanCounts[sellerId] = (scanCounts[sellerId] || 0) + 1;
+  });
+
+  const gmvTotals = {};
+  (txRows || []).forEach((r) => {
+    if (!r.seller_id) return;
+    gmvTotals[r.seller_id] = (gmvTotals[r.seller_id] || 0) + (Number(r.sold_price) || 0);
+  });
+
+  return { scanCounts, gmvTotals };
+}
+
+const HEAT_MODES = {
+  scans: {
+    label: 'Scans',
+    color: '#F5C842', // var(--accent)
+    getValue: (m) => m.scanCount,
+    format: (v) => `${v}`,
+  },
+  gmv: {
+    label: 'GMV',
+    color: '#4ADE80',
+    getValue: (m) => m.gmv,
+    format: (v) => `$${v.toFixed(0)}`,
+  },
+  conversion: {
+    label: 'GMV per Scan',
+    color: '#60A5FA',
+    getValue: (m) => (m.scanCount > 0 ? m.gmv / m.scanCount : null),
+    format: (v) => (v == null ? 'No scans' : `$${v.toFixed(2)}/scan`),
+  },
+};
+
+let _heatActiveMode = 'scans';
+let _heatMetrics = [];
+let _heatModeBound = false;
+
+async function initFloorHeatmap(showId) {
+  const emptyState  = document.getElementById('heatmapEmptyState');
+  const mapWrapper  = document.getElementById('heatmapMapWrapper');
+  const modeToggle  = document.getElementById('heatModeToggle');
+  if (!emptyState || !mapWrapper || !modeToggle) return;
+
+  const sellers = await _floorFetchSellers(showId); // shared with Phase 2 — two-step query, no embed
+  const placed  = sellers.filter((s) => s.xPct != null && s.yPct != null);
+
+  let floorPlanUrl = null;
+  if (typeof db !== 'undefined') {
+    const { data: show } = await db.from('shows').select('floor_plan_url').eq('id', showId).maybeSingle();
+    floorPlanUrl = show?.floor_plan_url || null;
+  }
+
+  const hasData = !!floorPlanUrl && placed.length > 0;
+  emptyState.style.display = hasData ? 'none' : 'block';
+  mapWrapper.style.display = hasData ? 'block' : 'none';
+  modeToggle.style.display = hasData ? 'flex'  : 'none';
+  if (!hasData) return;
+
+  const { scanCounts, gmvTotals } = await fetchFloorMetrics(showId);
+  _heatMetrics = placed.map((s) => ({
+    ...s,
+    scanCount: scanCounts[s.sellerId] || 0,
+    gmv: gmvTotals[s.sellerId] || 0,
+  }));
+  _heatActiveMode = 'scans';
+
+  const image = document.getElementById('heatmapFloorPlanImage');
+  image.src = floorPlanUrl;
+  image.style.display = 'block';
+
+  _renderHeatmap();
+
+  if (!_heatModeBound) {
+    _heatModeBound = true;
+    document.querySelectorAll('.heat-mode-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        _heatActiveMode = btn.dataset.mode;
+        document.querySelectorAll('.heat-mode-btn').forEach((b) => b.classList.toggle('active', b === btn));
+        _renderHeatmap();
+      });
+    });
+  } else {
+    // Re-opening analytics for a (possibly different) show — reset the
+    // toggle's active button back to Scans to match the reset mode above.
+    document.querySelectorAll('.heat-mode-btn').forEach((b) => b.classList.toggle('active', b.dataset.mode === 'scans'));
+  }
+}
+
+function _renderHeatmap() {
+  const mode = HEAT_MODES[_heatActiveMode];
+  const values = _heatMetrics.map((m) => mode.getValue(m)).filter((v) => v != null && v > 0);
+  const max = values.length ? Math.max(...values) : 0;
+
+  const layer = document.getElementById('heatmapMarkerLayer');
+  if (!layer) return;
+  layer.innerHTML = '';
+
+  const MIN_RADIUS = 14; // px — bare marker size, no halo
+  const MAX_RADIUS = 60; // px — halo radius at the max value in this show
+
+  _heatMetrics.forEach((m) => {
+    const value = mode.getValue(m);
+    const wrapper = document.createElement('div');
+    wrapper.className = 'heat-marker-wrapper';
+    wrapper.style.left = `${m.xPct}%`;
+    wrapper.style.top  = `${m.yPct}%`;
+
+    if (value != null && value > 0 && max > 0) {
+      const radius = MIN_RADIUS + (value / max) * (MAX_RADIUS - MIN_RADIUS);
+      const halo = document.createElement('div');
+      halo.className = 'heat-halo';
+      halo.style.width  = `${radius * 2}px`;
+      halo.style.height = `${radius * 2}px`;
+      halo.style.background = mode.color;
+      wrapper.appendChild(halo);
+    }
+
+    const marker = document.createElement('div');
+    marker.className = 'floor-marker'; // reused unchanged from Phase 2 — pointer-events:none, read-only here
+    marker.textContent = m.tableNumber;
+    marker.title = `${m.tableNumber} — @${m.handle} | Scans: ${m.scanCount} · GMV: $${m.gmv.toFixed(0)}`;
+    wrapper.appendChild(marker);
+
+    layer.appendChild(wrapper);
+  });
+
+  document.getElementById('heatmapLegendLabel').textContent = mode.label;
+  document.getElementById('heatmapLegendMax').textContent = max > 0 ? mode.format(max) : 'No data yet';
 }
 
 function _orgSetState(state) {
