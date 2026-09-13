@@ -1348,6 +1348,32 @@ const SELLER_WHATSAPP = {
 const params  = new URLSearchParams(window.location.search);
 const SELLER  = (params.get('seller') || '').toLowerCase().trim();
 const SHOW    = (params.get('show') || '').trim();
+const SHOW_ID = (params.get('show_id') || '').trim();
+
+// Show Floor Phase 3 (engagement heatmap) — logs one show_events row per
+// buyer who scans this seller's table QR during a show, so the organizer
+// heatmap can show which tables are getting scanned. show_events has no
+// qr_type/seller_id columns (that was a build-spec assumption that didn't
+// match this schema — see CLAUDE.md "Show Floor Phase 3"); seller_id is
+// carried inside the existing event_data jsonb column instead, so this
+// needed no migration. Fire-and-forget, never blocks the inventory load.
+// sessionStorage dedup: a buyer reloading this page mid-visit shouldn't
+// inflate the scan count for the same seller+show.
+function _logSellerQrScan(sellerId, showId) {
+  if (!showId || !sellerId || typeof db === 'undefined') return;
+  const key = `cardshow_qr_logged_${showId}_${sellerId}`;
+  try {
+    if (sessionStorage.getItem(key)) return;
+    sessionStorage.setItem(key, '1');
+  } catch (e) { /* private browsing / storage blocked — log anyway, worst case is a duplicate row */ }
+  db.from('show_events').insert({
+    show_id: showId,
+    event_type: 'qr_scan_seller',
+    event_data: { seller_id: sellerId }
+  }).then(({ error }) => {
+    if (error) console.warn('[qr_scan_seller]', error.message);
+  });
+}
 
 function getSet(r) { return r['Set '] || r['Set'] || ''; }
 
@@ -1428,6 +1454,8 @@ async function init() {
         .maybeSingle();
 
       if (seller) {
+        _logSellerQrScan(seller.id, SHOW_ID);
+
         const { data: rows, error } = await db
           .from('inventory')
           .select('*')
