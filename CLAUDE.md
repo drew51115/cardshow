@@ -48,8 +48,11 @@ sellers       — id (uuid PRIMARY KEY = auth.uid()), handle, display_name, what
                 instagram, email, created_at
 shows         — id (text), name, date, location, status, access_code, published_at, created_at,
                 city (text), state (text), venue (text),
-                start_date (date), end_date (date) — see "Pending DB Migrations"
-show_sellers  — show_id, seller_id (uuid → sellers.id), table_number (junction)
+                start_date (date), end_date (date), floor_plan_url (text)
+                — see "Pending DB Migrations"
+show_sellers  — show_id, seller_id (uuid → sellers.id), table_number,
+                x_pct (numeric(5,2)), y_pct (numeric(5,2)) — see "Pending DB Migrations"
+                (junction)
 inventory     — id (uuid), seller_id (uuid → sellers.id), card_title, player, year,
                 card_set, parallel, grader, grade, cert_number, condition, price,
                 status, location, item_type, product_type, created_at, updated_at,
@@ -151,6 +154,25 @@ ALTER TABLE inventory
 Until this runs, `updateCardInDB()` strips `sold_date` from the payload and retries once on the
 same `PGRST204` error — sales still record, the Transaction Log's Date column just shows "—"
 for every row (no `card.SoldDate` ever made it to the DB, so nothing to read back on reload).
+
+Required for the Show Floor Phase 2 visual floor map (see that section below):
+```sql
+ALTER TABLE show_sellers
+  ADD COLUMN IF NOT EXISTS x_pct numeric(5,2),
+  ADD COLUMN IF NOT EXISTS y_pct numeric(5,2);
+ALTER TABLE shows ADD COLUMN IF NOT EXISTS floor_plan_url text;
+```
+Also requires `supabase/migrations/20260912120000_floor_plans_storage.sql` — creates the
+public `floor-plans` Storage bucket **and** its `storage.objects` RLS policies (public read +
+authenticated insert/update). This migration exists precisely because of a real production bug
+(see "Floor plan upload failure — missing storage RLS policy" below): a bucket marked "Public"
+in the dashboard only makes reads public, it grants no INSERT permission on its own, so a
+bucket created by hand via Storage → New Bucket → Public still rejects every upload with an
+RLS error. Until this migration (and the `x_pct`/`y_pct`/`floor_plan_url` column migration
+above) have both been run, `_floorUploadPlan()`'s upload call fails and the organizer sees a
+toast surfacing the real Supabase error message (see below); the Unplaced/Placed seller lists
+(which only depend on `show_sellers.table_number`, already migrated in Phase 1) still work
+regardless.
 
 ## Key Data Structures (in-memory runtime cache)
 ```js
@@ -1010,6 +1032,451 @@ Cards added mid-show (Add Card, Scan-to-Sell POS, bulk scan review, CSV/XLSX imp
 ### POS timeout edge case
 If `insertCardToDB()` times out inside `posInsertAndOpenDrawer()`'s `Promise.race` (`POS_INSERT_TIMEOUT_MS` = 8000ms), `dbId` is `null`, auto-publish is skipped (no `show_inventory` row), and the card won't appear via `_orgFetchInventory()`. It's still recorded in `show_floor_transactions` via `recordShowTransaction()`, which reads the in-memory card object directly and doesn't depend on `_dbId` — so the sale itself isn't lost, just temporarily absent from the show-scoped Analytics view until the organizer republishes. Same graceful-degradation shape as every other `dbId === null` path in this app.
 
+## Authorized Sellers — Search-to-Add Combobox (session 2026-09-12)
+
+Replaced the Edit/Create Show modal's toggle-pill seller grid (every registered seller
+rendered as a `+handle`/`✓ handle` pill, unusable past a couple dozen sellers) with a
+search-to-add combobox: type to filter, click or Enter to add a chip, click a chip's ×
+(or Backspace on an empty input) to remove it.
+
+### What stayed the same
+- **Data source** — still the existing `db.from('sellers').select('handle')` fetch (merged
+  with any in-memory/demo `inventory[]` sellers) already made inside `openCreateShowModal()`.
+  No second fetch added.
+- **Saved field** — still `shows[id].sellers`, a `Set` of seller **handles** (not a DB-row
+  array field — persisted per-show via the existing `addShowSellerToDB()`/
+  `removeShowSellerFromDB()` diff in `saveShow()`). Not renamed.
+- **Sellers are plain handle strings** in this codebase (no `{id, username}` object shape),
+  so the combobox works off a flat `string[]`/`Set<string>` rather than objects.
+
+### Implementation
+- HTML: `#smSellerCombobox` / `#smSellerChipRow` / `#smSellerSearchInput` /
+  `#smSellerDropdown` inside the existing "Authorized Sellers" field group (`sm`-prefixed to
+  match this modal's other fields — `smName`, `smStartDate`, etc. — and to avoid colliding
+  with the unrelated pre-existing `#sellerSearchInput` inventory-table search box elsewhere
+  in the page; a real collision hit during testing before the rename).
+- JS: `_smAllSellers` (full handle list, refreshed on every open), `_smSelectedSellers`
+  (a `Map<handle, tableNumber>` as of the table-assignment extension below — see that
+  section for why it's a Map rather than the original Set), plus
+  `_smAddSeller()`/`_smRemoveSeller()`/`_smRenderSellerChips()`/`_smGetSellerMatches()`
+  (case-insensitive substring, prefix matches sorted first)/`_smRenderSellerDropdown()`
+  (caps at 8 results + a "+N more — refine your search" hint) and keyboard handling
+  (ArrowUp/Down, Enter, Escape, Backspace-on-empty removes the most recently added chip).
+- **Listeners bound once, not per open** — `#smSellerCombobox`'s input/dropdown/document-click
+  listeners are attached a single time, guarded by `_smComboboxBound`, since the modal's DOM
+  persists across open/close cycles (only hidden via the `.open` class) and this modal is
+  reused repeatedly across edits. `openCreateShowModal()` only resets *state* on each open
+  (`_smSelectedSellers`, `_smAllSellers`, search input value, closed dropdown) rather than
+  rebinding handlers — re-binding every open would have stacked duplicate listeners after a
+  few edits, firing each keystroke/click N times. Verified with a headless-browser test that
+  opened/edited several shows in a row and confirmed a single keystroke still yields exactly
+  one dropdown render each time.
+- `saveShow()` now reads `_smSelectedSellers` directly as the source of truth instead of
+  querying `.seller-chip.selected` elements from the old toggle grid — same diff-against-
+  `oldSellers` add/remove logic afterward, untouched.
+- CSS uses this file's real `:root` variables (`--card`, `--border`, `--text`, `--muted`,
+  `--accent`, `--surface`) — the original build spec's CSS sample used placeholder var names
+  (`--input-bg`, `--chip-bg`, `--text-muted`, `--font-mono`) that don't exist in this codebase.
+
+### Not in scope (per spec)
+Server-side seller search (client-side filtering is fine at hundreds of sellers) · saved
+rosters / clone-from-previous-show.
+
+## Show Floor Phase 1 — Table Assignment in the Combobox (session 2026-09-12)
+
+Extends the search-to-add combobox above so each chip carries an inline, editable table
+number, with a soft (non-blocking) visual nudge when two sellers share a table number.
+This is Phase 1 of a larger "show floor" effort — no visual map yet (that's a later phase).
+
+### Deviations from the build spec, and why
+The spec assumed either a flat `authorized_sellers` array column on `shows` or a fresh
+`show_authorized_sellers` join table, and asked for a new "public show page" table finder.
+Neither matches this codebase, and following the spec literally would have created a
+**second, conflicting** seller/table data path alongside the one already shipped:
+- **No schema change.** `show_sellers` (`show_id, seller_id, table_number`) already exists
+  and already has `table_number` — see "Database Schema" above. `updateTableNumberInDB()`,
+  `addShowSellerToDB()`, `removeShowSellerFromDB()` already read/write it, and the admin
+  dashboard's inline table-number inputs (`ascSetTable()`, `setTableNumber()`,
+  `autoAssignTables()` — see "Key Functions Reference") already use them. Creating a new
+  `show_authorized_sellers` table per the spec would have split table-number storage across
+  two tables with no reconciliation. This extension writes to the existing `show_sellers`
+  table through the existing functions — nothing new to migrate, nothing to backfill.
+- **No public `show.html` table finder.** The spec's Phase D wanted a searchable table
+  finder mounted on "the public show page." `show.html` is CardShow's pre-show, no-login
+  share link — its own copy says, twice, that table numbers and seller contact are
+  "revealed at the show" (see the Browse Inventory and CTA Footer sections in show.html).
+  Building an unrestricted table finder there would leak table locations before the show,
+  directly contradicting that existing, deliberate reveal-gating design. The actual
+  in-app "at the show" surface — reached via QR scan / access code through `joinShow()` —
+  already has this exact feature: the buyer view's **"Find a Table" tab**
+  (`buyerDirectoryPanel` / `buildFullSellerDirectory()` / `renderDirectory()`, see
+  "Shipped ✅" below), which already searches by seller name or table number and already
+  sorts naturally (`localeCompare(..., { numeric: true })`, so "A2" sorts before "A10").
+  One intentional difference from the spec's Phase D: that directory does **not** exclude
+  sellers with no table number assigned — it still lists them (with a "—" badge and
+  "Table not yet assigned") so a buyer can still browse their inventory before a table is
+  set. Narrowing that to match the spec's "excluded" behavior would have been a regression
+  of shipped, working functionality for a narrower requirement invented for a data shape
+  this app doesn't have — left as-is.
+
+### `_smSelectedSellers` is now a `Map<handle, tableNumber>`, not a `Set<handle>`
+Each chip needs to carry its own table-number value alongside the handle. Insertion order
+is preserved the same way a `Set` did, so Backspace-removes-last-added still works
+(`[..._smSelectedSellers.keys()].pop()`).
+
+### Chip UI
+`_smRenderSellerChips()` renders each chip as `<span class="chip-username">` + a
+`.chip-table-input` text input (placeholder "Table #") + the existing remove `×` button.
+The table-number input has its **own** `input` listener that writes straight into the Map
+and calls `_smCheckTableConflicts()` — it deliberately does **not** trigger a full
+`_smRenderSellerChips()` re-render, since destroying/recreating the `<input>` mid-keystroke
+would drop focus and cursor position. Only add/remove still triggers a full chip re-render.
+
+`_smCheckTableConflicts()` — counts non-empty trimmed table-number values across the Map;
+any chip whose value collides with another gets `.table-conflict` (amber border, matching
+this codebase's existing amber-for-caution convention from the vision-confidence color
+coding, since `--warning` isn't a real CSS variable here) plus a tooltip. This is a nudge,
+not a gate — organizers sometimes split a table intentionally, so a conflict never blocks
+Save.
+
+### `saveShow()` — table-number diffing
+Alongside the existing `toAdd`/`toRemove` seller diff, `saveShow()` now also computes
+`tableChanges` — sellers staying authorized whose table number actually changed vs.
+`existingShow.tables` — and persists only those via `updateTableNumberInDB(id, handle, val)`
+(the same function the dashboard's inline inputs already call), run **after** the
+add/remove `Promise.all` resolves so a newly-authorized seller's `show_sellers` row exists
+before its `table_number` gets updated. `shows[id].tables` is now built fresh from the
+Map's non-empty trimmed values on every save (previously just carried the old `tables`
+object through untouched, since the toggle grid had no table-number concept at all).
+Verified end-to-end with a mocked `db.from(...)` call log: an unchanged seller/table
+combination produces zero DB calls; only the seller(s) actually added or table-edited hit
+`show_sellers`. A table-number edit also triggers `filterBuyer()` when the edited show is
+the buyer's currently active show — same live-update convention `ascSetTable()`/
+`setTableNumber()` already follow.
+
+### Does not change
+`show_sellers` schema, `ascSetTable()`, `setTableNumber()`, `autoAssignTables()`,
+`updateTableNumberInDB()`, the buyer "Find a Table" directory (`buildSellerDirectory()`,
+`buildFullSellerDirectory()`, `renderDirectory()`), `show.html`'s reveal-gating copy/design,
+RLS policies, no new Supabase tables or migrations.
+
+## All Inventory Tab Removed (session 2026-09-12)
+
+The admin dashboard's `📋 All Inventory` tab was removed at the user's request, bundled into
+the same session as Show Floor Phase 2 below. `switchAdminTab('shows')` was already the
+default on admin login, so no default-tab repoint was needed.
+
+### What was actually removed vs. what only looked removable
+`#adminInventoryPanel` — the container the old tab displayed — is **not** a self-contained
+admin-only panel; it's the same DOM the seller's own "My Inventory" tab renders into
+(`.table-wrap`, `renderSellerTable()`, `getSellerInventory()`), and `#adminReportPanel`
+inside it is also the seller Report tab's live content. None of that shared infrastructure
+was touched. What was actually removed, since it existed *only* to feed the admin-only
+advanced filter bar sitting above that shared table:
+- The `#adminTabInventory` tab button and the `switchAdminTab()` branch that displayed it
+  (the function's final `else` is now just the `'shows'` branch — `'report'` stays as the
+  pre-existing unreachable dead code documented under item 22 in "Critical Implementation
+  Notes," untouched since removing it wasn't asked for).
+- `#adminFilterBar` and its player/show/seller/grader/status/price filter inputs (HTML),
+  the "Admin-only filters" block inside `applyInventoryFilters()` (the function itself is
+  kept — sellers' own search input still calls it), `clearAdminFilters()`,
+  `populateAdminFilterOptions()` and its four call sites, and every associated CSS rule
+  (base + three responsive breakpoints).
+- Two real crash bugs caught in the process: `loginAsSeller()` and `signOut()` both called
+  `document.getElementById('adminFilterBar').classList.remove('visible')` **without a null
+  guard**, unlike the equivalent line already guarded elsewhere (`enterAsBuyer()`'s
+  `if (adminFilterBar) …`). Deleting `#adminFilterBar`'s HTML without also removing these two
+  lines would have thrown `TypeError: Cannot read properties of null` and silently aborted
+  the rest of both functions — every synchronous statement after that line (auth field
+  resets, sign-out cleanup) would never have run. Fixed by removing both lines; the third
+  removed call site in `signOut()`, `clearAdminFilters()` itself (used there only to clear the
+  search input on the next login), was replaced with a direct
+  `sellerSearchInput.value = ''`.
+- Confirmed while investigating: admin's `inventory[]` array is explicitly emptied on login
+  (`loginAsAdmin()`'s `inventory.length = 0`) and nothing ever repopulated it with all
+  sellers' cards — there was no dedicated "fetch every seller's inventory" function feeding
+  this tab, only `refreshShowCardCounts()` (which just counts, populates `showCardCounts{}`,
+  never `inventory[]`). The tab most likely rendered empty in practice already; removing it
+  loses no working functionality.
+
+### Does not change
+`renderSellerTable()`, `getSellerInventory()`, `applyInventoryFilters()`'s own search-input
+filtering, `#adminReportPanel`/seller Report tab, `switchSellerTab()`, RLS policies.
+
+## Show Floor Phase 2 — Visual Floor Map (session 2026-09-12)
+
+Lets an organizer upload a venue image and place each tabled seller on it with a click, and
+lets buyers toggle the existing "Find a Table" directory to a map view. Builds on Phase 1
+above (which already put table numbers on `show_sellers.table_number`).
+
+### Deviations from the build spec, and why
+Same root cause as Phase 1's deviations — the spec assumes a `show_authorized_sellers` table
+that doesn't exist here — plus one new one:
+- **Schema targets `show_sellers`, not `show_authorized_sellers`.** `x_pct`/`y_pct` were
+  added to the real junction table:
+  ```sql
+  ALTER TABLE show_sellers
+    ADD COLUMN IF NOT EXISTS x_pct numeric(5,2),
+    ADD COLUMN IF NOT EXISTS y_pct numeric(5,2);
+  ALTER TABLE shows ADD COLUMN IF NOT EXISTS floor_plan_url text;
+  ```
+  Percentages of image width/height (0–100), not pixels, per the spec's own reasoning —
+  markers stay correctly positioned regardless of the rendered image size.
+- **Manual step, not yet done: create a public `floor-plans` Storage bucket** in the
+  Supabase dashboard, same category of manual prerequisite as enabling Anonymous Sign-Ins
+  for Trade Zone or setting `ANTHROPIC_API_KEY`. The upload code assumes it exists and will
+  fail with a clear console error (surfaced to the organizer as a toast) until it's created.
+- **Two-step queries, not the spec's nested `sellers(username)` embed.** `_floorFetchSellers()`
+  (shared by the organizer editor and the buyer map toggle) fetches `show_sellers` and
+  `sellers` as two separate queries, joined client-side — this codebase has repeatedly hit
+  PostgREST embedded-join reliability issues under a stale schema cache (see
+  `loadShowSellersAndTables()`, `_orgFetchInventory()`, `show.html`'s
+  `fetchInventoryFromDB()` in this file), so a fresh embed wasn't worth reintroducing that
+  risk for a new feature. `handle` is used throughout, not `username` — this app has no
+  username field.
+- **No public `show.html` map view.** Per the same reveal-gating reasoning as Phase 1's table
+  finder: `show.html` explicitly defers table numbers and seller contact until "at the show."
+  The List/Map toggle was added to the existing in-app **buyer "Find a Table" tab**
+  (`#buyerDirectoryPanel`, gated behind `joinShow()`) instead of a new public surface.
+- **Markers navigate via `directoryOpenSeller(handle)`**, not the spec's `<a href="/sellers/
+  ${id}">` — this app has no per-seller page route; that existing function already does the
+  right thing (switches to Browse, filters to that seller, scrolls the grid into view).
+
+### Organizer editor (`#floorLayoutPanel`)
+Opened via a new **🗺️ Floor Map** button on each show card, alongside the existing
+📊 Analytics button — `openFloorLayoutEditor(showId)` / `closeFloorLayoutEditor()` mirror
+`openShowAnalytics()`/`closeShowAnalytics()`'s panel-swap pattern exactly (hide
+`#adminShowsDashboard`, show the new panel, restore on Back). `switchAdminTab()` force-hides
+`#floorLayoutPanel` on every tab switch, same as it already does for `#showAnalyticsPanel`.
+
+Click-to-arm-then-place, not drag-and-drop, per the spec's own reasoning (HTML5 drag/drop is
+unreliable on touch devices, and this is a one-time setup task): clicking a sidebar seller
+toggles `_floorArmedSellerId` and highlights that row (`.armed`); clicking anywhere on
+`#floorMarkerLayer` while a seller is armed computes `xPct`/`yPct` from the click position
+relative to `#floorPlanContainer`'s bounding rect (clamped to 0–100) and writes it
+immediately via `_floorPlaceMarker()` — fire-and-forget per click, not batched behind a
+"Save Layout" button, same philosophy as `_autoPublishCardToShow()`: a dropped connection
+loses at most one placement. "Clear" on a placed seller (`_floorClearMarker()`) nulls both
+columns and moves them back to Unplaced. Only sellers with a `table_number` set (Phase 1)
+appear in either list — matches the spec's own scoping (`not('table_number', 'is', null)`).
+
+Listeners on the upload button/input and the marker layer are bound once
+(`_floorEditorBound` guard), same reasoning as `_smBindSellerComboboxOnce()` from Phase 1 —
+this panel's DOM persists across open/close cycles, and rebinding every open would stack
+duplicate click handlers.
+
+**Real bug caught in testing, not in the original draft:** the image and placeholder
+elements were originally toggled via the `hidden` HTML attribute (`img.hidden = true/false`).
+This silently didn't work — `.floor-plan-image`/`.floor-plan-placeholder`'s own CSS rules set
+an explicit `display` value, and author-origin CSS always wins over the user-agent
+stylesheet's `[hidden] { display: none }` rule at equal specificity, regardless of source
+order (a well-documented MDN gotcha, and the same category of cascade bug as the mobile
+sidebar toggle regression from session 2026-09-08 — see that section above). A Playwright
+test clicking through the "hidden" placeholder caught it: the element reported `hidden=""` in
+the DOM but still intercepted pointer events because it was still visually `display:flex`.
+Fixed by switching both elements to explicit `style.display` toggling instead of the `hidden`
+attribute, matching this codebase's dominant convention everywhere else.
+
+### Buyer map toggle (extends the Phase 1 "Find a Table" tab)
+`#buyerDirectoryPanel` gained a `#directoryViewToggle` (List/Map buttons, hidden by default)
+above the existing search/filter row, which is now wrapped in `#directoryListView`, plus a
+sibling `#directoryMapView` holding the image + marker layer. `_initDirectoryMapToggle()`
+fires from `switchBuyerTab('directory')` — fetches fresh (`shows.floor_plan_url` +
+`_floorFetchSellers()`) every time the tab opens, same "always fetch fresh, no synced
+in-memory cache" convention `_orgFetchAndRender()` already uses for Analytics. The toggle
+only appears, and Map is only the default view, when a floor plan URL exists **and** at
+least one seller has a placed marker — otherwise the tab silently stays List-only, exactly
+matching the acceptance criteria. `setDirectoryView(view)` toggles the two containers and the
+toggle buttons' `.active` class. Marker clicks call `directoryOpenSeller(handle)`.
+
+### Key functions (app.html)
+- `_floorFetchSellers(showId)` — shared two-step query (see above)
+- `_floorUploadPlan(showId, file)` — Storage upload to `floor-plans/{showId}/floor-plan.{ext}`
+  (upsert, so re-uploading replaces the same show's plan) + `shows.floor_plan_url` update
+- `_floorPlaceMarker(showId, sellerId, xPct, yPct)` / `_floorClearMarker(showId, sellerId)`
+- `openFloorLayoutEditor(showId)` / `closeFloorLayoutEditor()` / `_floorLoadAndRender(showId)`
+- `_floorBindEditorOnce()` / `_floorRenderEditor()` / `_floorRenderSellerList()` /
+  `_floorRenderMarkers()`
+- `_initDirectoryMapToggle()` / `setDirectoryView(view)` / `_renderBuyerFloorMarkers()`
+
+### Does not change
+`_orgFetchInventory()`/organizer analytics, `showAnalyticsPanel`, `buildSellerDirectory()`/
+`buildFullSellerDirectory()`/`renderDirectory()` (the List view itself is untouched — only
+wrapped in a new container), `show.html`, RLS policies. No changes to `show_authorized_sellers`
+since that table doesn't exist and was never created — see Phase 1's deviation notes.
+
+### Not in scope (per spec)
+Scan/GMV heatmap overlay by table position (Phase 3) · multiple floors or images per show ·
+reusing a floor plan across shows · custom pan/zoom beyond native pinch-zoom · drag-and-drop
+placement · seller day-of check-in.
+
+### Floor plan upload failure — missing storage RLS policy (session 2026-09-12)
+
+Real production bug report: uploading a floor plan JPG always failed with a generic
+"Upload Failed — check your connection" toast, immediately after Phase 2 shipped.
+
+**Root cause: a "Public" Storage bucket only makes reads public.** It grants no INSERT
+permission by itself — Supabase Storage authorization is enforced by RLS policies on the
+`storage.objects` table, completely separate from the bucket's own public/private flag (which
+only affects unauthenticated `SELECT`/download access). The original Phase 2 rollout
+documented creating the `floor-plans` bucket as a manual dashboard step (Storage → New Bucket
+→ Public) with no accompanying policy — so even a correctly-created bucket rejected every
+`upload()` call with an RLS error (`new row violates row-level security policy for table
+"objects"`, or similar), which `_floorUploadPlan()` threw and its caller caught, but the catch
+block only ever showed a hardcoded generic message (`'Upload failed — check your connection
+and try again'`) regardless of what `err.message` actually said — so the real cause was
+invisible to both the organizer and (via a screenshot alone) to debugging this from a chat
+session with no direct access to the live Supabase project's dashboard or policies.
+
+This exact bucket-vs-policy gap was already solved once in this same codebase — the Trade
+Zone migration (`supabase/migrations/20260825120000_trade_zone.sql`) creates its two buckets
+*and* explicit `storage.objects` policies (public read + `to authenticated` insert) in the same
+SQL file — but that precedent wasn't followed for `floor-plans`, which shipped as dashboard-
+only manual steps with no equivalent policy guidance.
+
+**Two fixes:**
+1. **`supabase/migrations/20260912120000_floor_plans_storage.sql`** (new) — creates the
+   `floor-plans` bucket via SQL (`insert into storage.buckets`, `on conflict do nothing`, so
+   it's safe to run even if the bucket was already created by hand) plus three
+   `storage.objects` policies: public read, `to authenticated` insert, and `to authenticated`
+   update (upload's own `{ upsert: true }` option compiles to an `UPDATE` when the object
+   already exists — matches the `INSERT`-works-but-`UPDATE`-doesn't RLS gap already documented
+   under "sellerPublishToShow() — skip already-published cards" above, which is exactly the
+   failure shape a second policy gap would otherwise reproduce here on a re-upload). This
+   migration **replaces** the old "manual, non-SQL step" instruction — running it from the
+   Supabase SQL editor creates the bucket and its policies in one paste, no dashboard clicking
+   required (though a bucket created by hand beforehand doesn't conflict with it either).
+2. **`_floorBindEditorOnce()`'s upload catch block now surfaces the real error message** —
+   `showToast(\`Upload failed — ${err?.message || 'Unknown error'}\`, ...)` instead of a
+   hardcoded string — so the next time any upload fails for any reason (missing bucket, missing
+   policy, missing `floor_plan_url` column, file-size limit, network), the organizer sees
+   Supabase's actual reason rather than an undifferentiated "check your connection," which
+   pointed everyone (including this debugging session) toward a network problem that was never
+   the real cause.
+
+**If the upload still fails after running the new migration**, the toast now shows the actual
+Supabase error text — check it against: the `x_pct`/`y_pct`/`floor_plan_url` column migration
+above (if `shows.floor_plan_url` doesn't exist yet, the *storage* upload itself will still
+succeed, but the follow-up `shows.update({ floor_plan_url: ... })` call will fail with a
+`PGRST204` "column not found" error); a file over Supabase Storage's default per-bucket size
+limit; or (least likely, given the bucket now ships with policies) a project-level Storage
+configuration issue.
+
+## Show Floor Phase 3 — Engagement Heatmap (session 2026-09-13)
+
+Read-only overlay inside the **Organizer Analytics Dashboard** (`#showAnalyticsPanel`, not the
+Edit Show / floor layout editor — a viewing tool, not a setup tool, per the spec's own framing)
+showing which placed tables (Phase 2's `show_sellers.x_pct`/`y_pct`) got scanned and which
+converted to sales, with a Scans / GMV / GMV-per-Scan mode toggle.
+
+### What "Before starting" actually found — the real gap in this build
+The spec asked three schema questions to confirm before writing queries. Two were minor; the
+third was a real blocker that required building new infrastructure, not just adapting a query:
+
+1. **`show_floor_transactions` seller attribution** — confirmed a **direct `seller_id` column**
+   already exists (nullable, → `sellers.id`; see "Database Schema" above). No join through
+   `inventory` needed — the spec's own Phase A query shape was already correct here.
+2. **GMV amount column name** — it's **`sold_price`**, not `amount`. `show_floor_transactions`
+   also has `asking_price` and a generated `price_delta`, but `sold_price` is the one every other
+   GMV computation in this app reads (`_orgRender`'s own north-star GMV KPI, `_orgRenderSellerTable`,
+   `_orgRenderTablePerformance`, etc. — all off `inventory.sold_price` via the `show_inventory`
+   join, not `show_floor_transactions` at all; see the caveat below). Fixed in `fetchFloorMetrics()`.
+3. **`show_events.qr_type` and `.seller_id` columns — do not exist, and there is no
+   "earlier QR scan tracking build."** `show_events` (see "DB Migration: show_events" above) has
+   exactly `id, show_id, event_type, event_data (jsonb), created_at` — two event types exist
+   today, `'buyer_search'` and a single generic `'qr_scan'` fired once per `joinShow()` (a buyer
+   entering the show at all, via access code or the show's own QR — see "Show Organizer Analytics
+   Dashboard" above). **Nothing in this codebase has ever logged a scan attributable to a specific
+   seller or table.** The seller's own "QR code for table" (`getSellerInventoryUrl()`,
+   `sellerQrMode === 'table'`) is a bare static link straight to `seller-browse.html` — confirmed
+   by reading both `getSellerInventoryUrl()` and `seller-browse.html`'s `init()` before this
+   session, neither wrote to `show_events` in any form. Without per-seller scan data, the Scans
+   and GMV-per-Scan modes are not "adapt the query" work — they're permanently-empty stubs.
+
+   Since the acceptance criteria require the mode toggle to actually work, this session **built
+   the missing per-seller scan logging** rather than shipping two dead modes:
+   - `getSellerInventoryUrl()` (app.html) now appends `&show_id=<activeShow.id>` to the **table**
+     QR link only (not the `share` link, which isn't a show-floor booth scan) — `activeShow` is
+     the existing `Object.defineProperty` getter (`shows[activeShowId]`), so this needed no new
+     state, just a longer URL.
+   - `seller-browse.html` reads the new `show_id` param and, once it resolves the seller row it
+     already fetches for inventory filtering, fires `_logSellerQrScan(seller.id, SHOW_ID)` —
+     fire-and-forget insert of `{ show_id, event_type: 'qr_scan_seller', event_data: { seller_id } }`.
+     **No DB migration** — `seller_id` rides inside the existing `event_data` jsonb column rather
+     than a new top-level column, since jsonb already has the flexibility the spec assumed a
+     schema change would provide. Deduped per browser session via `sessionStorage` keyed on
+     `show_id`+`seller_id`, so a buyer reloading the seller's page mid-visit doesn't inflate the
+     scan count — this also means scan counts are "distinct visits this session," not "distinct
+     buyers" (no buyer auth exists to count real uniques; documented limitation, not a bug).
+   - This event type is a new, separate `'qr_scan'`-sibling (`'qr_scan_seller'`), not a
+     `qr_type` discriminator column on the existing one — keeps the existing `joinShow()`-level
+     "buyer entered this show" metric (`orgQRScans` KPI, "Show Organizer Analytics Dashboard"
+     above) completely untouched.
+
+### `fetchFloorMetrics(showId)` (app.html)
+Two parallel queries, matching the spec's own reasoning for client-side aggregation over an RPC
+(one show's volume is small) — but reading the corrected sources: `show_events` filtered to
+`event_type = 'qr_scan_seller'` with `seller_id` pulled out of `event_data` per row (no jsonb
+filter pushed to Postgres — reading rows and reducing client-side is simpler and this is already
+scoped to one show), and `show_floor_transactions.select('seller_id, sold_price')` — a direct
+column, no join, exactly per point 1 above.
+
+**A caveat worth carrying forward**: this heatmap's per-table GMV total will not always exactly
+match the dashboard's own headline "Total Show Floor GMV" KPI a few rows up, because that KPI is
+computed from `inventory.sold_price` (via `_orgFetchInventory()`'s `show_inventory` join) while
+the heatmap reads `show_floor_transactions.sold_price` — two different immutable-vs-mutable
+write paths that are both updated on every sale but aren't the same table (see
+`recordShowTransaction()`'s fire-and-forget, non-fatal-on-error nature in "Critical
+Implementation Notes" — a dropped connection can in principle write one and silently miss the
+other). Followed the spec's explicit direction to read `show_floor_transactions` here (it has
+the `seller_id` column the join-free query needs) rather than reconciling the two sources —
+flagging the discrepancy risk rather than "fixing" it, since the two dashboards asking slightly
+different questions ("total show revenue" vs. "revenue attributable to a specific table") is a
+smaller problem than silently picking one source as universally authoritative.
+
+### Render (mounts in `#showAnalyticsPanel`, below the existing two-column body)
+`initFloorHeatmap(showId)` — fired from `openShowAnalytics()` right after `_orgFetchAndRender()`,
+as an independent, non-blocking fetch (its own loading/error handling, doesn't share
+`orgLoading`/`orgError` state with the main dashboard). Reuses Phase 2's `_floorFetchSellers()`
+directly (two-step `show_sellers`→`sellers` query, same PostgREST-embedded-join avoidance
+already established) rather than the spec's hypothetical separate `fetchFloorSellers()` — no
+reason to duplicate a function that already returns exactly `{ sellerId, handle, tableNumber,
+xPct, yPct }`. Field names adapted from the spec's placeholder shape: `m.handle` not
+`m.username` (this app has no username field, see earlier phases), `db` not `supabase`.
+
+Empty state, mode toggle, halo sizing (relative to the max value among placed tables in *this*
+show, not a fixed scale), zero-value markers rendering with no halo, and the "GMV per Scan" →
+"No scans" divide-by-zero guard are all implemented per the spec's own Phase B logic — that part
+of the spec matched this app's conventions once the data-source fixes above were made. `.floor-marker`,
+`.floor-plan-container`, `.floor-plan-image`, `.floor-marker-layer` CSS classes are reused
+unchanged from Phase 2 (already `pointer-events: none` by default, exactly as the spec noted is
+fine for a read-only view). Listener binding for the mode toggle buttons is guarded by
+`_heatModeBound` (same one-time-bind reasoning as `_smComboboxBound`/`_floorEditorBound` — this
+panel's DOM persists across `openShowAnalytics()` calls for different shows).
+
+The spec's own suggested inline caveat about scan-count wifi reliability is included verbatim in
+the UI (`.heat-caveat` paragraph under the legend) — genuinely useful given the new scan-logging
+path depends on a buyer's phone completing a Supabase insert over venue wifi, unlike GMV which
+inherits `show_floor_transactions`' existing reliability story.
+
+### Key functions (app.html)
+- `_logSellerQrScan(sellerId, showId)` (seller-browse.html) — fire-and-forget scan logger,
+  session-deduped
+- `fetchFloorMetrics(showId)` — scan counts + GMV totals per seller_id
+- `initFloorHeatmap(showId)` / `_renderHeatmap()` — mount, fetch, render, mode-switch re-render
+- `HEAT_MODES` — scans / gmv / conversion mode definitions (label, color, value getter, formatter)
+
+### Does not change
+`_orgFetchAndRender()`/every other organizer-analytics function, `_floorFetchSellers()`/
+`_floorPlaceMarker()`/`_floorClearMarker()`/the organizer floor layout editor (Phase 2),
+the existing generic `'qr_scan'` event type or `orgQRScans` KPI, `show.html`, RLS policies.
+No new Supabase tables; no migration required (the new event type rides the existing
+`show_events.event_data` jsonb column).
+
+### Not in scope (per spec)
+Live/auto-refreshing heatmap during the show · exporting the heatmap as an image · a raw
+conversion-rate mode (% of scans resulting in any sale) · per-table drill-down timeline.
+
 ## Backlog Priority
 
 ### Shipped ✅
@@ -1046,7 +1513,7 @@ If `insertCardToDB()` times out inside `posInsertAndOpenDrawer()`'s `Promise.rac
 - **Take Photo / Look Up button contrast fix** — both buttons styled with `background:#1a1f2e; color:var(--gold); border:solid var(--gold)` so gold copy is readable on dark background.
 - **Admin show seller/card counts** — `updateAscHeader(showId)` now updates all three stat chips (Cards, Sellers, Tables) using `showCardCounts[showId]` for card count (not `inventory[]` which is empty for admins). `addSellerToShow`/`removeSellerFromShow` use surgical DOM updates (no full re-render) to preserve expanded state and call `updateAscHeader()` after each change.
 - **renderAdminShowsList() is dead code** — targets `#adminShowsList` which does not exist; all real renders go through `renderAdminShowsDashboard()` targeting `#adminShowsGrid`. Do not call or rely on `renderAdminShowsList()`.
-- **saveShow() reads chips for edits** — always reads `#smSellerList .seller-chip.selected` as source of truth; diffs against existing sellers; applies add/remove to DB. Previously ignored chip UI for existing shows.
+- **saveShow() reads chips for edits** — reads the Authorized Sellers combobox's selection state (`_smSelectedSellers` — see "Authorized Sellers — Search-to-Add Combobox" below) as source of truth; diffs against existing sellers; applies add/remove to DB. Previously ignored chip UI for existing shows; before that, read `.seller-chip.selected` from the now-removed toggle-pill grid.
 - **Seller Report tab** — `#sellerTabBar` with `switchSellerTab()`; show-scoped filter, Best sale / Most discounted stat cards, Top 5 by revenue, CSV export via `exportReportCSV()`.
 - **XLSX self-hosting** — SheetJS v0.18.5 (`xlsx.full.min.js`) copied to repo root and loaded via `<script src="/xlsx.full.min.js" defer>`. CDN dependency eliminated. `readXLSX()` wraps parse in try/catch; `handleFileUpload()` shows immediate toast and 500ms fallback check.
 - **XLSX import `cardFingerprint` fix** — `r.Number` from SheetJS is a JS number; wrapped with `String()` before `.trim()` to prevent TypeError aborting import.
@@ -1142,6 +1609,46 @@ If `insertCardToDB()` times out inside `posInsertAndOpenDrawer()`'s `Promise.rac
   price changes" button did. Fixed by making `closeCompResults()` apply any staged changes
   before closing, so Done/✕/click-outside all now save staged prices instead of silently
   discarding them. See "'Done' silently discarded staged prices" under Comp Pricing above.
+- **Authorized Sellers search-to-add combobox (session 2026-09-12)** — Edit/Create Show
+  modal's toggle-pill seller grid replaced with a type-to-filter combobox (chips, keyboard
+  nav, 8-result cap). Same data source and saved field as before — see "Authorized Sellers
+  — Search-to-Add Combobox" above for full detail.
+- **Show Floor Phase 1 — table assignment in the combobox (session 2026-09-12)** — each
+  Authorized Sellers chip now has an inline, editable table-number field with a soft
+  (non-blocking) conflict indicator when two sellers share a number. Writes through the
+  existing `show_sellers.table_number` column and `updateTableNumberInDB()` — no new
+  schema. A public, unrestricted table finder was deliberately **not** added to
+  `show.html` (would contradict its existing "revealed at the show" design) — the buyer
+  in-app "Find a Table" tab already covers this. See "Show Floor Phase 1 — Table
+  Assignment in the Combobox" above for full detail.
+- **All Inventory tab removed (session 2026-09-12)** — admin dashboard's `📋 All Inventory`
+  tab and its admin-only filter bar removed at user request; the underlying inventory table
+  is shared with the seller's own "My Inventory" tab and was untouched. Two unguarded
+  `getElementById('adminFilterBar')` crash bugs in `loginAsSeller()`/`signOut()` were caught
+  and fixed in the process. See "All Inventory Tab Removed" above for full detail.
+- **Show Floor Phase 2 — visual floor map (session 2026-09-12)** — organizers upload a venue
+  image and click-to-arm-then-place each tabled seller on it (`🗺️ Floor Map` button per show
+  card); buyers get a List/Map toggle on the existing in-app "Find a Table" tab, shown only
+  once a floor plan and at least one placed marker exist. Writes to new `show_sellers.x_pct`/
+  `y_pct` and `shows.floor_plan_url` columns — no new tables. Requires the
+  `floor-plans` Storage bucket + policies (see below). See "Show Floor Phase 2 — Visual Floor
+  Map" above for full detail, including a real `hidden`-attribute-vs-CSS cascade bug caught by
+  testing.
+- **Floor plan upload failure fix (session 2026-09-12)** — real production bug: uploading a
+  floor plan always failed with a generic "Upload Failed — check your connection" toast. Root
+  cause was a missing `storage.objects` RLS policy — a "Public" bucket only makes reads public,
+  not uploads. New `supabase/migrations/20260912120000_floor_plans_storage.sql` creates the
+  bucket and its read/insert/update policies in one script (replacing the old manual-bucket-
+  only instruction); the upload error toast now also surfaces the real Supabase error message
+  instead of a hardcoded string. See "Floor plan upload failure — missing storage RLS policy"
+  above for full detail.
+- **Show Floor Phase 3 — engagement heatmap (session 2026-09-13)** — read-only Scans/GMV/GMV-
+  per-Scan heatmap inside the Organizer Analytics Dashboard, built on Phase 2's table positions.
+  Required building genuinely new infrastructure the spec assumed already existed: per-seller QR
+  scan logging (`_logSellerQrScan()` in seller-browse.html, a new `qr_scan_seller` event type
+  carrying `seller_id` inside `show_events.event_data` jsonb — no migration needed). See "Show
+  Floor Phase 3 — Engagement Heatmap" above for full detail, including a documented GMV-source
+  discrepancy risk between this heatmap and the dashboard's own headline GMV KPI.
 
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`
