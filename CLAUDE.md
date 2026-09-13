@@ -1477,6 +1477,87 @@ No new Supabase tables; no migration required (the new event type rides the exis
 Live/auto-refreshing heatmap during the show · exporting the heatmap as an image · a raw
 conversion-rate mode (% of scans resulting in any sale) · per-table drill-down timeline.
 
+## Show QR Engagement — Scans + Unique Visitors (session 2026-09-13)
+
+Adds an "Unique Visitors" number alongside the entrance-signage QR's existing scan count, shown
+in a new "Show QR Engagement" card in the Organizer Analytics Dashboard.
+
+### What the build spec assumed vs. what's actually here
+This spec (v2 of a QR-tracking build) assumed a fairly different architecture than this app
+actually has, on three separate points, each checked by grepping before writing any code:
+
+1. **`functions/qr-scan.js` and a `/q/s/{showId}` redirect route don't exist, and weren't built.**
+   The spec's whole design is a Netlify Function that a QR points at, which looks up the scan,
+   sets a visitor cookie via `Set-Cookie`, and 302s to `/shows/{id}`. This app has no such route,
+   no `/shows/:id` page, and — more importantly — **already has a completely different, working
+   mechanism for the exact same job**: the entrance-signage QR encodes
+   `https://getcardshow.com/app.html?code={accessCode}` directly (see `openShowAccessQr()` →
+   `switchSaqTab('signage')`); app.html's own init script reads `?code=`, resolves the show, and
+   calls `joinShow(showId)`, which already fire-and-forget logs a `qr_scan` row to `show_events`
+   (see "Show Organizer Analytics Dashboard" above — `orgQRScans` already existed before this
+   session). **Scan counting for the entrance QR was not a gap** — building a second, parallel
+   redirect-function architecture the real QR doesn't even point at would have produced a scan
+   counter that never receives a single real scan, while leaving the actual working counter
+   untouched and undocumented. So Phase B (the redirect function) was not built at all.
+2. **`show_events.qr_type`/`.seller_id`/`.visitor_id` columns don't exist — confirmed the same
+   way as Phase 3 above, and not added.** Rather than a migration, `visitorId` is carried inside
+   the existing `event_data` jsonb payload on the `qr_scan` row `joinShow()` already inserts —
+   same reasoning as `qr_scan_seller`'s `seller_id` in the Phase 3 section above: jsonb already
+   has the flexibility a new column would add, with zero migration risk. `qr_type` and a separate
+   `seller_id` column were never needed since this session didn't touch seller-QR scan logic at
+   all (that's Phase 3's already-shipped `qr_scan_seller` event type, a different, already-solved
+   piece of this same broader "QR tracking" idea — see above).
+3. **A whole second QR-rendering library (`qrcode-generator` by Kazuhiko Arase, vendored) wasn't
+   added.** This app already has a working QR pipeline used everywhere (`loadQRLib()` lazy-loads
+   the `qrcodejs` CDN library once; `renderQR()` draws to a canvas; `overlayQRLogo()` composites
+   the CardShow emblem on top) — used by both the seller table QR and, critically, the **existing,
+   already-shipped, already-branded** Entrance Signage feature (Marketing tab → 🪧 Entrance
+   Signage → `_downloadSignageComposite()`), which already produces a printable PNG with the show
+   name, date, "Powered by CardShow" footer, and correct text wrapping (see "'Powered by
+   CardShow' PNG Branding" and "Entrance signage PNG fixes" above). The spec's Phase C/D would
+   have built a second, plainer, unbranded black-and-white QR download living in a different part
+   of the UI, for the literal same physical asset an organizer would print — two inconsistent
+   "download the entrance QR" buttons is worse than one. Instead, the new "⬇ Download Entrance
+   Signage QR" button in Analytics (`openShowSignageFromAnalytics()`) just opens the existing
+   Signage tab pre-selected (`openShowAccessQr(showId)` + `switchSaqTab('signage')`) — same
+   destination, same branded PNG, reached from one more place.
+
+### What was actually built
+- **`_getOrCreateVisitorId()`** (app.html) — a `localStorage`-persisted UUID, generated once per
+  browser/device and reused on every later visit. Not a cookie: there's no server response in
+  this app's buyer-join flow to attach a `Set-Cookie` header to (the QR deep-links straight into
+  a static HTML page, no function in between) — `localStorage` is the client-only equivalent
+  that fits this app's existing all-client-side buyer flow. Degrades to `null` (never throws) in
+  private browsing / blocked storage — the scan still counts toward the total, it just can't
+  contribute to the unique count.
+- **`joinShow(showId)`'s existing `_logShowEvent('qr_scan', {})` call** now passes
+  `{ visitorId: _getOrCreateVisitorId() }` instead of an empty object — the only change to that
+  function. Older rows logged before this shipped simply have no `visitorId` in `event_data` and
+  are excluded from the unique count via `filter(Boolean)`, not miscounted as one shared visitor.
+- **`_orgRender()`** (Organizer Analytics) computes `uniqueQrVisitors` — `new
+  Set(qrScans.map(e => e.event_data?.visitorId).filter(Boolean)).size` — from the same `events`
+  array `_orgFetchEvents()` already fetches for the existing `orgQRScans` sub-label; no new
+  Supabase query, unlike the spec's own separate `fetchShowQrStats()`.
+- **New "Show QR Engagement" card** in `#showAnalyticsPanel` (mounted right after the two-column
+  body, above the Phase 3 heatmap section) — two stat values (`#orgQrScanCount`,
+  `#orgQrUniqueVisitors`, both `_orgSetKPI`-style but via the small dedicated
+  `_orgRenderQrEngagement()`) plus the signage-jump button described above. Renders `0` cleanly
+  for a show with no scans yet (`scanCount || 0`, not `— ` or blank), per the acceptance
+  criteria — verified in a headless test with an empty `show_events` result.
+
+### Key functions (app.html)
+- `_getOrCreateVisitorId()` — persistent per-browser visitor id, `localStorage`-backed
+- `_orgRenderQrEngagement(scanCount, uniqueVisitors)` — updates the two stat values
+- `openShowSignageFromAnalytics()` — jumps to the existing Signage tab for this show
+
+### Does not change
+`_orgFetchEvents()`'s query shape, `orgQRScans`/`orgSearches` KPI (untouched, still shows the
+raw scan count as a sub-label — this session only added the dedicated card, not a replacement),
+`joinShow()`'s other behavior, `openShowAccessQr()`/`switchSaqTab()`/`_downloadSignageComposite()`
+(the existing signage feature — reused, not modified), the seller-QR `qr_scan_seller` event type
+from Phase 3 (a separate, already-solved concern), RLS policies. No new Supabase tables, no
+migration, no new external library.
+
 ## Backlog Priority
 
 ### Shipped ✅
@@ -1649,6 +1730,16 @@ conversion-rate mode (% of scans resulting in any sale) · per-table drill-down 
   carrying `seller_id` inside `show_events.event_data` jsonb — no migration needed). See "Show
   Floor Phase 3 — Engagement Heatmap" above for full detail, including a documented GMV-source
   discrepancy risk between this heatmap and the dashboard's own headline GMV KPI.
+- **Show QR Engagement — scans + unique visitors (session 2026-09-13)** — new "Show QR
+  Engagement" card in the Organizer Analytics Dashboard shows total scans and unique visitors
+  for the entrance-signage QR, plus a shortcut to the existing branded Signage download. The
+  build spec assumed a Netlify redirect function, three new `show_events` columns, and a second
+  vendored QR library, none of which exist or were needed — this app's entrance QR already
+  deep-links into `app.html?code=...` and already logs scans via the existing `joinShow()` →
+  `_logShowEvent('qr_scan', ...)` path. The only real gap was unique-visitor dedup, added via a
+  `localStorage`-persisted visitor id carried in the existing `event_data` jsonb column — no
+  migration, no new library. See "Show QR Engagement — Scans + Unique Visitors" above for full
+  detail on why each piece of the original spec was or wasn't built.
 
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`

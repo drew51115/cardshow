@@ -1789,6 +1789,19 @@
     pointer-events: auto; cursor: pointer; border: 1px solid var(--black);
   }
 
+  /* Show QR Engagement (Organizer Analytics) */
+  .qr-eng-row {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 1rem; flex-wrap: wrap;
+  }
+  .qr-eng-stats { display: flex; gap: 1.5rem; flex-wrap: wrap; }
+  .qr-eng-stat { display: flex; flex-direction: column; gap: 0.2rem; }
+  .qr-eng-label {
+    font-size: 0.7rem; font-family: 'DM Mono', monospace; text-transform: uppercase;
+    letter-spacing: 0.04em; color: var(--muted);
+  }
+  .qr-eng-value { font-size: 1.4rem; font-weight: 700; color: var(--accent); }
+
   /* Show Floor Phase 3 — engagement heatmap (read-only, mounts in Organizer Analytics) */
   .heat-mode-toggle { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; }
   .heat-mode-btn {
@@ -4556,6 +4569,30 @@
             </div>
           </div><!-- /org-two-col -->
 
+          <!-- ── SHOW QR ENGAGEMENT ── -->
+          <div class="org-section-label" style="margin-top:1.5rem">Show QR Engagement</div>
+          <div class="org-card">
+            <div class="org-card-head">
+              Entrance Signage QR
+              <span class="org-card-head-sub">scans and unique visitors for this show's QR</span>
+            </div>
+            <div class="qr-eng-row">
+              <div class="qr-eng-stats">
+                <div class="qr-eng-stat">
+                  <span class="qr-eng-label">Scans</span>
+                  <span class="qr-eng-value" id="orgQrScanCount">0</span>
+                </div>
+                <div class="qr-eng-stat">
+                  <span class="qr-eng-label">Unique Visitors</span>
+                  <span class="qr-eng-value" id="orgQrUniqueVisitors">0</span>
+                </div>
+              </div>
+              <button type="button" class="btn btn-ghost" onclick="openShowSignageFromAnalytics()">
+                ⬇ Download Entrance Signage QR
+              </button>
+            </div>
+          </div>
+
           <!-- ── SHOW FLOOR PHASE 3 — ENGAGEMENT HEATMAP ── -->
           <div class="org-section-label" style="margin-top:1.5rem">Floor Engagement</div>
           <div class="org-card" id="floorHeatmapCard">
@@ -6210,6 +6247,27 @@ function _logShowEvent(type, data) {
   db.from('show_events').insert(row).then(({ error }) => {
     if (error) console.warn('[show_events]', error.message);
   });
+}
+
+// Persistent per-browser id for the entrance-signage QR's unique-visitor
+// count (see "Show QR Engagement — unique visitors" in CLAUDE.md). No
+// server round trip exists in this app's buyer-join flow to set a
+// same-site cookie from — the QR just deep-links straight into app.html
+// (?code=...), which auto-joins client-side — so localStorage is the
+// natural equivalent here: same browser/device across visits keeps the
+// same id, a different device gets a new one, which is the right
+// granularity for "how many distinct people scanned this."
+function _getOrCreateVisitorId() {
+  try {
+    let id = localStorage.getItem('cardshow_visitor_id');
+    if (!id) {
+      id = (crypto.randomUUID ? crypto.randomUUID() : `v_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+      localStorage.setItem('cardshow_visitor_id', id);
+    }
+    return id;
+  } catch (e) {
+    return null; // private browsing / storage blocked — scan still counts, just not toward uniques
+  }
 }
 
 // ── AUTH FUNCTIONS — hoisted to top so HTML onclick handlers always find them ──
@@ -12797,8 +12855,9 @@ async function joinShow(showId) {
   buyerShowId  = showId;
   activeShowId = showId;
 
-  // Log QR scan / show join event — fire-and-forget
-  _logShowEvent('qr_scan', {});
+  // Log QR scan / show join event — fire-and-forget. visitorId powers the
+  // Organizer Analytics "Unique Visitors" stat (see "Show QR Engagement").
+  _logShowEvent('qr_scan', { visitorId: _getOrCreateVisitorId() });
 
   document.getElementById('buyerShowPicker').classList.remove('open');
   document.body.style.overflow = '';
@@ -16074,6 +16133,10 @@ function _orgRender(showId, cards, events, tableMap, authorizedSellerIds) {
   // ── Event counts ──
   const searches = events.filter(e => e.event_type === 'buyer_search');
   const qrScans  = events.filter(e => e.event_type === 'qr_scan');
+  // Older qr_scan rows (logged before this stat existed) have no
+  // visitorId in event_data — filter(Boolean) just excludes those from
+  // the unique count rather than counting undefined as one "visitor".
+  const uniqueQrVisitors = new Set(qrScans.map(e => e.event_data?.visitorId).filter(Boolean)).size;
 
   // ── North star ──
   _orgSetKPI('orgGMV',
@@ -16092,6 +16155,9 @@ function _orgRender(showId, cards, events, tableMap, authorizedSellerIds) {
   _orgSetKPI('orgSearches',
     searches.length || '—',
     `QR scans: ${qrScans.length || '—'}`);
+
+  // ── Show QR engagement (scans + unique visitors) ──
+  _orgRenderQrEngagement(qrScans.length, uniqueQrVisitors);
 
   // ── Seller performance table ──
   _orgRenderSellerTable(sold, cards, authorizedSellerIds || []);
@@ -16127,6 +16193,24 @@ function _orgSetKPI(id, value, sub) {
   const subEl = document.getElementById(id + 'Sub');
   if (valEl) valEl.textContent = value;
   if (subEl && sub !== undefined) subEl.textContent = sub;
+}
+
+function _orgRenderQrEngagement(scanCount, uniqueVisitors) {
+  const scanEl = document.getElementById('orgQrScanCount');
+  const uniqEl = document.getElementById('orgQrUniqueVisitors');
+  if (scanEl) scanEl.textContent = scanCount || 0;
+  if (uniqEl) uniqEl.textContent = uniqueVisitors || 0;
+}
+
+// "Download Entrance Signage QR" in Analytics jumps to the existing,
+// already-branded Signage download (Marketing tab → 🪧 Entrance Signage)
+// instead of generating a second, unbranded QR PNG from scratch — see
+// "Show QR Engagement" in CLAUDE.md for why a second QR-generation path
+// wasn't built here.
+function openShowSignageFromAnalytics() {
+  if (!_orgActiveShowId) return;
+  openShowAccessQr(_orgActiveShowId);
+  switchSaqTab('signage');
 }
 
 // ── SELLER PERFORMANCE TABLE ─────────────────────────────
