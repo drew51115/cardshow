@@ -6246,6 +6246,12 @@ function _logShowEvent(type, data) {
   };
   db.from('show_events').insert(row).then(({ error }) => {
     if (error) console.warn('[show_events]', error.message);
+  }).catch((err) => {
+    // A thrown network/CORS-level failure (not a returned {error}) previously
+    // produced a silent unhandled promise rejection here — nothing printed
+    // to console at all, making a totally-failed-insert indistinguishable
+    // from a succeeded one during debugging. Surface it the same way.
+    console.warn('[show_events] insert threw:', err?.message || err);
   });
 }
 
