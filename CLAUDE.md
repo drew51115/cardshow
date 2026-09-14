@@ -286,6 +286,77 @@ Fonts: Bebas Neue (headlines), DM Sans (body), DM Mono (labels/badges), Barlow C
 30. **card_fingerprint on show_floor_transactions is 7-field format** matching `price_cache` exactly — joinable without transformation.
 31. **detectCardSport() used in recordShowTransaction()** — not `detectSport()`. `detectSport()` is UI-only. `detectCardSport()` is API routing with full TCG keyword detection.
 
+## Sport Classification — imported Sport field override (session 2026-09-14)
+
+Real bug report: several correctly-known baseball cards (Garrett Crochet, Kenny Lofton, Barry
+Bonds, Mason Miller) showed no sport badge or a `TCG 🃏` badge in the inventory/buyer grid
+instead of `Baseball ⚾`.
+
+### Root cause
+`detectSport(r)` (app.html, UI badge only — not `detectCardSport()`, which routes comp-pricing
+API calls and was not affected) had a genuine ordering bug: a comment directly above the
+player-name lookup arrays read `// ── Player lookup — checked first, highest priority ──`, but
+an explicit-`Sport`/`Game`-field check block actually sat *above* that comment in source order —
+so it ran first and won, contradicting what the comment claimed. Any card whose imported
+`Sport`/`Game` column held a generic or wrong value (e.g. a bulk "Trading Card Game" category
+tag applied during a CSV/Shopify import) got force-classified off that value, even when the
+player name was an exact, unambiguous match in the hardcoded `BASEBALL` array (Barry Bonds
+was already in that list — the field-override bug is the only way he could have shown wrong).
+Separately, Kenny Lofton and Mason Miller were never in any hardcoded player array at all — a
+plain gap in an inherently unscalable hand-maintained list — and the brand/set fallback below
+the player lookup had no "Donruss" keyword at all, so Lofton's 1992 Donruss Rated Rookie card
+fell all the way through to `'—'`.
+
+### Fix
+1. **Reordered `detectSport()`** so the player-name lookup (highest-confidence signal) runs
+   first, the explicit `Sport`/`Game` field check runs second (only reached when no player-name
+   match resolved it), and the brand/set fallback runs last — matching what the pre-existing
+   comment already claimed. A bad/generic imported Sport value can no longer override a
+   confident player-name match.
+2. **Added Donruss coverage to the brand/set fallback**, carefully ordered so it can't
+   misclassify Donruss's non-baseball product lines: `donruss basketball`/`donruss optic
+   basketball` and `donruss football`/`donruss optic football` are checked (alongside the
+   existing `prizm basketball`/`optic basketball` and `prizm football`/`optic football` lines,
+   also moved earlier for the same reason) *before* the bare `topps|bowman|fleer
+   baseball|upper deck baseball|donruss` baseball catch-all — a bare "Donruss" set name with no
+   other sport keyword present defaults to baseball (Donruss's original, still-dominant
+   product line), matching how bare "Topps"/"Bowman" already default to baseball in this same
+   fallback. Verified with a standalone Node harness against all four reported cards plus a
+   Donruss Optic Football control case (confirms the reorder didn't break sport-specific
+   Donruss lines) — all five resolved correctly.
+3. **Not changed**: `detectCardSport()` (comp-pricing API routing) already checks `card.Sport`
+   first and returns immediately — that function has no hardcoded player-name list to
+   contradict, so the same field-vs-player-confidence conflict doesn't apply there. It also has
+   no Donruss keyword, but that's out of scope here since it wasn't implicated in this bug
+   report; revisit separately if a comp-pricing sport misroute is ever reported.
+
+### Scoped, not yet built: PriceCharting-based sport validation pass
+The hardcoded player-name arrays in `detectSport()` are a fundamentally unscalable design —
+they will always miss real players (confirmed: Kenny Lofton, Mason Miller), and every miss
+falls back to a brand/set keyword guess that can't cover every product line either. A
+follow-up pass, deliberately scoped here rather than built in this session:
+
+- **Trigger**: run only for cards where `detectSport()` currently returns `'—'` (unresolved) —
+  never re-check a card that already has a confident player-name or explicit-sport-field match,
+  to stay within PriceCharting's rate limit and avoid re-litigating already-correct badges.
+- **Signal**: PriceCharting's `console-name` field on a matched product (e.g. "Baseball Cards",
+  "Football Cards") is a direct, authoritative category string — already parsed by
+  `pcSportCategory()`/`scorePCResult()` in `comp-lookup.js` for the exact same purpose (sport
+  cross-checking during comp pricing), so this reuses an existing, proven signal rather than
+  introducing a new one.
+- **Shape**: a background, fire-and-forget pass (same convention as the bulk-scan correction
+  pass / TCAPI validation pass — non-blocking, `Promise.allSettled`, capped per run to respect
+  PriceCharting's 1 req/s limit via the existing `waitForPCRateLimit()`), writing a resolved
+  sport back onto the card's `Sport` field (with the `.db-filled`-style highlight convention
+  already used elsewhere) so the lookup only ever needs to happen once per card, not on every
+  render.
+- **Not decided yet**: whether this runs as a one-time backfill button ("Validate Sport" in the
+  inventory toolbar, similar to "💲 Check Comps") or automatically on every new card insert
+  where `detectSport()` returns `'—'` — the former is lower-risk (seller-initiated, bounded
+  cost) and the more likely first cut; the latter would need its own budget cap against
+  PriceCharting's rate limit the same way the bulk-scan correction pass caps CardSight/
+  PriceCharting calls at `BULK_SCAN_CORRECTION_LIMIT`. Revisit and pick one before building.
+
 ## Cert Scanner — Photo-First Architecture (Shipped)
 
 **Barcode/cert-number scanning removed (session 2026-09-06).** The original Sprint 1 design
@@ -1611,6 +1682,16 @@ migration, no new external library.
 ## Backlog Priority
 
 ### Shipped ✅
+- **Sport classification fix — imported Sport field override (session 2026-09-14)** — fixed
+  a real bug where `detectSport()`'s explicit `Sport`/`Game` field check ran before the
+  player-name lookup despite a comment claiming the opposite, letting a bad/generic imported
+  Sport value (e.g. a bulk "Trading Card Game" tag) override an unambiguous player match
+  (confirmed real case: Barry Bonds). Reordered so player-name lookup wins, and added
+  Donruss brand coverage to the set/brand fallback (fixes Kenny Lofton's 1992 Donruss Rated
+  Rookie falling through to no badge at all) without breaking Donruss's non-baseball product
+  lines. See "Sport Classification — imported Sport field override" above for full detail,
+  including a scoped-but-not-yet-built PriceCharting-based validation pass for players who
+  aren't in any hardcoded list at all.
 - Supabase inventory persistence (read, write, edit, mark sold, CSV import)
 - Seller profile persistence (display name, WhatsApp, Instagram)
 - Shows persistence layer (create, edit, delete, sellers, table numbers, publish)

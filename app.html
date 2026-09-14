@@ -9421,13 +9421,6 @@ function detectSport(r) {
   const sportField = (r.Sport || r.Game || '').toLowerCase();
   const all    = title + ' ' + player + ' ' + set + ' ' + variant + ' ' + sportField;
 
-  // ── Explicit sport/game field from uploaded file ──
-  if (/basketball|nba|wnba/i.test(sportField))                return 'Basketball 🏀';
-  if (/football|nfl/i.test(sportField))                       return 'Football 🏈';
-  if (/baseball|mlb/i.test(sportField))                       return 'Baseball ⚾';
-  if (/hockey|nhl/i.test(sportField))                         return 'Hockey 🏒';
-  if (/pokemon|magic|yu-gi-oh|tcg|trading card game/i.test(sportField)) return 'TCG 🃏';
-
   // ── Player lookup — checked first, highest priority ──
   const BASKETBALL = [
     'lebron james','luka doncic','stephen curry','steph curry','giannis antetokounmpo',
@@ -9602,16 +9595,30 @@ function detectSport(r) {
     if (player.includes(name) || title.includes(name)) return 'TCG 🃏';
   }
 
-  // ── Brand/set fallback — only if player lookup didn't match ──
+  // ── Explicit sport/game field from uploaded file — only trusted when the
+  // player-name lookup above didn't already resolve it. A generic or wrong
+  // imported Sport/Game value (e.g. a bulk "Trading Card Game" category tag
+  // applied during a CSV/Shopify import) must never override a confident
+  // player-name match — see "Sport classification — imported Sport field
+  // override" in CLAUDE.md for the real production bug this fixes.
+  if (/basketball|nba|wnba/i.test(sportField))                return 'Basketball 🏀';
+  if (/football|nfl/i.test(sportField))                       return 'Football 🏈';
+  if (/baseball|mlb/i.test(sportField))                       return 'Baseball ⚾';
+  if (/hockey|nhl/i.test(sportField))                         return 'Hockey 🏒';
+  if (/pokemon|magic|yu-gi-oh|tcg|trading card game/i.test(sportField)) return 'TCG 🃏';
+
+  // ── Brand/set fallback — only if player lookup and sportField didn't match ──
+  // Sport-specific brand keywords (incl. Donruss's non-baseball lines) are
+  // checked before the bare "donruss"/"topps"/"bowman" baseball catch-all
+  // below, since those three brands also print football/basketball product
+  // lines and a bare brand name alone isn't sport-specific for them.
   if (/wnba/.test(all))                                       return 'Basketball 🏀';
-  if (/\bnba\b|hoops prizm|nba prizm/.test(all))             return 'Basketball 🏀';
+  if (/\bnba\b|hoops prizm|nba prizm|prizm basketball|optic basketball|donruss basketball|donruss optic basketball/.test(all)) return 'Basketball 🏀';
   if (/upper deck young guns|young guns|nhl/.test(all))       return 'Hockey 🏒';
-  if (/playoff contenders|panini contenders/.test(all))       return 'Football 🏈';
+  if (/playoff contenders|panini contenders|prizm football|optic football|donruss football|donruss optic football/.test(all)) return 'Football 🏈';
   if (/bowman chrome|bowman prospect|bowman atomic/.test(all))return 'Baseball ⚾';
   if (/topps chrome|topps update|topps series|topps finest|topps flagship/.test(all)) return 'Baseball ⚾';
-  if (/topps|bowman|fleer baseball|upper deck baseball/.test(all)) return 'Baseball ⚾';
-  if (/prizm basketball|optic basketball/.test(all))          return 'Basketball 🏀';
-  if (/prizm football|optic football/.test(all))              return 'Football 🏈';
+  if (/topps|bowman|fleer baseball|upper deck baseball|donruss/.test(all)) return 'Baseball ⚾';
   if (/pokemon|magic: the gathering|yu-gi-oh|mtg/.test(all)) return 'TCG 🃏';
 
   return '—';
