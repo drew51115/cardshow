@@ -1431,7 +1431,20 @@ function detectSport(r) {
   // by app.html's PriceCharting-based "Validate Sport" pass — see CLAUDE.md)
   // is checked last, not first — a confident player-name/brand match above
   // must never be overridden by a stale or bad imported Sport value.
-  if (r.Sport) return r.Sport;
+  // Normalized to this file's own branded label format (emoji baked into
+  // the string) rather than returned raw — sport-validation.js writes a
+  // plain "Baseball"/"Football"/etc. with no emoji, and every other return
+  // path in this function returns the emoji-suffixed form. Returning the
+  // raw value produced two visually-identical-but-distinct "Baseball"
+  // entries in the storefront's sport breakdown chips (grouped by exact
+  // string), one per format — a real reported bug.
+  if (r.Sport) {
+    const normalized = {
+      basketball: 'Basketball 🏀', football: 'Football 🏈', baseball: 'Baseball ⚾',
+      hockey: 'Hockey 🏒', soccer: 'Soccer ⚽', pokemon: 'TCG 🃏',
+    }[r.Sport.toLowerCase()];
+    return normalized || r.Sport;
+  }
 
   return '🃏';
 }

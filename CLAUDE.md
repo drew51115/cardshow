@@ -446,6 +446,36 @@ Fixed the same way as the first report, in all three files:
 - **`score` is a plain English word** added as a bare-brand keyword — low collision risk for
   sports-card titles in practice, but worth knowing if a future false positive traces back here.
 
+### Follow-up: duplicate "Baseball" chip after running Validate Sport (session 2026-09-14, third report)
+Real report: after running "🏷️ Validate Sport," the `seller-browse.html` storefront's sport
+breakdown chip row showed **two separate "Baseball" chips** — `Baseball ⚾ 36` and a second,
+unbranded `Baseball 3`. Root cause: `seller-browse.html`'s sport breakdown
+(`sportCounts`/`sportsSorted`, near "Sport breakdown" in `renderPage()`) groups cards by the
+exact string `detectSport(r)` returns. Every keyword/player-name branch in that file's
+`detectSport()` returns a branded label with the emoji baked in (`'Baseball ⚾'`), but the new
+`if (r.Sport) return r.Sport;` fallback (added for the PriceCharting validation pass, see
+above) returned the DB value **raw** — and `sport-validation.js`'s `SPORT_LABEL` map writes
+plain, unbranded values (`'Baseball'`, `'Football'`, …, no emoji) by design (a Netlify function
+has no reason to bake this app's emoji convention into its response). Two different strings for
+the same sport → two chips, one per source. Only affects cards that reach that last-priority
+fallback, i.e. ones no keyword/player match resolved — exactly the cards the validation pass
+exists for, so this reliably fires for every validated card.
+
+**Fixed by normalizing `r.Sport` to this file's branded format before returning it**, via a
+small lowercase lookup (`basketball`/`football`/`baseball`/`hockey`/`soccer`/`pokemon` →
+their emoji-suffixed labels, `pokemon` folding into `'TCG 🃏'` to match this function's own TCG
+convention) — falls back to the raw value unchanged if it's something unrecognized, so an
+unexpected future value still displays rather than disappearing. Verified with a Node harness:
+a card resolved only via the DB `Sport` field and a card resolved via keyword match now return
+byte-identical strings for the same sport.
+
+**`app.html` and `show.html` were checked and are not affected** — `app.html`'s explicit
+`Sport`/`Game`-field check re-derives a branded label via its own regex match rather than ever
+returning the raw field value, so it was never subject to this bug. `show.html`'s `detectSport()`
+returns bare, unbranded labels (`'Baseball'`, not `'Baseball ⚾'`) from **every** branch — icons
+are applied separately via its own `SPORT_ICONS` lookup elsewhere — so its DB-sourced fallback
+already matches its own keyword-branch format with no normalization needed.
+
 ## Cert Scanner — Photo-First Architecture (Shipped)
 
 **Barcode/cert-number scanning removed (session 2026-09-06).** The original Sprint 1 design
