@@ -1406,20 +1406,25 @@ function detectSport(r) {
   for (const n of HOCKEY)     if (player.includes(n)||title.includes(n)) return 'Hockey 🏒';
   for (const n of TCG)        if (player.includes(n)||title.includes(n)) return 'TCG 🃏';
   if (/upper deck young guns/.test(all)) return 'Hockey 🏒';
-  // Sport-specific Donruss lines checked before the bare-brand baseball
-  // catch-all below — Donruss also prints football/basketball product
-  // lines, so a bare "donruss" match can't be trusted to mean baseball
-  // until those are ruled out first.
-  if (/donruss optic basketball|donruss basketball/.test(all)) return 'Basketball 🏀';
-  if (/donruss optic football|donruss football/.test(all)) return 'Football 🏈';
+  // Sport-specific Donruss/Upper Deck/Fleer lines checked before the
+  // bare-brand baseball catch-all below — all three brands also print
+  // football/basketball product lines, so a bare brand match can't be
+  // trusted to mean baseball until those are ruled out first.
+  if (/donruss optic basketball|donruss basketball|upper deck basketball|fleer basketball/.test(all)) return 'Basketball 🏀';
+  if (/donruss optic football|donruss football|upper deck football|fleer football/.test(all)) return 'Football 🏈';
   if (/bowman chrome|bowman prospect/.test(all)) return 'Baseball ⚾';
-  // Bare 'bowman'/'donruss' (no sport suffix) default to baseball — both
-  // brands' original, still-dominant product line. Previously only
-  // "bowman chrome|bowman prospect" was covered, so a plain "2020 Bowman"
-  // or "1992 Donruss" card fell all the way through to the '🃏' fallback
-  // below with no sport badge at all — a real reported bug (Kenny Lofton's
-  // 1992 Donruss Rated Rookie, Garrett Crochet's 2020 Bowman).
-  if (/topps chrome|topps update|topps series|topps|bowman|donruss/.test(all)) return 'Baseball ⚾';
+  // Bare brand names (no sport suffix) default to baseball — each of these
+  // brands' original, still-dominant product line, and (Fleer/Upper Deck
+  // aside) essentially never printed in another sport for cards this
+  // platform sees. Previously only "bowman chrome|bowman prospect" and
+  // bare "topps" were covered, so a plain "2020 Bowman", "1992 Donruss",
+  // "1990 Upper Deck", "1993 Fleer", "1995 Leaf", or "1994 Pinnacle" card
+  // fell all the way through to the '🃏' fallback below with no sport
+  // badge at all — real reported bugs (Kenny Lofton's 1992 Donruss Rated
+  // Rookie, Garrett Crochet's 2020 Bowman, then a second report catching
+  // Sammy Sosa's 1990 Upper Deck, two Nolan Ryan 1993 Fleer cards, Mark
+  // McGwire's 1995 Leaf, and Mike Piazza's 1994 Pinnacle).
+  if (/topps chrome|topps update|topps series|topps|bowman|donruss|upper deck|fleer|leaf|pinnacle|score/.test(all)) return 'Baseball ⚾';
   if (/prizm|optic|hoops/.test(all)) return 'Basketball 🏀';
 
   // Explicit Sport field (from the seller's inventory.sport column, set only

@@ -417,6 +417,35 @@ automatic on-insert check.
   `renderBuyerGrid()` (doesn't render a sport badge at all — not touched, not this bug's
   actual location).
 
+### Follow-up: missing classic-brand keywords (session 2026-09-14, second report)
+A deploy-preview screenshot of `seller-browse.html?seller=saw_sports` showed 6 more cards with
+no sport badge at all (bare 🃏 glyph) — the PriceCharting validation pass above wasn't the gap;
+the brand/set fallback was, for a different set of brands than the first report's: Sammy Sosa's
+1990 Upper Deck, two Nolan Ryan 1993 Fleer cards, Mark McGwire's 1995 Leaf, and Mike Piazza's
+1994 Pinnacle. None of those four players were in any hardcoded player list, and — unlike
+Bowman/Topps/Donruss, fixed in the first report — **Fleer, bare Upper Deck, Leaf, and Pinnacle
+had no brand-fallback coverage at all** in any of the three `detectSport()` copies.
+
+Fixed the same way as the first report, in all three files:
+- **`app.html`/`seller-browse.html`**: added `upper deck basketball`/`fleer basketball` and
+  `upper deck football`/`fleer football` to the existing sport-specific pre-checks (Upper Deck
+  and Fleer both print non-baseball lines, same reasoning as Donruss), then added bare `upper
+  deck`/`fleer`/`leaf`/`pinnacle`/`score` to the baseball catch-all.
+- **`show.html`**: had a **pre-existing, real latent bug** found while fixing this — its `hcky`
+  array already contained a bare `'upper deck'` keyword, which (since `hcky` is checked before
+  `wnba`/`tcg`, and nothing in `bsball` covered plain Upper Deck) would have misclassified
+  *any* Upper Deck baseball card without a listed player name as Hockey — the wrong direction
+  entirely for a brand whose most iconic single card is the 1989 Upper Deck Griffey RC. Removed
+  the bare `'upper deck'` entry from `hcky` (its specific terms — `young guns`, `nhl`,
+  `parkhurst`, `o-pee-chee` — are diagnostic enough on their own) and added a new fallback line
+  (`/upper deck|fleer|leaf|pinnacle|score/` → Baseball) checked *after* `hcky`, so a real Upper
+  Deck Young Guns hockey card still resolves correctly first.
+- Verified with a Node harness across all three files: all four reported players resolve to
+  Baseball, a Connor Bedard Upper Deck Young Guns control case still resolves to Hockey (no
+  regression), and a 1989 Upper Deck Griffey control case resolves to Baseball.
+- **`score` is a plain English word** added as a bare-brand keyword — low collision risk for
+  sports-card titles in practice, but worth knowing if a future false positive traces back here.
+
 ## Cert Scanner — Photo-First Architecture (Shipped)
 
 **Barcode/cert-number scanning removed (session 2026-09-06).** The original Sprint 1 design

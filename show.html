@@ -692,8 +692,15 @@ function detectSport(r) {
   const bsball= ['trout','ohtani','griffey','jeter','babe','ruth','mantle','sosa','bonds',
     'mookie','acuna','vlad','tatis','soto','guerrero','skenes','witt','henderson','yamamoto',
     'mlb','topps','bowman','donruss','prizm baseball','chrome baseball','heritage','lofton'];
+  // Bare 'upper deck' removed from here — Upper Deck's original, still-
+  // dominant product line was baseball (1989 Upper Deck Griffey RC), so a
+  // bare Upper Deck card belongs in the baseball brand fallback below, not
+  // here. 'young guns'/'nhl'/etc. below are specific enough on their own to
+  // still catch modern Upper Deck hockey product — checked before that
+  // fallback (see the comment there) so hockey Young Guns cards are never
+  // reclassified as baseball.
   const hcky  = ['gretzky','crosby','mcdavid','ovechkin','bedard','celebrini','matthews',
-    'draisaitl','makar','nhl','upper deck','parkhurst','o-pee-chee','young guns'];
+    'draisaitl','makar','nhl','parkhurst','o-pee-chee','young guns'];
   const wnba  = ['clark','reese','wilson','bird','taurasi','wnba'];
 
   // ── Pokémon-specific rarity/type keywords — these only appear on TCG cards ──
@@ -752,6 +759,13 @@ function detectSport(r) {
   if (fball.some(k => all.includes(k))) return 'Football';
   if (bsball.some(k => all.includes(k))) return 'Baseball';
   if (hcky.some(k => all.includes(k)))  return 'Hockey';
+  // Bare vintage/classic brand names (no sport suffix, no matching player in
+  // bsball above) default to baseball — checked after hcky so a real hockey
+  // Upper Deck Young Guns card is never reclassified. Real reported gap:
+  // Sammy Sosa's 1990 Upper Deck, two Nolan Ryan 1993 Fleer cards, Mark
+  // McGwire's 1995 Leaf, and Mike Piazza's 1994 Pinnacle all fell through to
+  // 'Other' with no sport badge before this line existed.
+  if (/upper deck|fleer|leaf|pinnacle|score/.test(all)) return 'Baseball';
   if (wnba.some(k => all.includes(k)))  return 'WNBA';
   if (tcg.some(k => all.includes(k)))   return 'TCG';
 

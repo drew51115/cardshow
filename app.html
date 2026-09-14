@@ -9748,12 +9748,18 @@ function detectSport(r) {
   // below, since those three brands also print football/basketball product
   // lines and a bare brand name alone isn't sport-specific for them.
   if (/wnba/.test(all))                                       return 'Basketball 🏀';
-  if (/\bnba\b|hoops prizm|nba prizm|prizm basketball|optic basketball|donruss basketball|donruss optic basketball/.test(all)) return 'Basketball 🏀';
+  if (/\bnba\b|hoops prizm|nba prizm|prizm basketball|optic basketball|donruss basketball|donruss optic basketball|upper deck basketball|fleer basketball/.test(all)) return 'Basketball 🏀';
   if (/upper deck young guns|young guns|nhl/.test(all))       return 'Hockey 🏒';
-  if (/playoff contenders|panini contenders|prizm football|optic football|donruss football|donruss optic football/.test(all)) return 'Football 🏈';
+  if (/playoff contenders|panini contenders|prizm football|optic football|donruss football|donruss optic football|upper deck football|fleer football/.test(all)) return 'Football 🏈';
   if (/bowman chrome|bowman prospect|bowman atomic/.test(all))return 'Baseball ⚾';
   if (/topps chrome|topps update|topps series|topps finest|topps flagship/.test(all)) return 'Baseball ⚾';
-  if (/topps|bowman|fleer baseball|upper deck baseball|donruss/.test(all)) return 'Baseball ⚾';
+  // Bare vintage/classic brand names (no sport suffix) default to baseball —
+  // each brand's original, still-dominant line, checked last so the
+  // sport-specific lines above always win first. Real reported gap: Sammy
+  // Sosa's 1990 Upper Deck, Nolan Ryan's 1993 Fleer, Mark McGwire's 1995
+  // Leaf, and Mike Piazza's 1994 Pinnacle all fell through to '—' before
+  // Fleer/Upper Deck/Leaf/Pinnacle/Score were added here.
+  if (/topps|bowman|fleer|upper deck|donruss|leaf|pinnacle|score/.test(all)) return 'Baseball ⚾';
   if (/pokemon|magic: the gathering|yu-gi-oh|mtg/.test(all)) return 'TCG 🃏';
 
   return '—';
