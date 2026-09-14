@@ -6132,15 +6132,17 @@ async function tcapiGet(path) {
 
 // Confirmed-broken/incomplete API behaviors, kept as one flag object so any
 // future UI gating on these has a single source of truth instead of a
-// scattered comment. _tcSearchPlayers()'s stillTyping handling below is the
-// live use of lastNameSearchBroken; the other three flags have no UI surface
-// in this app yet (no brand filter, no /v1/brands picker, nothing follows a
-// relationships.*.links URL) — they're forward-looking guards.
+// scattered comment. Three of these were fixed by the API team on
+// 2026-09-14 (see _tcBuildPlayersPath/_tcSearchPlayers below for the
+// lastNameSearchBroken fix) — flipped to false rather than deleted, since
+// the flag names themselves are still useful as a changelog of what used to
+// be broken. brandsListDirty is the one still-open item; no UI in this app
+// consumes it yet either way.
 const TCAPI_KNOWN_LIMITATIONS = {
-  lastNameSearchBroken:             true, // full_name=paul+skene / last_name=like:sken both return 0
-  brandFilterUnavailable:           true, // no filter[brand] / filter[manufacturer] on /v1/sets
-  brandsListDirty:                  true, // /v1/brands includes brands with no published set backing them
-  relationshipLinksMissingV1Prefix: true, // relationships.*.links URLs are missing the /v1/ segment
+  lastNameSearchBroken:             false, // fixed 2026-09-14 — filter[last_name]=like:/filter[full_name]=like: now real prefix/substring matches (opt-in; a bare filter[x]=value is still exact)
+  brandFilterUnavailable:           false, // fixed 2026-09-02 — filter[brand]/filter[manufacturer] on /v1/sets are live (still unused — no brand-filter UI exists in this app)
+  brandsListDirty:                  true,  // /v1/brands still includes brands with no published set backing them (unconfirmed changed either way)
+  relationshipLinksMissingV1Prefix: false, // fixed 2026-09-14 — relationships.*.links URLs now include the /v1/ segment (still unused — nothing in this app follows one)
 };
 
 // /v1/cards — filter[player_id] / filter[set_id] only (bracketed — a
@@ -6198,24 +6200,27 @@ function _tcBuildChecklistPath(setId, { perPage = 100 } = {}) {
   return `/v1/sets/${setId}/checklist?format=compact&include=checklist&per_page=${perPage}`;
 }
 
-// /v1/players — bare first_name/last_name/full_name. last_name prefix
-// matching is confirmed broken server-side, including the like: prefix
-// operator (last_name=like:sken -> 0) — see TCAPI_KNOWN_LIMITATIONS.lastNameSearchBroken
-// above. Do not build a last-name typeahead against this until the API team
-// fixes it; _tcSearchPlayers() below reports stillTyping instead of guessing.
+// /v1/players — filter[first_name|last_name|full_name]=like:<token> does a
+// real prefix/substring match as of the API team's 2026-09-14 fix (opt-in —
+// a bare filter[x]=value, with no like: prefix, is still an exact whole-field
+// match, same convention /v1/sets' name=like: already used). This supersedes
+// the old bare first_name=/last_name=/full_name= params, which only ever
+// prefix-matched a first-name token and never a last name — see
+// TCAPI_KNOWN_LIMITATIONS.lastNameSearchBroken (now false) for that history.
 function _tcBuildPlayersPath({ firstName, lastName, fullName, limit } = {}) {
   const params = new URLSearchParams();
-  if (firstName) params.set('first_name', firstName);
-  if (lastName)  params.set('last_name', lastName);
-  if (fullName)  params.set('full_name', fullName);
+  if (firstName) params.set('filter[first_name]', `like:${firstName}`);
+  if (lastName)  params.set('filter[last_name]', `like:${lastName}`);
+  if (fullName)  params.set('filter[full_name]', `like:${fullName}`);
   if (limit)     params.set('limit', limit);
   return `/v1/players?${params.toString()}`;
 }
 
-// Relationship links returned by the API are missing their /v1/ path segment
-// (confirmed on all eight relationships on a set; filed with the API team,
-// not yet fixed). Nothing in this app follows a relationships.*.links URL
-// today — added as a guard for whenever something does.
+// Relationship links were missing their /v1/ path segment; fixed by the API
+// team 2026-09-14 (TCAPI_KNOWN_LIMITATIONS.relationshipLinksMissingV1Prefix
+// is now false). This normalizer is a no-op against current data — kept as
+// defense-in-depth for whenever something in this app actually follows a
+// relationships.*.links URL, since nothing does today.
 function _tcNormalizeRelationshipLink(url) {
   if (!url) return url;
   return url.includes('/v1/') ? url : url.replace(/^(https?:\/\/[^/]+)\//, '$1/v1/');
@@ -14640,21 +14645,17 @@ function tcClearPickerState() {
   });
 }
 
-// full_name= matches whole words per token, not a prefix. First-name tokens
-// DO prefix-match on their own (full_name=paul -> 583 results) — but a
-// last-name token never does, at any length short of complete: confirmed
-// full_name=skene (one letter short of "skenes") still returns zero, same as
-// full_name=sk or full_name=ske. So a multi-word query with a still-typing
-// last name can never usefully match server-side, and falling back to a
-// broader single-word search (e.g. every other "Paul") is actively
-// misleading, not helpful — there's no way to tell those apart from a real
-// match for what was actually typed. Report that state back explicitly
-// (stillTyping) instead of silently substituting a wrong candidate list.
+// filter[full_name]=like: does a real prefix/substring match as of the API
+// team's 2026-09-14 fix — the old gap this used to work around (a last-name
+// token never prefix-matched via the bare full_name= param, so a still-typing
+// last name could never usefully match server-side) is fixed, so there's no
+// more "still typing" state to report; a query that matches nothing is just
+// a plain no-results case now. Kept the { results } wrapper shape so callers
+// don't need to change their destructuring.
 async function _tcSearchPlayers(q) {
   const data = await tcapiGet(_tcBuildPlayersPath({ fullName: q, limit: 8 }));
   const results = data?.data || [];
-  const isMultiWord = q.trim().split(/\s+/).filter(Boolean).length > 1;
-  return { results, stillTyping: isMultiWord && results.length === 0 };
+  return { results };
 }
 
 // -- Step 1: player typeahead --
@@ -14669,12 +14670,10 @@ function tcPlayerTypeahead(q) {
 
 async function _tcDoPlayerSearch(q) {
   const dd = document.getElementById('tc_player_dd');
-  const { results, stillTyping } = await _tcSearchPlayers(q);
+  const { results } = await _tcSearchPlayers(q);
   _tcPlayerResults = results;
   if (!_tcPlayerResults.length) {
-    dd.innerHTML = stillTyping
-      ? `<div class="tc-dropdown"><div class="tc-dropdown-item" style="cursor:default;color:var(--muted)">Finish the last name to match — it can't narrow down while typing</div>${_tcSkip('tc_player_dd')}</div>`
-      : _tcNoResults();
+    dd.innerHTML = _tcNoResults();
     return;
   }
 
