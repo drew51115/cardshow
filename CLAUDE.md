@@ -927,12 +927,12 @@ Fingerprint preview: `data-fingerprint` elements are **debug-only** (`window.CAR
 ## DB Migration: show_events (run in Supabase SQL editor)
 ```sql
 -- show_events: lightweight event log for buyer searches and QR scans
--- Append-only. Admin-readable. No RLS enforcement (permissive like other tables).
+-- Append-only. Admin-readable.
 CREATE TABLE IF NOT EXISTS show_events (
   id          uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   show_id     text NOT NULL,
-  event_type  text NOT NULL,  -- 'buyer_search' | 'qr_scan'
-  event_data  jsonb,          -- { query: string } for searches; {} for scans
+  event_type  text NOT NULL,  -- 'buyer_search' | 'qr_scan' | 'qr_scan_seller'
+  event_data  jsonb,          -- { query } / { visitorId } / { seller_id } depending on event_type
   created_at  timestamptz DEFAULT now()
 );
 
@@ -940,8 +940,58 @@ CREATE INDEX IF NOT EXISTS show_events_show_id_idx
   ON show_events (show_id);
 CREATE INDEX IF NOT EXISTS show_events_type_idx
   ON show_events (show_id, event_type);
+
+-- Required — see "show_events RLS gap" below. This table was originally documented
+-- as "No RLS enforcement (permissive like other tables)", which was wrong on the
+-- live project: it has RLS enabled with zero policies (deny-all), most likely from
+-- being created once through the Supabase Table Editor UI rather than raw SQL
+-- (the UI auto-enables RLS on new tables). Idempotent — safe to re-run.
+ALTER TABLE show_events ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "show_events_insert_all" ON show_events;
+CREATE POLICY "show_events_insert_all"
+  ON show_events FOR INSERT
+  WITH CHECK (true);
+
+DROP POLICY IF EXISTS "show_events_select_all" ON show_events;
+CREATE POLICY "show_events_select_all"
+  ON show_events FOR SELECT
+  USING (true);
 ```
-Must be run before the organizer analytics dashboard's search/QR metrics will populate — see below. The dashboard degrades gracefully (shows '—') if this table doesn't exist yet.
+Must be run before the organizer analytics dashboard's search/QR metrics will populate — see below. The dashboard degrades gracefully (shows '—' or '0') if this table doesn't exist yet, but that same graceful degradation means a real RLS block on an *existing* table is silent and indistinguishable from "no data yet" until you check the browser console or query the table directly — see "show_events RLS gap" below.
+
+### show_events RLS gap — real production bug (session 2026-09-14)
+Real bug report: entrance-signage QR scans and seller-table QR scans both showed 0 in
+Organizer Analytics no matter how many times the show's QR was scanned, even after confirming
+the PR shipping this feature was merged and deployed. `show_events` existed, the client code
+was live and correct, but every `db.from('show_events').insert(...)` was failing.
+
+Root cause, found via the browser console (not visible any other way — every call site in this
+app treats a `show_events` write as fire-and-forget/non-fatal, so nothing about this ever
+surfaced to a user beyond "the number stays at zero"): a real `401` — `"new row violates
+row-level security policy for table \"show_events\""`. This directly contradicted this file's
+own claim, written when the table was first created, that it has "No RLS enforcement (permissive
+like other tables)". In reality RLS was enabled with **zero policies** — a full deny-all,
+blocking `_orgFetchEvents()`'s reads too (that just degraded silently to `[]`/`'—'`, identical in
+appearance to genuinely having zero events, which is exactly why this went unnoticed until
+someone checked the console during an active scan). Same underlying category of doc-vs-reality
+gap already documented once before in this file, for `show_inventory`'s missing UPDATE policy
+(see "sellerPublishToShow() — skip already-published cards" below) — this codebase's actual
+Supabase policies were set up by hand in the dashboard over time, not from tracked migration
+SQL, so a doc claiming "permissive everywhere" can silently drift from what a given project
+actually has configured.
+
+**Fixed by adding explicit `FOR INSERT`/`FOR SELECT` policies with `true`** (see the SQL block
+above) — the genuinely-intended permissive behavior, matching every other table's documented
+RLS posture in this file. Not fixed by disabling RLS outright, since an explicit policy is more
+legible/auditable in the Supabase dashboard than an unchecked "RLS off" toggle, and matches how
+every other permissive table in this schema is actually configured (`using(true)` policies, not
+RLS disabled).
+
+**Lesson for future `show_events`-adjacent debugging**: a `qr_scan`/`qr_scan_seller`/
+`buyer_search` count stuck at zero after confirming the code is deployed and the table exists is
+not proof there's no data — check the browser console during a live scan/search for a `401`
+first, since every write to this table swallows its own failure by design.
 
 ## DB Migration: show_floor_transactions.source (run in Supabase SQL editor)
 ```sql
