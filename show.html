@@ -669,7 +669,6 @@ const SPORT_ICONS = {
 };
 
 function detectSport(r) {
-  if (r.Sport) return r.Sport;
   const p = (r.Player || '').toLowerCase();
   const s = (r['Set '] || r.Set || '').toLowerCase();
   const t = (r['Card Title'] || '').toLowerCase();
@@ -678,16 +677,30 @@ function detectSport(r) {
   const bball = ['lebron','curry','durant','giannis','luka','wembanyama','flagg','jokic','tatum',
     'morant','edwards','banchero','zion','jayson','anthony','kawhi','harden','westbrook',
     'kobe','jordan','magic','bird','shaq','iverson','garnett','nba','prizm basketball',
-    'topps chrome basketball','optic basketball','court kings','chronicles basketball'];
+    'topps chrome basketball','optic basketball','court kings','chronicles basketball',
+    'donruss basketball','donruss optic basketball'];
   const fball = ['mahomes','brady','rodgers','manning','allen','lamar','burrow','herbert',
     'daniel','trevor','arch','caleb','jayden','stroud','ceedee','jefferson','hill',
     'kelce','tyreek','davante','diggs','henry','ekeler','cmcaffrey','nfl','prizm football',
-    'topps chrome football','prestige','legacy football','certified'];
+    'topps chrome football','prestige','legacy football','certified',
+    'donruss football','donruss optic football'];
+  // 'donruss' is bare (no sport suffix) here on purpose — Donruss's original,
+  // still-dominant product line is baseball, matching bare 'topps'/'bowman'
+  // just below. The bball/fball arrays above list Donruss's football/
+  // basketball lines explicitly and are checked first, so a "Donruss Optic
+  // Football" card is caught there before ever reaching this bare match.
   const bsball= ['trout','ohtani','griffey','jeter','babe','ruth','mantle','sosa','bonds',
     'mookie','acuna','vlad','tatis','soto','guerrero','skenes','witt','henderson','yamamoto',
-    'mlb','topps','bowman','prizm baseball','chrome baseball','heritage'];
+    'mlb','topps','bowman','donruss','prizm baseball','chrome baseball','heritage','lofton'];
+  // Bare 'upper deck' removed from here — Upper Deck's original, still-
+  // dominant product line was baseball (1989 Upper Deck Griffey RC), so a
+  // bare Upper Deck card belongs in the baseball brand fallback below, not
+  // here. 'young guns'/'nhl'/etc. below are specific enough on their own to
+  // still catch modern Upper Deck hockey product — checked before that
+  // fallback (see the comment there) so hockey Young Guns cards are never
+  // reclassified as baseball.
   const hcky  = ['gretzky','crosby','mcdavid','ovechkin','bedard','celebrini','matthews',
-    'draisaitl','makar','nhl','upper deck','parkhurst','o-pee-chee','young guns'];
+    'draisaitl','makar','nhl','parkhurst','o-pee-chee','young guns'];
   const wnba  = ['clark','reese','wilson','bird','taurasi','wnba'];
 
   // ── Pokémon-specific rarity/type keywords — these only appear on TCG cards ──
@@ -746,8 +759,23 @@ function detectSport(r) {
   if (fball.some(k => all.includes(k))) return 'Football';
   if (bsball.some(k => all.includes(k))) return 'Baseball';
   if (hcky.some(k => all.includes(k)))  return 'Hockey';
+  // Bare vintage/classic brand names (no sport suffix, no matching player in
+  // bsball above) default to baseball — checked after hcky so a real hockey
+  // Upper Deck Young Guns card is never reclassified. Real reported gap:
+  // Sammy Sosa's 1990 Upper Deck, two Nolan Ryan 1993 Fleer cards, Mark
+  // McGwire's 1995 Leaf, and Mike Piazza's 1994 Pinnacle all fell through to
+  // 'Other' with no sport badge before this line existed.
+  if (/upper deck|fleer|leaf|pinnacle|score/.test(all)) return 'Baseball';
   if (wnba.some(k => all.includes(k)))  return 'WNBA';
   if (tcg.some(k => all.includes(k)))   return 'TCG';
+
+  // Explicit Sport field (from the seller's inventory.sport column, set only
+  // by app.html's PriceCharting-based "Validate Sport" pass — see CLAUDE.md)
+  // is checked last, not first — a confident player-name/brand match above
+  // must never be overridden by a stale or bad imported Sport value. See
+  // "Sport Classification — imported Sport field override" in CLAUDE.md.
+  if (r.Sport) return r.Sport;
+
   return 'Other';
 }
 
@@ -885,7 +913,7 @@ async function fetchInventoryFromDB(showId) {
       .select(`
         id, seller_id, card_title, player, year, card_set, card_number, parallel,
         grader, grade, condition, price, status,
-        item_type, quantity, product_type, language, edition
+        item_type, quantity, product_type, language, edition, sport
       `)
       .in('id', cardIds);
     if (invErr || !cards || !cards.length) return;
@@ -923,6 +951,7 @@ async function fetchInventoryFromDB(showId) {
       product_type:       c.product_type || '',
       language:           c.language || '',
       edition:            c.edition || '',
+      Sport:              c.sport || '',
     }));
 
     if (!dbCards.length) return;

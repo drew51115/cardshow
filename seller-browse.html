@@ -1395,7 +1395,7 @@ function detectSport(r) {
 
   const BASKETBALL = ['lebron','luka doncic','stephen curry','steph curry','giannis','kevin durant','jayson tatum','ja morant','zion','anthony edwards','lamelo','nikola jokic','victor wembanyama','cooper flagg','caitlin clark','angel reese','paige bueckers','bronny','kobe','michael jordan','devin booker','trae young','joel embiid','tyrese haliburton','cade cunningham','evan mobley','scottie barnes','paolo banchero','chet holmgren','scoot henderson','brandon miller','ausar thompson','amen thompson','keyonte george','jabari smith','keegan murray','jalen williams','jalen green','alperen sengun','franz wagner','bennedict mathurin','reed sheppard','stephon castle','donovan clingan','zaccharie risacher','alexandre sarr','matas buzelis','tidjane salaun','damian lillard','kawhi leonard','karl-anthony towns','kyrie irving','jaylen brown','pascal siakam','damian','wembanyama'];
   const FOOTBALL   = ['patrick mahomes','josh allen','lamar jackson','joe burrow','justin herbert','c.j. stroud','cj stroud','jayden daniels','caleb williams','drake maye','bo nix','marvin harrison','malik nabers','rome odunze','ladd mcconkey','puka nacua','trevor lawrence','mac jones','justin jefferson','travis kelce','jaylen waddle','devonta smith','travis etienne','najee harris','breece hall','garrett wilson','sauce gardner','christian watson','jordan addison','tua tagovailoa','dak prescott','jalen hurts','peyton manning','tom brady','jerry rice','barry sanders','emmitt smith','j.j. mccarthy','jj mccarthy'];
-  const BASEBALL   = ['shohei ohtani','mike trout','mookie betts','ronald acuna','bryce harper','fernando tatis','paul skenes','corbin carroll','elly de la cruz','bobby witt','gunnar henderson','jackson holliday','julio rodriguez','adley rutschman','wyatt langford','roki sasaki','yoshinobu yamamoto','shota imanaga','corey seager','kyle tucker','jackson chourio','francisco alvarez','roman anthony','chase dollander','jacob misiorowski','aidan miller','jonah tong','pete alonso','derek jeter','mickey mantle','babe ruth','ken griffey','sandy koufax','albert pujols','steven kwan','junior caminero','masyn winn','dylan crews','tanner bibee','brooks lee','marcelo mayer','druw jones','colton cowser','evan carter'];
+  const BASEBALL   = ['shohei ohtani','mike trout','mookie betts','ronald acuna','bryce harper','fernando tatis','paul skenes','corbin carroll','elly de la cruz','bobby witt','gunnar henderson','jackson holliday','julio rodriguez','adley rutschman','wyatt langford','roki sasaki','yoshinobu yamamoto','shota imanaga','corey seager','kyle tucker','jackson chourio','francisco alvarez','roman anthony','chase dollander','jacob misiorowski','aidan miller','jonah tong','pete alonso','derek jeter','mickey mantle','babe ruth','ken griffey','sandy koufax','albert pujols','steven kwan','junior caminero','masyn winn','dylan crews','tanner bibee','brooks lee','marcelo mayer','druw jones','colton cowser','evan carter','barry bonds','kenny lofton','mason miller','garrett crochet'];
   const HOCKEY     = ['wayne gretzky','mario lemieux','sidney crosby','alex ovechkin','connor mcdavid','auston matthews','leon draisaitl','connor bedard','juraj slafkovsky','matvei michkov','will smith','macklin celebrini','cayden lindstrom','brayden yager','artyom levshunov','cale makar','nathan mackinnon','elias pettersson','quinn hughes','adam fantilli','tim stutzle','trevor zegras','alexis lafreniere','kaapo kakko','lucas raymond','dylan cozens','tage thompson','rasmus dahlin','kirby dach','logan cooley','shane wright'];
   const TCG        = ['pikachu','charizard','blastoise','mewtwo','mew','lugia','rayquaza','umbreon','black lotus','mox ruby','force of will','jace','liliana','blue-eyes','dark magician','exodia','slifer'];
 
@@ -1406,9 +1406,46 @@ function detectSport(r) {
   for (const n of HOCKEY)     if (player.includes(n)||title.includes(n)) return 'Hockey 🏒';
   for (const n of TCG)        if (player.includes(n)||title.includes(n)) return 'TCG 🃏';
   if (/upper deck young guns/.test(all)) return 'Hockey 🏒';
+  // Sport-specific Donruss/Upper Deck/Fleer lines checked before the
+  // bare-brand baseball catch-all below — all three brands also print
+  // football/basketball product lines, so a bare brand match can't be
+  // trusted to mean baseball until those are ruled out first.
+  if (/donruss optic basketball|donruss basketball|upper deck basketball|fleer basketball/.test(all)) return 'Basketball 🏀';
+  if (/donruss optic football|donruss football|upper deck football|fleer football/.test(all)) return 'Football 🏈';
   if (/bowman chrome|bowman prospect/.test(all)) return 'Baseball ⚾';
-  if (/topps chrome|topps update|topps series|topps/.test(all)) return 'Baseball ⚾';
+  // Bare brand names (no sport suffix) default to baseball — each of these
+  // brands' original, still-dominant product line, and (Fleer/Upper Deck
+  // aside) essentially never printed in another sport for cards this
+  // platform sees. Previously only "bowman chrome|bowman prospect" and
+  // bare "topps" were covered, so a plain "2020 Bowman", "1992 Donruss",
+  // "1990 Upper Deck", "1993 Fleer", "1995 Leaf", or "1994 Pinnacle" card
+  // fell all the way through to the '🃏' fallback below with no sport
+  // badge at all — real reported bugs (Kenny Lofton's 1992 Donruss Rated
+  // Rookie, Garrett Crochet's 2020 Bowman, then a second report catching
+  // Sammy Sosa's 1990 Upper Deck, two Nolan Ryan 1993 Fleer cards, Mark
+  // McGwire's 1995 Leaf, and Mike Piazza's 1994 Pinnacle).
+  if (/topps chrome|topps update|topps series|topps|bowman|donruss|upper deck|fleer|leaf|pinnacle|score/.test(all)) return 'Baseball ⚾';
   if (/prizm|optic|hoops/.test(all)) return 'Basketball 🏀';
+
+  // Explicit Sport field (from the seller's inventory.sport column, set only
+  // by app.html's PriceCharting-based "Validate Sport" pass — see CLAUDE.md)
+  // is checked last, not first — a confident player-name/brand match above
+  // must never be overridden by a stale or bad imported Sport value.
+  // Normalized to this file's own branded label format (emoji baked into
+  // the string) rather than returned raw — sport-validation.js writes a
+  // plain "Baseball"/"Football"/etc. with no emoji, and every other return
+  // path in this function returns the emoji-suffixed form. Returning the
+  // raw value produced two visually-identical-but-distinct "Baseball"
+  // entries in the storefront's sport breakdown chips (grouped by exact
+  // string), one per format — a real reported bug.
+  if (r.Sport) {
+    const normalized = {
+      basketball: 'Basketball 🏀', football: 'Football 🏈', baseball: 'Baseball ⚾',
+      hockey: 'Hockey 🏒', soccer: 'Soccer ⚽', pokemon: 'TCG 🃏',
+    }[r.Sport.toLowerCase()];
+    return normalized || r.Sport;
+  }
+
   return '🃏';
 }
 
@@ -1478,6 +1515,7 @@ async function init() {
             Price:               r.price        || 0,
             Status:              r.status       || 'Available',
             Location:            r.location     || null,
+            Sport:               r.sport        || '',
             _dbId:               r.id,
           }));
 
