@@ -1061,11 +1061,14 @@ most were already correct here, a few were genuinely new information:
   Diamond") — noted in `TCAPI_KNOWN_LIMITATIONS.brandsListDirty` below; don't populate a brand
   dropdown from that endpoint if one is ever built.
 - **`TCAPI_KNOWN_LIMITATIONS` constant added** (app.html) — `{ lastNameSearchBroken,
-  brandFilterUnavailable, brandsListDirty, relationshipLinksMissingV1Prefix }`, all `true`.
-  `lastNameSearchBroken` is the one with a live UI consequence — it's what `_tcSearchPlayers()`'s
-  pre-existing `stillTyping` messaging already implements; the constant exists so that behavior
-  has a named, greppable justification instead of only a comment. The other three have no UI
-  surface in this app yet, so they're forward-looking flags, not active gates.
+  brandFilterUnavailable, brandsListDirty, relationshipLinksMissingV1Prefix }`, all `true`
+  at the time. `lastNameSearchBroken` is the one with a live UI consequence — it's what
+  `_tcSearchPlayers()`'s pre-existing `stillTyping` messaging already implements; the constant
+  exists so that behavior has a named, greppable justification instead of only a comment. The
+  other three have no UI surface in this app yet, so they're forward-looking flags, not active
+  gates. **Three of these four flags were later fixed — see "API fixes: last-name search,
+  brand/manufacturer filters, relationship links, published-only data (session 2026-09-14)"
+  below** for the follow-up that flipped them and reworked `_tcSearchPlayers()`.
 - **Confirmed breaking change, already live, no client code change needed:** `/v1/cards`'
   unfiltered result count dropped from ~1.77M to ~326K in the API's own v0.10.34 (server now
   excludes cards on unpublished sets by default). Audited per this app's own established
@@ -1078,6 +1081,68 @@ most were already correct here, a few were genuinely new information:
   *different* manufacturer-inference heuristic (Topps/Bowman → "Topps", Prizm/Donruss/etc. →
   "Panini") used for CardSight/PriceCharting queries, unrelated to Trading Card API's
   `brand`/`manufacturer` set fields — out of scope for this update, not an oversight.
+
+### API fixes: last-name search, brand/manufacturer filters, relationship links, published-only data (session 2026-09-14)
+A further update from the API team, reconciled against this app's actual code before changing
+anything (same discipline as the 2026-08-22 and 2026-09-03 updates above):
+
+- **`filter[last_name]=like:`/`filter[first_name]=like:`/`filter[full_name]=like:` now do a
+  real prefix/substring match — fixes `TCAPI_KNOWN_LIMITATIONS.lastNameSearchBroken`.** This is
+  a *bracketed* `filter[x]=like:value` form, not the old bare `full_name=`/`last_name=` params
+  this app's player search previously used — worth calling out because it initially reads like
+  a contradiction of the "`/v1/players` uses bare params" convention confirmed on 2026-08-22.
+  It isn't: the API team's own framing this session ("stop negotiating one field at a time,
+  build filters for every object type consistently") is exactly what this is — a new, generic
+  `filter[field]=operator:value` addressing scheme, the same `like:` opt-in-prefix convention
+  `/v1/sets?name=like:` already established, now extended to `/v1/players`. A bare
+  `filter[x]=value` (no `like:`) is still an exact whole-field match, same as `name=` on sets.
+  `_tcBuildPlayersPath()` now builds `filter[first_name|last_name|full_name]=like:<value>`
+  instead of the old bare params. `_tcSearchPlayers()` no longer needs to detect or report a
+  `stillTyping` state — the old failure mode (a last-name token could never usefully match
+  server-side while still being typed, so a query that came up empty had to be reported as
+  "still typing" rather than treated as a real no-match) is gone, since `like:` now genuinely
+  narrows on a partial last name. `_tcDoPlayerSearch()`'s dropdown always shows the plain
+  no-results state now; the "Finish the last name to match" message is removed.
+  `TCAPI_KNOWN_LIMITATIONS.lastNameSearchBroken` flipped to `false`.
+- **`filter[brand]`/`filter[manufacturer]` on `/v1/sets` went live 2026-09-02** — supersedes
+  the 2026-08-22 "brand filter unavailable" finding. `TCAPI_KNOWN_LIMITATIONS.brandFilterUnavailable`
+  flipped to `false`. **Not wired into `_tcBuildSetsPath()`** — this app still has no
+  brand-display or brand-filter UI (see `getSetBrandDisplay()`, unused today), so there's
+  nothing to consume it yet; flipping the flag is a documentation-accuracy fix, not a feature.
+- **Relationship link URLs now include the `/v1/` prefix.** `TCAPI_KNOWN_LIMITATIONS.relationshipLinksMissingV1Prefix`
+  flipped to `false`. `_tcNormalizeRelationshipLink()` is now a no-op against live data — left
+  in place as a harmless guard, since nothing in this app follows a `relationships.*.links` URL
+  today either way.
+- **`format=compact` on the `v2` checklist endpoint is fixed** (previously silently ignored —
+  see the 2026-08-22 finding). **Not switched back from `v1`** — `_tcBuildChecklistPath()` still
+  forces `v1`, which already works correctly and needs `include=checklist` regardless; there's
+  no benefit to churning a working call site for this.
+- **The player/team/player-team endpoints now only return published data** — `/v1/players`
+  dropped from ~116,000 rows to ~16,800; nothing was deleted, the difference is records sourced
+  from unpublished sets (this is very likely *why* stray results like "C.Ripken"/"B.Bonds" ever
+  showed up in player search at all). **No code change** — this app never assumed a row count
+  or relied on unpublished-set data. **Operational caveat worth knowing, not fixing**: the
+  visibility-flag rebuild job that drives this filtering is currently broken on the API's side,
+  so what it's serving is a snapshot frozen 2026-09-07 — anything published after that date is
+  incorrectly hidden from `/v1/players` (and by extension from this app's player typeahead and
+  the bulk-scan validator's `_tcSearchPlayers()` call) until the API team's job is fixed. If a
+  player search inexplicably misses someone known to have just been added to the catalog, this
+  stale snapshot is the likely cause, not a bug in this app's query.
+- **Per-field brand/manufacturer negotiation is explicitly dropped** — the API team's own
+  direction is to stop asking field-by-field and instead ship consistent, generic filters
+  across every object type. Nothing to act on here until that lands; the "sibling
+  disambiguation list" they'd separately asked for is also dropped — this app never built
+  anything against that request, so there's nothing to undo.
+- **Still open, being decided by the API team, not by this app:** whether a plain base set's
+  `brand` field should stay `null` or become an explicit value (e.g. `"Topps"` for a plain
+  Topps set). `getSetBrandDisplay()` already has an opinion baked in for *display* purposes —
+  it falls back to the string `'Base'` when `brand` is `null` — but that's a client-side
+  presentation choice, not a vote on the underlying API contract. For what it's worth if asked:
+  an **explicit value** (the flagship product name, not `null`) is the more useful contract for
+  this app's future — once generic `filter[brand]=` filtering exists, a buyer/seller filtering
+  by `brand=Topps` would reasonably expect the plain "Topps" base set included in that result,
+  not silently excluded the way a `null` brand would leave it. `null` only reads cleanly as
+  "unknown/not applicable," and a flagship base set's manufacturer is neither.
 
 ### Architecture
 All calls are proxied through `netlify/functions/tcapi.js` — a generic `GET ?path=/v1/whatever` passthrough that adds `Authorization: Bearer TRADING_CARD_API_KEY` server-side. 9s internal timeout (`AbortController`), just under Netlify's ~10s synchronous function ceiling (matches `vision-scan.js`'s 10s convention) so our own clean timeout response wins the race against the platform killing the function outright.
@@ -1997,6 +2062,17 @@ migration, no new external library.
   `localStorage`-persisted visitor id carried in the existing `event_data` jsonb column — no
   migration, no new library. See "Show QR Engagement — Scans + Unique Visitors" above for full
   detail on why each piece of the original spec was or wasn't built.
+- **Trading Card API player search fix (session 2026-09-14)** — `_tcBuildPlayersPath()` switched
+  from the old bare `full_name=`/`last_name=` params to `filter[full_name]=like:`/
+  `filter[last_name]=like:`, which the API team fixed to do a real prefix/substring match;
+  `_tcSearchPlayers()`'s `stillTyping` "finish the last name to match" fallback is removed since
+  the gap it worked around no longer exists. `TCAPI_KNOWN_LIMITATIONS.lastNameSearchBroken`,
+  `.brandFilterUnavailable`, and `.relationshipLinksMissingV1Prefix` all flipped to `false` (two
+  of the three have no UI surface in this app yet, so those two are documentation-accuracy
+  updates rather than behavior changes). See "API fixes: last-name search, brand/manufacturer
+  filters, relationship links, published-only data (session 2026-09-14)" above for the full
+  update, including an operational caveat about `/v1/players` currently serving a stale
+  2026-09-07 snapshot while the API's visibility-flag rebuild job is being fixed.
 
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`
