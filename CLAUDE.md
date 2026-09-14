@@ -155,6 +155,14 @@ Until this runs, `updateCardInDB()` strips `sold_date` from the payload and retr
 same `PGRST204` error — sales still record, the Transaction Log's Date column just shows "—"
 for every row (no `card.SoldDate` ever made it to the DB, so nothing to read back on reload).
 
+Required for the PriceCharting-based sport validation pass (see "Sport Classification" below —
+until this runs, the "🏷️ Validate Sport" button still works in-session via the existing
+`_isMissingScanColumnError()` retry-without-the-column fallback, it just can't persist a
+resolved sport across reload or surface it on `show.html`/`seller-browse.html`):
+```sql
+ALTER TABLE inventory ADD COLUMN IF NOT EXISTS sport text;
+```
+
 Required for the Show Floor Phase 2 visual floor map (see that section below):
 ```sql
 ALTER TABLE show_sellers
@@ -330,32 +338,84 @@ fell all the way through to `'—'`.
    no Donruss keyword, but that's out of scope here since it wasn't implicated in this bug
    report; revisit separately if a comp-pricing sport misroute is ever reported.
 
-### Scoped, not yet built: PriceCharting-based sport validation pass
-The hardcoded player-name arrays in `detectSport()` are a fundamentally unscalable design —
-they will always miss real players (confirmed: Kenny Lofton, Mason Miller), and every miss
-falls back to a brand/set keyword guess that can't cover every product line either. A
-follow-up pass, deliberately scoped here rather than built in this session:
+### PriceCharting-based sport validation pass (shipped, session 2026-09-14)
+Built the pass scoped above. Ships as a seller-initiated backfill button (the lower-risk,
+bounded-cost option flagged as "more likely first cut" in the original scoping) — not an
+automatic on-insert check.
 
-- **Trigger**: run only for cards where `detectSport()` currently returns `'—'` (unresolved) —
-  never re-check a card that already has a confident player-name or explicit-sport-field match,
-  to stay within PriceCharting's rate limit and avoid re-litigating already-correct badges.
-- **Signal**: PriceCharting's `console-name` field on a matched product (e.g. "Baseball Cards",
-  "Football Cards") is a direct, authoritative category string — already parsed by
-  `pcSportCategory()`/`scorePCResult()` in `comp-lookup.js` for the exact same purpose (sport
-  cross-checking during comp pricing), so this reuses an existing, proven signal rather than
-  introducing a new one.
-- **Shape**: a background, fire-and-forget pass (same convention as the bulk-scan correction
-  pass / TCAPI validation pass — non-blocking, `Promise.allSettled`, capped per run to respect
-  PriceCharting's 1 req/s limit via the existing `waitForPCRateLimit()`), writing a resolved
-  sport back onto the card's `Sport` field (with the `.db-filled`-style highlight convention
-  already used elsewhere) so the lookup only ever needs to happen once per card, not on every
-  render.
-- **Not decided yet**: whether this runs as a one-time backfill button ("Validate Sport" in the
-  inventory toolbar, similar to "💲 Check Comps") or automatically on every new card insert
-  where `detectSport()` returns `'—'` — the former is lower-risk (seller-initiated, bounded
-  cost) and the more likely first cut; the latter would need its own budget cap against
-  PriceCharting's rate limit the same way the bulk-scan correction pass caps CardSight/
-  PriceCharting calls at `BULK_SCAN_CORRECTION_LIMIT`. Revisit and pick one before building.
+- **New Netlify function**: `netlify/functions/sport-validation.js` — POST
+  `{ player, year, cardSet, cardNumber, parallel }` → `{ success, sport: 'Baseball'|... |
+  null, tier: 'high'|'none', source: 'pricecharting' }`. Searches PriceCharting, scores
+  candidates with a duplicated (not shared — see the file's own header for why) variant of
+  `comp-lookup.js`'s `scorePCResult()` that omits the sport-match term entirely (scoring on
+  sport would be circular here, since sport is exactly what's being resolved), then extracts
+  a sport word from the winning product's `console-name` field via a small regex covering the
+  same category words `trading-card-lookup.js`'s `SPORT_PREFIX_RE`/`SPORT_SUFFIX_RE` already
+  recognize. Only `baseball|football|basketball|hockey|soccer|pokemon` map to a CardShow sport
+  label — golf/tennis/boxing/mma/wrestling/racing/generic "sports" are recognized-but-unmapped
+  on purpose, since inventing a CardShow sport label that doesn't exist is worse than reporting
+  no match. Requires a score ≥ 20 (same "real positive signal" bar `card-correction.js` uses)
+  before trusting a match at all — a weak match never gets to write a sport classification that
+  buyers will see. No price fetch, no grade-tier selection — only the search+score step, since
+  all this needs is the winning product's category string.
+- **New DB column** (see "Pending DB Migrations" below): `inventory.sport` — the first-ever
+  persisted home for what was previously the CSV-import-only, never-written-back `card.Sport`
+  field. `cardToDbRow()`/`dbRowToCard()` now read/write it; `insertCardToDB()`,
+  `updateCardInDB()`, and both `upsertCardsToDB()` write paths strip it on the existing
+  `_isMissingScanColumnError()` retry (same graceful pre-migration degradation as
+  `fingerprint`/`detected_confidence`/`sold_date`).
+- **Client wiring** (app.html): **"🏷️ Validate Sport"** button in the seller inventory
+  toolbar, next to "💲 Check Comps" — same show/hide wiring across `loginAsSeller()`/
+  `loginAsAdmin()`/`signOut()`/`switchSellerTab()`. `getSportValidationCards()` — same
+  checked-cards-else-all-non-sold scoping convention as `getCompCheckCards()`/
+  `getExportInventoryCards()`, **further filtered to cards where `detectSport()` currently
+  returns `'—'`** — this is the trigger condition from the original scoping, so the pass never
+  re-checks an already-resolved card. `runSportValidation(cards)` — sequential loop with a
+  1200ms gap between calls (same client-side PriceCharting throttle `runCompCheck()` already
+  uses), its own namespaced progress bar (`_showSportValidationProgress`/
+  `_hideSportValidationProgress`, cancellable via `cancelSportValidation()`) kept separate from
+  `showCompCheckProgress`/`hideCompCheckProgress` so the two features' progress bars can't
+  clobber each other if a seller somehow ran both in the same session. On a `tier: 'high'`
+  result, writes `card.Sport` and calls `updateCardInDB(card)` immediately (no staging step,
+  unlike comp pricing's "Apply N price changes" flow — a resolved sport isn't a judgment call
+  the seller needs to approve per-card the way a price is).
+- **Also fixed while wiring this up — the *actual* buyer-facing bug**: `app.html`'s
+  `detectSport()` (fixed earlier this session, see above) turned out not to be what renders
+  the sport badges in the reported screenshot at all — `renderBuyerGrid()` (app.html's in-app
+  buyer grid) doesn't call `detectSport()` on card tiles. The real renderers are two *further*
+  duplicated copies of the same function: `show.html`'s `detectSport()` (public share-link
+  page) and `seller-browse.html`'s `detectSport()` (seller storefront QR destination) — both
+  duplicated-not-shared per this codebase's established no-build-step convention, and both had
+  their own independent version of these bugs:
+  - `show.html` had the identical "trust the imported Sport field before the player-name
+    lookup" bug (`if (r.Sport) return r.Sport;` as the very first line) — inert *today* only
+    because nothing has ever populated a `sport` DB column or mapped it into this file's card
+    rows, so the check never actually fired in production yet. Fixed the same way as app.html
+    (moved to run last, after every keyword check) so it's already correct once this session's
+    `sport` column starts carrying real data. Added `sport` to `fetchInventoryFromDB()`'s
+    `inventory` select list and `Sport: c.sport || ''` to its row mapping.
+  - `seller-browse.html`'s `detectSport()` had **no player-name entries at all** for Barry
+    Bonds, Kenny Lofton, Mason Miller, or Garrett Crochet, and its brand fallback only covered
+    `bowman chrome|bowman prospect` (not bare "Bowman") and had no Donruss coverage at all —
+    so **all four originally-reported cards fell through to its literal final-fallback return
+    value, `'🃏'`** (a bare card-suit glyph, no sport word) — this is almost certainly the exact
+    file and exact bug behind the original screenshot, since it already reads inventory via
+    `select('*')` (so the new `sport` column needs no select-list change there) and is the
+    actual seller-storefront QR-scan destination buyers land on. Added the four names, added
+    bare `bowman`/`donruss` to the brand fallback (ordered so Donruss's football/basketball
+    lines are checked first — same defensive ordering as app.html/show.html), and added a
+    last-priority `if (r.Sport) return r.Sport;` check plus `Sport: r.sport || ''` in its DB
+    row mapping so future validated data actually reaches this page.
+  - All three files' fixes were verified together with a standalone Node harness: all four
+    reported cards resolve correctly in both `show.html` and `seller-browse.html`, plus Donruss
+    Optic Football/Basketball control cases confirmed the added bare-brand fallback doesn't
+    misclassify Donruss's non-baseball lines, plus a bad-imported-Sport-field-vs.-confident-
+    name-match case confirmed the reordering holds in both files.
+- **Not changed**: `detectCardSport()` (comp-pricing API routing, app.html) — still out of
+  scope, as noted above; `comp-lookup.js`'s own `pcSportCategory()`/`scorePCResult()`
+  (untouched, still used for comp-pricing's own sport cross-check); the in-app buyer grid's
+  `renderBuyerGrid()` (doesn't render a sport badge at all — not touched, not this bug's
+  actual location).
 
 ## Cert Scanner — Photo-First Architecture (Shipped)
 
@@ -1689,9 +1749,16 @@ migration, no new external library.
   (confirmed real case: Barry Bonds). Reordered so player-name lookup wins, and added
   Donruss brand coverage to the set/brand fallback (fixes Kenny Lofton's 1992 Donruss Rated
   Rookie falling through to no badge at all) without breaking Donruss's non-baseball product
-  lines. See "Sport Classification — imported Sport field override" above for full detail,
-  including a scoped-but-not-yet-built PriceCharting-based validation pass for players who
-  aren't in any hardcoded list at all.
+  lines. Also shipped the previously-scoped PriceCharting-based sport validation pass (new
+  "🏷️ Validate Sport" toolbar button + `netlify/functions/sport-validation.js` + a new
+  `inventory.sport` DB column) for players missing from every hardcoded list — and, while
+  wiring it up, found and fixed the *actual* production bug behind the original screenshot:
+  two further duplicated `detectSport()` copies in `show.html` and `seller-browse.html` (the
+  real buyer-facing renderers — `app.html`'s own copy isn't used for grid badges at all) had
+  the same field-override bug and/or missing player names/brand keywords, with
+  `seller-browse.html`'s version failing all four originally-reported cards outright. See
+  "Sport Classification — imported Sport field override" above for full detail on both the
+  original fix and this follow-up.
 - Supabase inventory persistence (read, write, edit, mark sold, CSV import)
 - Seller profile persistence (display name, WhatsApp, Instagram)
 - Shows persistence layer (create, edit, delete, sellers, table numbers, publish)

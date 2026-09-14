@@ -4682,6 +4682,7 @@
           <input type="text" class="search-input" id="sellerSearchInput" placeholder="Search cards…" oninput="applyInventoryFilters()">
           <button class="btn btn-ghost" id="selectAllBtn" onclick="selectAll()" style="display:none">Select All</button>
           <button class="btn btn-ghost" id="compCheckBtn" onclick="runCompCheck(getCompCheckCards())" style="display:none;font-size:0.8rem" title="Look up market prices for selected cards (or all available if none selected)">💲 Check Comps</button>
+          <button class="btn btn-ghost" id="sportValidateBtn" onclick="runSportValidation(getSportValidationCards())" style="display:none;font-size:0.8rem" title="Look up sport via PriceCharting for selected cards with no sport badge (or all such cards if none selected)">🏷️ Validate Sport</button>
           <div style="position:relative;display:none" id="exportInventoryWrap">
             <button class="btn btn-ghost" id="exportInventoryBtn" style="font-size:0.8rem" onclick="toggleExportInventoryMenu(event)" title="Export your inventory for Shopify, TCGplayer, Ludex, Flipwise, and other platforms">⬇ Export Inventory</button>
             <div id="exportInventoryMenu" class="tc-dropdown" style="display:none;width:200px">
@@ -8299,6 +8300,140 @@ function hideCompCheckProgress() {
   if (wrap) wrap.remove();
 }
 
+// ── SPORT VALIDATION ──
+// Backs the "🏷️ Validate Sport" inventory toolbar button — see
+// getSportValidationCards() below and netlify/functions/sport-validation.js
+// for the full design. Progress bar is namespaced separately from
+// showCompCheckProgress()/hideCompCheckProgress() (same "don't let one
+// feature's progress bar hide another's" reasoning as the bulk-scan
+// correction pass's own dedicated progress helpers) since a seller could in
+// principle run both a comp check and a sport validation pass in the same
+// session.
+window._sportValidationCancelled = false;
+
+function cancelSportValidation() {
+  window._sportValidationCancelled = true;
+  const btn = document.getElementById('sportValidationCancelBtn');
+  if (btn) btn.textContent = 'Cancelling…';
+}
+
+function _showSportValidationProgress(current, total, cardName, estDisplay) {
+  let wrap = document.getElementById('sportValidationProgressWrap');
+  if (!wrap) {
+    wrap = document.createElement('div');
+    wrap.id = 'sportValidationProgressWrap';
+    wrap.style.cssText = 'margin-bottom:0.75rem;';
+    wrap.innerHTML = `
+      <div style="height:3px;background:var(--border);border-radius:2px;overflow:hidden;margin-bottom:0.45rem">
+        <div id="sportValidationProgressFill" style="height:100%;background:var(--gold);width:0%;transition:width 0.3s ease"></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap">
+        <span id="sportValidationProgressText" style="font-size:0.78rem;color:var(--muted);font-family:'DM Mono',monospace"></span>
+        <button id="sportValidationCancelBtn" onclick="cancelSportValidation()"
+          style="font-size:0.72rem;padding:0.2rem 0.55rem;border-radius:5px;
+            border:1px solid var(--border);background:transparent;
+            color:var(--muted);cursor:pointer;font-family:'DM Sans',sans-serif">
+          Cancel
+        </button>
+      </div>`;
+    const tableWrap = document.querySelector('.table-wrap');
+    if (tableWrap) tableWrap.insertBefore(wrap, tableWrap.firstChild);
+  }
+
+  const fill = document.getElementById('sportValidationProgressFill');
+  const txt  = document.getElementById('sportValidationProgressText');
+  const pct  = total > 0 ? Math.round((current / total) * 100) : 0;
+  if (fill) fill.style.width = pct + '%';
+
+  let label = `Validating sport… ${current} of ${total} cards`;
+  if (current === 0 && estDisplay) label = `Validating sport for ${total} card(s) with no sport badge (est. ${estDisplay})…`;
+  else if (cardName) label += ` · ${cardName.slice(0, 32)}${cardName.length > 32 ? '…' : ''}`;
+  if (txt) txt.textContent = label;
+}
+
+function _hideSportValidationProgress() {
+  const wrap = document.getElementById('sportValidationProgressWrap');
+  if (wrap) wrap.remove();
+}
+
+// Sequential, fire-at-1200ms-intervals loop matching runCompCheck()'s own
+// client-side throttle — PriceCharting's rate limit is the same resource
+// both features share, and this pass only ever makes one call per card (no
+// price fetch, just the search+score step), so no separate cache-hit
+// fast-path is needed the way comp checking has one.
+async function runSportValidation(cards) {
+  if (!cards || !cards.length) {
+    showToast('No cards need sport validation — every card already has a sport badge', 'var(--muted)');
+    return;
+  }
+
+  let processed = 0;
+  let validated = 0;
+  window._sportValidationCancelled = false;
+
+  const estSeconds = Math.ceil(cards.length * 1.2);
+  const estDisplay = estSeconds > 60 ? `~${Math.ceil(estSeconds / 60)} min` : `~${estSeconds}s`;
+
+  _showSportValidationProgress(0, cards.length, null, estDisplay);
+
+  for (const card of cards) {
+    if (window._sportValidationCancelled) {
+      window._sportValidationCancelled = false;
+      _hideSportValidationProgress();
+      showToast(
+        `Sport validation cancelled — ${processed} of ${cards.length} checked, ${validated} validated`,
+        'var(--muted)'
+      );
+      renderSellerTable(getSellerInventory());
+      return;
+    }
+
+    const name = card.Player || card['Card Title'] || '';
+    _showSportValidationProgress(processed, cards.length, name);
+
+    try {
+      const res = await fetch('/.netlify/functions/sport-validation', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          player:     card.Player              || '',
+          year:       card.Year                || '',
+          cardSet:    card['Set ']             || card.Set || '',
+          cardNumber: card.Number              || card['Card #'] || '',
+          parallel:   card['Parallel/Variant'] || '',
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.tier === 'high' && data.sport) {
+          card.Sport = data.sport;
+          await updateCardInDB(card);
+          validated++;
+        }
+      }
+    } catch (err) {
+      console.warn('Sport validation failed for:', name, err.message);
+    }
+
+    processed++;
+    _showSportValidationProgress(processed, cards.length, name);
+
+    if (processed < cards.length) {
+      await new Promise(r => setTimeout(r, 1200));
+    }
+  }
+
+  _hideSportValidationProgress();
+  renderSellerTable(getSellerInventory());
+  showToast(
+    validated > 0
+      ? `Validated sport for ${validated} of ${cards.length} card(s)`
+      : `No confident sport match found for ${cards.length} card(s) checked`,
+    validated > 0 ? 'var(--gold)' : 'var(--muted)'
+  );
+}
+
 // ── COMP RESULTS MODAL ──
 
 // Module state
@@ -11247,6 +11382,8 @@ function loginAsSeller(handle) {
   document.getElementById('sellerStatsRow').style.display        = '';
   const compBtn = document.getElementById('compCheckBtn');
   if (compBtn) compBtn.style.display = '';
+  const sportValidateBtn = document.getElementById('sportValidateBtn');
+  if (sportValidateBtn) sportValidateBtn.style.display = '';
   const exportInvWrap = document.getElementById('exportInventoryWrap');
   if (exportInvWrap) exportInvWrap.style.display = '';
   const sidebarToggleBtn = document.getElementById('sidebarToggle');
@@ -11374,6 +11511,8 @@ function loginAsAdmin() {
   document.getElementById('sellerStatsRow').style.display       = 'none';
   const compBtnAdm = document.getElementById('compCheckBtn');
   if (compBtnAdm) compBtnAdm.style.display = 'none';
+  const sportValidateBtnAdm = document.getElementById('sportValidateBtn');
+  if (sportValidateBtnAdm) sportValidateBtnAdm.style.display = 'none';
   const exportInvWrapAdm = document.getElementById('exportInventoryWrap');
   if (exportInvWrapAdm) { exportInvWrapAdm.style.display = 'none'; closeExportInventoryMenu(); }
   const sidebarToggleBtnAdm = document.getElementById('sidebarToggle');
@@ -11465,6 +11604,8 @@ async function signOut() {
   document.getElementById('sellerStatsRow').style.display       = '';
   const compBtnSO = document.getElementById('compCheckBtn');
   if (compBtnSO) compBtnSO.style.display = 'none';
+  const sportValidateBtnSO = document.getElementById('sportValidateBtn');
+  if (sportValidateBtnSO) sportValidateBtnSO.style.display = 'none';
   const exportInvWrapSO = document.getElementById('exportInventoryWrap');
   if (exportInvWrapSO) { exportInvWrapSO.style.display = 'none'; closeExportInventoryMenu(); }
   const sidebarToggleBtnSO = document.getElementById('sidebarToggle');
@@ -15249,6 +15390,7 @@ function switchSellerTab(tab) {
   // than relying on loginAsSeller()'s one-time show), restored on Inventory.
   const selectAllBtn  = document.getElementById('selectAllBtn');
   const compCheckBtn  = document.getElementById('compCheckBtn');
+  const sportValidateBtn = document.getElementById('sportValidateBtn');
   const exportInvWrap = document.getElementById('exportInventoryWrap');
 
   if (tab === 'report') {
@@ -15259,6 +15401,7 @@ function switchSellerTab(tab) {
     if (fabAdd)  fabAdd.style.display  = 'none';
     if (selectAllBtn) selectAllBtn.style.display = 'none';
     if (compCheckBtn) compCheckBtn.style.display = 'none';
+    if (sportValidateBtn) sportValidateBtn.style.display = 'none';
     if (exportInvWrap) { exportInvWrap.style.display = 'none'; closeExportInventoryMenu(); }
     populateReportShowSelector();
     updateReport();
@@ -15270,6 +15413,7 @@ function switchSellerTab(tab) {
     if (fabAdd)  fabAdd.style.display  = '';
     if (selectAllBtn) selectAllBtn.style.display = '';
     if (compCheckBtn) compCheckBtn.style.display = '';
+    if (sportValidateBtn) sportValidateBtn.style.display = '';
     if (exportInvWrap) exportInvWrap.style.display = '';
   }
 }
@@ -17317,6 +17461,23 @@ function getCompCheckCards() {
   return getSellerInventory().filter(c => c.Status !== 'Sold');
 }
 
+// Returns cards to run the PriceCharting-based sport validation pass on:
+// checked cards when any are selected, else all non-sold cards in the
+// seller's inventory (same checkbox-scoping convention as
+// getCompCheckCards()/getExportInventoryCards()) — further filtered to
+// cards where detectSport() currently returns '—' (fully unresolved). This
+// pass never re-checks a card that already has a confident player-name or
+// set/brand-fallback match, per the scoping in CLAUDE.md — staying within
+// PriceCharting's rate limit and never re-litigating an already-correct
+// badge.
+function getSportValidationCards() {
+  const checked = document.querySelectorAll('.card-check:checked');
+  const scoped = checked.length > 0
+    ? [...checked].map(cb => inventory[parseInt(cb.dataset.idx)]).filter(c => c && c.Status !== 'Sold')
+    : getSellerInventory().filter(c => c.Status !== 'Sold');
+  return scoped.filter(c => detectSport(c) === '—');
+}
+
 // ── Export Inventory (Shopify / TCGplayer / Ludex / Flipwise compatible) ──
 // Same checkbox-scoping convention as getCompCheckCards() — checked rows if
 // any are checked, else the seller's whole non-sold inventory. Sold cards
@@ -17540,7 +17701,7 @@ const CARD_TO_DB = Object.fromEntries(
 function _isMissingScanColumnError(error) {
   return !!error && (
     error.code === 'PGRST204' ||
-    /column .*(fingerprint|detected_confidence).*schema cache/i.test(error.message || '')
+    /column .*(fingerprint|detected_confidence|sport).*schema cache/i.test(error.message || '')
   );
 }
 
@@ -17563,6 +17724,13 @@ function cardToDbRow(card) {
     product_type: card.product_type  || null,
     fingerprint:  card.Fingerprint   || null,
     detected_confidence: card.DetectedConfidence || null,
+    // Sport 🏀⚾ — only ever written by the PriceCharting-based "Validate
+    // Sport" pass (see runSportValidation()), never guessed by cardToDbRow
+    // itself. A blank/manually-imported card.Sport is written as null, not
+    // an empty string, so a not-yet-validated card is indistinguishable
+    // from one this column doesn't know about yet — both read back as
+    // null/undefined and fall through to detectSport()'s own heuristics.
+    sport:        card.Sport         || null,
   };
 }
 
@@ -17588,6 +17756,7 @@ function dbRowToCard(row) {
     product_type:    row.product_type  || null,
     Fingerprint:        row.fingerprint          || null,
     DetectedConfidence: row.detected_confidence   || null,
+    Sport:              row.sport                || '',
     _shows:          new Set(),
   };
   if (row.sold_price     != null) card.SoldPrice     = row.sold_price;
@@ -18237,6 +18406,7 @@ async function insertCardToDB(card, sellerIdOverride) {
     if (error && _isMissingScanColumnError(error)) {
       delete row.fingerprint;
       delete row.detected_confidence;
+      delete row.sport;
       ({ data, error } = await db.from('inventory').insert(row).select('id').maybeSingle());
     }
 
@@ -18294,6 +18464,7 @@ async function updateCardInDB(card) {
     if (error && _isMissingScanColumnError(error)) {
       delete payload.fingerprint;
       delete payload.detected_confidence;
+      delete payload.sport;
       ({ error } = await db.from('inventory').update(payload).eq('id', card._dbId));
     }
 
@@ -18496,7 +18667,7 @@ async function upsertCardsToDB(cards) {
     if (toInsert.length) {
       let { data: insertedRows, error } = await db.from('inventory').insert(toInsert).select('id');
       if (error && _isMissingScanColumnError(error)) {
-        toInsert.forEach(row => { delete row.fingerprint; delete row.detected_confidence; });
+        toInsert.forEach(row => { delete row.fingerprint; delete row.detected_confidence; delete row.sport; });
         ({ data: insertedRows, error } = await db.from('inventory').insert(toInsert).select('id'));
       }
       if (error) console.warn('Batch insert error:', error.message);
@@ -18510,6 +18681,7 @@ async function upsertCardsToDB(cards) {
       if (error && _isMissingScanColumnError(error)) {
         delete updates.fingerprint;
         delete updates.detected_confidence;
+        delete updates.sport;
         ({ error } = await db.from('inventory').update(updates).eq('id', id));
       }
       if (error) console.warn('Row update error:', error.message);
