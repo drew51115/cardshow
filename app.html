@@ -3155,6 +3155,27 @@
   }
 
   /* ════════════════════════════════════════════════
+     CERT SCANNER — single-card photo-identification viewfinder
+     (Add Card modal's "SCAN CARD" button, openCertScanner())
+  ════════════════════════════════════════════════ */
+
+  /* Desktop/base sizing — unchanged from the original inline values */
+  .cert-scanner-modal { width: min(400px, 94vw); }
+  .cert-scanner-frame { aspect-ratio: 4 / 3; }
+
+  @media (max-width: 767px) {
+    /* Real seller feedback: the viewfinder "stays the same size no matter
+       what" and "seems set for scanning a graded card sticker" — a fixed
+       small 4:3 box couldn't show much of the camera's actual field of
+       view on a phone. Widened to near-full-screen and switched to a
+       taller ratio so a whole card (or several, when just eyeballing
+       framing before a scan) is actually visible, not just a cropped
+       sliver. */
+    .cert-scanner-modal { width: 96vw; }
+    .cert-scanner-frame { aspect-ratio: 3 / 4; }
+  }
+
+  /* ════════════════════════════════════════════════
      SCAN-TO-SELL POS — photo-first identification
      Chains into the existing sell drawer for price/payment.
   ════════════════════════════════════════════════ */
@@ -5087,7 +5108,7 @@
   <!-- ═══════ CERT SCANNER OVERLAY ═══════ -->
   <div class="modal-overlay" id="certScannerOverlay" style="display:none;z-index:9500"
        onclick="if(event.target===this)closeCertScanner()">
-    <div style="background:var(--card);border-radius:16px;padding:1.25rem;width:min(400px,94vw);position:relative">
+    <div class="cert-scanner-modal" style="background:var(--card);border-radius:16px;padding:1.25rem;position:relative">
 
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
         <div>
@@ -5098,9 +5119,9 @@
       </div>
 
       <!-- Camera viewfinder -->
-      <div style="position:relative;border-radius:10px;overflow:hidden;background:#000;aspect-ratio:4/3;margin-bottom:0.9rem">
+      <div class="cert-scanner-frame" style="position:relative;border-radius:10px;overflow:hidden;background:#000;margin-bottom:0.9rem">
         <video id="scannerVideo" autoplay playsinline muted
-               style="width:100%;height:100%;object-fit:cover"></video>
+               style="width:100%;height:100%;object-fit:contain"></video>
         <!-- Card aim guide — shows card outline -->
         <div id="photoAimGuide" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none">
           <div style="width:55%;height:80%;border:2px solid rgba(245,200,66,0.7);border-radius:8px;box-shadow:0 0 0 9999px rgba(0,0,0,0.35)"></div>

@@ -589,6 +589,48 @@ Supabase URL and anon key are **not** hardcoded in tracked files. `netlify.toml`
 - Vision API adds ~1-3s latency per scan. Showing the loading overlay keeps UX responsive.
 - Claude vision is good at reading PSA/CGC/BGS labels and raw card fronts; accuracy drops for small text, glare, or very dark backgrounds.
 
+### Mobile viewfinder too small / cropped (session 2026-09-19)
+Real seller feedback: on mobile, the camera preview "stays the same size no matter what" and
+"seems to be set for scanning a graded card sticker" — hard to tell what the camera is actually
+focused on before tapping Take Photo.
+
+**Root cause, two compounding issues**, both in the `#certScannerOverlay` viewfinder (the
+`openCertScanner()` single-card scan — the only custom in-page camera preview in this app;
+every other camera-capture flow in this codebase — Bulk Scan, Scan-to-Sell POS, Manual Sale,
+The Drop — uses a plain `<input type="file" capture="environment">`, which hands off to the
+OS's own native camera app and has no CSS this app controls):
+1. **Fixed, small box regardless of viewport.** The viewfinder was inline-styled to
+   `width:min(400px,94vw)` (the whole modal card) with a `4/3` aspect-ratio frame inside it —
+   no responsive sizing at all, so it never grew on a phone the way the rest of this app's
+   mobile-specific UI does (FABs, sidebar, etc. all have real `@media (max-width:767px)` rules
+   — this modal never got one).
+2. **`object-fit: cover` on `#scannerVideo` crops to fill, hiding real field of view.**
+   `scanTakePhoto()`'s own rotation-hint code (`if (video.videoWidth > video.videoHeight *
+   1.2)`) confirms the raw camera stream can come back landscape-oriented even when the phone
+   is held upright — `cover` inside a portrait-guided box then crops significant parts of that
+   stream off-screen just to fill the box, so what the seller sees is a tighter, more "zoomed"
+   view than what the camera is actually capturing. **Not a capture-quality bug** —
+   `scanTakePhoto()` already draws from `video.videoWidth`/`videoHeight` (the full underlying
+   frame) via `drawImage(video, 0, 0, w, h)`, so the photo actually sent to `vision-scan.js` was
+   never affected by this crop — it's purely a "the preview doesn't show what's really in
+   frame" UX bug, but a real one: a seller can't judge framing from a preview that's hiding part
+   of what's captured.
+
+**Fix**: `#scannerVideo`'s `object-fit` switched from `cover` to `contain` — the full camera
+frame is now always visible (letterboxed if the stream's aspect doesn't match the box), so the
+preview and the actual capture are WYSIWYG. The viewfinder's outer modal and inner frame div
+gained `.cert-scanner-modal`/`.cert-scanner-frame` classes (moving `width`/`aspect-ratio` out of
+inline style so they're overridable) with a new `@media (max-width:767px)` block: the modal
+widens to `96vw` (from a `400px` cap) and the frame's aspect-ratio switches to a taller `3/4`
+(from `4/3`) — on a ~390px-wide phone this roughly doubles the preview's visible height. Desktop
+sizing is unchanged (the base, non-media-query rule reproduces the original `min(400px,94vw)`/
+`4/3` values exactly).
+
+**Not changed**: `startScannerCamera()`'s `getUserMedia` constraints, `scanTakePhoto()`'s
+capture/compression logic, `vision-scan.js`, `_callVisionScan()`, the aim-guide overlay (still
+percentage-sized at 55%×80%, so it scales up automatically with the now-larger frame) — no
+backend or capture-quality changes, this is a viewfinder-visibility fix only.
+
 ## Sprint 3 — Live Card Database Autocomplete + Full Cascade Wiring
 
 ### Full Three-Stage Cascade (Sprints 2 + 3 — Sprint 1 barcode stage removed, see "Cert Scanner — Photo-First Architecture" above)
@@ -2081,6 +2123,16 @@ migration, no new external library.
   the organizer-side counterpart to `sellerRemoveFromShow()`'s existing seller-side cleanup.
   See "removeShowSellerFromDB() — clean up show_inventory on deauthorization" above, including
   a one-off SQL cleanup query for rows orphaned before this fix shipped.
+- **Cert scanner mobile viewfinder enlarged + de-cropped (session 2026-09-19)** — real seller
+  feedback: the single-card scan camera preview "stays the same size no matter what" and looked
+  zoomed in for a graded-card sticker rather than a whole card. Fixed two compounding issues:
+  `object-fit: cover` on `#scannerVideo` was cropping the on-screen preview to fill a fixed box
+  even though the actual captured photo (`scanTakePhoto()`'s `drawImage()`) already used the
+  full camera frame — switched to `object-fit: contain` so the preview is never cropped tighter
+  than what's actually captured; and the viewfinder itself had no responsive sizing at all —
+  added a `@media (max-width:767px)` rule that widens it to `96vw` and switches to a taller
+  `3/4` aspect ratio (from `4/3`), roughly doubling the visible preview height on a typical
+  phone. Desktop sizing unchanged. See "Mobile viewfinder too small / cropped" above.
 
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`
