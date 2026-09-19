@@ -2073,6 +2073,14 @@ migration, no new external library.
   filters, relationship links, published-only data (session 2026-09-14)" above for the full
   update, including an operational caveat about `/v1/players` currently serving a stale
   2026-09-07 snapshot while the API's visibility-flag rebuild job is being fixed.
+- **removeShowSellerFromDB() cleans up show_inventory on deauthorization (session 2026-09-19)**
+  — real bug: a seller removed from a show's Authorized Sellers list kept showing their
+  published cards in the show marketing page and buyer view, since the removal only ever
+  deleted the `show_sellers` row and never the corresponding `show_inventory` rows. Fixed to
+  delete the seller's `show_inventory` rows for that show alongside the authorization row —
+  the organizer-side counterpart to `sellerRemoveFromShow()`'s existing seller-side cleanup.
+  See "removeShowSellerFromDB() — clean up show_inventory on deauthorization" above, including
+  a one-off SQL cleanup query for rows orphaned before this fix shipped.
 
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`
@@ -2840,6 +2848,43 @@ the show still hits `_autoPublishCardToShow()`'s plain-INSERT path exactly as be
 `show_inventory` UPDATE policy gap itself is untouched — this is a client-side workaround, not
 a schema fix; add a permissive UPDATE policy on `show_inventory` in the Supabase dashboard if
 some other future write path needs to actually update an existing row.
+
+### removeShowSellerFromDB() — clean up show_inventory on deauthorization (session 2026-09-19)
+Real production bug report: an organizer authorized a seller, the seller published a card to
+the show, the organizer later removed that seller from the show's Authorized Sellers list — and
+the seller's card kept showing up in the show marketing page and buyer view anyway, with no
+seller attached to contact.
+
+**Root cause: `removeShowSellerFromDB(showId, handle)` only ever deleted the `show_sellers`
+row** (authorization + table assignment) — it never touched `show_inventory`. Every read path a
+buyer/marketing/analytics surface uses (`_orgFetchInventory()`, `loadBuyerInventoryFromDB()`,
+`show.html`'s `fetchInventoryFromDB()`) joins `show_inventory` → `inventory` directly and never
+re-checks current `show_sellers` authorization, so a `show_inventory` row that outlives its
+seller's authorization stays visible indefinitely — exactly the mirror-image gap
+`sellerRemoveFromShow()` (the seller's own "Remove" button in My Shows) already had fixed for
+itself, see "activeShowId resilience" above, but the organizer-side removal path
+(`removeSellerFromShow()` on the dashboard, and the Authorized Sellers combobox's `toRemove`
+diff in `saveShow()` — both call `removeShowSellerFromDB()`) never got the equivalent fix.
+
+Fixed by having `removeShowSellerFromDB()`, after the `show_sellers` delete succeeds, look up
+the seller's card ids (`inventory.select('id').eq('seller_id', ...)`) and delete every matching
+`show_inventory` row for that show (`.eq('show_id', showId).in('card_id', cardIds)`) — same
+two-step-query shape this codebase already uses everywhere to avoid PostgREST embedded-join
+issues, and the same cleanup `sellerRemoveFromShow()` already does, just triggered from the
+organizer's removal action instead of the seller's own. Non-fatal on any error (`console.warn`
+only) — matches every other `show_inventory` write/cleanup in this app.
+
+**Does not retroactively fix already-orphaned rows** from before this shipped. To clean up an
+existing case like the one reported (a seller's cards still live in `show_inventory` for a show
+they're no longer authorized for), run in the Supabase SQL editor:
+```sql
+DELETE FROM show_inventory
+WHERE card_id IN (SELECT id FROM inventory WHERE seller_id = '<seller-uuid>')
+  AND show_id NOT IN (SELECT show_id FROM show_sellers WHERE seller_id = '<seller-uuid>');
+```
+This targets any seller/show combination where a published card has outlived that seller's
+authorization for that specific show — safe to run repeatedly, and doesn't touch a seller's
+still-authorized shows.
 
 ## Live Show Inventory Sync (session 2026-09-04)
 

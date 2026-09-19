@@ -17161,6 +17161,26 @@ async function removeShowSellerFromDB(showId, handle) {
     if (error) {
       showToast(`Failed to remove @${handle} from show`, 'var(--danger)');
       console.error('removeShowSellerFromDB failed:', error.message);
+      return;
+    }
+
+    // Deauthorizing a seller must also pull their cards out of this show's
+    // show_inventory — every buyer/marketing/analytics read path
+    // (_orgFetchInventory(), loadBuyerInventoryFromDB(), show.html's
+    // fetchInventoryFromDB()) joins show_inventory -> inventory directly and
+    // never re-checks current show_sellers authorization, so a card whose
+    // show_inventory row survives stays visible indefinitely even after the
+    // seller is removed. Mirrors sellerRemoveFromShow()'s own cleanup for
+    // the seller-self-service removal path (see "activeShowId resilience"
+    // in CLAUDE.md) — this is the missing organizer-side counterpart.
+    const { data: sellerCards, error: cardsError } = await db
+      .from('inventory').select('id').eq('seller_id', seller.id);
+    if (cardsError) { console.warn('removeShowSellerFromDB card lookup failed:', cardsError.message); return; }
+    const cardIds = (sellerCards || []).map(r => r.id);
+    if (cardIds.length) {
+      const { error: cleanupError } = await db
+        .from('show_inventory').delete().eq('show_id', showId).in('card_id', cardIds);
+      if (cleanupError) console.warn('removeShowSellerFromDB show_inventory cleanup failed:', cleanupError.message);
     }
   } catch(e) { console.warn('removeShowSellerFromDB error:', e.message); }
 }
