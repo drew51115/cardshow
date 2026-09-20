@@ -293,6 +293,31 @@ Fonts: Bebas Neue (headlines), DM Sans (body), DM Mono (labels/badges), Barlow C
 29. **recordShowTransaction() must never be awaited from sdConfirm().** Fire-and-forget. Sold confirmation UI must complete instantly.
 30. **card_fingerprint on show_floor_transactions is 7-field format** matching `price_cache` exactly — joinable without transformation.
 31. **detectCardSport() used in recordShowTransaction()** — not `detectSport()`. `detectSport()` is UI-only. `detectCardSport()` is API routing with full TCG keyword detection.
+32. **`.card-edit-overlay` is `position: fixed`, not `absolute`** (fixed session 2026-09-19 — see below). Shared by both the Add Card modal (`#addCardOverlay`) and the Edit Card modal (`#cardEditOverlay`). Every other overlay in this app (`.modal-overlay`, `.drawer-overlay`, `.profile-overlay`, `.mapper-overlay`, etc.) is already `position: fixed`; this was the one outlier.
+
+### Card edit/add modal opened off-screen at scroll depth (session 2026-09-19)
+Real seller feedback: scrolling down a long inventory table and tapping a card to edit opened
+the modal "at the top of the page" while the seller stayed scrolled down — they had to manually
+scroll up to see it.
+
+**Root cause**: `.card-edit-overlay` (shared by `#addCardOverlay` and `#cardEditOverlay`) was
+`position: absolute; inset: 0` — positioned relative to its nearest positioned ancestor's
+document flow, not the viewport. `inset: 0` pins it to the *top of the page*, not the top of
+whatever the seller is currently looking at, so opening it after scrolling down left it rendered
+entirely above the visible viewport. Every other overlay in this codebase (`.modal-overlay`,
+`.drawer-overlay`, `.profile-overlay`, `.mapper-overlay`, `.qr-modal-overlay`, `.auth-overlay`,
+`.ob-overlay`) already used `position: fixed`, which stays pinned to the current viewport
+regardless of scroll position — `.card-edit-overlay` was the one outlier still using the older
+pattern (its own HTML comments even said "position:absolute inside view-seller," a leftover
+from before the rest of the app's overlays were normalized to `fixed`).
+
+**Fix**: changed `.card-edit-overlay` to `position: fixed`, matching every other overlay class
+in the app. No JS changes needed — `openCEM()`/`closeCEM()` (Edit Card) and `openAddCard()`/
+`closeAddCard()` (Add Card, which shares this same overlay class) only toggle the `.open` class
+and never assumed absolute positioning. z-index (200) was already well above `nav`'s sticky
+z-index (100) and the mobile FABs' (90), so no stacking-order changes were needed either. Also
+removed the two now-inaccurate "(position:absolute inside view-seller)" HTML comments on the
+Add Card and Edit Card modal blocks.
 
 ## Sport Classification — imported Sport field override (session 2026-09-14)
 
@@ -2133,6 +2158,14 @@ migration, no new external library.
   added a `@media (max-width:767px)` rule that widens it to `96vw` and switches to a taller
   `3/4` aspect ratio (from `4/3`), roughly doubling the visible preview height on a typical
   phone. Desktop sizing unchanged. See "Mobile viewfinder too small / cropped" above.
+- **Card edit/add modal opened off-screen at scroll depth (session 2026-09-19)** — real seller
+  feedback: editing a card after scrolling down a long inventory table opened the modal at the
+  top of the page, off-screen, forcing a manual scroll up. Root cause: `.card-edit-overlay`
+  (shared by `#addCardOverlay` and `#cardEditOverlay`) was the one overlay in this app still
+  using `position: absolute` instead of `position: fixed` — pinned to the top of the page's
+  document flow rather than the current viewport. Fixed by switching it to `position: fixed`,
+  matching every other overlay class in the app. See "Card edit/add modal opened off-screen at
+  scroll depth" above.
 
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`

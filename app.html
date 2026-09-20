@@ -2268,7 +2268,7 @@
   .btn-card-edit:hover { border-color: var(--accent); color: var(--accent); }
 
   .card-edit-overlay {
-    display: none; position: absolute; inset: 0;
+    display: none; position: fixed; inset: 0;
     background: rgba(0,0,0,0.72); backdrop-filter: blur(4px);
     align-items: flex-start; justify-content: center;
     z-index: 200; padding: 3rem 1rem 1rem;
@@ -4899,7 +4899,7 @@
     </div>
   </div>
 
-  <!-- ═══════ ADD CARD MODAL (position:absolute inside view-seller) ═══════ -->
+  <!-- ═══════ ADD CARD MODAL ═══════ -->
   <div class="card-edit-overlay" id="addCardOverlay" onclick="if(event.target===this)closeAddCard()">
     <div class="card-edit-modal" style="position:relative">
 
@@ -5227,7 +5227,7 @@
     </div>
   </div>
 
-  <!-- ═══════ CARD EDIT MODAL (position:absolute inside view-seller) ═══════ -->
+  <!-- ═══════ CARD EDIT MODAL ═══════ -->
   <div class="card-edit-overlay" id="cardEditOverlay" onclick="if(event.target===this)closeCEM()">
     <div class="card-edit-modal">
 
