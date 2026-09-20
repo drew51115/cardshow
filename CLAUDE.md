@@ -319,6 +319,40 @@ z-index (100) and the mobile FABs' (90), so no stacking-order changes were neede
 removed the two now-inaccurate "(position:absolute inside view-seller)" HTML comments on the
 Add Card and Edit Card modal blocks.
 
+### Edit Card modal split into two side-by-side columns on mobile (session 2026-09-19)
+Real seller feedback, found immediately after the scroll-depth fix above finally made the modal
+visible where a seller was actually looking: on mobile, the modal rendered as two separate
+narrow boxes side by side — form fields squeezed into a cramped left column with truncated text
+("2024 Bowman A…", "Agust…", "Bown…"), and Save Changes/Cancel/Delete stacked in their own box
+on the right.
+
+**Root cause: a stray extra `</div>` in the Asking Price field group** (`#cem_price`'s wrapper,
+in `#cardEditOverlay`) closed `.modal-body` one field group early instead of just its own
+wrapper `<div>` — every other single-field group in this modal is `<div>` open, label, input,
+one `</div>` close; this one had two. Confirmed via a headless-browser DOM dump (not guessable
+from reading the source alone — HTML's lenient error recovery hides exactly this class of bug
+at both edit time and in the rendered page until you inspect the actual resulting tree): with
+`.modal-body` closed early, the Status and Location field groups that should have stayed inside
+it, and — more consequentially — `.modal-actions` itself, all ended up as direct children of
+`.card-edit-overlay` instead of nested inside `.card-edit-modal`. `.card-edit-overlay` is
+`display:flex` with no `flex-direction` override (defaults to `row`), so with `.card-edit-modal`
+and `.modal-actions` now siblings at that level, flexbox laid them out side by side as two
+independent columns — exactly the screenshot.
+
+**Fix**: removed the one stray `</div>` (`app.html` around the `cem_price` field group). No
+other changes needed — once `.modal-actions` is correctly nested back inside `.card-edit-modal`,
+the existing (block-level, single-column) layout renders as originally designed: fields at full
+modal width, Save Changes/Cancel/Delete stacked underneath. Verified with a headless-browser
+DOM/geometry dump (`.modal-actions`' x/width now exactly match `.modal-body`'s, positioned
+directly below it) and a rendered screenshot at a 390px mobile viewport.
+
+**Worth a second pass**: this specific copy-paste-artifact bug class (an extra closing tag that
+silently reparents everything after it) is easy to introduce anywhere in this file given how
+much hand-authored inline-styled HTML it has, and easy to miss by eye since the browser doesn't
+error — only a DOM inspection or an unlucky flexbox parent reveals it. No other instance was
+found while fixing this one, but none of the other `.card-edit-modal`/`.modal-body` blocks in
+this file were exhaustively re-audited beyond this specific modal.
+
 ## Sport Classification — imported Sport field override (session 2026-09-14)
 
 Real bug report: several correctly-known baseball cards (Garrett Crochet, Kenny Lofton, Barry
@@ -2166,6 +2200,14 @@ migration, no new external library.
   document flow rather than the current viewport. Fixed by switching it to `position: fixed`,
   matching every other overlay class in the app. See "Card edit/add modal opened off-screen at
   scroll depth" above.
+- **Edit Card modal split into two columns on mobile (session 2026-09-19)** — real seller
+  feedback: on mobile the modal rendered as a cramped, truncated form column on the left and a
+  separate Save/Cancel/Delete button column on the right. Root cause: a stray extra `</div>` in
+  the Asking Price field group closed `.modal-body` one field group early, which cascaded into
+  `.modal-actions` ending up as a flexbox sibling of `.card-edit-modal` instead of nested inside
+  it — `.card-edit-overlay`'s default `flex-direction: row` then laid the two out side by side.
+  Fixed by removing the stray closing tag; no other changes needed. See "Edit Card modal split
+  into two side-by-side columns on mobile" above.
 
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`
