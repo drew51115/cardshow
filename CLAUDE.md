@@ -293,6 +293,65 @@ Fonts: Bebas Neue (headlines), DM Sans (body), DM Mono (labels/badges), Barlow C
 29. **recordShowTransaction() must never be awaited from sdConfirm().** Fire-and-forget. Sold confirmation UI must complete instantly.
 30. **card_fingerprint on show_floor_transactions is 7-field format** matching `price_cache` exactly — joinable without transformation.
 31. **detectCardSport() used in recordShowTransaction()** — not `detectSport()`. `detectSport()` is UI-only. `detectCardSport()` is API routing with full TCG keyword detection.
+32. **`.card-edit-overlay` is `position: fixed`, not `absolute`** (fixed session 2026-09-19 — see below). Shared by both the Add Card modal (`#addCardOverlay`) and the Edit Card modal (`#cardEditOverlay`). Every other overlay in this app (`.modal-overlay`, `.drawer-overlay`, `.profile-overlay`, `.mapper-overlay`, etc.) is already `position: fixed`; this was the one outlier.
+
+### Card edit/add modal opened off-screen at scroll depth (session 2026-09-19)
+Real seller feedback: scrolling down a long inventory table and tapping a card to edit opened
+the modal "at the top of the page" while the seller stayed scrolled down — they had to manually
+scroll up to see it.
+
+**Root cause**: `.card-edit-overlay` (shared by `#addCardOverlay` and `#cardEditOverlay`) was
+`position: absolute; inset: 0` — positioned relative to its nearest positioned ancestor's
+document flow, not the viewport. `inset: 0` pins it to the *top of the page*, not the top of
+whatever the seller is currently looking at, so opening it after scrolling down left it rendered
+entirely above the visible viewport. Every other overlay in this codebase (`.modal-overlay`,
+`.drawer-overlay`, `.profile-overlay`, `.mapper-overlay`, `.qr-modal-overlay`, `.auth-overlay`,
+`.ob-overlay`) already used `position: fixed`, which stays pinned to the current viewport
+regardless of scroll position — `.card-edit-overlay` was the one outlier still using the older
+pattern (its own HTML comments even said "position:absolute inside view-seller," a leftover
+from before the rest of the app's overlays were normalized to `fixed`).
+
+**Fix**: changed `.card-edit-overlay` to `position: fixed`, matching every other overlay class
+in the app. No JS changes needed — `openCEM()`/`closeCEM()` (Edit Card) and `openAddCard()`/
+`closeAddCard()` (Add Card, which shares this same overlay class) only toggle the `.open` class
+and never assumed absolute positioning. z-index (200) was already well above `nav`'s sticky
+z-index (100) and the mobile FABs' (90), so no stacking-order changes were needed either. Also
+removed the two now-inaccurate "(position:absolute inside view-seller)" HTML comments on the
+Add Card and Edit Card modal blocks.
+
+### Edit Card modal split into two side-by-side columns on mobile (session 2026-09-19)
+Real seller feedback, found immediately after the scroll-depth fix above finally made the modal
+visible where a seller was actually looking: on mobile, the modal rendered as two separate
+narrow boxes side by side — form fields squeezed into a cramped left column with truncated text
+("2024 Bowman A…", "Agust…", "Bown…"), and Save Changes/Cancel/Delete stacked in their own box
+on the right.
+
+**Root cause: a stray extra `</div>` in the Asking Price field group** (`#cem_price`'s wrapper,
+in `#cardEditOverlay`) closed `.modal-body` one field group early instead of just its own
+wrapper `<div>` — every other single-field group in this modal is `<div>` open, label, input,
+one `</div>` close; this one had two. Confirmed via a headless-browser DOM dump (not guessable
+from reading the source alone — HTML's lenient error recovery hides exactly this class of bug
+at both edit time and in the rendered page until you inspect the actual resulting tree): with
+`.modal-body` closed early, the Status and Location field groups that should have stayed inside
+it, and — more consequentially — `.modal-actions` itself, all ended up as direct children of
+`.card-edit-overlay` instead of nested inside `.card-edit-modal`. `.card-edit-overlay` is
+`display:flex` with no `flex-direction` override (defaults to `row`), so with `.card-edit-modal`
+and `.modal-actions` now siblings at that level, flexbox laid them out side by side as two
+independent columns — exactly the screenshot.
+
+**Fix**: removed the one stray `</div>` (`app.html` around the `cem_price` field group). No
+other changes needed — once `.modal-actions` is correctly nested back inside `.card-edit-modal`,
+the existing (block-level, single-column) layout renders as originally designed: fields at full
+modal width, Save Changes/Cancel/Delete stacked underneath. Verified with a headless-browser
+DOM/geometry dump (`.modal-actions`' x/width now exactly match `.modal-body`'s, positioned
+directly below it) and a rendered screenshot at a 390px mobile viewport.
+
+**Worth a second pass**: this specific copy-paste-artifact bug class (an extra closing tag that
+silently reparents everything after it) is easy to introduce anywhere in this file given how
+much hand-authored inline-styled HTML it has, and easy to miss by eye since the browser doesn't
+error — only a DOM inspection or an unlucky flexbox parent reveals it. No other instance was
+found while fixing this one, but none of the other `.card-edit-modal`/`.modal-body` blocks in
+this file were exhaustively re-audited beyond this specific modal.
 
 ## Sport Classification — imported Sport field override (session 2026-09-14)
 
@@ -588,6 +647,48 @@ Supabase URL and anon key are **not** hardcoded in tracked files. `netlify.toml`
 - PSA API free tier has very low rate limits (~10 req/hr). Upgrade PSA API account tier if 429s occur frequently at shows. (Still relevant to Bulk Scan's `bsVerifyGrader()`, which still calls `psa-lookup.js`.)
 - Vision API adds ~1-3s latency per scan. Showing the loading overlay keeps UX responsive.
 - Claude vision is good at reading PSA/CGC/BGS labels and raw card fronts; accuracy drops for small text, glare, or very dark backgrounds.
+
+### Mobile viewfinder too small / cropped (session 2026-09-19)
+Real seller feedback: on mobile, the camera preview "stays the same size no matter what" and
+"seems to be set for scanning a graded card sticker" — hard to tell what the camera is actually
+focused on before tapping Take Photo.
+
+**Root cause, two compounding issues**, both in the `#certScannerOverlay` viewfinder (the
+`openCertScanner()` single-card scan — the only custom in-page camera preview in this app;
+every other camera-capture flow in this codebase — Bulk Scan, Scan-to-Sell POS, Manual Sale,
+The Drop — uses a plain `<input type="file" capture="environment">`, which hands off to the
+OS's own native camera app and has no CSS this app controls):
+1. **Fixed, small box regardless of viewport.** The viewfinder was inline-styled to
+   `width:min(400px,94vw)` (the whole modal card) with a `4/3` aspect-ratio frame inside it —
+   no responsive sizing at all, so it never grew on a phone the way the rest of this app's
+   mobile-specific UI does (FABs, sidebar, etc. all have real `@media (max-width:767px)` rules
+   — this modal never got one).
+2. **`object-fit: cover` on `#scannerVideo` crops to fill, hiding real field of view.**
+   `scanTakePhoto()`'s own rotation-hint code (`if (video.videoWidth > video.videoHeight *
+   1.2)`) confirms the raw camera stream can come back landscape-oriented even when the phone
+   is held upright — `cover` inside a portrait-guided box then crops significant parts of that
+   stream off-screen just to fill the box, so what the seller sees is a tighter, more "zoomed"
+   view than what the camera is actually capturing. **Not a capture-quality bug** —
+   `scanTakePhoto()` already draws from `video.videoWidth`/`videoHeight` (the full underlying
+   frame) via `drawImage(video, 0, 0, w, h)`, so the photo actually sent to `vision-scan.js` was
+   never affected by this crop — it's purely a "the preview doesn't show what's really in
+   frame" UX bug, but a real one: a seller can't judge framing from a preview that's hiding part
+   of what's captured.
+
+**Fix**: `#scannerVideo`'s `object-fit` switched from `cover` to `contain` — the full camera
+frame is now always visible (letterboxed if the stream's aspect doesn't match the box), so the
+preview and the actual capture are WYSIWYG. The viewfinder's outer modal and inner frame div
+gained `.cert-scanner-modal`/`.cert-scanner-frame` classes (moving `width`/`aspect-ratio` out of
+inline style so they're overridable) with a new `@media (max-width:767px)` block: the modal
+widens to `96vw` (from a `400px` cap) and the frame's aspect-ratio switches to a taller `3/4`
+(from `4/3`) — on a ~390px-wide phone this roughly doubles the preview's visible height. Desktop
+sizing is unchanged (the base, non-media-query rule reproduces the original `min(400px,94vw)`/
+`4/3` values exactly).
+
+**Not changed**: `startScannerCamera()`'s `getUserMedia` constraints, `scanTakePhoto()`'s
+capture/compression logic, `vision-scan.js`, `_callVisionScan()`, the aim-guide overlay (still
+percentage-sized at 55%×80%, so it scales up automatically with the now-larger frame) — no
+backend or capture-quality changes, this is a viewfinder-visibility fix only.
 
 ## Sprint 3 — Live Card Database Autocomplete + Full Cascade Wiring
 
@@ -2073,6 +2174,40 @@ migration, no new external library.
   filters, relationship links, published-only data (session 2026-09-14)" above for the full
   update, including an operational caveat about `/v1/players` currently serving a stale
   2026-09-07 snapshot while the API's visibility-flag rebuild job is being fixed.
+- **removeShowSellerFromDB() cleans up show_inventory on deauthorization (session 2026-09-19)**
+  — real bug: a seller removed from a show's Authorized Sellers list kept showing their
+  published cards in the show marketing page and buyer view, since the removal only ever
+  deleted the `show_sellers` row and never the corresponding `show_inventory` rows. Fixed to
+  delete the seller's `show_inventory` rows for that show alongside the authorization row —
+  the organizer-side counterpart to `sellerRemoveFromShow()`'s existing seller-side cleanup.
+  See "removeShowSellerFromDB() — clean up show_inventory on deauthorization" above, including
+  a one-off SQL cleanup query for rows orphaned before this fix shipped.
+- **Cert scanner mobile viewfinder enlarged + de-cropped (session 2026-09-19)** — real seller
+  feedback: the single-card scan camera preview "stays the same size no matter what" and looked
+  zoomed in for a graded-card sticker rather than a whole card. Fixed two compounding issues:
+  `object-fit: cover` on `#scannerVideo` was cropping the on-screen preview to fill a fixed box
+  even though the actual captured photo (`scanTakePhoto()`'s `drawImage()`) already used the
+  full camera frame — switched to `object-fit: contain` so the preview is never cropped tighter
+  than what's actually captured; and the viewfinder itself had no responsive sizing at all —
+  added a `@media (max-width:767px)` rule that widens it to `96vw` and switches to a taller
+  `3/4` aspect ratio (from `4/3`), roughly doubling the visible preview height on a typical
+  phone. Desktop sizing unchanged. See "Mobile viewfinder too small / cropped" above.
+- **Card edit/add modal opened off-screen at scroll depth (session 2026-09-19)** — real seller
+  feedback: editing a card after scrolling down a long inventory table opened the modal at the
+  top of the page, off-screen, forcing a manual scroll up. Root cause: `.card-edit-overlay`
+  (shared by `#addCardOverlay` and `#cardEditOverlay`) was the one overlay in this app still
+  using `position: absolute` instead of `position: fixed` — pinned to the top of the page's
+  document flow rather than the current viewport. Fixed by switching it to `position: fixed`,
+  matching every other overlay class in the app. See "Card edit/add modal opened off-screen at
+  scroll depth" above.
+- **Edit Card modal split into two columns on mobile (session 2026-09-19)** — real seller
+  feedback: on mobile the modal rendered as a cramped, truncated form column on the left and a
+  separate Save/Cancel/Delete button column on the right. Root cause: a stray extra `</div>` in
+  the Asking Price field group closed `.modal-body` one field group early, which cascaded into
+  `.modal-actions` ending up as a flexbox sibling of `.card-edit-modal` instead of nested inside
+  it — `.card-edit-overlay`'s default `flex-direction: row` then laid the two out side by side.
+  Fixed by removing the stray closing tag; no other changes needed. See "Edit Card modal split
+  into two side-by-side columns on mobile" above.
 
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`
@@ -2840,6 +2975,43 @@ the show still hits `_autoPublishCardToShow()`'s plain-INSERT path exactly as be
 `show_inventory` UPDATE policy gap itself is untouched — this is a client-side workaround, not
 a schema fix; add a permissive UPDATE policy on `show_inventory` in the Supabase dashboard if
 some other future write path needs to actually update an existing row.
+
+### removeShowSellerFromDB() — clean up show_inventory on deauthorization (session 2026-09-19)
+Real production bug report: an organizer authorized a seller, the seller published a card to
+the show, the organizer later removed that seller from the show's Authorized Sellers list — and
+the seller's card kept showing up in the show marketing page and buyer view anyway, with no
+seller attached to contact.
+
+**Root cause: `removeShowSellerFromDB(showId, handle)` only ever deleted the `show_sellers`
+row** (authorization + table assignment) — it never touched `show_inventory`. Every read path a
+buyer/marketing/analytics surface uses (`_orgFetchInventory()`, `loadBuyerInventoryFromDB()`,
+`show.html`'s `fetchInventoryFromDB()`) joins `show_inventory` → `inventory` directly and never
+re-checks current `show_sellers` authorization, so a `show_inventory` row that outlives its
+seller's authorization stays visible indefinitely — exactly the mirror-image gap
+`sellerRemoveFromShow()` (the seller's own "Remove" button in My Shows) already had fixed for
+itself, see "activeShowId resilience" above, but the organizer-side removal path
+(`removeSellerFromShow()` on the dashboard, and the Authorized Sellers combobox's `toRemove`
+diff in `saveShow()` — both call `removeShowSellerFromDB()`) never got the equivalent fix.
+
+Fixed by having `removeShowSellerFromDB()`, after the `show_sellers` delete succeeds, look up
+the seller's card ids (`inventory.select('id').eq('seller_id', ...)`) and delete every matching
+`show_inventory` row for that show (`.eq('show_id', showId).in('card_id', cardIds)`) — same
+two-step-query shape this codebase already uses everywhere to avoid PostgREST embedded-join
+issues, and the same cleanup `sellerRemoveFromShow()` already does, just triggered from the
+organizer's removal action instead of the seller's own. Non-fatal on any error (`console.warn`
+only) — matches every other `show_inventory` write/cleanup in this app.
+
+**Does not retroactively fix already-orphaned rows** from before this shipped. To clean up an
+existing case like the one reported (a seller's cards still live in `show_inventory` for a show
+they're no longer authorized for), run in the Supabase SQL editor:
+```sql
+DELETE FROM show_inventory
+WHERE card_id IN (SELECT id FROM inventory WHERE seller_id = '<seller-uuid>')
+  AND show_id NOT IN (SELECT show_id FROM show_sellers WHERE seller_id = '<seller-uuid>');
+```
+This targets any seller/show combination where a published card has outlived that seller's
+authorization for that specific show — safe to run repeatedly, and doesn't touch a seller's
+still-authorized shows.
 
 ## Live Show Inventory Sync (session 2026-09-04)
 
