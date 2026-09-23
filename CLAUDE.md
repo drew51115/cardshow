@@ -182,6 +182,21 @@ toast surfacing the real Supabase error message (see below); the Unplaced/Placed
 (which only depend on `show_sellers.table_number`, already migrated in Phase 1) still work
 regardless.
 
+Required for the Inventory Template Vendor Feedback fields — Serial Number, Print Run Size,
+and Features (see "Inventory Template Vendor Feedback — Grader Coverage, Serial Number /
+Print Run Size, Features" below):
+```sql
+ALTER TABLE inventory
+  ADD COLUMN IF NOT EXISTS serial_number   text,
+  ADD COLUMN IF NOT EXISTS print_run_size  integer,
+  ADD COLUMN IF NOT EXISTS features        text[];
+```
+Until this runs, `insertCardToDB()`/`updateCardInDB()`/both `upsertCardsToDB()` write paths
+strip `serial_number`/`print_run_size`/`features` from the payload and retry once on the same
+`PGRST204` "missing column" error as `fingerprint`/`detected_confidence`/`sport`/`sold_date`
+above (`_isMissingScanColumnError()`'s regex covers all of them) — cards still save, the three
+new fields just don't persist across reload until the migration runs.
+
 ## Key Data Structures (in-memory runtime cache)
 ```js
 inventory[]          // [{Seller, 'Card Title', Player, Year, 'Set ', Price, Status, item_type, product_type, _dbId, _shows: Set, ...}]
@@ -1026,7 +1041,7 @@ Lets a seller photograph an entire showcase/tray and get every visible card iden
 
 ### app.html integration (Phase 2 — review/edit modal + inventory write, shipped)
 - **`renderBulkScanReview(cards)`** now opens `#bulkScanReviewOverlay` (reuses the `.mapper-overlay`/`.mapper-modal`/`.mapper-header`/`.mapper-body`/`.mapper-footer` CSS system from the CSV Column Mapper modal — same "many repeatable editable rows" shape). Empty `cards` array → toast "No cards identified — try a clearer photo", no modal opens.
-- Each card is rendered by `bulkScanCardBlockHTML(c, idx)` as its own bordered `.bulkscan-card-block` with: an include checkbox (checked by default, `.excluded` class dims the block at 0.45 opacity when unchecked), a confidence badge (reuses `.mapper-confidence.high/.medium/.low`), an editable Title (pre-filled via `buildCardTitle()` — note the key remap needed since the vision response uses `set`/`cardNumber` but `buildCardTitle` expects `cardSet`/`cardNum`), and editable Player/Year/Set/Card#/Parallel/Grader/Grade/Condition/Price fields matching Add Card's field set and `#ac_condition`'s exact 5-option list (Gem Mint/Near Mint/Good/Fair/Poor). Grader select prefills only on an exact case-insensitive match against PSA/BGS/CGC/SGC, else blank (Raw). The vision `notes` field (if present) renders as small muted `.bulkscan-notes` helper text — **display-only, never persisted** (`inventory` table has no `notes` column).
+- Each card is rendered by `bulkScanCardBlockHTML(c, idx)` as its own bordered `.bulkscan-card-block` with: an include checkbox (checked by default, `.excluded` class dims the block at 0.45 opacity when unchecked), a confidence badge (reuses `.mapper-confidence.high/.medium/.low`), an editable Title (pre-filled via `buildCardTitle()` — note the key remap needed since the vision response uses `set`/`cardNumber` but `buildCardTitle` expects `cardSet`/`cardNum`), and editable Player/Year/Set/Card#/Parallel/Grader/Grade/Condition/Price fields matching Add Card's field set and `#ac_condition`'s exact 5-option list (Gem Mint/Near Mint/Good/Fair/Poor). Grader select prefills on an exact case-insensitive match against `VALID_GRADERS` (PSA/BGS/CGC/SGC/TAG/HGA/GMA/Arena Club); a non-matching but non-empty vision-read grader pre-selects "Other…" with the original text preserved in a free-text row (see "Inventory Template Vendor Feedback" below), rather than silently dropping to Raw. The vision `notes` field (if present) renders as small muted `.bulkscan-notes` helper text — **display-only, never persisted** (`inventory` table has no `notes` column).
 - Fields are edited live in the DOM (no re-render-on-keystroke, unlike the CSV mapper's single-`<select>`-per-row pattern) — `confirmBulkScanReview()` reads final values straight out of `[data-field]` attributes at confirm time, the same way `saveAddCard()` reads `#ac_x` fields. Only two scoped live updates happen during editing: `bsToggleInclude()` (checkbox → `.excluded` class + stats) and `bsToggleGraderRow()` (grader select → shows/hides that card's Condition row, mirroring `acToggle()`).
 - **Title is required per included card.** `confirmBulkScanReview()` blocks entirely (inserts nothing) if any checked card has an empty title — flags every offending Title input with `.bulkscan-field-invalid` (red border, self-clears on input), scrolls the first one into view, and toasts a count. Uncheck a card instead of fixing its title to exclude it from the block.
 - On a valid confirm: builds one CardShow-shaped `rawCard` per included card using the **same key mapping as `saveAddCard()`'s card branch** (`'Card Title'`, `Player`, `Year`, `'Set '`, `Number`, `'Parallel/Variant'`, `Grader`, `Grade`, `'Cert #'` (from the editable Cert # field, only when a grader is selected — see PSA verify below), `Condition`, `Price`, `Status: 'Available'`, `Location: null`, `Seller`, `item_type: 'card'`), runs each through `validateAndNormalizeCard()`, pushes to `inventory[]`, then **awaits** `bulkScanInsertMany(normalized)` (unlike `saveAddCard()`'s fire-and-forget single insert — Phase 2 deliberately waits so the success/partial-failure toast is accurate for a whole batch) before closing the modal. Confirm button shows "Adding…" while in flight.
@@ -2208,6 +2223,20 @@ migration, no new external library.
   it — `.card-edit-overlay`'s default `flex-direction: row` then laid the two out side by side.
   Fixed by removing the stray closing tag; no other changes needed. See "Edit Card modal split
   into two side-by-side columns on mobile" above.
+- **Inventory Template Vendor Feedback — grader coverage, Serial Number / Print Run Size,
+  Features (session 2026-09-23)** — fixed a real silent data-corruption bug where
+  `validateAndNormalizeCard()` coerced any grader not in a hardcoded 4-item list to `'PSA'`
+  on every load/import (a GMA/HGA/TAG/Arena Club card was being mislabeled as PSA-graded, not
+  just failing a clean import); expanded grading-company coverage to 8 known graders plus a
+  free-text "Other…" path across all six grader dropdowns in the app; added `Serial Number`/
+  `Print Run Size` as fields separate from the overloaded `Number`/Card # field; added a
+  fixed-vocabulary `Features` multi-select (RC/Auto/Relic/Patch/Refractor/1st Edition/Short
+  Print) stored as `text[]`, replacing a low-confidence Auto/RC-into-Parallel/Variant import
+  mapping. All three new fields round-trip through Add Card, Edit Card, CSV/XLSX import, CSV/
+  XLSX export, and the downloadable template (rebuilt, not hand-edited). See "Inventory
+  Template Vendor Feedback" above for full detail. **Requires the `serial_number`/
+  `print_run_size`/`features` DB migration** (see above) — degrades gracefully (fields don't
+  persist across reload) if not yet run.
 
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`
@@ -3390,6 +3419,140 @@ supabase db push
 ```
 The migration seeds one demo `trade_zone_shows` row ("MLP Card Show (Trade Zone demo)") so
 both pages have something to resolve to with no `?show=` param on a fresh project.
+
+## Inventory Template Vendor Feedback — Grader Coverage, Serial Number / Print Run Size, Features (session 2026-09-23)
+
+A seller ran the CSV/XLSX import flow end-to-end and reported three gaps, all addressed in
+this session. A fourth item from the same feedback — a real data-corruption bug found while
+scoping the grader work — was fixed first, independent of the rest.
+
+### Grader silent-corruption bug (fixed) + expanded grading-company coverage
+`validateAndNormalizeCard()` previously coerced *any* grader not in the hardcoded
+`VALID_GRADERS` list (`['PSA', 'BGS', 'CGC', 'SGC']`) to `'PSA'` on every load/import —
+silently, with only a `console.warn`. This ran on every card, every time it was normalized,
+not just on import — a card hand-entered or imported with grader `GMA`, `HGA`, `TAG`, or
+`Arena Club` was being mislabeled as PSA-graded on an ongoing basis, not just failing to
+import cleanly. Fixed: `VALID_GRADERS` expanded to
+`['PSA', 'BGS', 'CGC', 'SGC', 'TAG', 'HGA', 'GMA', 'Arena Club']`, and an unrecognized grader
+is now **preserved exactly as entered** (free text) rather than coerced — the known-list
+check is now advisory (picks which dropdown option pre-selects) rather than a data-mangling
+gate. A known grader still normalizes to `VALID_GRADERS`' own canonical casing (`"psa"` →
+`"PSA"`, `"arena club"` → `"Arena Club"`).
+
+Every hardcoded grader `<option>` list in the app was updated to the same expanded set, and
+every one except the buyer-facing filter gained an **"Other…"** option that reveals a
+free-text input for any grading company name not on the list:
+- `#ac_grader` (Add Card) + `#ac_grader_other_wrap`/`#ac_grader_other`
+- `#cem_grader` (Edit Card) + `#cem_grader_other_wrap`/`#cem_grader_other`
+- `#posRGrader` (Scan-to-Sell POS raw entry) + `#posRGraderOtherWrap`/`#posRGraderOther`
+- `#mslGrader` (Log a Manual Sale) + `#mslGraderOtherWrap`/`#mslGraderOther`
+- Bulk scan review's per-card grader `<select>` (`bulkScanCardBlockHTML()`) + a
+  `[data-grader-other-row]` free-text input (`[data-field="graderOther"]`)
+- `#filterGrade` (buyer browse filter) — expanded list only, **no** Other option (a filter has
+  no free-text concept); `filterBuyer()`'s exact-grader match now checks against
+  `VALID_GRADERS` instead of a separately hardcoded `['PSA','BGS','CGC','SGC']` array
+
+Shared helpers (app.html, right after `validateAndNormalizeCard()`): `_graderOtherToggle(selectEl,
+wrapId)` shows/hides the paired free-text input on `<select>` change; `_resolveGraderValue(selectId,
+otherId)` returns the free-text value when `__OTHER__` is selected, else the select's own value —
+called from `saveAddCard()`, `saveCEM()`, `posInsertAndOpenDrawer()`, `confirmManualSale()`, and
+`confirmBulkScanReview()` in place of reading the `<select>`'s `.value` directly;
+`_setGraderFieldValue(selectId, otherId, wrapId, value)` is the inverse — populates a select+Other
+pair from a stored card value, selecting "Other…" and filling the free-text input when the value
+isn't one of `VALID_GRADERS` (used by `openCEM()` and the vision-fill paths in `posShowReview()`/
+`_mslApplyVisionResult()`, replacing direct `.value =` assignment that would previously leave an
+unrecognized vision-read grading company silently unselected).
+
+`CS_FIELDS`' `Grader` hint updated to `'PSA, BGS, CGC, SGC, and others — enter any grading company
+name'`. The downloadable template's `Grader` column data validation list (Inventory sheet, was
+`PSA,BGS,CGC,SGC,TAG,Arena Club` — already ahead of its own Column Guide text) expanded to the
+full 8-grader set and remains non-blocking (`showErrorMessage=False` — typing an unlisted grader
+was already allowed, confirmed by the vendor's own report); the Column Guide's Grader row updated
+to say the dropdown isn't limited to the listed options.
+
+### Serial Number / Print Run Size — new fields, separate from Card Number
+`Number`/`card_number` was overloaded to mean either a checklist card number (`#101`) *or* a
+print-run fraction (`4/102`) — `ALIAS_MAP` even mapped a source column literally named
+`Print Run` into `Number`. A card numbered `043/99` had nowhere clear to go. Fixed with two new
+fields, both required to distinguish from `Number`, not replace it:
+- **`Serial Number`** (`card['Serial Number']` in memory, `serial_number text` in DB) — the
+  specific numbered copy, e.g. `"043"`. Kept as text (not parsed to an integer) to preserve a
+  leading zero a seller may consider meaningful.
+- **`Print Run`** (`card['Print Run']` in memory — CS_FIELDS label "Print Run Size",
+  `print_run_size integer` in DB) — the total copies made, e.g. `99`.
+
+Wired into: `CS_FIELDS` (`Number`'s hint clarified to explicitly say it's *not* the print
+run), `ALIAS_MAP` (`/^print\s*run(\s*size)?$/i`, `/^numbered\s*to$/i`, `/^\/#$/i` →
+`'Print Run'`; `/^serial\s*number$/i` → `'Serial Number'`; the old
+`[/^print\s*run$/i, 'medium', 'Number']` entry that caused the original conflation is gone —
+a source column literally named "Print Run" now maps to `Print Run Size`, not `Number`), Add
+Card modal (`#ac_serial_row` — `#ac_serial`/`#ac_print_run`, card-type-only, toggled by
+`acSetType()`/`_acShow()` alongside `ac_number_col`/`ac_parallel_row`), Edit Card modal
+(`#cem_serial`/`#cem_print_run`), `cardToDbRow()`/`dbRowToCard()`, `EXPORT_INVENTORY_HEADER`/
+`_exportInventoryRowValues()`, and the downloadable template (both columns added to the
+Inventory sheet after `Number`/before `Parallel/Variant`, plus Column Guide rows spelling out
+the distinction with a worked example: `Number=12, Serial Number=043, Print Run Size=99` for
+a card printed "12" on the checklist and numbered 043/99).
+
+### Features — fixed-vocabulary multi-select (RC / Auto / Relic / Patch / Refractor / 1st Edition / Short Print)
+`Auto`/`Autograph` and `RC`/`Rookie` were low-confidence-mapped into `Parallel/Variant` in
+`ALIAS_MAP`, which either got missed on import (low confidence often means unmapped) or, if
+accepted, got jammed into a field that already means something else. Fixed with a new
+`Features` field — **a fixed vocabulary stored as `text[]`, not free text** — free text drifts
+("RC/Auto" vs "Rookie Autograph") and stops being reliably filterable.
+
+- `FEATURES_VOCAB` (app.html, next to `VALID_GRADERS`) — `['RC', 'Auto', 'Relic/Memorabilia',
+  'Patch', 'Refractor', '1st Edition', 'Short Print']`.
+- `FEATURES_SYNONYMS` — a lowercase-keyed synonym map (`rookie`/`rookie card` → `RC`,
+  `autograph`/`autographed`/`signed` → `Auto`, `relic`/`memorabilia` → `Relic/Memorabilia`,
+  `first edition`/`1st ed` → `1st Edition`, `sp` → `Short Print`, etc.) so a source column's
+  literal cell value (not just the header name) resolves to the fixed vocabulary.
+- `_parseFeaturesString(str)` — splits on commas, matches each token against
+  `FEATURES_SYNONYMS` case-insensitively, dedupes. **Unmatched tokens are silently dropped, not
+  invented as new vocabulary** — a source column whose cell values are booleans (`Y`/`TRUE`)
+  rather than descriptive text won't populate `Features`, which is the correct degrade (never
+  guessing wrong) rather than the alternative of always tagging every row.
+- `_getCheckedFeatures(containerId)` / `_setCheckedFeatures(containerId, features)` — read/write
+  helpers for the checkbox group UI.
+- **UI: a checkbox group, not `<select multiple>`** (per the build spec's own reasoning — a
+  multi-select dropdown is a poor mobile experience) — `.features-checkbox-group`/
+  `.feature-chip` (new CSS, uses `var(--accent)`, not the non-existent `var(--gold)` — see the
+  Critical Note in the Trading Card API section). `#ac_features_group` (Add Card, card-type-only
+  via `#ac_features_row`) and `#cem_features_group` (Edit Card) render the same 7 chips.
+- **Import**: `CS_FIELDS` gained a `Features` entry; `ALIAS_MAP` gained
+  `[/^features$/i, 'high', 'Features']`, and the existing `Auto`/`Autograph` and
+  `RC`/`Rookie / Rookie`-style entries were re-pointed from `Parallel/Variant` to `Features`
+  at `'medium'` confidence (up from `'low'`, now that they have a correct home). `applyMapping()`'s
+  generic per-header loop special-cases `destKey === 'Features'`: since more than one source
+  header can legitimately map to `Features` in the same file (a dedicated `Features` column
+  *and* separate `Auto`/`RC` columns from e.g. a Ludex export), values are **accumulated** via
+  `_parseFeaturesString()` + dedupe rather than the generic loop's normal last-header-wins
+  overwrite — the one field where that overwrite behavior would silently drop data.
+- `cardToDbRow()`/`dbRowToCard()` — `features: text[]`, `null` (not `[]`) when nothing is
+  checked, matching this file's null-over-empty convention for other unset optional columns.
+- `EXPORT_INVENTORY_HEADER`/`_exportInventoryRowValues()` — exported as a comma-joined string
+  (`r.Features.join(', ')`), matching the import format for round-trip consistency.
+- Downloadable template — `Features` column added to the Inventory sheet (after
+  `Parallel/Variant`) and a Column Guide row explaining the fixed vocabulary and
+  comma-separated format.
+
+### Downloadable template — rebuilt, not hand-edited
+`downloads/CardShow_Inventory_Template.xlsx`'s `Inventory` sheet (19 columns now — `Serial
+Number`/`Print Run Size` after `Number`, `Features` after `Parallel/Variant`) and `Column
+Guide` sheet were regenerated from a Python/openpyxl script rather than edited via
+`insert_cols`/`insert_rows` — those don't reliably shift data validations, column widths, or
+row-banding formatting on an existing 699-row sheet, and a full rebuild from captured style
+values (header/hint/example-row/banded-row styling, the three list data validations, column
+widths) was safer than trusting an in-place column insert on a file with that much existing
+formatting. The 13 example rows were kept and extended: two (Gold Prizm /10, Gold Auto /50)
+now demonstrate Serial Number/Print Run Size on a genuinely numbered parallel; several others
+demonstrate `Features` (`RC`, `Auto`, or both) independent of a print run.
+
+### Deliberately not included in this session (need a product decision first)
+Same vendor feedback also asked for: quantity tracking for duplicate items, AI-assisted title
+parsing into fields, and a browsable card-type/category taxonomy (Sports > sport, TCG > game,
+Non-Sport). None of these are in this session's scope — each needs a product decision before
+it's buildable, raised separately from this build.
 
 ## Show Configuration (Demo Data)
 - **MLP Card Show** — Oct 17-18, 2026 · Grand Hyatt Tampa Bay, FL · Code: MLPTPA (primary demo, shown to buyers without code)
