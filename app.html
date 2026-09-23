@@ -4975,6 +4975,27 @@
           <input class="show-input" id="ac_title" placeholder="e.g. 2025-26 Topps Chrome Cooper Flagg RC Auto" style="margin:0">
         </div>
 
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.55rem">
+          <div>
+            <div class="section-label" style="margin-bottom:0.3rem">Category</div>
+            <select class="show-input" id="ac_category" style="margin:0" onchange="acUpdateSubcategoryOptions()">
+              <option value="">Select category</option>
+              <option value="Sports">Sports</option>
+              <option value="TCG">TCG</option>
+              <option value="Non-Sport">Non-Sport</option>
+            </select>
+          </div>
+          <div>
+            <div class="section-label" style="margin-bottom:0.3rem">Sport / Game / Franchise</div>
+            <select class="show-input" id="ac_subcategory" style="margin:0" onchange="acToggleSubcategoryOther()">
+              <option value="">Select category first</option>
+            </select>
+          </div>
+        </div>
+        <div id="ac_subcategory_other_row" style="display:none">
+          <input class="show-input" id="ac_subcategory_other" placeholder="Enter game/franchise name" style="margin:0">
+        </div>
+
         <div id="ac_player_row" style="display:grid;grid-template-columns:1fr 1fr;gap:0.55rem">
           <div style="position:relative">
             <div class="section-label" style="margin-bottom:0.3rem">Player</div>
@@ -5293,6 +5314,27 @@
         <div>
           <div class="section-label" style="margin-bottom:0.3rem">Card Title *</div>
           <input class="show-input" id="cem_title" placeholder="e.g. 2025-26 Topps Chrome Cooper Flagg RC Auto" style="margin:0">
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.55rem">
+          <div>
+            <div class="section-label" style="margin-bottom:0.3rem">Category</div>
+            <select class="show-input" id="cem_category" style="margin:0" onchange="cemUpdateSubcategoryOptions()">
+              <option value="">Select category</option>
+              <option value="Sports">Sports</option>
+              <option value="TCG">TCG</option>
+              <option value="Non-Sport">Non-Sport</option>
+            </select>
+          </div>
+          <div>
+            <div class="section-label" style="margin-bottom:0.3rem">Sport / Game / Franchise</div>
+            <select class="show-input" id="cem_subcategory" style="margin:0" onchange="cemToggleSubcategoryOther()">
+              <option value="">Select category first</option>
+            </select>
+          </div>
+        </div>
+        <div id="cem_subcategory_other_row" style="display:none">
+          <input class="show-input" id="cem_subcategory_other" placeholder="Enter game/franchise name" style="margin:0">
         </div>
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.55rem">
@@ -8404,6 +8446,152 @@ function _setCheckedFeatures(containerId, features) {
   });
 }
 
+// ── CATEGORY / SUBCATEGORY — fixed vocabulary (see CLAUDE.md "Category /
+// Subcategory Taxonomy"). This structured classification is now the source
+// of truth ahead of the heuristic guessing in detectSport()/detectCardSport()
+// below — those remain as a best-effort pre-fill/fallback for cards that
+// don't have category/subcategory set yet (legacy inventory, a freshly-
+// scanned card before the seller reviews it). Shared by the Add/Edit Card
+// cascading dropdowns, the import mapper's Category inference, and both
+// detection functions — one lookup table, not three copies.
+const CATEGORY_SUBCATEGORIES = {
+  'Sports': ['Baseball','Basketball','Football','Hockey','Soccer','Golf','Boxing','MMA/UFC','Wrestling','Racing/Motorsports','Tennis','Other Sport'],
+  'TCG': ['Pokémon','Magic: The Gathering','Yu-Gi-Oh!','One Piece Card Game','Disney Lorcana','Digimon Card Game','Dragon Ball Super Fusion World','Gundam Card Game','Flesh and Blood','Star Wars Unlimited','Weiss Schwarz','Union Arena','Other TCG'],
+  'Non-Sport': ['Marvel','Star Wars','Disney','DC','Star Trek','Other Non-Sport'],
+};
+
+// Badge emoji per subcategory (detectSport() UI badges) — falls back to a
+// per-category default for any subcategory not listed here (including a
+// seller's free-text "Other …" value). Exact emoji choice isn't load-
+// bearing, just kept consistent with this app's existing sport emoji.
+const SUBCATEGORY_EMOJI = {
+  'Baseball': '⚾', 'Basketball': '🏀', 'Football': '🏈', 'Hockey': '🏒',
+  'Soccer': '⚽', 'Golf': '⛳', 'Boxing': '🥊', 'MMA/UFC': '🥋',
+  'Wrestling': '🤼', 'Racing/Motorsports': '🏎️', 'Tennis': '🎾',
+  'Marvel': '🦸', 'Star Wars': '⚔️', 'Disney': '🏰', 'DC': '🦇', 'Star Trek': '🖖',
+};
+const CATEGORY_DEFAULT_EMOJI = { 'Sports': '🏅', 'TCG': '🃏', 'Non-Sport': '🎴' };
+
+// Renders a detectSport()-shaped badge label ("Baseball ⚾") straight from
+// the structured fields — used both when a card already has category/
+// subcategory set, and by the brand/set-keyword fallback additions below.
+function categoryBadgeLabel(category, subcategory) {
+  if (!category) return null;
+  const sub = subcategory || '';
+  const emoji = SUBCATEGORY_EMOJI[sub] || CATEGORY_DEFAULT_EMOJI[category] || '🎴';
+  return sub ? `${sub} ${emoji}` : `${category} ${emoji}`;
+}
+
+// Maps this app's Subcategory vocabulary to the literal routing strings
+// netlify/functions/comp-lookup.js expects on card.sport — confirmed by
+// reading that file's TCG_SPORTS array and pcSportCategory() before writing
+// this (see CLAUDE.md). Casing/accents differ from our display vocabulary
+// ("Pokémon" vs comp-lookup.js's literal 'Pokemon'), so this can't be a
+// pass-through — comp-lookup.js's isPokemon/isTCG checks are exact-string,
+// not case/accent-insensitive. Values not in comp-lookup.js's TCG_SPORTS
+// list map to '' (no dedicated pricing route there yet) — same "unpriceable,
+// falls through to the sports chain" behavior a blank/unrecognized sport
+// already gets today; this is not a regression.
+const SUBCATEGORY_TO_ROUTING_SPORT = {
+  'Baseball': 'Baseball', 'Basketball': 'Basketball', 'Football': 'Football',
+  'Hockey': 'Hockey', 'Soccer': 'Soccer', 'Golf': 'Golf', 'Boxing': 'Boxing',
+  'MMA/UFC': 'MMA/UFC', 'Wrestling': 'Wrestling',
+  'Racing/Motorsports': 'Racing/Motorsports', 'Tennis': 'Tennis',
+  'Pokémon': 'Pokemon', 'Magic: The Gathering': 'Magic', 'Yu-Gi-Oh!': 'Yu-Gi-Oh',
+  'One Piece Card Game': 'One Piece', 'Disney Lorcana': 'Lorcana',
+  'Digimon Card Game': 'Digimon', 'Dragon Ball Super Fusion World': 'Dragon Ball',
+  'Flesh and Blood': 'Flesh and Blood',
+};
+
+// ── Category/Subcategory cascading dropdown — shared by Add Card
+// (ac_category/ac_subcategory) and Edit Card (cem_category/cem_subcategory),
+// which only differ by id prefix. `catId`/`subId`/`otherRowId`/`otherId` are
+// passed explicitly rather than assuming a prefix so either modal can call
+// the same implementation.
+function _updateSubcategoryOptions(catId, subId, otherRowId) {
+  const cat  = document.getElementById(catId).value;
+  const sel  = document.getElementById(subId);
+  const opts = CATEGORY_SUBCATEGORIES[cat] || [];
+  sel.innerHTML = opts.length
+    ? '<option value="">Select…</option>' + opts.map(o => `<option value="${o}">${o}</option>`).join('')
+    : '<option value="">Select category first</option>';
+  _toggleSubcategoryOther(subId, otherRowId);
+}
+
+function _toggleSubcategoryOther(subId, otherRowId) {
+  const val = document.getElementById(subId).value;
+  const isOther = /^Other/.test(val);
+  const row = document.getElementById(otherRowId);
+  if (row) row.style.display = isOther ? 'block' : 'none';
+}
+
+// Resolves a category-dropdown pair's real subcategory value — the free-text
+// input's value when an "Other …" option is selected (the literal string
+// "Other Sport"/"Other TCG"/"Other Non-Sport" is a UI affordance for
+// revealing that input, never a value that should land in the database),
+// else the select's own value.
+function _resolveSubcategoryValue(subId, otherId) {
+  const sel = document.getElementById(subId);
+  if (!sel) return '';
+  if (/^Other/.test(sel.value)) {
+    const other = document.getElementById(otherId);
+    return other ? other.value.trim() : '';
+  }
+  return sel.value;
+}
+
+// Populates a category/subcategory dropdown pair from stored values —
+// selects the matching subcategory option if it's in CATEGORY_SUBCATEGORIES
+// for that category, else falls back to that category's "Other …" option
+// with the free-text input filled from the stored value (so a value saved
+// before this vocabulary existed, or a seller's own free-text entry, still
+// round-trips instead of silently resetting to blank).
+function _setCategoryFieldValue(catId, subId, otherId, otherRowId, category, subcategory) {
+  const catSel = document.getElementById(catId);
+  if (!catSel) return;
+  catSel.value = category || '';
+  _updateSubcategoryOptions(catId, subId, otherRowId);
+  if (!category) return;
+
+  const subSel = document.getElementById(subId);
+  const opts = CATEGORY_SUBCATEGORIES[category] || [];
+  const known = subcategory && opts.includes(subcategory);
+  if (known) {
+    subSel.value = subcategory;
+  } else if (subcategory) {
+    const otherOpt = opts.find(o => /^Other/.test(o));
+    if (otherOpt) subSel.value = otherOpt;
+    const otherInput = document.getElementById(otherId);
+    if (otherInput) otherInput.value = subcategory;
+  }
+  _toggleSubcategoryOther(subId, otherRowId);
+}
+
+function acUpdateSubcategoryOptions() { _updateSubcategoryOptions('ac_category', 'ac_subcategory', 'ac_subcategory_other_row'); }
+function acToggleSubcategoryOther()   { _toggleSubcategoryOther('ac_subcategory', 'ac_subcategory_other_row'); }
+function cemUpdateSubcategoryOptions() { _updateSubcategoryOptions('cem_category', 'cem_subcategory', 'cem_subcategory_other_row'); }
+function cemToggleSubcategoryOther()   { _toggleSubcategoryOther('cem_subcategory', 'cem_subcategory_other_row'); }
+
+// Best-effort {category, subcategory} guess from a detectSport()-style
+// badge label ("Baseball ⚾") or a plain vision-scan sport string
+// ("Baseball"/"Pokemon"/"TCG") — used only to pre-fill the dropdowns when a
+// card has no structured category/subcategory of its own yet. The seller
+// can always override; this never writes anything on its own.
+function _categoryFromSportGuess(guess) {
+  if (!guess) return null;
+  const plain = String(guess).replace(/[^\w\s\/!:'-]/g, '').trim(); // strip emoji
+  if (!plain || plain === '—') return null;
+  for (const [cat, subs] of Object.entries(CATEGORY_SUBCATEGORIES)) {
+    const match = subs.find(s => s.toLowerCase() === plain.toLowerCase());
+    if (match) return { category: cat, subcategory: match };
+  }
+  // vision-scan.js's plain "Pokemon"/"TCG" strings don't exactly match our
+  // display vocabulary ("Pokémon" with an accent; bare "TCG" isn't a game).
+  if (/^pokemon$/i.test(plain)) return { category: 'TCG', subcategory: 'Pokémon' };
+  if (/^tcg$/i.test(plain))     return { category: 'TCG', subcategory: '' };
+  return null;
+}
+
 // ── SHOW LOCATION PARSER ───────────────────────────────────────────
 // Parses a freeform location string into structured city/state/venue.
 // Used by saveShow() when writing to DB and by recordShowTransaction()
@@ -8467,6 +8655,19 @@ function _formatShowDateRange(startDate, endDate) {
 // Separate from detectSport() which is used for UI badges — this is
 // specifically for routing to PriceCharting (sports) vs TCG API (TCG).
 function detectCardSport(card) {
+  // Prefer the structured category/subcategory fields (see CLAUDE.md
+  // "Category / Subcategory Taxonomy") over every guess below — mapped
+  // through SUBCATEGORY_TO_ROUTING_SPORT since comp-lookup.js's routing
+  // checks (isPokemon/isTCG) are exact-string against its own TCG_SPORTS
+  // list, which doesn't share this app's display casing/accents
+  // ("Pokémon" vs its literal 'Pokemon').
+  const category    = card.Category    || card.category    || '';
+  const subcategory = card.Subcategory || card.subcategory || '';
+  if (category) {
+    const mapped = SUBCATEGORY_TO_ROUTING_SPORT[subcategory];
+    return mapped !== undefined ? mapped : '';
+  }
+
   const sport = card.Sport || card.sport || '';
   if (sport) return sport;
 
@@ -8474,13 +8675,29 @@ function detectCardSport(card) {
                 card.Player, card['Parallel/Variant']]
     .filter(Boolean).join(' ').toLowerCase();
 
-  const TCG_KEYWORDS = ['pokemon','charizard','pikachu','mewtwo',
-    'umbreon','eevee','lugia','rayquaza','mtg','magic','yu-gi-oh',
-    'yugioh','lorcana','one piece','dragon ball','digimon',
+  // Per-game TCG keyword groups — each returns its own game's routing name,
+  // not a hardcoded 'Pokemon'. Previously every keyword match here — Magic,
+  // Yu-Gi-Oh, Lorcana, One Piece, and Digimon included — returned the
+  // literal string 'Pokemon', which both mis-routed non-Pokémon comp-price
+  // lookups (via comp-lookup.js's TCG_SPORTS) and mislabeled the
+  // show_floor_transactions.sport column for every such sale (confirmed by
+  // reading comp-lookup.js before this fix — see CLAUDE.md). The returned
+  // strings match comp-lookup.js's TCG_SPORTS array exactly.
+  // 'magic' alone is deliberately not matched as a bare substring — "Magic
+  // Johnson" (a real, very common basketball card) would otherwise
+  // false-positive into Magic: The Gathering.
+  if (/\bmtg\b/.test(text) || /magic\s*:?\s*the\s+gathering/.test(text)) return 'Magic';
+  if (/yu-?gi-?oh/.test(text))         return 'Yu-Gi-Oh';
+  if (text.includes('lorcana'))        return 'Lorcana';
+  if (text.includes('one piece'))      return 'One Piece';
+  if (text.includes('dragon ball'))    return 'Dragon Ball';
+  if (text.includes('digimon'))        return 'Digimon';
+
+  const POKEMON_KEYWORDS = ['pokemon','charizard','pikachu','mewtwo',
+    'umbreon','eevee','lugia','rayquaza',
     'scarlet','violet','base set','jungle','fossil','temporal',
     'evolving skies','lost origin','prismatic','obsidian'];
-
-  if (TCG_KEYWORDS.some(kw => text.includes(kw))) return 'Pokemon';
+  if (POKEMON_KEYWORDS.some(kw => text.includes(kw))) return 'Pokemon';
 
   // Unambiguous sport keywords
   if (/\b(nfl|football|gridiron|quarterback)\b/.test(text)) return 'Football';
@@ -9790,6 +10007,19 @@ function renderBuyerComp(card, result) {
 }
 
 function detectSport(r) {
+  // Prefer the structured category/subcategory fields (see CLAUDE.md
+  // "Category / Subcategory Taxonomy") over every heuristic below — a
+  // seller-set or high-confidence-imported classification is the accurate
+  // value; everything else in this function is now only a pre-fill guess
+  // for cards that don't have it set yet. Same "trust the explicit field
+  // before guessing" priority this function already gives detectSport()'s
+  // legacy card.Sport check, just one tier higher since category/
+  // subcategory is a real structured field rather than a freeform string.
+  if (r.Category || r.category) {
+    const label = categoryBadgeLabel(r.Category || r.category, r.Subcategory || r.subcategory);
+    if (label) return label;
+  }
+
   const title  = (r['Card Title'] || '').toLowerCase();
   const player = (r.Player || '').toLowerCase();
   const set    = (getSet(r) || '').toLowerCase();
@@ -10002,6 +10232,22 @@ function detectSport(r) {
   // Fleer/Upper Deck/Leaf/Pinnacle/Score were added here.
   if (/topps|bowman|fleer|upper deck|donruss|leaf|pinnacle|score/.test(all)) return 'Baseball ⚾';
   if (/pokemon|magic: the gathering|yu-gi-oh|mtg/.test(all)) return 'TCG 🃏';
+
+  // ── Additional TCG/Non-Sport set-name keywords (Category / Subcategory
+  // Taxonomy build) — lowest priority, same tier as the generic TCG line
+  // above. Deliberately no hand-maintained player/character-name lists for
+  // these, unlike the four major sports — that approach is already a known
+  // maintenance burden for just four sports (see the Donruss/Kenny Lofton
+  // gap documented elsewhere in CLAUDE.md) and isn't worth extending to a
+  // dozen more categories when the real fix is a seller setting the
+  // structured Category/Subcategory fields directly.
+  if (/one piece/.test(all))   return categoryBadgeLabel('TCG', 'One Piece Card Game');
+  if (/lorcana/.test(all))     return categoryBadgeLabel('TCG', 'Disney Lorcana');
+  if (/digimon/.test(all))     return categoryBadgeLabel('TCG', 'Digimon Card Game');
+  if (/dragon ball/.test(all)) return categoryBadgeLabel('TCG', 'Dragon Ball Super Fusion World');
+  if (/gundam/.test(all))      return categoryBadgeLabel('TCG', 'Gundam Card Game');
+  if (/\bmarvel\b/.test(all))  return categoryBadgeLabel('Non-Sport', 'Marvel');
+  if (/star wars/.test(all))   return categoryBadgeLabel('Non-Sport', 'Star Wars');
 
   return '—';
 }
@@ -13810,6 +14056,8 @@ const CS_FIELDS = [
   { key: 'Serial Number',    label: 'Serial Number',     required: false, hint: 'e.g. 043 — the numbered copy, distinct from card #' },
   { key: 'Print Run',        label: 'Print Run Size',    required: false, hint: 'e.g. 99 — total copies made' },
   { key: 'Features',         label: 'Features',          required: false, hint: 'RC, Auto, Relic, Patch, etc. — comma-separated' },
+  { key: 'Category',         label: 'Category',          required: false, hint: 'Sports, TCG, or Non-Sport' },
+  { key: 'Subcategory',      label: 'Sport / Game / Franchise', required: false, hint: 'e.g. Baseball, Pokémon, Marvel' },
   { key: 'Condition',        label: 'Condition',         required: false, hint: 'Gem Mint, Near Mint…' },
   { key: 'Price',            label: 'Price',             required: false, hint: 'Asking price (numeric)' },
   { key: 'Status',           label: 'Status',            required: false, hint: 'Available, Sold, On Hold' },
@@ -13833,6 +14081,11 @@ const ALIAS_MAP = [
   [/^print\s*run(\s*size)?$/i,  'high',   'Print Run'],
   [/^parallel\/?variant$/i,     'high',   'Parallel/Variant'],
   [/^features$/i,               'high',   'Features'],
+  [/^category$/i,               'high',   'Category'],
+  [/^subcategory$/i,            'high',   'Subcategory'],
+  [/^game$/i,                   'high',   'Subcategory'],
+  [/^franchise$/i,              'high',   'Subcategory'],
+  [/^tcg$/i,                    'high',   'Subcategory'],
   [/^grade$/i,                  'high',   'Grade'],
   [/^grader$/i,                 'high',   'Grader'],
   [/^condition$/i,              'high',   'Condition'],
@@ -13865,7 +14118,13 @@ const ALIAS_MAP = [
   // ── Flipwise ──
   [/^name$/i,                   'medium', 'Card Title'],
   [/^card\s*name$/i,            'high',   'Card Title'],
-  [/^sport$/i,                  'low',    '__SKIP__'],
+  // A source column named "Sport" previously discarded its values entirely
+  // (__SKIP__) — even a vendor spreadsheet with clean sport/category data
+  // lost it on import. Maps to Subcategory now; if its values turn out to
+  // be broad-category strings ("Sports"/"TCG") rather than a specific
+  // sport/game name, that's a source-file data-quality issue the mapper
+  // can't resolve — same low-confidence treatment as any other field.
+  [/^sport$/i,                  'low',    'Subcategory'],
   [/^product$/i,                'medium', 'Set'],
   [/^set\s*name$/i,             'high',   'Set'],
   [/^series$/i,                 'medium', 'Set'],
@@ -14157,6 +14416,21 @@ function applyMapping() {
       card[destKey] = val;
     }
 
+    // ── Category inference from Subcategory ──
+    // A row with a Subcategory value but no explicit Category — e.g. the
+    // "Sport" column above mapping straight to Subcategory — gets Category
+    // inferred by checking which CATEGORY_SUBCATEGORIES list contains a
+    // case-insensitive match (the same lookup table the Add/Edit Card
+    // dropdowns use, not a separate hardcoded list). Left blank, never
+    // guessed, when the value doesn't match a known subcategory — it
+    // surfaces like any other low-confidence/unmatched field instead.
+    if (card['Subcategory'] && !card['Category']) {
+      const subVal = String(card['Subcategory']).trim().toLowerCase();
+      for (const [cat, subs] of Object.entries(CATEGORY_SUBCATEGORIES)) {
+        if (subs.some(s => s.toLowerCase() === subVal)) { card['Category'] = cat; break; }
+      }
+    }
+
     // ── Shopify-specific transforms ──
     if (shopify) {
       // Title: split "Player - Card Title" or use whole title
@@ -14231,7 +14505,7 @@ function openAddCard() {
   // Clear all fields
   ['ac_title','ac_player','ac_year','ac_year_sealed','ac_set',
    'ac_number','ac_serial','ac_print_run','ac_parallel','ac_grade','ac_cert','ac_price','ac_location','ac_lot_desc',
-   'ac_grader_other']
+   'ac_grader_other','ac_subcategory_other']
     .forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
   document.getElementById('ac_grader').value    = '';
   document.getElementById('ac_grader_other_wrap').style.display = 'none';
@@ -14239,6 +14513,7 @@ function openAddCard() {
   document.getElementById('ac_sealed_condition').value = 'Factory Sealed';
   document.getElementById('ac_status').value    = 'Available';
   _setCheckedFeatures('ac_features_group', []);
+  _setCategoryFieldValue('ac_category', 'ac_subcategory', 'ac_subcategory_other', 'ac_subcategory_other_row', '', '');
   tcClearPickerState();
   _acHideComp();
   acSetType('card');
@@ -15249,6 +15524,11 @@ function saveAddCard() {
   const labelMap = { card: 'Card Title', sealed: 'Product Name', lot: 'Lot Title' };
   if (!title) { showToast(`${labelMap[_acItemType] || 'Title'} is required`, 'var(--danger)'); return; }
 
+  // Category/Subcategory Taxonomy — applies to all item types (a sealed
+  // box or lot can be classified the same way a single card can).
+  const category    = document.getElementById('ac_category').value || null;
+  const subcategory = category ? (_resolveSubcategoryValue('ac_subcategory', 'ac_subcategory_other') || null) : null;
+
   let rawCard;
   if (_acItemType === 'sealed') {
     const year = document.getElementById('ac_year_sealed').value.trim() || null;
@@ -15263,6 +15543,8 @@ function saveAddCard() {
       Seller:       currentSeller,
       item_type:    'sealed',
       product_type: document.getElementById('ac_product_type').value || null,
+      Category:     category,
+      Subcategory:  subcategory,
     };
   } else if (_acItemType === 'lot') {
     const year = document.getElementById('ac_year_sealed').value.trim() || null;
@@ -15276,6 +15558,8 @@ function saveAddCard() {
       Seller:       currentSeller,
       item_type:    'lot',
       'Parallel/Variant': document.getElementById('ac_lot_desc').value.trim() || null,
+      Category:     category,
+      Subcategory:  subcategory,
     };
   } else {
     const grader = _resolveGraderValue('ac_grader', 'ac_grader_other');
@@ -15299,6 +15583,8 @@ function saveAddCard() {
       Location:           document.getElementById('ac_location').value.trim() || null,
       Seller:             currentSeller,
       item_type:          'card',
+      Category:           category,
+      Subcategory:        subcategory,
     };
   }
 
@@ -17673,6 +17959,17 @@ function openCEM(idx) {
     [card.Player, card.Year].filter(Boolean).join(' · ');
 
   document.getElementById('cem_title').value     = card['Card Title']       || '';
+  // Category/Subcategory Taxonomy — prefer the card's own structured value;
+  // only guess from the detectSport() heuristic when neither is set yet
+  // (legacy inventory). Always just a pre-fill — the seller can override.
+  {
+    let cat = card.Category || '', sub = card.Subcategory || '';
+    if (!cat) {
+      const guess = _categoryFromSportGuess(detectSport(card));
+      if (guess) { cat = guess.category; sub = guess.subcategory; }
+    }
+    _setCategoryFieldValue('cem_category', 'cem_subcategory', 'cem_subcategory_other', 'cem_subcategory_other_row', cat, sub);
+  }
   document.getElementById('cem_player').value    = card.Player              || '';
   document.getElementById('cem_year').value      = card.Year                || '';
   document.getElementById('cem_set').value       = card['Set '] || card.Set || '';
@@ -17797,6 +18094,7 @@ function getExportInventoryCards() {
 const EXPORT_INVENTORY_HEADER = [
   'Seller', 'Card Title', 'Player', 'Year', 'Set', 'Number',
   'Serial Number', 'Print Run', 'Parallel/Variant', 'Features',
+  'Category', 'Subcategory',
   'Grade', 'Grader', 'Cert #', 'Condition',
   'Price', 'Status', 'Location', 'Image URL',
 ];
@@ -17813,6 +18111,8 @@ function _exportInventoryRowValues(r) {
     r['Print Run'] != null ? r['Print Run'] : '',
     r['Parallel/Variant'] || '',
     Array.isArray(r.Features) ? r.Features.join(', ') : '',
+    r.Category || '',
+    r.Subcategory || '',
     r.Grade != null ? r.Grade : '',
     r.Grader || '',
     r['Cert #'] || '',
@@ -17898,7 +18198,10 @@ function saveCEM() {
   if (!title) { showToast('Card Title is required', 'var(--danger)'); return; }
 
   const grader = _resolveGraderValue('cem_grader', 'cem_grader_other');
+  const category = document.getElementById('cem_category').value || null;
   card['Card Title']       = title;
+  card.Category            = category;
+  card.Subcategory         = category ? (_resolveSubcategoryValue('cem_subcategory', 'cem_subcategory_other') || null) : null;
   card.Player              = document.getElementById('cem_player').value.trim();
   card.Year                = document.getElementById('cem_year').value.trim() || null;
   card['Set ']             = document.getElementById('cem_set').value.trim();
@@ -18000,7 +18303,7 @@ const CARD_TO_DB = Object.fromEntries(
 function _isMissingScanColumnError(error) {
   return !!error && (
     error.code === 'PGRST204' ||
-    /column .*(fingerprint|detected_confidence|sport|serial_number|print_run_size|features).*schema cache/i.test(error.message || '')
+    /column .*(fingerprint|detected_confidence|sport|serial_number|print_run_size|features|category|subcategory).*schema cache/i.test(error.message || '')
   );
 }
 
@@ -18041,6 +18344,12 @@ function cardToDbRow(card) {
     // (not []) when nothing is checked, matching this file's null-over-
     // empty convention for other unset optional columns.
     features:        Array.isArray(card.Features) && card.Features.length ? card.Features : null,
+    // Category / Subcategory Taxonomy (see CLAUDE.md) — the structured
+    // classification, now the source of truth over the sport/detectSport()
+    // heuristics for anything that has it set. Not dropped/guessed here —
+    // written only from what the seller picked or a confident import match.
+    category:     card.Category     || null,
+    subcategory:  card.Subcategory  || null,
   };
 }
 
@@ -18070,6 +18379,8 @@ function dbRowToCard(row) {
     Fingerprint:        row.fingerprint          || null,
     DetectedConfidence: row.detected_confidence   || null,
     Sport:              row.sport                || '',
+    Category:           row.category             || '',
+    Subcategory:         row.subcategory          || '',
     _shows:          new Set(),
   };
   if (row.sold_price     != null) card.SoldPrice     = row.sold_price;
@@ -18643,6 +18954,11 @@ async function recordManualSaleTransaction(card, showId) {
       item_type:      card.item_type     || 'card',
       // detectCardSport() is API routing — NOT detectSport() which is UI only
       sport:          detectCardSport(card) || null,
+      // Category / Subcategory Taxonomy (see CLAUDE.md) — structured
+      // classification, same source-of-truth priority as inventory's own
+      // cardToDbRow(). Never guessed here — only what the card already has.
+      category:       card.Category     || null,
+      subcategory:    card.Subcategory  || null,
 
       // Seller snapshot
       seller_id:      sellerUuid,
@@ -18663,9 +18979,20 @@ async function recordManualSaleTransaction(card, showId) {
       data_version:   1,
     };
 
-    const { error } = await db
+    let { error } = await db
       .from('show_floor_transactions')
       .insert(row);
+
+    // Graceful degrade until the category/subcategory migration runs — same
+    // PGRST204 retry-without-the-column pattern as inventory's own writes
+    // (see _isMissingScanColumnError), scoped narrowly here since this
+    // table's other columns (e.g. source) predate this migration and
+    // should still write even if category/subcategory don't exist yet.
+    if (error && _isMissingScanColumnError(error)) {
+      delete row.category;
+      delete row.subcategory;
+      ({ error } = await db.from('show_floor_transactions').insert(row));
+    }
 
     if (error) {
       console.warn('[manual-sale] tx write failed:', error.message);
@@ -18725,6 +19052,8 @@ async function insertCardToDB(card, sellerIdOverride) {
       delete row.serial_number;
       delete row.print_run_size;
       delete row.features;
+      delete row.category;
+      delete row.subcategory;
       ({ data, error } = await db.from('inventory').insert(row).select('id').maybeSingle());
     }
 
@@ -18786,6 +19115,8 @@ async function updateCardInDB(card) {
       delete payload.serial_number;
       delete payload.print_run_size;
       delete payload.features;
+      delete payload.category;
+      delete payload.subcategory;
       ({ error } = await db.from('inventory').update(payload).eq('id', card._dbId));
     }
 
@@ -18889,6 +19220,11 @@ async function recordShowTransaction(card) {
       // keyword detection. Do NOT use detectSport() here — that is
       // the UI badge function and returns different values.
       sport: detectCardSport(card) || null,
+      // Category / Subcategory Taxonomy (see CLAUDE.md) — structured
+      // classification, same source-of-truth priority as inventory's own
+      // cardToDbRow(). Never guessed here — only what the card already has.
+      category:    card.Category    || null,
+      subcategory: card.Subcategory || null,
 
       // Seller snapshot
       seller_id:     sellerUuid,
@@ -18909,9 +19245,18 @@ async function recordShowTransaction(card) {
       data_version: 1,
     };
 
-    const { error } = await db
+    let { error } = await db
       .from('show_floor_transactions')
       .insert(row);
+
+    // Graceful degrade until the category/subcategory migration runs —
+    // same PGRST204 retry-without-the-column pattern as inventory's own
+    // writes (see _isMissingScanColumnError).
+    if (error && _isMissingScanColumnError(error)) {
+      delete row.category;
+      delete row.subcategory;
+      ({ error } = await db.from('show_floor_transactions').insert(row));
+    }
 
     if (error) {
       // Non-fatal — log but never surface to seller during a sale
@@ -18991,6 +19336,7 @@ async function upsertCardsToDB(cards) {
         toInsert.forEach(row => {
           delete row.fingerprint; delete row.detected_confidence; delete row.sport;
           delete row.serial_number; delete row.print_run_size; delete row.features;
+          delete row.category; delete row.subcategory;
         });
         ({ data: insertedRows, error } = await db.from('inventory').insert(toInsert).select('id'));
       }
@@ -19009,6 +19355,8 @@ async function upsertCardsToDB(cards) {
         delete updates.serial_number;
         delete updates.print_run_size;
         delete updates.features;
+        delete updates.category;
+        delete updates.subcategory;
         ({ error } = await db.from('inventory').update(updates).eq('id', id));
       }
       if (error) console.warn('Row update error:', error.message);

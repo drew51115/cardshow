@@ -197,6 +197,26 @@ strip `serial_number`/`print_run_size`/`features` from the payload and retry onc
 above (`_isMissingScanColumnError()`'s regex covers all of them) — cards still save, the three
 new fields just don't persist across reload until the migration runs.
 
+Required for the Category / Subcategory Taxonomy (see "Category / Subcategory Taxonomy" below):
+```sql
+ALTER TABLE inventory
+  ADD COLUMN IF NOT EXISTS category    text,  -- 'Sports' | 'TCG' | 'Non-Sport'
+  ADD COLUMN IF NOT EXISTS subcategory text;  -- sport/game/franchise name, free text but UI-constrained
+
+ALTER TABLE show_floor_transactions
+  ADD COLUMN IF NOT EXISTS category    text,
+  ADD COLUMN IF NOT EXISTS subcategory text;
+```
+Until this runs, `insertCardToDB()`/`updateCardInDB()`/both `upsertCardsToDB()` write paths
+strip `category`/`subcategory` from the payload and retry (same `_isMissingScanColumnError()`
+pattern, regex updated to cover both column names); `recordShowTransaction()` and
+`recordManualSaleTransaction()` do the same narrow strip-and-retry for the
+`show_floor_transactions` insert specifically, so the `source` column and every other field
+that predates this migration still write even if `category`/`subcategory` don't exist yet.
+`sport` is **not** dropped by this migration — it stays in place as a deprecated column no
+longer written to going forward (see "Category / Subcategory Taxonomy" below for the one-time
+backfill that reads it).
+
 ## Key Data Structures (in-memory runtime cache)
 ```js
 inventory[]          // [{Seller, 'Card Title', Player, Year, 'Set ', Price, Status, item_type, product_type, _dbId, _shows: Set, ...}]
@@ -2237,6 +2257,24 @@ migration, no new external library.
   Template Vendor Feedback" above for full detail. **Requires the `serial_number`/
   `print_run_size`/`features` DB migration** (see above) — degrades gracefully (fields don't
   persist across reload) if not yet run.
+- **Category / Subcategory Taxonomy (session 2026-09-23)** — real structured `category`/
+  `subcategory` fields (Sports > sport, TCG > game, Non-Sport > franchise), now the source of
+  truth ahead of the existing `detectSport()`/`detectCardSport()` heuristics for any card that
+  has them set. Fixed a real bug found while reading `comp-lookup.js` before touching
+  `detectCardSport()`: every non-Pokémon TCG keyword match (Magic, Yu-Gi-Oh, Lorcana, One
+  Piece, Digimon) was returning the hardcoded string `'Pokemon'`, mislabeling those sales in
+  the immutable `show_floor_transactions` ledger. Cascading Category/Subcategory dropdowns in
+  Add Card and Edit Card (all item types, not just single cards), CSV/XLSX import recognition
+  (an explicit `Sport` column no longer discarded on import) with Category inferred from
+  Subcategory where it matches the shared vocabulary, export round-trip, and a rebuilt
+  downloadable template (flat Category dropdown, free-text Subcategory with a reference list
+  in the Column Guide). Legacy `sport` column deprecated in place, not dropped, with a
+  documented (not auto-run) backfill migration. See "Category / Subcategory Taxonomy" above
+  for full detail, including what the build spec asked for that doesn't apply to this app's
+  actual architecture and wasn't built. **Requires the `category`/`subcategory` DB migration**
+  on both `inventory` and `show_floor_transactions` (see above) — degrades gracefully if not
+  yet run. Buyer-facing filtering and organizer analytics by category are deliberately not
+  built this session — flagged as the natural fast-follow once this data exists.
 
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`
@@ -3553,6 +3591,233 @@ Same vendor feedback also asked for: quantity tracking for duplicate items, AI-a
 parsing into fields, and a browsable card-type/category taxonomy (Sports > sport, TCG > game,
 Non-Sport). None of these are in this session's scope — each needs a product decision before
 it's buildable, raised separately from this build.
+
+## Category / Subcategory Taxonomy (session 2026-09-23)
+
+Real gap surfaced by the vendor feedback above: no way to sort/browse inventory by card type
+(Sports > sport, TCG > game, Non-Sport > franchise) other than free-text search. Researching
+this found that CardShow already had a sport-detection system, but it was narrower and less
+reliable than it looked — this session adds real structured `category`/`subcategory` fields as
+the source of truth, keeping the existing heuristics as a best-effort pre-fill/fallback for
+cards that don't have them set yet.
+
+### What was actually there before this session (confirmed by reading the code)
+Two separate, independently-maintained classification functions existed:
+- `detectSport(r)` — UI badge only. Five possible values total: `Basketball 🏀`, `Football
+  🏈`, `Baseball ⚾`, `Hockey 🏒`, `TCG 🃏`, or `—`. Every TCG — Pokémon, Magic, Yu-Gi-Oh!, One
+  Piece, Lorcana, all of them — collapsed into one `TCG 🃏` bucket. No Soccer, no golf/combat-
+  sports/motorsports, no non-sport bucket at all (Marvel/Star Wars/Disney had nowhere to go).
+- `detectCardSport(card)` — API-routing for `comp-lookup.js`. **Real bug, confirmed and
+  fixed**: its `TCG_KEYWORDS` list matched terms for Magic, Yu-Gi-Oh, Lorcana, One Piece, and
+  Digimon, but any match on *any* of them returned the literal hardcoded string `'Pokemon'`.
+  A Lorcana or MTG card's comp-price lookup was being routed and its `show_floor_transactions.
+  sport` snapshot labeled as Pokémon.
+- The import mapper actively discarded an explicit `Sport` source column
+  (`[/^sport$/i, 'low', '__SKIP__']` in `ALIAS_MAP`) — even a vendor spreadsheet with clean
+  sport/category data lost it on import.
+- `inventory.sport` (and the matching column on `show_floor_transactions`) was the only
+  persisted classification — a single free-text field, written only by the "Validate Sport"
+  pass or the buggy heuristic above.
+
+### Reading `comp-lookup.js` before touching `detectCardSport()`
+Per the build spec's own instruction, `netlify/functions/comp-lookup.js`'s `lookupComp()`
+router was read in full before changing anything, to confirm exactly how it uses the `sport`
+value it's sent:
+- `isPokemon = resolvedSport === 'Pokemon'` (exact string) → routes to pokemontcg.io, falling
+  back to the generic TCG API on a miss.
+- `isTCG = TCG_SPORTS.includes(resolvedSport)`, where `TCG_SPORTS = ['Pokemon', 'MTG', 'Magic',
+  'Yu-Gi-Oh', 'Lorcana', 'One Piece', 'Dragon Ball', 'Digimon', 'Flesh and Blood']` (exact
+  strings, no accents, no exclamation points) → routes to the generic TCG API
+  (`lookupTCGApi()`), which is **not** Pokémon-specific — it already correctly prices Magic/
+  Yu-Gi-Oh/Lorcana/One Piece/Dragon Ball/Digimon/Flesh and Blood cards today.
+- Anything else falls into the sports pricing chain (Card Hedge → CardSight → PriceCharting).
+
+This confirmed the bug was real but partially self-healing by accident: a non-Pokémon TCG card
+mislabeled `'Pokemon'` would miss on pokemontcg.io and fall back to the correct generic TCG
+API anyway — so pricing usually still worked, at the cost of one wasted pokemontcg.io call per
+card. The genuinely broken part was the **label itself**: `detectCardSport()`'s return value is
+also written directly to `show_floor_transactions.sport` (`recordShowTransaction()`,
+`recordManualSaleTransaction()`), so every Magic/Yu-Gi-Oh/Lorcana/One Piece/Digimon sale was
+being permanently mislabeled `Pokemon` in the immutable transaction ledger, not just routed
+inefficiently. It also confirmed the fix is safe: restructuring the TCG keyword match into
+per-game groups that each return their own game's name, instead of a hardcoded `'Pokemon'`,
+strictly improves both routing (skips the wasted pokemontcg.io call) and labeling, since every
+one of those per-game names is already a literal entry in `comp-lookup.js`'s own `TCG_SPORTS`
+array — no changes to `comp-lookup.js` itself were needed or made.
+
+A second, pre-existing false-positive was caught in the process and fixed alongside it: the old
+keyword list matched the bare substring `'magic'`, which would false-positive on a real, common
+card like a **Magic Johnson** basketball card (his own name contains "magic"). The rebuilt
+match requires `/\bmtg\b/` or `/magic\s*:?\s*the\s+gathering/` instead of a bare "magic"
+substring — narrower and strictly more correct, not a scope expansion.
+
+### Category / subcategory vocabulary
+Based on TCGplayer's own bestselling-games data by GMV and common non-sport hobby categories:
+- **Sports**: Baseball, Basketball, Football, Hockey, Soccer, Golf, Boxing, MMA/UFC, Wrestling,
+  Racing/Motorsports, Tennis, Other Sport. (Wrestling defaults to Sports — genuinely ambiguous
+  between athletic competition and scripted entertainment, but commonly tracked as a sport in
+  price guides; a one-line change if this call should go the other way.)
+- **TCG**: Pokémon, Magic: The Gathering, Yu-Gi-Oh!, One Piece Card Game, Disney Lorcana,
+  Digimon Card Game, Dragon Ball Super Fusion World, Gundam Card Game, Flesh and Blood, Star
+  Wars Unlimited, Weiss Schwarz, Union Arena, Other TCG. Deliberately not exhaustive — the
+  commercially dominant games by sales volume, with `Other TCG` free text catching the long
+  tail; expand later if a specific game shows up often enough in `Other TCG` entries.
+- **Non-Sport**: Marvel, Star Wars, Disney, DC, Star Trek, Other Non-Sport.
+
+`CATEGORY_SUBCATEGORIES` (app.html, right after the Features helpers) is the single canonical
+copy of this vocabulary — shared by the Add/Edit Card cascading dropdowns, the import mapper's
+Category inference, and both detection functions. Not duplicated per call site.
+
+### Schema
+See "Pending DB Migrations" above for the exact SQL. `category`/`subcategory` added to both
+`inventory` and `show_floor_transactions` — the latter for the same reason it already carries
+`sport`: the immutable transaction record, and organizer/analytics reporting, shouldn't need to
+join back to `inventory` for a row that may have since changed. `sport` is **not** dropped —
+left in place, deprecated, no longer written to by `cardToDbRow()`/`recordShowTransaction()`/
+`recordManualSaleTransaction()` going forward (all three now write `category`/`subcategory`
+instead; `sport` stays populated only from whatever wrote it historically, e.g. the "Validate
+Sport" pass). Both tables' inserts/updates strip `category`/`subcategory` and retry on the same
+`PGRST204`-detection pattern as every other not-yet-migrated column in this app.
+
+### Add Card / Edit Card modals
+Two cascading `<select>`s, not one flat list — `#ac_category`/`#ac_subcategory` (Add Card,
+right under Card Title, applies to all item types — card/sealed/lot, not gated behind
+`acSetType()`'s card-only rows the way Serial Number/Features are, since a sealed box or a lot
+can be classified the same way a single card can) and `#cem_category`/`#cem_subcategory` (Edit
+Card, mirrored). Each ends in an `Other …` option (`__OTHER__`-style, but using the literal
+"Other Sport"/"Other TCG"/"Other Non-Sport" list entries as the sentinel, matched via
+`/^Other/`) that reveals a free-text input (`#ac_subcategory_other`/`#cem_subcategory_other`).
+
+Shared helpers (app.html, right after `SUBCATEGORY_TO_ROUTING_SPORT`): `_updateSubcategoryOptions()`/
+`_toggleSubcategoryOther()` (repopulate/toggle, called by both modals' `ac`/`cem`-prefixed thin
+wrappers), `_resolveSubcategoryValue(subId, otherId)` (returns the free-text value when an
+`Other …` option is selected — that literal string is a UI affordance for revealing the input,
+never a value that should land in the database — else the select's own value), and
+`_setCategoryFieldValue(catId, subId, otherId, otherRowId, category, subcategory)` (populates
+the pair from stored values on open; falls back to that category's `Other …` option with the
+free-text input filled when the stored subcategory isn't in `CATEGORY_SUBCATEGORIES`, so a
+value saved before this vocabulary existed still round-trips instead of silently resetting).
+
+**Pre-fill on open**: `openCEM()` prefers the card's own `Category`/`Subcategory`; if neither is
+set (legacy inventory), falls back to a best-effort guess via `_categoryFromSportGuess(detectSport(card))`
+— parses a `detectSport()`-style badge label back into `{category, subcategory}` against the
+same `CATEGORY_SUBCATEGORIES` table. Always just a pre-fill the seller can override, never a
+locked value — same "confident guess, human confirms" pattern already used elsewhere in this
+app (bulk scan review, manual sale photo ID). `openAddCard()` just resets both fields to blank
+— a new card has nothing to pre-fill from. **Scoped down from the build spec's own phrasing**:
+the spec also described pre-filling "when opening the modal from a bulk-scan/CSV-imported row,"
+but neither bulk scan review nor CSV import in this app actually opens the Add Card modal per
+row (bulk scan has its own inline card blocks; CSV import writes straight to `inventory[]`) —
+so that part doesn't apply to this app's actual architecture and wasn't built, matching this
+file's established practice of noting a spec/architecture mismatch rather than forcing a
+literal-but-inapplicable implementation.
+
+`saveAddCard()`/`saveCEM()` read `Category` directly from the select, and `Subcategory` via
+`_resolveSubcategoryValue()` — never the raw select value, so an `Other …` selection never
+writes its own sentinel label instead of the seller's typed text.
+
+### Import mapper + export + downloadable template
+- `CS_FIELDS` gained `Category`/`Subcategory` entries.
+- `ALIAS_MAP` gained `/^category$/i` → `Category` and `/^subcategory$/i`/`/^game$/i`/
+  `/^franchise$/i`/`/^tcg$/i` → `Subcategory`, all `'high'` confidence. The old
+  `[/^sport$/i, 'low', '__SKIP__']` entry — which discarded an explicit Sport column entirely —
+  now maps to `Subcategory` at `'low'` confidence instead of being thrown away. If a source
+  file's Sport column actually holds broad-category values (`"Sports"`, `"TCG"`) rather than a
+  specific sport/game name, that's a source-file data-quality issue the mapper can't resolve —
+  same low-confidence treatment as any other ambiguous field, not something worth special-
+  casing.
+- **Import-time Category inference** (`applyMapping()`): a row with a `Subcategory` value but
+  no explicit `Category` gets `Category` inferred by checking which `CATEGORY_SUBCATEGORIES`
+  list contains a case-insensitive match — the same lookup table the UI dropdowns use, not a
+  separate hardcoded list. Left blank, never guessed, when the value doesn't match a known
+  subcategory.
+- `cardToDbRow()`/`dbRowToCard()` — `category`/`subcategory` mapped in both directions,
+  following the exact pattern already used for every other field.
+- `EXPORT_INVENTORY_HEADER`/`_exportInventoryRowValues()` — both columns added (after
+  `Features`), so exported inventory round-trips cleanly back through the importer.
+- Downloadable template — `Category`/`Subcategory` columns added to the `Inventory` sheet
+  (after `Features`, before `Grade`), rebuilt via the same Python/openpyxl script convention as
+  the Serial Number/Print Run Size/Features rebuild above (not hand-edited, not `insert_cols`,
+  for the same "doesn't reliably shift data validations/widths/banding on a ~700-row sheet"
+  reasoning). `Category` gets a flat, non-blocking `Sports,TCG,Non-Sport` data-validation
+  dropdown (low-risk to constrain, only 3 values). **`Subcategory` deliberately gets no data
+  validation at all** — a cascading/dependent dropdown (Excel's INDIRECT+named-range approach
+  for a dropdown whose options depend on another cell's value) is fragile to hand-maintain
+  across CSV/XLSX and easy to break silently when the template is edited later; instead the
+  `Column Guide` sheet lists the full reference vocabulary so a vendor filling the template by
+  hand can see the options without the spreadsheet enforcing them. All 13 example rows were
+  extended with real Category/Subcategory values (Sports/Baseball, Sports/Basketball, Sports/
+  Football, TCG/Pokémon, matching each example's actual content).
+
+### `detectSport(r)` — UI badge
+Now checks `r.Category`/`r.Subcategory` first, rendering the badge directly via
+`categoryBadgeLabel(category, subcategory)` — a new small helper mapping subcategory → emoji
+(`SUBCATEGORY_EMOJI`, falling back to a per-category default `CATEGORY_DEFAULT_EMOJI` for any
+subcategory without a specific icon, including a seller's free-text `Other …` value) and
+formatting `"{subcategory} {emoji}"`. Only falls through to the existing player-name/brand-
+keyword heuristics when both fields are unset — same "trust the explicit/imported field before
+guessing" priority this function already gave the legacy `card.Sport` check, just one tier
+higher since category/subcategory is a real structured field.
+
+The brand/set-name keyword fallback (lowest-priority tier) gained new lines for `one piece`,
+`lorcana`, `digimon`, `dragon ball`, `gundam` (TCG) and `marvel`, `star wars` (Non-Sport — also
+covers "Topps Chrome Star Wars"-style titles, which contain "star wars" as a substring). **No
+hand-maintained player/character-name lists were built for these**, unlike the four major
+sports — that approach is already a documented maintenance burden for just four sports (see
+the Donruss/Kenny Lofton gap earlier in this file) and isn't worth extending to a dozen more
+categories when the real fix is a seller setting the structured fields directly. This matches
+the build spec's own explicit scoping.
+
+### `detectCardSport(card)` — API routing
+Now checks `card.Category`/`card.Subcategory` first (same priority order as `detectSport()`),
+mapped through a new `SUBCATEGORY_TO_ROUTING_SPORT` lookup — **not** a pass-through, since
+`comp-lookup.js`'s `isPokemon`/`isTCG` checks are exact-string against its own `TCG_SPORTS`
+array, which uses different casing/accents than this app's display vocabulary (`'Pokemon'`, no
+accent, vs. our `'Pokémon'`; `'Magic'` vs. our `'Magic: The Gathering'`, etc.). Subcategories
+not in `comp-lookup.js`'s `TCG_SPORTS` list (Gundam, Star Wars Unlimited, Weiss Schwarz, Union
+Arena, any Non-Sport franchise) map to `''` — the same "unpriceable, falls through to the
+sports chain" behavior a blank/unrecognized sport already got before this session, not a
+regression. Falls through to the legacy `card.Sport`/`card.sport` check, then to keyword
+detection — now restructured into per-game groups (see the bug writeup above) instead of a
+single hardcoded `'Pokemon'` return.
+
+### Backfill (one-time, run manually — not auto-executed by this session)
+For existing rows carrying only the legacy `sport` value:
+```sql
+UPDATE inventory
+SET category = CASE
+  WHEN sport ILIKE '%basketball%' THEN 'Sports'
+  WHEN sport ILIKE '%football%'   THEN 'Sports'
+  WHEN sport ILIKE '%baseball%'   THEN 'Sports'
+  WHEN sport ILIKE '%hockey%'     THEN 'Sports'
+  WHEN sport ILIKE '%tcg%'        THEN 'TCG'
+  ELSE NULL
+END,
+subcategory = CASE
+  WHEN sport ILIKE '%basketball%' THEN 'Basketball'
+  WHEN sport ILIKE '%football%'   THEN 'Football'
+  WHEN sport ILIKE '%baseball%'   THEN 'Baseball'
+  WHEN sport ILIKE '%hockey%'     THEN 'Hockey'
+  ELSE NULL  -- see note below — legacy TCG rows deliberately NOT defaulted to any game
+END
+WHERE category IS NULL AND sport IS NOT NULL;
+```
+**Why legacy TCG rows get `subcategory = NULL`, not a guessed game**: the legacy `sport`
+column's only TCG value was the generic `'TCG'` bucket — it never recorded which game.
+Defaulting every legacy TCG row to `'Pokémon'` specifically (the build spec's own draft
+considered this) would be actively wrong for the Magic/Yu-Gi-Oh/Lorcana rows mixed into that
+same bucket — exactly the kind of confidently-wrong guess this whole session's `detectCardSport()`
+fix was written to stop making. `subcategory IS NULL` for these rows is an honest "we know it's
+TCG, we don't know which game," not a confidently wrong one. Run this migration only after
+confirming it matches the seller's/organizer's expectations for their existing data — it's
+documented here for reference, not auto-applied.
+
+### Not built this session (per spec)
+Buyer-facing browse filter by Category/Subcategory (the actual reason the vendor asked for
+this — the natural fast-follow, layered on top of data that has to exist first); organizer
+analytics breakdown by category; hand-maintained player/character-name detection lists for the
+new TCG/non-sport subcategories (see `detectSport()` above); expanding the TCG subcategory
+dropdown beyond the current list.
 
 ## Show Configuration (Demo Data)
 - **MLP Card Show** — Oct 17-18, 2026 · Grand Hyatt Tampa Bay, FL · Code: MLPTPA (primary demo, shown to buyers without code)
