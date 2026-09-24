@@ -2323,6 +2323,16 @@ migration, no new external library.
   just never visible. Fixed by adding back one `</div>` at the correct location (closing
   `#view-seller` for real, without reintroducing the original 2-column bug). See "Follow-up:
   that same fix left `#view-seller` unclosed" above for the full bisection and root-cause trace.
+- **Buyer-Facing Category / Subcategory Filter (session 2026-09-24)** — the fast-follow flagged
+  in the original Category/Subcategory Taxonomy session. Lets a buyer narrow to Sports/TCG/
+  Non-Sport then drill into the specific sport/game/franchise actually present, across all
+  three buyer-facing surfaces (`app.html`'s Browse tab, `show.html`'s two-tier chip drill-down,
+  `seller-browse.html`'s storefront filter bar). Found and fixed a real gap first: `show.html`
+  and `seller-browse.html` had zero category/subcategory awareness at all (no DB fetch columns,
+  no `detectSport()` check, no vocabulary) — only `app.html` had been updated in the original
+  taxonomy session. See "Buyer-Facing Category / Subcategory Filter" above for full detail,
+  including the missing-column SELECT-retry fix needed for `app.html`/`show.html`'s DB fetches
+  and headless-browser verification across all three surfaces.
 
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`
@@ -3866,6 +3876,103 @@ this — the natural fast-follow, layered on top of data that has to exist first
 analytics breakdown by category; hand-maintained player/character-name detection lists for the
 new TCG/non-sport subcategories (see `detectSport()` above); expanding the TCG subcategory
 dropdown beyond the current list.
+
+## Buyer-Facing Category / Subcategory Filter (session 2026-09-24)
+
+The fast-follow flagged above — lets a buyer narrow the grid to Sports vs. TCG vs. Non-Sport,
+then (once one of those is picked) drill into the specific sport/game/franchise actually
+present, across all three buyer-facing surfaces: the in-app Buyer view (`app.html`), the
+public share-link page (`show.html`), and a seller's own storefront (`seller-browse.html`).
+
+### A real gap found before writing any filter UI
+Checking first (per this codebase's own established discipline before touching adjacent
+surfaces) found that the original Category/Subcategory Taxonomy session only touched
+`app.html` — `show.html` and `seller-browse.html` had **zero** awareness of `category`/
+`subcategory`: neither file's DB fetch selected those columns, neither file's `detectSport()`
+copy checked them, and neither had the `CATEGORY_SUBCATEGORIES` vocabulary at all. A seller
+picking a Category/Subcategory in Add/Edit Card (app.html) had no visible effect on either
+public-facing surface until this session. All three gaps are closed here, duplicated per this
+codebase's no-shared-module convention (matching how the sport-detection bugs were fixed
+independently in all three files' `detectSport()` copies previously).
+
+### Effective category resolution
+Every surface needs a `{category, subcategory}` for a card that may or may not have the
+structured fields set yet (most existing inventory doesn't). Each file has its own
+`_effectiveCardCategory(r)`:
+- Prefers `r.Category`/`r.Subcategory` when set (the seller's own classification).
+- Otherwise reverse-looks-up `detectSport(r)`'s existing heuristic-derived badge/label against
+  the locally-duplicated `CATEGORY_SUBCATEGORIES` vocabulary — the exact same "confident guess,
+  never trusted over the real field" pattern `app.html`'s `_categoryFromSportGuess()` already
+  used for the Add/Edit Card modal pre-fill. A card `detectSport()` can't place at all (e.g.
+  item_type sealed/lot, or a genuinely unclassifiable title) returns `null` and is correctly
+  excluded once a specific filter is active, rather than silently matching everything.
+
+`detectSport(r)` itself was updated in all three files to check `r.Category`/`r.Subcategory`
+first, ahead of every keyword/player-name heuristic — `show.html`'s and `seller-browse.html`'s
+copies didn't have this check yet (only `app.html`'s did, from the original taxonomy session);
+now all three match.
+
+### DB fetch changes — and graceful degradation for a not-yet-migrated project
+`app.html`'s `loadBuyerInventoryFromDB()` and `show.html`'s `fetchInventoryFromDB()` both use an
+explicit column-list `SELECT` (not `select('*')`) — `category`/`subcategory` had to be added to
+both lists. Unlike an INSERT/UPDATE against a missing column (which degrades via
+`_isMissingScanColumnError()`'s strip-and-retry, see "Pending DB Migrations" above), a `SELECT`
+of a nonexistent column throws immediately and would otherwise take down the **entire** buyer
+grid over two optional filter fields — not the failure mode a filter feature should ever cause.
+Both functions now retry once, stripped of just those two columns, on an error whose message
+mentions them. `seller-browse.html` already used `select('*')`, so no fetch change was needed
+there — only its own row-mapping object (which builds specific named fields off the wildcard
+row) needed `Category`/`Subcategory` added.
+
+### app.html — Browse tab
+Two new `<select>`s in the existing `.filter-bar` (`#filterCategory`, `#filterSubcategory`,
+between search and the Grade filter — grid updated to 7 columns) — matches this bar's existing
+dropdown-based convention (Grade/Seller/Price). `#filterSubcategory` is populated by
+`renderCategoryFilterOptions()` from what's actually in `showInventory` (never the full static
+vocabulary — same "don't show a choice with zero matching cards" convention
+`renderShowSelectorBuyer()`'s seller list already follows), scoped to the selected Category or
+across all categories when none is picked yet. Wired into `filterBuyer()`/`clearFilters()` and
+into every place `renderShowSelectorBuyer()` already runs (`joinShow()`, the live-sync refresh,
+`skipBuyerShowPicker()`) so the subcategory options stay current as inventory changes mid-show.
+
+### show.html — two-tier chip drill-down
+Extends the existing single-tier sport-chip mechanism (`#sportFilters`, now `#categoryFilters`)
+into two tiers, matching this page's existing chip-based convention rather than introducing a
+dropdown paradigm it didn't have: a top row (All/Sports/TCG/Non-Sport, `buildCategoryChips()`)
+and a second row (`#subcategoryFilters`, `buildSubcategoryChips()`) that appears only once a
+category chip other than "All" is active and more than one subcategory actually exists within
+it — e.g. picking TCG reveals Pokémon/Magic: The Gathering/whatever else is actually in this
+show's inventory, never the full vocabulary. `_browseActiveSport` split into
+`_browseActiveCategory`/`_browseActiveSubcategory`; `setSportFilter()` split into
+`setCategoryFilter()`/`setSubcategoryFilter()` (picking a new top-level category always clears
+the subcategory drill-down). Both tiers collapse to nothing when the show has only one
+category/subcategory, same as the original single-tier chip list already did.
+
+### seller-browse.html — storefront filter bar
+Replaces the old flat `#filterSport` select (Basketball/Football/Baseball/Hockey/TCG only, no
+Non-Sport, no TCG drill-down) with the same `#filterCategory`/`#filterSubcategory` pair
+`app.html` uses — matches this page's own select-based filter-bar convention (`.filter-bar` here
+is `flex-wrap`, not a fixed grid, so no CSS layout change was needed to add the second select).
+`renderCategoryFilterOptions()`/`_sbCategoryChanged()` mirror `app.html`'s exactly, scoped to
+`sellerInventory`. `renderActivePills()`'s removable filter chips and `clearFilters()` both
+updated to reference the two new fields instead of the removed `filterSport`.
+
+### Verified with a headless browser
+All three surfaces tested end-to-end (not just read through): `app.html`'s demo buyer flow —
+selecting Sports correctly scoped the subcategory dropdown to Baseball/Basketball/Football/
+Hockey (data-driven, no TCG/Non-Sport shown since the demo data has none), selecting a specific
+subcategory correctly narrowed results, selecting TCG correctly returned zero results rather
+than erroring; `show.html`'s two-tier chips against synthetic mixed-category data — selecting
+TCG correctly narrowed 5→2 cards and revealed exactly the two TCG subcategories present (not
+Baseball, not Marvel); `seller-browse.html`'s demo storefront — identical select-based
+behavior to `app.html`. `Clear` correctly resets both new fields on all three surfaces.
+
+### Does not change
+Organizer analytics breakdown by category (still flagged as a separate future item, not this
+one), `_orgFetchInventory()` or any other analytics function, the Add/Edit Card modal
+Category/Subcategory dropdowns from the original taxonomy session, RLS policies, no new
+Supabase tables or migrations (reuses the existing `category`/`subcategory` columns and their
+existing migration).
 
 ## Show Configuration (Demo Data)
 - **MLP Card Show** — Oct 17-18, 2026 · Grand Hyatt Tampa Bay, FL · Code: MLPTPA (primary demo, shown to buyers without code)

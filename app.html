@@ -571,7 +571,7 @@
   /* Filters */
   .filter-bar {
     display: grid;
-    grid-template-columns: 1fr auto auto auto auto;
+    grid-template-columns: 1fr auto auto auto auto auto auto;
     gap: 0.5rem;
     margin-bottom: 0.9rem;
     align-items: center;
@@ -5753,6 +5753,15 @@
         <span class="search-icon">🔍</span>
         <input type="text" placeholder="Search by player, card title, set…" oninput="filterBuyer()" id="buyerSearch">
       </div>
+      <select class="filter-select" onchange="_buyerCategoryChanged()" id="filterCategory">
+        <option value="">All categories</option>
+        <option value="Sports">🏅 Sports</option>
+        <option value="TCG">🃏 TCG</option>
+        <option value="Non-Sport">🎴 Non-Sport</option>
+      </select>
+      <select class="filter-select" onchange="filterBuyer()" id="filterSubcategory">
+        <option value="">All</option>
+      </select>
       <select class="filter-select" onchange="filterBuyer()" id="filterGrade">
         <option value="">All cards</option>
         <option value="graded">Graded only</option>
@@ -8593,6 +8602,20 @@ function _categoryFromSportGuess(guess) {
   return null;
 }
 
+// Resolves {category, subcategory} for the buyer-facing Category/Subcategory
+// filter (app.html Browse tab) — prefers the card's own structured fields,
+// falling back to a guess derived from detectSport()'s badge label for a
+// card that predates this taxonomy (same "confident guess, never trusted
+// more than the real field" pattern as openCEM()'s pre-fill above). Returns
+// null when nothing usable is available either way, so a card with a
+// genuinely unclassifiable title (item_type sealed/lot, or a card
+// detectSport() itself can't place) is correctly excluded once a specific
+// filter is chosen rather than silently matching everything.
+function _effectiveCardCategory(r) {
+  if (r.Category) return { category: r.Category, subcategory: r.Subcategory || '' };
+  return _categoryFromSportGuess(detectSport(r));
+}
+
 // ── SHOW LOCATION PARSER ───────────────────────────────────────────
 // Parses a freeform location string into structured city/state/venue.
 // Used by saveShow() when writing to DB and by recordShowTransaction()
@@ -9519,6 +9542,8 @@ function renderBuyerGrid(rows) {
 
 function filterBuyer() {
   const q      = (document.getElementById('buyerSearch')?.value  || '').toLowerCase().trim();
+  const cat    = document.getElementById('filterCategory')?.value    || '';
+  const sub    = document.getElementById('filterSubcategory')?.value || '';
   const grade  = document.getElementById('filterGrade')?.value   || '';
   const seller = document.getElementById('filterSeller')?.value  || '';
   const price  = document.getElementById('filterPrice')?.value   || '';
@@ -9531,6 +9556,16 @@ function filterBuyer() {
       (r['Card Title'] || '').toLowerCase().includes(q) ||
       (getSet(r) || '').toLowerCase().includes(q) ||
       (r['Parallel/Variant'] || '').toLowerCase().includes(q);
+
+    // Category/subcategory only resolved when actually needed — most buyer
+    // grids never touch these filters, so skip _effectiveCardCategory()'s
+    // detectSport() fallback call on every card in the common case.
+    let matchCat = true, matchSub = true;
+    if (cat || sub) {
+      const eff = _effectiveCardCategory(r);
+      matchCat = !cat || (eff && eff.category === cat);
+      matchSub = !sub || (eff && eff.subcategory === sub);
+    }
 
     const isGraded = r.Grade && !isNaN(Number(r.Grade));
     const matchGrade = !grade ||
@@ -9548,7 +9583,7 @@ function filterBuyer() {
       (price === '1000-10000' && p >= 1000 && p < 10000) ||
       (price === '10000+'     && p >= 10000);
 
-    return matchQ && matchGrade && matchSeller && matchPrice;
+    return matchQ && matchCat && matchSub && matchGrade && matchSeller && matchPrice;
   });
 
   renderBuyerGrid(results);
@@ -9559,11 +9594,53 @@ function filterBuyer() {
   }
 }
 
+// Category select changed — repopulate the Subcategory dropdown for the
+// newly-selected category (scoped to what's actually in showInventory, see
+// renderCategoryFilterOptions()) before re-filtering, since a stale
+// subcategory value from the previous category would silently zero out
+// every result.
+function _buyerCategoryChanged() {
+  document.getElementById('filterSubcategory').value = '';
+  renderCategoryFilterOptions();
+  filterBuyer();
+}
+
+// Populates #filterSubcategory with only the subcategories actually present
+// among the current showInventory (same "don't show a choice with zero
+// matching cards" convention as renderShowSelectorBuyer()'s seller list) —
+// scoped to the selected Category, or across all categories when none is
+// selected yet. Called whenever showInventory changes (alongside
+// renderShowSelectorBuyer()) and whenever the Category select changes.
+function renderCategoryFilterOptions() {
+  const catSel = document.getElementById('filterCategory');
+  const subSel = document.getElementById('filterSubcategory');
+  if (!catSel || !subSel) return;
+  const cat = catSel.value;
+
+  const subs = new Set();
+  showInventory.forEach(r => {
+    if (r.Status === 'Sold') return;
+    const eff = _effectiveCardCategory(r);
+    if (!eff || !eff.subcategory) return;
+    if (cat && eff.category !== cat) return;
+    subs.add(eff.subcategory);
+  });
+
+  const sorted = [...subs].sort((a, b) => a.localeCompare(b));
+  const prevValue = subSel.value;
+  subSel.innerHTML = '<option value="">All' + (cat ? '' : ' categories') + '</option>' +
+    sorted.map(s => `<option value="${s}">${s}</option>`).join('');
+  if (sorted.includes(prevValue)) subSel.value = prevValue;
+}
+
 function clearFilters() {
   document.getElementById('buyerSearch').value = '';
+  document.getElementById('filterCategory').value = '';
+  document.getElementById('filterSubcategory').value = '';
   document.getElementById('filterGrade').value = '';
   document.getElementById('filterSeller').value = '';
   document.getElementById('filterPrice').value = '';
+  renderCategoryFilterOptions();
   renderBuyerGrid(showInventory);
 }
 
@@ -13523,6 +13600,7 @@ async function joinShow(showId) {
     _subscribeBuyerShowLive(showId);
   }
   renderShowSelectorBuyer();
+  renderCategoryFilterOptions();
   filterBuyer();
   switchBuyerTab('browse'); // reset to Browse Cards on new show load
 
@@ -13549,6 +13627,7 @@ function _subscribeBuyerShowLive(showId) {
     if (!show) return;
     loadBuyerInventoryFromDB(showId, show).then(() => {
       renderShowSelectorBuyer();
+      renderCategoryFilterOptions();
       filterBuyer();
     });
   };
@@ -13654,14 +13733,32 @@ async function loadBuyerInventoryFromDB(showId, show) {
     const cardIds = [...new Set(siRows.map(r => r.card_id).filter(Boolean))];
     if (!cardIds.length) return;
 
-    const { data, error } = await db
+    let { data, error } = await db
       .from('inventory')
       .select(`
         id, seller_id, card_title, player, year, card_set, card_number, parallel,
         grader, grade, condition, price, status, location,
-        item_type, quantity, product_type, language, edition
+        item_type, quantity, product_type, language, edition, category, subcategory
       `)
       .in('id', cardIds);
+
+    // category/subcategory are the newest inventory columns (see CLAUDE.md's
+    // "Category / Subcategory Taxonomy" migration) — a project that hasn't run
+    // that migration yet gets a plain "column does not exist" error on this
+    // SELECT (unlike an insert/update, which degrades via
+    // _isMissingScanColumnError()'s strip-and-retry). Retry once without the
+    // two new columns rather than letting the whole buyer grid go blank over
+    // two not-yet-persisted filter fields.
+    if (error && /category|subcategory/i.test(error.message || '')) {
+      ({ data, error } = await db
+        .from('inventory')
+        .select(`
+          id, seller_id, card_title, player, year, card_set, card_number, parallel,
+          grader, grade, condition, price, status, location,
+          item_type, quantity, product_type, language, edition
+        `)
+        .in('id', cardIds));
+    }
 
     if (error) { console.error('loadBuyerInventoryFromDB failed:', error.message); return; }
     if (!data || !data.length) return;
@@ -13710,6 +13807,7 @@ function skipBuyerShowPicker() {
   document.getElementById('buyerShowPicker').classList.remove('open');
   document.body.style.overflow = '';
   // Show all published cards across all shows
+  renderCategoryFilterOptions();
   filterBuyer();
 }
 

@@ -622,13 +622,14 @@ footer a { color: var(--accent); text-decoration: none; }
         <option value="CGC">CGC</option>
         <option value="SGC">SGC</option>
       </select>
-      <select class="filter-select" id="filterSport" onchange="applyFilters()">
-        <option value="">All sports</option>
-        <option value="Basketball">🏀 Basketball</option>
-        <option value="Football">🏈 Football</option>
-        <option value="Baseball">⚾ Baseball</option>
-        <option value="Hockey">🏒 Hockey</option>
+      <select class="filter-select" id="filterCategory" onchange="_sbCategoryChanged()">
+        <option value="">All categories</option>
+        <option value="Sports">🏅 Sports</option>
         <option value="TCG">🃏 TCG</option>
+        <option value="Non-Sport">🎴 Non-Sport</option>
+      </select>
+      <select class="filter-select" id="filterSubcategory" onchange="applyFilters()">
+        <option value="">All</option>
       </select>
       <select class="filter-select" id="filterPrice" onchange="applyFilters()">
         <option value="">Any price</option>
@@ -1387,7 +1388,56 @@ function playerDisplay(r) {
   return cleaned.split(/\s+/).slice(0, 3).join(' ') || title.split(/\s+/).slice(0, 3).join(' ');
 }
 
+// Category/Subcategory taxonomy — duplicated from app.html's
+// CATEGORY_SUBCATEGORIES/SUBCATEGORY_EMOJI (see CLAUDE.md's "Category /
+// Subcategory Taxonomy"; no shared module in this no-build-step codebase).
+const CATEGORY_SUBCATEGORIES = {
+  'Sports': ['Baseball','Basketball','Football','Hockey','Soccer','Golf','Boxing','MMA/UFC','Wrestling','Racing/Motorsports','Tennis','Other Sport'],
+  'TCG': ['Pokémon','Magic: The Gathering','Yu-Gi-Oh!','One Piece Card Game','Disney Lorcana','Digimon Card Game','Dragon Ball Super Fusion World','Gundam Card Game','Flesh and Blood','Star Wars Unlimited','Weiss Schwarz','Union Arena','Other TCG'],
+  'Non-Sport': ['Marvel','Star Wars','Disney','DC','Star Trek','Other Non-Sport'],
+};
+const SUBCATEGORY_EMOJI = {
+  'Baseball': '⚾', 'Basketball': '🏀', 'Football': '🏈', 'Hockey': '🏒',
+  'Soccer': '⚽', 'Golf': '⛳', 'Boxing': '🥊', 'MMA/UFC': '🥋',
+  'Wrestling': '🤼', 'Racing/Motorsports': '🏎️', 'Tennis': '🎾',
+  'Marvel': '🦸', 'Star Wars': '⚔️', 'Disney': '🏰', 'DC': '🦇', 'Star Trek': '🖖',
+};
+const CATEGORY_DEFAULT_EMOJI = { 'Sports': '🏅', 'TCG': '🃏', 'Non-Sport': '🎴' };
+function categoryBadgeLabel(category, subcategory) {
+  if (!category) return null;
+  const sub = subcategory || '';
+  const emoji = SUBCATEGORY_EMOJI[sub] || CATEGORY_DEFAULT_EMOJI[category] || '🃏';
+  return sub ? `${sub} ${emoji}` : `${category} ${emoji}`;
+}
+
+// Best-effort {category, subcategory} for the Category/Subcategory storefront
+// filter — prefers the card's own structured fields, falling back to a
+// reverse lookup of detectSport(r)'s branded label against
+// CATEGORY_SUBCATEGORIES for a card that predates this taxonomy. Same
+// "confident guess, never trusted over the real field" pattern app.html's
+// Add/Edit Card pre-fill already uses.
+function _effectiveCardCategory(r) {
+  if (r.Category) return { category: r.Category, subcategory: r.Subcategory || '' };
+  const label = detectSport(r);
+  if (!label) return null;
+  const plain = String(label).replace(/[^\w\s\/!:'-]/g, '').trim(); // strip emoji
+  if (!plain || plain === '🃏') return null;
+  for (const [cat, subs] of Object.entries(CATEGORY_SUBCATEGORIES)) {
+    const match = subs.find(s => s.toLowerCase() === plain.toLowerCase());
+    if (match) return { category: cat, subcategory: match };
+  }
+  return null;
+}
+
 function detectSport(r) {
+  // Prefer the structured category/subcategory fields (see CLAUDE.md's
+  // "Category / Subcategory Taxonomy") over every heuristic below — matches
+  // app.html's already-updated detectSport() priority.
+  if (r.Category) {
+    const label = categoryBadgeLabel(r.Category, r.Subcategory);
+    if (label) return label;
+  }
+
   const title  = (r['Card Title'] || '').toLowerCase();
   const player = (r.Player || '').toLowerCase();
   const set    = getSet(r).toLowerCase();
@@ -1516,6 +1566,8 @@ async function init() {
             Status:              r.status       || 'Available',
             Location:            r.location     || null,
             Sport:               r.sport        || '',
+            Category:            r.category     || '',
+            Subcategory:         r.subcategory  || '',
             _dbId:               r.id,
           }));
 
@@ -1611,13 +1663,15 @@ async function init() {
   const qParam = params.get('q');
   if (qParam) document.getElementById('searchInput').value = qParam;
 
+  renderCategoryFilterOptions();
   applyFilters();
 }
 
 function applyFilters() {
   const q     = (document.getElementById('searchInput').value||'').toLowerCase();
   const grade = document.getElementById('filterGrade').value;
-  const sport = document.getElementById('filterSport').value;
+  const cat   = document.getElementById('filterCategory').value;
+  const sub   = document.getElementById('filterSubcategory').value;
   const price = document.getElementById('filterPrice').value;
   const sort  = document.getElementById('sortBy').value;
 
@@ -1634,7 +1688,12 @@ function applyFilters() {
       (grade==='raw' && !isGraded) ||
       (['PSA','BGS','CGC','SGC'].includes(grade) && (r.Grader||'PSA')===grade);
 
-    const matchSport = !sport || detectSport(r).includes(sport);
+    let matchCat = true, matchSub = true;
+    if (cat || sub) {
+      const eff = _effectiveCardCategory(r);
+      matchCat = !cat || (eff && eff.category === cat);
+      matchSub = !sub || (eff && eff.subcategory === sub);
+    }
 
     const p = Number(r.Price||0);
     const matchPrice = !price ||
@@ -1644,7 +1703,7 @@ function applyFilters() {
       (price==='1000-10000' && p>=1000&&p<10000) ||
       (price==='10000+'     && p>=10000);
 
-    return matchQ && matchGrade && matchSport && matchPrice;
+    return matchQ && matchGrade && matchCat && matchSub && matchPrice;
   });
 
   // Sort
@@ -1661,10 +1720,44 @@ function applyFilters() {
 function clearFilters() {
   document.getElementById('searchInput').value = '';
   document.getElementById('filterGrade').value = '';
-  document.getElementById('filterSport').value = '';
+  document.getElementById('filterCategory').value = '';
+  document.getElementById('filterSubcategory').value = '';
   document.getElementById('filterPrice').value = '';
   document.getElementById('sortBy').value = '';
+  renderCategoryFilterOptions();
   applyFilters();
+}
+
+// Category select changed — repopulate #filterSubcategory for the newly
+// selected category before re-filtering, same as app.html's Browse tab.
+function _sbCategoryChanged() {
+  document.getElementById('filterSubcategory').value = '';
+  renderCategoryFilterOptions();
+  applyFilters();
+}
+
+// Populates #filterSubcategory with only the subcategories actually present
+// in this seller's inventory (never the full static vocabulary), scoped to
+// the selected Category — or across all categories when none is selected.
+function renderCategoryFilterOptions() {
+  const catSel = document.getElementById('filterCategory');
+  const subSel = document.getElementById('filterSubcategory');
+  if (!catSel || !subSel) return;
+  const cat = catSel.value;
+
+  const subs = new Set();
+  sellerInventory.forEach(r => {
+    const eff = _effectiveCardCategory(r);
+    if (!eff || !eff.subcategory) return;
+    if (cat && eff.category !== cat) return;
+    subs.add(eff.subcategory);
+  });
+
+  const sorted = [...subs].sort((a, b) => a.localeCompare(b));
+  const prevValue = subSel.value;
+  subSel.innerHTML = '<option value="">All' + (cat ? '' : ' categories') + '</option>' +
+    sorted.map(s => `<option value="${s}">${s}</option>`).join('');
+  if (sorted.includes(prevValue)) subSel.value = prevValue;
 }
 
 function sportStripClass(sport) {
@@ -1722,7 +1815,8 @@ function renderGrid() {
 function renderActivePills() {
   const q     = document.getElementById('searchInput').value;
   const grade = document.getElementById('filterGrade').value;
-  const sport = document.getElementById('filterSport').value;
+  const cat   = document.getElementById('filterCategory').value;
+  const sub   = document.getElementById('filterSubcategory').value;
   const price = document.getElementById('filterPrice').value;
   const sort  = document.getElementById('sortBy').value;
   const pills = document.getElementById('activePills');
@@ -1731,7 +1825,8 @@ function renderActivePills() {
   const active = [];
   if (q)     active.push({ label: `"${q}"`,   clear: ()=>{ document.getElementById('searchInput').value=''; applyFilters(); } });
   if (grade) active.push({ label: grade,       clear: ()=>{ document.getElementById('filterGrade').value=''; applyFilters(); } });
-  if (sport) active.push({ label: sport,       clear: ()=>{ document.getElementById('filterSport').value=''; applyFilters(); } });
+  if (cat)   active.push({ label: cat,         clear: ()=>{ document.getElementById('filterCategory').value=''; _sbCategoryChanged(); } });
+  if (sub)   active.push({ label: sub,         clear: ()=>{ document.getElementById('filterSubcategory').value=''; applyFilters(); } });
   if (price) active.push({ label: price,       clear: ()=>{ document.getElementById('filterPrice').value=''; applyFilters(); } });
   if (sort)  active.push({ label: sort.replace('-',' '), clear: ()=>{ document.getElementById('sortBy').value=''; applyFilters(); } });
 
