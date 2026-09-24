@@ -388,6 +388,45 @@ error — only a DOM inspection or an unlucky flexbox parent reveals it. No othe
 found while fixing this one, but none of the other `.card-edit-modal`/`.modal-body` blocks in
 this file were exhaustively re-audited beyond this specific modal.
 
+### Follow-up: that same fix left `#view-seller` unclosed, making the buyer view invisible (session 2026-09-24)
+Real bug report: clicking "Browse as Buyer →" left the page blank past the nav bar — the buyer
+grid never rendered, on every load.
+
+**Root cause: the "second pass" warning above was correct, but the actual defect was the
+opposite of what it predicted.** The stray `</div>` removed by the fix immediately above wasn't
+just a local nesting bug inside the Edit Card modal — the pre-fix document was globally balanced
+(equal total `<div>`/`</div>` count) only *because* that stray close was there. It was
+simultaneously doing two things: closing `.modal-body` one field group early (the visible
+2-column bug, correctly diagnosed and fixed), and — as a side effect of HTML's stack-based
+parsing, nothing to do with the tag's "intended" target — providing the one closing tag that
+ultimately let `#view-seller`'s own opening `<div>` find its match, several thousand lines later,
+right before the Sell Drawer markup begins. Deleting the stray close fixed the modal's local
+nesting but silently dropped the total close count for the rest of the document by one.
+`#view-seller` (`display:none` whenever the seller isn't the active role) never closes after
+that point — every element declared later in source order (`sellDrawerOverlay`, `posOverlay`,
+`toast`, `cardModal`, `buyerShowPicker`, every other shared modal, and `#view-buyer` itself) gets
+parsed as a *descendant* of `#view-seller` instead of a top-level sibling. Confirmed with a
+headless-browser DOM dump: `#view-seller` had 24 children (should be exactly 1, `.seller-layout`)
+and `#view-buyer`/`#buyerGrid` had a fully-populated `innerHTML` but zero rendered size
+(`offsetParent === null`) — the buyer grid was being built correctly in memory the whole time,
+just nested inside a hidden container. Bisected against `main` (pre-23282e4) to confirm the
+document was already relying on that stray close for global balance before the "fix" removed it.
+
+**Fix**: added back exactly one `</div>` — not restoring the original stray one (that would
+reintroduce the 2-column bug), but placed right after the Edit Card modal's own three closing
+tags (closes `.card-edit-modal`, `.card-edit-overlay`, `.seller-layout` — was previously missing
+the fourth, closing `#view-seller` itself). Verified with a headless-browser pass that
+`#view-seller` is back to exactly 1 child, `#view-buyer`/`#buyerGrid` render with real
+dimensions and populated content, and the Edit Card modal's Save/Cancel/Delete row still lays
+out single-column underneath the fields (no regression on the original 23282e4 fix).
+
+**Lesson**: an unbalanced-tag fix that only checks "does the thing I was looking at now render
+correctly" isn't enough in a file this size — the total open/close tag count for the *entire
+remaining document* needs to stay the same, or a later, unrelated container can silently stop
+closing. A `<div>`/`</div>` count check (or a real DOM inspection of a distant, unrelated
+container) is worth running after any tag-balance fix here, not just the one screenshot that
+prompted it.
+
 ## Sport Classification — imported Sport field override (session 2026-09-14)
 
 Real bug report: several correctly-known baseball cards (Garrett Crochet, Kenny Lofton, Barry
@@ -2275,6 +2314,15 @@ migration, no new external library.
   on both `inventory` and `show_floor_transactions` (see above) — degrades gracefully if not
   yet run. Buyer-facing filtering and organizer analytics by category are deliberately not
   built this session — flagged as the natural fast-follow once this data exists.
+- **Fixed buyer view rendering blank on every load (session 2026-09-24)** — real production bug,
+  already live on `main` (introduced by PR #60/`23282e4`'s Edit Card modal 2-column fix, which
+  removed a `</div>` that was incidentally the only thing keeping the whole document's tag count
+  balanced): `#view-seller` never closed, so every element declared after it in source — the
+  buyer view included — got parsed as `#view-seller`'s own descendant and stayed invisible
+  behind its `display:none`. The buyer grid was building correctly in memory the entire time,
+  just never visible. Fixed by adding back one `</div>` at the correct location (closing
+  `#view-seller` for real, without reintroducing the original 2-column bug). See "Follow-up:
+  that same fix left `#view-seller` unclosed" above for the full bisection and root-cause trace.
 
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`
