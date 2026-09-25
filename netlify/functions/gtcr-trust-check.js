@@ -92,10 +92,17 @@ function normalizeTrustResponse(body) {
   const reports = b.reports || b.data?.reports || {};
   const pick = (k) => reports[k] ?? b[k] ?? b.data?.[k];
   const activeCount = Number(pick('active_count') ?? 0) || 0;
-  const hasStolen  = !!pick('has_stolen_report');
-  const hasLost    = !!pick('has_lost_report');
-  const hasDispute = !!pick('has_dispute_report');
+  // GTCR's has_*_report booleans come back false even for a cert with an
+  // active stolen report (confirmed live with a known-stolen test cert). The
+  // real signal is card_status, e.g. 'REPORTED_STOLEN' / 'UNREGISTERED'. Read
+  // it first and keep the booleans as a fallback in case GTCR starts filling them.
+  const cardStatus = String(b.card_status ?? b.data?.card_status ?? '').toUpperCase() || null;
+  const hasStolen  = !!pick('has_stolen_report')  || /STOLEN/.test(cardStatus || '');
+  const hasLost    = !!pick('has_lost_report')    || /LOST|MISSING/.test(cardStatus || '');
+  const hasDispute = !!pick('has_dispute_report') || /DISPUT/.test(cardStatus || '');
   return {
+    card_status:        cardStatus,
+    found:              b.found ?? null,
     active_count:       activeCount,
     has_stolen_report:  hasStolen,
     has_lost_report:    hasLost,
@@ -168,7 +175,11 @@ async function handleCheck(db, event, input) {
           grading_company: gradingCompany,
           source: 'gtcr',
           trigger: input.trigger === 'publish' ? 'publish' : 'insert',
-          ...result,
+          matched: result.matched,
+          active_count: result.active_count,
+          has_stolen_report: result.has_stolen_report,
+          has_lost_report: result.has_lost_report,
+          has_dispute_report: result.has_dispute_report,
         }).then(({ error }) => { if (error) console.warn('[gtcr-trust-check] log insert failed:', error.message); });
 
         trustFlag = row.trust_flag || null;
