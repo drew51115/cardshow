@@ -2350,7 +2350,7 @@ migration, no new external library.
 - **Trust Check via GTCR — Phases 1, 3, 4 (session 2026-09-25)** — stolen/lost cert lookup on
   insert + re-check on publish (fails open), flag/dispute UI, consent-evidence log, and
   consent-gated register-on-sale + deregister-on-revoke. Registration is built but **dark**
-  (`GTCR_CONSENT_UI_ENABLED=false` client-side, `GTCR_REGISTRATION_ENABLED` server-side) until
+  (`GTCR_CONSENT_UI_LAUNCHED=false` client-side, `?gtcr_consent=1` test switch, `GTCR_REGISTRATION_ENABLED` server-side) until
   pricing is decided. Transfer-on-resale (Phase 5) not built — open decision. See "Trust Check via GTCR".
 
 ### Tier 1 — Ship before beta show
@@ -4063,9 +4063,13 @@ the response has no `card_status` at all.
   import path would be the one to switch to it.
 
 ### Phase 3 — Consent (built, dark)
-- The checkbox is in the Profile modal (`#gtcrConsentSection`), hidden while
-  `GTCR_CONSENT_UI_ENABLED = false`. It is never pre-checked; it only shows checked when a stored
+- The checkbox is in the Profile modal (`#gtcrConsentSection`), hidden until launch
+  (`GTCR_CONSENT_UI_LAUNCHED = false`). It is never pre-checked; it only shows checked when a stored
   `'granted'` event exists.
+- **Test switch:** open the app with `?gtcr_consent=1` to show the section on that browser (remembered
+  in localStorage as `gtcrConsentTest`; `?gtcr_consent=0` clears it). The status line reads "· test mode".
+  It unlocks the UI only: the toggle stays disabled ("Not available yet") until the deploy has
+  `GTCR_REGISTRATION_ENABLED=true`, so set that on deploy previews only, never production, while testing.
 - The copy (`GTCR_CONSENT_COPY`, version `GTCR_CONSENT_COPY_VERSION`) is a **DRAFT pending legal
   review**. Bump the version whenever the text changes.
 - Every consent action goes through `gtcr-registry.js`. The server appends to `gtcr_consent_events`
@@ -4090,7 +4094,7 @@ the response has no `card_status` at all.
   A GTCR 404 counts as removed. An interrupted drain resumes when the seller next logs in
   (`gtcrLoadConsentState()`).
 - **Launch checklist:** get the write key, confirm `partner_id`, finish legal review of the copy, decide
-  pricing, then flip `GTCR_REGISTRATION_ENABLED=true` and `GTCR_CONSENT_UI_ENABLED=true` together.
+  pricing, then flip `GTCR_REGISTRATION_ENABLED=true` and `GTCR_CONSENT_UI_LAUNCHED=true` together.
 
 ### Still open (not built)
 - **Decision A — Phase 5 transfer-on-resale** (`transferOnSaleApi`): not built, per the spec. Without it,

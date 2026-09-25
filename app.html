@@ -19205,7 +19205,25 @@ async function recordManualSaleTransaction(card, showId) {
 // Registration stays dark until pricing/packaging is decided (spec "Flagged
 // decision B"). Flip this, and GTCR_REGISTRATION_ENABLED=true in Netlify,
 // together. The Trust Check itself (Phase 1) doesn't depend on this flag.
-const GTCR_CONSENT_UI_ENABLED = false;
+const GTCR_CONSENT_UI_LAUNCHED = false;
+
+// Test switch: open the app with ?gtcr_consent=1 to show the consent section
+// on this browser before launch (?gtcr_consent=0 turns it back off). It's
+// remembered in localStorage because the login flow reloads the page. Only
+// the UI is unlocked: the server still refuses a grant until
+// GTCR_REGISTRATION_ENABLED=true is set for that deploy.
+const GTCR_CONSENT_TEST_KEY = 'gtcrConsentTest';
+function _gtcrConsentTestOverride() {
+  try {
+    const p = new URLSearchParams(location.search).get('gtcr_consent');
+    if (p === '1') localStorage.setItem(GTCR_CONSENT_TEST_KEY, '1');
+    else if (p === '0') localStorage.removeItem(GTCR_CONSENT_TEST_KEY);
+    return localStorage.getItem(GTCR_CONSENT_TEST_KEY) === '1';
+  } catch (_) {
+    return false;
+  }
+}
+const GTCR_CONSENT_UI_ENABLED = GTCR_CONSENT_UI_LAUNCHED || _gtcrConsentTestOverride();
 
 // Bump the version whenever the copy changes. The consent-evidence log records
 // which version the seller saw. DRAFT, pending legal review before launch.
@@ -19572,6 +19590,7 @@ function _gtcrRenderConsent() {
     : st.consented ? `On since ${new Date(st.consented_at).toLocaleDateString()}`
     : !st.enabled ? 'Not available yet'
     : 'Off';
+  if (!GTCR_CONSENT_UI_LAUNCHED) status.textContent += ' · test mode';
 }
 
 async function gtcrConsentToggleChanged(el) {
