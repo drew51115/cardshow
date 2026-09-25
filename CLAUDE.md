@@ -4009,12 +4009,10 @@ Two keys, each used by exactly one function, never mixed:
 Every call sends `partner_id` (`GTCR_PARTNER_ID`, default `cardshow`). **Pending with GTCR:** confirm the
 string, and complete onboarding to get the write key.
 
-**Assumed, not yet confirmed:** the Trust Check request shape is sent as a JSON POST body
-`{cert_number, grading_company, partner_id}`. The response is parsed defensively. It looks for
-`reports.active_count` and for `has_stolen_report`/`has_lost_report`/`has_dispute_report`, either
-under `reports` or at the top level. `matched` = active_count > 0, or stolen, or lost. A dispute
-report alone is stored but does not flag. Verify against a real key and a known-reported cert
-before relying on it.
+The Trust Check request is a JSON POST body `{cert_number, grading_company, partner_id}` (confirmed
+live). `matched` = a stolen or lost report. A dispute alone is stored but never flags. GTCR's
+`reports.active_count` counts open disputes too (since 2026-09-25), so it only decides a match when
+the response has no `card_status` at all.
 
 ### Phase 1 — Trust Check (live once `GTCR_READ_API_KEY` is set)
 - **Insert:** `insertCardToDB()` fires `gtcrCheckCard(card, id, 'insert')`, which covers Add Card, POS,
@@ -4031,8 +4029,8 @@ before relying on it.
 - **Status source:** GTCR's `card_status` is authoritative (confirmed by GTCR). Values: `UNREGISTERED`,
   `REGISTERED`, `REPORTED_STOLEN`, `REPORTED_LOST`, `DISPUTED`, `RECOVERED`, `TRANSFER_PENDING`, with
   precedence stolen > lost > dispute > recovered > registered > unregistered. `normalizeTrustResponse()`
-  derives the stolen/lost/dispute flags from it, because GTCR's own `has_*_report` booleans were
-  unreliable when this was built. Test certs (all PSA): 999999999 unregistered, 148087893 registered,
+  derives the stolen/lost/dispute flags from it; GTCR's `has_*_report` booleans were unreliable at
+  first and now agree with it (all 7 test certs verified 2026-09-25). Test certs (all PSA): 999999999 unregistered, 148087893 registered,
   86234916 stolen, TEST-LOST-001 lost, TEST-DISPUTED-001 disputed, 31566382 recovered,
   TEST-TRANSFER-001 transfer pending. Sending `debug: true` to `gtcr-trust-check` also returns a
   `response_shape` (field names; free-text values redacted) for diagnosing mismatches.

@@ -108,8 +108,10 @@ function normalizeTrustResponse(body) {
     has_lost_report:    hasLost,
     has_dispute_report: hasDispute,
     // A match is an active stolen/lost report. A dispute report on its own is
-    // stored but does not flag the listing.
-    matched: activeCount > 0 || hasStolen || hasLost,
+    // stored but does not flag the listing. active_count also counts open
+    // disputes (GTCR, 2026-09-25), so it only decides a match when there is no
+    // card_status to go on.
+    matched: hasStolen || hasLost || (!cardStatus && activeCount > 0 && !hasDispute),
   };
 }
 
