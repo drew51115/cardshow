@@ -4028,12 +4028,19 @@ before relying on it.
   and deletes the card's `show_inventory` rows. That hides the card from buyers on every surface.
   A later no-match clears a stale `'flagged'`. GTCR logs the partner lookup and notifies the owner
   itself. CardShow makes no report-back call; the spec's Decision #1 closes with no code.
-- **Seller UI:** a red **⚠ Flagged** badge on the inventory row opens `#gtcrFlagOverlay`, with an
+- **Seller UI:** when a card becomes flagged, `#gtcrFlagOverlay` opens on its own as a blocking alert
+  ("Possible Stolen Card"). There is no click-outside or Escape close; the seller must pick a button.
+  Several cards flagged at once (e.g. a CSV import) queue up via `_gtcrQueueAlert()` and show one after
+  another. The alert holds its card by reference (`_gtcrFlagCard`), not by index, because a removal
+  splices `inventory[]`. The red **⚠ Flagged** badge on the row reopens the same alert. It has an
   optional note and three choices. **Remove from inventory** writes the audit row first, then
   deletes the card. **Dispute & keep listing** sets `trust_flag='disputed'`, which allows publishing
   again. **Decide later** just closes. Nothing is ever removed automatically.
 - **Fail open:** any GTCR, network, or function error leaves the flag unchanged and publishing allowed.
   The next publish re-checks.
+  The function returns a `reason` (`missing_read_key`, `gtcr_http_<status>`, `timeout`, `network_error`)
+  and the app logs `[gtcr] trust check did not complete …` to the console. A new Netlify env var only
+  takes effect after a redeploy, and a preview built before the key was added fails every lookup this way.
 - `trustCheckBulkApi` is not used, because its request/response shape isn't documented yet. The CSV
   import path would be the one to switch to it.
 

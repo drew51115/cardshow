@@ -2274,6 +2274,15 @@
 
 
   /* ── CARD EDIT ── */
+  .gtcr-alert-overlay { background: rgba(20, 0, 0, 0.78); z-index: 10000; }
+  .gtcr-alert-modal { border: 2px solid var(--danger); box-shadow: 0 0 0 4px rgba(239,68,68,0.18), 0 20px 60px rgba(0,0,0,0.6); }
+  .gtcr-alert-icon {
+    width: 52px; height: 52px; margin: 0 auto 0.6rem; border-radius: 50%;
+    background: rgba(239,68,68,0.15); color: var(--danger); font-size: 1.6rem;
+    display: flex; align-items: center; justify-content: center;
+    animation: gtcrPulse 1.4s ease-in-out 3;
+  }
+  @keyframes gtcrPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.5); } 50% { box-shadow: 0 0 0 12px rgba(239,68,68,0); } }
   .gtcr-flag-badge {
     background: rgba(239,68,68,0.14); color: var(--danger); border: 1px solid rgba(239,68,68,0.55);
     border-radius: 6px; padding: 0.2rem 0.5rem; font-family: 'DM Mono', monospace; font-size: 0.62rem;
@@ -6281,9 +6290,12 @@
 <!-- Full-screen loading overlay while the bulk-scan photo is being analyzed —
      visible regardless of sidebar/mobile state, unlike the old toast+button approach -->
 <!-- GTCR Trust Check — flagged-card resolution (see "Trust Check via GTCR" in CLAUDE.md) -->
-<div class="modal-overlay" id="gtcrFlagOverlay" onclick="if(event.target===this)closeGtcrFlagModal()">
-  <div class="modal" style="max-width:420px;padding:1.6rem 1.5rem">
-    <div style="font-family:'Bebas Neue',sans-serif;font-size:1.45rem;letter-spacing:0.04em;color:var(--danger);margin-bottom:0.5rem">⚠ Registry Match</div>
+<!-- Deliberately no click-outside or Escape close: the seller has to pick one of the three buttons. -->
+<div class="modal-overlay gtcr-alert-overlay" id="gtcrFlagOverlay" role="alertdialog" aria-modal="true" aria-labelledby="gtcrFlagTitle">
+  <div class="modal gtcr-alert-modal" style="max-width:420px;padding:1.6rem 1.5rem">
+    <div class="gtcr-alert-icon" aria-hidden="true">⚠</div>
+    <div id="gtcrFlagTitle" style="font-family:'Bebas Neue',sans-serif;font-size:1.6rem;letter-spacing:0.04em;color:var(--danger);margin-bottom:0.2rem;text-align:center">Possible Stolen Card</div>
+    <div id="gtcrFlagQueueNote" style="font-family:'DM Mono',monospace;font-size:0.65rem;color:var(--muted);text-align:center;margin-bottom:0.6rem"></div>
     <div id="gtcrFlagCardLabel" style="font-family:'DM Sans',sans-serif;font-weight:600;color:var(--text);margin-bottom:0.6rem"></div>
     <div style="font-size:0.82rem;color:var(--muted);line-height:1.5;margin-bottom:0.9rem">
       This cert number matches an active report in the Global Trading Card Registry (GTCR)
@@ -6294,7 +6306,7 @@
     <div style="display:flex;flex-direction:column;gap:0.5rem">
       <button class="btn btn-primary" style="background:var(--danger);border-color:var(--danger)" onclick="gtcrResolveFlag('removed')">Remove from inventory</button>
       <button class="btn btn-ghost" onclick="gtcrResolveFlag('disputed')">Dispute &amp; keep listing</button>
-      <button class="btn-modal-close" onclick="closeGtcrFlagModal()">Decide later</button>
+      <button class="btn-modal-close" onclick="closeGtcrFlagModal()">Decide later — keep it hidden</button>
     </div>
   </div>
 </div>
@@ -19241,7 +19253,7 @@ function gtcrCheckCard(card, dbId, trigger) {
       if (card._trustFlag === 'flagged' && prev !== 'flagged') {
         // The server already deleted this card's show_inventory rows. Mirror that in memory.
         if (card._shows) card._shows.clear();
-        showToast(`⚠ ${card.Player || 'Card'} matches a GTCR stolen/lost report — hidden from buyers`, 'var(--danger)');
+        _gtcrQueueAlert(card);
       }
       if (card._trustFlag !== prev && currentRole === 'seller') {
         renderSellerTable(getSellerInventory());
@@ -19288,12 +19300,40 @@ async function _gtcrQueueChecks(cards) {
 }
 
 // ── Flagged-card resolution modal ──
+// Opens automatically the moment a card becomes flagged, and must be dismissed
+// with a button. If several cards flag at once (e.g. a CSV import), they queue
+// and show one after another.
 let _gtcrFlagIdx = null;
+let _gtcrFlagCard = null; // held by reference: a removal splices inventory[] and shifts indexes
+const _gtcrAlertQueue = [];
+
+function _gtcrQueueAlert(card) {
+  if (currentRole !== 'seller' || _gtcrAlertQueue.includes(card)) return;
+  _gtcrAlertQueue.push(card);
+  if (_gtcrFlagCard === null) _gtcrShowNextAlert();
+  else _gtcrUpdateQueueNote();
+}
+
+function _gtcrUpdateQueueNote() {
+  const qn = document.getElementById('gtcrFlagQueueNote');
+  const n = _gtcrAlertQueue.length;
+  if (qn) qn.textContent = n ? `${n} more flagged card${n !== 1 ? 's' : ''} after this one` : '';
+}
+
+function _gtcrShowNextAlert() {
+  while (_gtcrAlertQueue.length) {
+    const card = _gtcrAlertQueue.shift();
+    const idx = inventory.indexOf(card);
+    if (idx >= 0 && card._trustFlag === 'flagged') { openGtcrFlagModal(idx); return; }
+  }
+}
 
 function openGtcrFlagModal(idx) {
   const card = inventory[idx];
   if (!card) return;
   _gtcrFlagIdx = idx;
+  _gtcrFlagCard = card;
+  _gtcrUpdateQueueNote();
   document.getElementById('gtcrFlagCardLabel').textContent =
     (card['Card Title'] || card.Player || 'Card') + (card['Cert #'] ? ` · ${card.Grader || ''} #${card['Cert #']}` : '');
   const r = card._gtcrReport || {};
@@ -19303,14 +19343,15 @@ function openGtcrFlagModal(idx) {
   document.getElementById('gtcrFlagOverlay').classList.add('open');
 }
 
-function closeGtcrFlagModal() {
+function closeGtcrFlagModal(advance = true) {
   document.getElementById('gtcrFlagOverlay').classList.remove('open');
   _gtcrFlagIdx = null;
+  _gtcrFlagCard = null;
+  if (advance) _gtcrShowNextAlert();
 }
 
 async function gtcrResolveFlag(resolution) {
-  const idx = _gtcrFlagIdx;
-  const card = inventory[idx];
+  const card = _gtcrFlagCard;
   if (!card) return;
   const label = card.Player || card['Card Title'] || 'this card';
   if (resolution === 'removed' && !confirm(`Remove "${label}" from your inventory? This cannot be undone.`)) return;
@@ -19329,7 +19370,7 @@ async function gtcrResolveFlag(resolution) {
       console.warn('[gtcr] resolve failed:', err.message);
     }
   }
-  closeGtcrFlagModal();
+  closeGtcrFlagModal(false); // show the next queued alert only after this one is fully handled
 
   if (resolution === 'removed') {
     // Removal is the seller's own decision and goes ahead even if the audit
@@ -19342,11 +19383,17 @@ async function gtcrResolveFlag(resolution) {
     syncBuyerView();
     showToast(`🗑 ${label} removed`);
   } else {
-    if (!ok) { showToast('⚠️ Could not save your dispute — try again', 'var(--danger)'); return; }
+    if (!ok) {
+      showToast('⚠️ Could not save your dispute — try again', 'var(--danger)');
+      _gtcrAlertQueue.unshift(card); // still flagged: bring its alert back
+      _gtcrShowNextAlert();
+      return;
+    }
     card._trustFlag = 'disputed';
     showToast(`Dispute recorded — ${label} can be published again`);
   }
   renderSellerTable(getSellerInventory());
+  _gtcrShowNextAlert();
 }
 
 // ── Registration on sale (Phase 4) ──
