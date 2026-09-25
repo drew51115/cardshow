@@ -69,6 +69,24 @@ async function getUser(db, event) {
 // `reports.active_count` plus the three has_*_report booleans; the booleans are
 // read from either `reports.*` or the top level, since only a partial schema
 // has been shared.
+// Diagnostic only: the response's structure with string values redacted to
+// their length, so field names can be checked against what the parser reads.
+// Numbers and booleans pass through. Strings pass through only under
+// enum-like keys (type/status/...), which is where "stolen" vs "lost" lives;
+// free text such as names or notes stays redacted.
+const SHAPE_VISIBLE_KEYS = /^(type|status|kind|state|category|report_type|report_status|reason)$/i;
+function describeShape(v, depth = 0, key = '') {
+  if (depth > 5) return '…';
+  if (Array.isArray(v)) return v.length ? [describeShape(v[0], depth + 1, key), `(${v.length} items)`] : [];
+  if (v && typeof v === 'object') {
+    const out = {};
+    for (const k of Object.keys(v)) out[k] = describeShape(v[k], depth + 1, k);
+    return out;
+  }
+  if (typeof v === 'string') return SHAPE_VISIBLE_KEYS.test(key) && v.length <= 40 ? v : `<string len ${v.length}>`;
+  return v;
+}
+
 function normalizeTrustResponse(body) {
   const b = body || {};
   const reports = b.reports || b.data?.reports || {};
@@ -109,7 +127,7 @@ async function callTrustCheck(certNumber, gradingCompany) {
       throw Object.assign(new Error(`trustCheckApi ${res.status}: ${text.slice(0, 200)}`),
         { reason: `gtcr_http_${res.status}`, gtcrMessage: (body && (body.error || body.message)) || null });
     }
-    return normalizeTrustResponse(body);
+    return Object.defineProperty(normalizeTrustResponse(body), '_raw', { value: body, enumerable: false });
   } finally {
     clearTimeout(timer);
   }
@@ -168,7 +186,9 @@ async function handleCheck(db, event, input) {
     }
   }
 
-  return json(200, { success: true, ...result, trust_flag: trustFlag });
+  const payload = { success: true, ...result, trust_flag: trustFlag };
+  if (input.debug === true) payload.response_shape = describeShape(result._raw);
+  return json(200, payload);
 }
 
 async function handleResolve(db, event, input) {
