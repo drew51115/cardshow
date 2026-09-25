@@ -182,6 +182,41 @@ toast surfacing the real Supabase error message (see below); the Unplaced/Placed
 (which only depend on `show_sellers.table_number`, already migrated in Phase 1) still work
 regardless.
 
+Required for the Inventory Template Vendor Feedback fields — Serial Number, Print Run Size,
+and Features (see "Inventory Template Vendor Feedback — Grader Coverage, Serial Number /
+Print Run Size, Features" below):
+```sql
+ALTER TABLE inventory
+  ADD COLUMN IF NOT EXISTS serial_number   text,
+  ADD COLUMN IF NOT EXISTS print_run_size  integer,
+  ADD COLUMN IF NOT EXISTS features        text[];
+```
+Until this runs, `insertCardToDB()`/`updateCardInDB()`/both `upsertCardsToDB()` write paths
+strip `serial_number`/`print_run_size`/`features` from the payload and retry once on the same
+`PGRST204` "missing column" error as `fingerprint`/`detected_confidence`/`sport`/`sold_date`
+above (`_isMissingScanColumnError()`'s regex covers all of them) — cards still save, the three
+new fields just don't persist across reload until the migration runs.
+
+Required for the Category / Subcategory Taxonomy (see "Category / Subcategory Taxonomy" below):
+```sql
+ALTER TABLE inventory
+  ADD COLUMN IF NOT EXISTS category    text,  -- 'Sports' | 'TCG' | 'Non-Sport'
+  ADD COLUMN IF NOT EXISTS subcategory text;  -- sport/game/franchise name, free text but UI-constrained
+
+ALTER TABLE show_floor_transactions
+  ADD COLUMN IF NOT EXISTS category    text,
+  ADD COLUMN IF NOT EXISTS subcategory text;
+```
+Until this runs, `insertCardToDB()`/`updateCardInDB()`/both `upsertCardsToDB()` write paths
+strip `category`/`subcategory` from the payload and retry (same `_isMissingScanColumnError()`
+pattern, regex updated to cover both column names); `recordShowTransaction()` and
+`recordManualSaleTransaction()` do the same narrow strip-and-retry for the
+`show_floor_transactions` insert specifically, so the `source` column and every other field
+that predates this migration still write even if `category`/`subcategory` don't exist yet.
+`sport` is **not** dropped by this migration — it stays in place as a deprecated column no
+longer written to going forward (see "Category / Subcategory Taxonomy" below for the one-time
+backfill that reads it).
+
 ## Key Data Structures (in-memory runtime cache)
 ```js
 inventory[]          // [{Seller, 'Card Title', Player, Year, 'Set ', Price, Status, item_type, product_type, _dbId, _shows: Set, ...}]
@@ -352,6 +387,45 @@ much hand-authored inline-styled HTML it has, and easy to miss by eye since the 
 error — only a DOM inspection or an unlucky flexbox parent reveals it. No other instance was
 found while fixing this one, but none of the other `.card-edit-modal`/`.modal-body` blocks in
 this file were exhaustively re-audited beyond this specific modal.
+
+### Follow-up: that same fix left `#view-seller` unclosed, making the buyer view invisible (session 2026-09-24)
+Real bug report: clicking "Browse as Buyer →" left the page blank past the nav bar — the buyer
+grid never rendered, on every load.
+
+**Root cause: the "second pass" warning above was correct, but the actual defect was the
+opposite of what it predicted.** The stray `</div>` removed by the fix immediately above wasn't
+just a local nesting bug inside the Edit Card modal — the pre-fix document was globally balanced
+(equal total `<div>`/`</div>` count) only *because* that stray close was there. It was
+simultaneously doing two things: closing `.modal-body` one field group early (the visible
+2-column bug, correctly diagnosed and fixed), and — as a side effect of HTML's stack-based
+parsing, nothing to do with the tag's "intended" target — providing the one closing tag that
+ultimately let `#view-seller`'s own opening `<div>` find its match, several thousand lines later,
+right before the Sell Drawer markup begins. Deleting the stray close fixed the modal's local
+nesting but silently dropped the total close count for the rest of the document by one.
+`#view-seller` (`display:none` whenever the seller isn't the active role) never closes after
+that point — every element declared later in source order (`sellDrawerOverlay`, `posOverlay`,
+`toast`, `cardModal`, `buyerShowPicker`, every other shared modal, and `#view-buyer` itself) gets
+parsed as a *descendant* of `#view-seller` instead of a top-level sibling. Confirmed with a
+headless-browser DOM dump: `#view-seller` had 24 children (should be exactly 1, `.seller-layout`)
+and `#view-buyer`/`#buyerGrid` had a fully-populated `innerHTML` but zero rendered size
+(`offsetParent === null`) — the buyer grid was being built correctly in memory the whole time,
+just nested inside a hidden container. Bisected against `main` (pre-23282e4) to confirm the
+document was already relying on that stray close for global balance before the "fix" removed it.
+
+**Fix**: added back exactly one `</div>` — not restoring the original stray one (that would
+reintroduce the 2-column bug), but placed right after the Edit Card modal's own three closing
+tags (closes `.card-edit-modal`, `.card-edit-overlay`, `.seller-layout` — was previously missing
+the fourth, closing `#view-seller` itself). Verified with a headless-browser pass that
+`#view-seller` is back to exactly 1 child, `#view-buyer`/`#buyerGrid` render with real
+dimensions and populated content, and the Edit Card modal's Save/Cancel/Delete row still lays
+out single-column underneath the fields (no regression on the original 23282e4 fix).
+
+**Lesson**: an unbalanced-tag fix that only checks "does the thing I was looking at now render
+correctly" isn't enough in a file this size — the total open/close tag count for the *entire
+remaining document* needs to stay the same, or a later, unrelated container can silently stop
+closing. A `<div>`/`</div>` count check (or a real DOM inspection of a distant, unrelated
+container) is worth running after any tag-balance fix here, not just the one screenshot that
+prompted it.
 
 ## Sport Classification — imported Sport field override (session 2026-09-14)
 
@@ -1026,7 +1100,7 @@ Lets a seller photograph an entire showcase/tray and get every visible card iden
 
 ### app.html integration (Phase 2 — review/edit modal + inventory write, shipped)
 - **`renderBulkScanReview(cards)`** now opens `#bulkScanReviewOverlay` (reuses the `.mapper-overlay`/`.mapper-modal`/`.mapper-header`/`.mapper-body`/`.mapper-footer` CSS system from the CSV Column Mapper modal — same "many repeatable editable rows" shape). Empty `cards` array → toast "No cards identified — try a clearer photo", no modal opens.
-- Each card is rendered by `bulkScanCardBlockHTML(c, idx)` as its own bordered `.bulkscan-card-block` with: an include checkbox (checked by default, `.excluded` class dims the block at 0.45 opacity when unchecked), a confidence badge (reuses `.mapper-confidence.high/.medium/.low`), an editable Title (pre-filled via `buildCardTitle()` — note the key remap needed since the vision response uses `set`/`cardNumber` but `buildCardTitle` expects `cardSet`/`cardNum`), and editable Player/Year/Set/Card#/Parallel/Grader/Grade/Condition/Price fields matching Add Card's field set and `#ac_condition`'s exact 5-option list (Gem Mint/Near Mint/Good/Fair/Poor). Grader select prefills only on an exact case-insensitive match against PSA/BGS/CGC/SGC, else blank (Raw). The vision `notes` field (if present) renders as small muted `.bulkscan-notes` helper text — **display-only, never persisted** (`inventory` table has no `notes` column).
+- Each card is rendered by `bulkScanCardBlockHTML(c, idx)` as its own bordered `.bulkscan-card-block` with: an include checkbox (checked by default, `.excluded` class dims the block at 0.45 opacity when unchecked), a confidence badge (reuses `.mapper-confidence.high/.medium/.low`), an editable Title (pre-filled via `buildCardTitle()` — note the key remap needed since the vision response uses `set`/`cardNumber` but `buildCardTitle` expects `cardSet`/`cardNum`), and editable Player/Year/Set/Card#/Parallel/Grader/Grade/Condition/Price fields matching Add Card's field set and `#ac_condition`'s exact 5-option list (Gem Mint/Near Mint/Good/Fair/Poor). Grader select prefills on an exact case-insensitive match against `VALID_GRADERS` (PSA/BGS/CGC/SGC/TAG/HGA/GMA/Arena Club); a non-matching but non-empty vision-read grader pre-selects "Other…" with the original text preserved in a free-text row (see "Inventory Template Vendor Feedback" below), rather than silently dropping to Raw. The vision `notes` field (if present) renders as small muted `.bulkscan-notes` helper text — **display-only, never persisted** (`inventory` table has no `notes` column).
 - Fields are edited live in the DOM (no re-render-on-keystroke, unlike the CSV mapper's single-`<select>`-per-row pattern) — `confirmBulkScanReview()` reads final values straight out of `[data-field]` attributes at confirm time, the same way `saveAddCard()` reads `#ac_x` fields. Only two scoped live updates happen during editing: `bsToggleInclude()` (checkbox → `.excluded` class + stats) and `bsToggleGraderRow()` (grader select → shows/hides that card's Condition row, mirroring `acToggle()`).
 - **Title is required per included card.** `confirmBulkScanReview()` blocks entirely (inserts nothing) if any checked card has an empty title — flags every offending Title input with `.bulkscan-field-invalid` (red border, self-clears on input), scrolls the first one into view, and toasts a count. Uncheck a card instead of fixing its title to exclude it from the block.
 - On a valid confirm: builds one CardShow-shaped `rawCard` per included card using the **same key mapping as `saveAddCard()`'s card branch** (`'Card Title'`, `Player`, `Year`, `'Set '`, `Number`, `'Parallel/Variant'`, `Grader`, `Grade`, `'Cert #'` (from the editable Cert # field, only when a grader is selected — see PSA verify below), `Condition`, `Price`, `Status: 'Available'`, `Location: null`, `Seller`, `item_type: 'card'`), runs each through `validateAndNormalizeCard()`, pushes to `inventory[]`, then **awaits** `bulkScanInsertMany(normalized)` (unlike `saveAddCard()`'s fire-and-forget single insert — Phase 2 deliberately waits so the success/partial-failure toast is accurate for a whole batch) before closing the modal. Confirm button shows "Adding…" while in flight.
@@ -2208,6 +2282,57 @@ migration, no new external library.
   it — `.card-edit-overlay`'s default `flex-direction: row` then laid the two out side by side.
   Fixed by removing the stray closing tag; no other changes needed. See "Edit Card modal split
   into two side-by-side columns on mobile" above.
+- **Inventory Template Vendor Feedback — grader coverage, Serial Number / Print Run Size,
+  Features (session 2026-09-23)** — fixed a real silent data-corruption bug where
+  `validateAndNormalizeCard()` coerced any grader not in a hardcoded 4-item list to `'PSA'`
+  on every load/import (a GMA/HGA/TAG/Arena Club card was being mislabeled as PSA-graded, not
+  just failing a clean import); expanded grading-company coverage to 8 known graders plus a
+  free-text "Other…" path across all six grader dropdowns in the app; added `Serial Number`/
+  `Print Run Size` as fields separate from the overloaded `Number`/Card # field; added a
+  fixed-vocabulary `Features` multi-select (RC/Auto/Relic/Patch/Refractor/1st Edition/Short
+  Print) stored as `text[]`, replacing a low-confidence Auto/RC-into-Parallel/Variant import
+  mapping. All three new fields round-trip through Add Card, Edit Card, CSV/XLSX import, CSV/
+  XLSX export, and the downloadable template (rebuilt, not hand-edited). See "Inventory
+  Template Vendor Feedback" above for full detail. **Requires the `serial_number`/
+  `print_run_size`/`features` DB migration** (see above) — degrades gracefully (fields don't
+  persist across reload) if not yet run.
+- **Category / Subcategory Taxonomy (session 2026-09-23)** — real structured `category`/
+  `subcategory` fields (Sports > sport, TCG > game, Non-Sport > franchise), now the source of
+  truth ahead of the existing `detectSport()`/`detectCardSport()` heuristics for any card that
+  has them set. Fixed a real bug found while reading `comp-lookup.js` before touching
+  `detectCardSport()`: every non-Pokémon TCG keyword match (Magic, Yu-Gi-Oh, Lorcana, One
+  Piece, Digimon) was returning the hardcoded string `'Pokemon'`, mislabeling those sales in
+  the immutable `show_floor_transactions` ledger. Cascading Category/Subcategory dropdowns in
+  Add Card and Edit Card (all item types, not just single cards), CSV/XLSX import recognition
+  (an explicit `Sport` column no longer discarded on import) with Category inferred from
+  Subcategory where it matches the shared vocabulary, export round-trip, and a rebuilt
+  downloadable template (flat Category dropdown, free-text Subcategory with a reference list
+  in the Column Guide). Legacy `sport` column deprecated in place, not dropped, with a
+  documented (not auto-run) backfill migration. See "Category / Subcategory Taxonomy" above
+  for full detail, including what the build spec asked for that doesn't apply to this app's
+  actual architecture and wasn't built. **Requires the `category`/`subcategory` DB migration**
+  on both `inventory` and `show_floor_transactions` (see above) — degrades gracefully if not
+  yet run. Buyer-facing filtering and organizer analytics by category are deliberately not
+  built this session — flagged as the natural fast-follow once this data exists.
+- **Fixed buyer view rendering blank on every load (session 2026-09-24)** — real production bug,
+  already live on `main` (introduced by PR #60/`23282e4`'s Edit Card modal 2-column fix, which
+  removed a `</div>` that was incidentally the only thing keeping the whole document's tag count
+  balanced): `#view-seller` never closed, so every element declared after it in source — the
+  buyer view included — got parsed as `#view-seller`'s own descendant and stayed invisible
+  behind its `display:none`. The buyer grid was building correctly in memory the entire time,
+  just never visible. Fixed by adding back one `</div>` at the correct location (closing
+  `#view-seller` for real, without reintroducing the original 2-column bug). See "Follow-up:
+  that same fix left `#view-seller` unclosed" above for the full bisection and root-cause trace.
+- **Buyer-Facing Category / Subcategory Filter (session 2026-09-24)** — the fast-follow flagged
+  in the original Category/Subcategory Taxonomy session. Lets a buyer narrow to Sports/TCG/
+  Non-Sport then drill into the specific sport/game/franchise actually present, across all
+  three buyer-facing surfaces (`app.html`'s Browse tab, `show.html`'s two-tier chip drill-down,
+  `seller-browse.html`'s storefront filter bar). Found and fixed a real gap first: `show.html`
+  and `seller-browse.html` had zero category/subcategory awareness at all (no DB fetch columns,
+  no `detectSport()` check, no vocabulary) — only `app.html` had been updated in the original
+  taxonomy session. See "Buyer-Facing Category / Subcategory Filter" above for full detail,
+  including the missing-column SELECT-retry fix needed for `app.html`/`show.html`'s DB fetches
+  and headless-browser verification across all three surfaces.
 
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`
@@ -3390,6 +3515,464 @@ supabase db push
 ```
 The migration seeds one demo `trade_zone_shows` row ("MLP Card Show (Trade Zone demo)") so
 both pages have something to resolve to with no `?show=` param on a fresh project.
+
+## Inventory Template Vendor Feedback — Grader Coverage, Serial Number / Print Run Size, Features (session 2026-09-23)
+
+A seller ran the CSV/XLSX import flow end-to-end and reported three gaps, all addressed in
+this session. A fourth item from the same feedback — a real data-corruption bug found while
+scoping the grader work — was fixed first, independent of the rest.
+
+### Grader silent-corruption bug (fixed) + expanded grading-company coverage
+`validateAndNormalizeCard()` previously coerced *any* grader not in the hardcoded
+`VALID_GRADERS` list (`['PSA', 'BGS', 'CGC', 'SGC']`) to `'PSA'` on every load/import —
+silently, with only a `console.warn`. This ran on every card, every time it was normalized,
+not just on import — a card hand-entered or imported with grader `GMA`, `HGA`, `TAG`, or
+`Arena Club` was being mislabeled as PSA-graded on an ongoing basis, not just failing to
+import cleanly. Fixed: `VALID_GRADERS` expanded to
+`['PSA', 'BGS', 'CGC', 'SGC', 'TAG', 'HGA', 'GMA', 'Arena Club']`, and an unrecognized grader
+is now **preserved exactly as entered** (free text) rather than coerced — the known-list
+check is now advisory (picks which dropdown option pre-selects) rather than a data-mangling
+gate. A known grader still normalizes to `VALID_GRADERS`' own canonical casing (`"psa"` →
+`"PSA"`, `"arena club"` → `"Arena Club"`).
+
+Every hardcoded grader `<option>` list in the app was updated to the same expanded set, and
+every one except the buyer-facing filter gained an **"Other…"** option that reveals a
+free-text input for any grading company name not on the list:
+- `#ac_grader` (Add Card) + `#ac_grader_other_wrap`/`#ac_grader_other`
+- `#cem_grader` (Edit Card) + `#cem_grader_other_wrap`/`#cem_grader_other`
+- `#posRGrader` (Scan-to-Sell POS raw entry) + `#posRGraderOtherWrap`/`#posRGraderOther`
+- `#mslGrader` (Log a Manual Sale) + `#mslGraderOtherWrap`/`#mslGraderOther`
+- Bulk scan review's per-card grader `<select>` (`bulkScanCardBlockHTML()`) + a
+  `[data-grader-other-row]` free-text input (`[data-field="graderOther"]`)
+- `#filterGrade` (buyer browse filter) — expanded list only, **no** Other option (a filter has
+  no free-text concept); `filterBuyer()`'s exact-grader match now checks against
+  `VALID_GRADERS` instead of a separately hardcoded `['PSA','BGS','CGC','SGC']` array
+
+Shared helpers (app.html, right after `validateAndNormalizeCard()`): `_graderOtherToggle(selectEl,
+wrapId)` shows/hides the paired free-text input on `<select>` change; `_resolveGraderValue(selectId,
+otherId)` returns the free-text value when `__OTHER__` is selected, else the select's own value —
+called from `saveAddCard()`, `saveCEM()`, `posInsertAndOpenDrawer()`, `confirmManualSale()`, and
+`confirmBulkScanReview()` in place of reading the `<select>`'s `.value` directly;
+`_setGraderFieldValue(selectId, otherId, wrapId, value)` is the inverse — populates a select+Other
+pair from a stored card value, selecting "Other…" and filling the free-text input when the value
+isn't one of `VALID_GRADERS` (used by `openCEM()` and the vision-fill paths in `posShowReview()`/
+`_mslApplyVisionResult()`, replacing direct `.value =` assignment that would previously leave an
+unrecognized vision-read grading company silently unselected).
+
+`CS_FIELDS`' `Grader` hint updated to `'PSA, BGS, CGC, SGC, and others — enter any grading company
+name'`. The downloadable template's `Grader` column data validation list (Inventory sheet, was
+`PSA,BGS,CGC,SGC,TAG,Arena Club` — already ahead of its own Column Guide text) expanded to the
+full 8-grader set and remains non-blocking (`showErrorMessage=False` — typing an unlisted grader
+was already allowed, confirmed by the vendor's own report); the Column Guide's Grader row updated
+to say the dropdown isn't limited to the listed options.
+
+### Serial Number / Print Run Size — new fields, separate from Card Number
+`Number`/`card_number` was overloaded to mean either a checklist card number (`#101`) *or* a
+print-run fraction (`4/102`) — `ALIAS_MAP` even mapped a source column literally named
+`Print Run` into `Number`. A card numbered `043/99` had nowhere clear to go. Fixed with two new
+fields, both required to distinguish from `Number`, not replace it:
+- **`Serial Number`** (`card['Serial Number']` in memory, `serial_number text` in DB) — the
+  specific numbered copy, e.g. `"043"`. Kept as text (not parsed to an integer) to preserve a
+  leading zero a seller may consider meaningful.
+- **`Print Run`** (`card['Print Run']` in memory — CS_FIELDS label "Print Run Size",
+  `print_run_size integer` in DB) — the total copies made, e.g. `99`.
+
+Wired into: `CS_FIELDS` (`Number`'s hint clarified to explicitly say it's *not* the print
+run), `ALIAS_MAP` (`/^print\s*run(\s*size)?$/i`, `/^numbered\s*to$/i`, `/^\/#$/i` →
+`'Print Run'`; `/^serial\s*number$/i` → `'Serial Number'`; the old
+`[/^print\s*run$/i, 'medium', 'Number']` entry that caused the original conflation is gone —
+a source column literally named "Print Run" now maps to `Print Run Size`, not `Number`), Add
+Card modal (`#ac_serial_row` — `#ac_serial`/`#ac_print_run`, card-type-only, toggled by
+`acSetType()`/`_acShow()` alongside `ac_number_col`/`ac_parallel_row`), Edit Card modal
+(`#cem_serial`/`#cem_print_run`), `cardToDbRow()`/`dbRowToCard()`, `EXPORT_INVENTORY_HEADER`/
+`_exportInventoryRowValues()`, and the downloadable template (both columns added to the
+Inventory sheet after `Number`/before `Parallel/Variant`, plus Column Guide rows spelling out
+the distinction with a worked example: `Number=12, Serial Number=043, Print Run Size=99` for
+a card printed "12" on the checklist and numbered 043/99).
+
+### Features — fixed-vocabulary multi-select (RC / Auto / Relic / Patch / Refractor / 1st Edition / Short Print)
+`Auto`/`Autograph` and `RC`/`Rookie` were low-confidence-mapped into `Parallel/Variant` in
+`ALIAS_MAP`, which either got missed on import (low confidence often means unmapped) or, if
+accepted, got jammed into a field that already means something else. Fixed with a new
+`Features` field — **a fixed vocabulary stored as `text[]`, not free text** — free text drifts
+("RC/Auto" vs "Rookie Autograph") and stops being reliably filterable.
+
+- `FEATURES_VOCAB` (app.html, next to `VALID_GRADERS`) — `['RC', 'Auto', 'Relic/Memorabilia',
+  'Patch', 'Refractor', '1st Edition', 'Short Print']`.
+- `FEATURES_SYNONYMS` — a lowercase-keyed synonym map (`rookie`/`rookie card` → `RC`,
+  `autograph`/`autographed`/`signed` → `Auto`, `relic`/`memorabilia` → `Relic/Memorabilia`,
+  `first edition`/`1st ed` → `1st Edition`, `sp` → `Short Print`, etc.) so a source column's
+  literal cell value (not just the header name) resolves to the fixed vocabulary.
+- `_parseFeaturesString(str)` — splits on commas, matches each token against
+  `FEATURES_SYNONYMS` case-insensitively, dedupes. **Unmatched tokens are silently dropped, not
+  invented as new vocabulary** — a source column whose cell values are booleans (`Y`/`TRUE`)
+  rather than descriptive text won't populate `Features`, which is the correct degrade (never
+  guessing wrong) rather than the alternative of always tagging every row.
+- `_getCheckedFeatures(containerId)` / `_setCheckedFeatures(containerId, features)` — read/write
+  helpers for the checkbox group UI.
+- **UI: a checkbox group, not `<select multiple>`** (per the build spec's own reasoning — a
+  multi-select dropdown is a poor mobile experience) — `.features-checkbox-group`/
+  `.feature-chip` (new CSS, uses `var(--accent)`, not the non-existent `var(--gold)` — see the
+  Critical Note in the Trading Card API section). `#ac_features_group` (Add Card, card-type-only
+  via `#ac_features_row`) and `#cem_features_group` (Edit Card) render the same 7 chips.
+- **Import**: `CS_FIELDS` gained a `Features` entry; `ALIAS_MAP` gained
+  `[/^features$/i, 'high', 'Features']`, and the existing `Auto`/`Autograph` and
+  `RC`/`Rookie / Rookie`-style entries were re-pointed from `Parallel/Variant` to `Features`
+  at `'medium'` confidence (up from `'low'`, now that they have a correct home). `applyMapping()`'s
+  generic per-header loop special-cases `destKey === 'Features'`: since more than one source
+  header can legitimately map to `Features` in the same file (a dedicated `Features` column
+  *and* separate `Auto`/`RC` columns from e.g. a Ludex export), values are **accumulated** via
+  `_parseFeaturesString()` + dedupe rather than the generic loop's normal last-header-wins
+  overwrite — the one field where that overwrite behavior would silently drop data.
+- `cardToDbRow()`/`dbRowToCard()` — `features: text[]`, `null` (not `[]`) when nothing is
+  checked, matching this file's null-over-empty convention for other unset optional columns.
+- `EXPORT_INVENTORY_HEADER`/`_exportInventoryRowValues()` — exported as a comma-joined string
+  (`r.Features.join(', ')`), matching the import format for round-trip consistency.
+- Downloadable template — `Features` column added to the Inventory sheet (after
+  `Parallel/Variant`) and a Column Guide row explaining the fixed vocabulary and
+  comma-separated format.
+
+### Downloadable template — rebuilt, not hand-edited
+`downloads/CardShow_Inventory_Template.xlsx`'s `Inventory` sheet (19 columns now — `Serial
+Number`/`Print Run Size` after `Number`, `Features` after `Parallel/Variant`) and `Column
+Guide` sheet were regenerated from a Python/openpyxl script rather than edited via
+`insert_cols`/`insert_rows` — those don't reliably shift data validations, column widths, or
+row-banding formatting on an existing 699-row sheet, and a full rebuild from captured style
+values (header/hint/example-row/banded-row styling, the three list data validations, column
+widths) was safer than trusting an in-place column insert on a file with that much existing
+formatting. The 13 example rows were kept and extended: two (Gold Prizm /10, Gold Auto /50)
+now demonstrate Serial Number/Print Run Size on a genuinely numbered parallel; several others
+demonstrate `Features` (`RC`, `Auto`, or both) independent of a print run.
+
+### Deliberately not included in this session (need a product decision first)
+Same vendor feedback also asked for: quantity tracking for duplicate items, AI-assisted title
+parsing into fields, and a browsable card-type/category taxonomy (Sports > sport, TCG > game,
+Non-Sport). None of these are in this session's scope — each needs a product decision before
+it's buildable, raised separately from this build.
+
+## Category / Subcategory Taxonomy (session 2026-09-23)
+
+Real gap surfaced by the vendor feedback above: no way to sort/browse inventory by card type
+(Sports > sport, TCG > game, Non-Sport > franchise) other than free-text search. Researching
+this found that CardShow already had a sport-detection system, but it was narrower and less
+reliable than it looked — this session adds real structured `category`/`subcategory` fields as
+the source of truth, keeping the existing heuristics as a best-effort pre-fill/fallback for
+cards that don't have them set yet.
+
+### What was actually there before this session (confirmed by reading the code)
+Two separate, independently-maintained classification functions existed:
+- `detectSport(r)` — UI badge only. Five possible values total: `Basketball 🏀`, `Football
+  🏈`, `Baseball ⚾`, `Hockey 🏒`, `TCG 🃏`, or `—`. Every TCG — Pokémon, Magic, Yu-Gi-Oh!, One
+  Piece, Lorcana, all of them — collapsed into one `TCG 🃏` bucket. No Soccer, no golf/combat-
+  sports/motorsports, no non-sport bucket at all (Marvel/Star Wars/Disney had nowhere to go).
+- `detectCardSport(card)` — API-routing for `comp-lookup.js`. **Real bug, confirmed and
+  fixed**: its `TCG_KEYWORDS` list matched terms for Magic, Yu-Gi-Oh, Lorcana, One Piece, and
+  Digimon, but any match on *any* of them returned the literal hardcoded string `'Pokemon'`.
+  A Lorcana or MTG card's comp-price lookup was being routed and its `show_floor_transactions.
+  sport` snapshot labeled as Pokémon.
+- The import mapper actively discarded an explicit `Sport` source column
+  (`[/^sport$/i, 'low', '__SKIP__']` in `ALIAS_MAP`) — even a vendor spreadsheet with clean
+  sport/category data lost it on import.
+- `inventory.sport` (and the matching column on `show_floor_transactions`) was the only
+  persisted classification — a single free-text field, written only by the "Validate Sport"
+  pass or the buggy heuristic above.
+
+### Reading `comp-lookup.js` before touching `detectCardSport()`
+Per the build spec's own instruction, `netlify/functions/comp-lookup.js`'s `lookupComp()`
+router was read in full before changing anything, to confirm exactly how it uses the `sport`
+value it's sent:
+- `isPokemon = resolvedSport === 'Pokemon'` (exact string) → routes to pokemontcg.io, falling
+  back to the generic TCG API on a miss.
+- `isTCG = TCG_SPORTS.includes(resolvedSport)`, where `TCG_SPORTS = ['Pokemon', 'MTG', 'Magic',
+  'Yu-Gi-Oh', 'Lorcana', 'One Piece', 'Dragon Ball', 'Digimon', 'Flesh and Blood']` (exact
+  strings, no accents, no exclamation points) → routes to the generic TCG API
+  (`lookupTCGApi()`), which is **not** Pokémon-specific — it already correctly prices Magic/
+  Yu-Gi-Oh/Lorcana/One Piece/Dragon Ball/Digimon/Flesh and Blood cards today.
+- Anything else falls into the sports pricing chain (Card Hedge → CardSight → PriceCharting).
+
+This confirmed the bug was real but partially self-healing by accident: a non-Pokémon TCG card
+mislabeled `'Pokemon'` would miss on pokemontcg.io and fall back to the correct generic TCG
+API anyway — so pricing usually still worked, at the cost of one wasted pokemontcg.io call per
+card. The genuinely broken part was the **label itself**: `detectCardSport()`'s return value is
+also written directly to `show_floor_transactions.sport` (`recordShowTransaction()`,
+`recordManualSaleTransaction()`), so every Magic/Yu-Gi-Oh/Lorcana/One Piece/Digimon sale was
+being permanently mislabeled `Pokemon` in the immutable transaction ledger, not just routed
+inefficiently. It also confirmed the fix is safe: restructuring the TCG keyword match into
+per-game groups that each return their own game's name, instead of a hardcoded `'Pokemon'`,
+strictly improves both routing (skips the wasted pokemontcg.io call) and labeling, since every
+one of those per-game names is already a literal entry in `comp-lookup.js`'s own `TCG_SPORTS`
+array — no changes to `comp-lookup.js` itself were needed or made.
+
+A second, pre-existing false-positive was caught in the process and fixed alongside it: the old
+keyword list matched the bare substring `'magic'`, which would false-positive on a real, common
+card like a **Magic Johnson** basketball card (his own name contains "magic"). The rebuilt
+match requires `/\bmtg\b/` or `/magic\s*:?\s*the\s+gathering/` instead of a bare "magic"
+substring — narrower and strictly more correct, not a scope expansion.
+
+### Category / subcategory vocabulary
+Based on TCGplayer's own bestselling-games data by GMV and common non-sport hobby categories:
+- **Sports**: Baseball, Basketball, Football, Hockey, Soccer, Golf, Boxing, MMA/UFC, Wrestling,
+  Racing/Motorsports, Tennis, Other Sport. (Wrestling defaults to Sports — genuinely ambiguous
+  between athletic competition and scripted entertainment, but commonly tracked as a sport in
+  price guides; a one-line change if this call should go the other way.)
+- **TCG**: Pokémon, Magic: The Gathering, Yu-Gi-Oh!, One Piece Card Game, Disney Lorcana,
+  Digimon Card Game, Dragon Ball Super Fusion World, Gundam Card Game, Flesh and Blood, Star
+  Wars Unlimited, Weiss Schwarz, Union Arena, Other TCG. Deliberately not exhaustive — the
+  commercially dominant games by sales volume, with `Other TCG` free text catching the long
+  tail; expand later if a specific game shows up often enough in `Other TCG` entries.
+- **Non-Sport**: Marvel, Star Wars, Disney, DC, Star Trek, Other Non-Sport.
+
+`CATEGORY_SUBCATEGORIES` (app.html, right after the Features helpers) is the single canonical
+copy of this vocabulary — shared by the Add/Edit Card cascading dropdowns, the import mapper's
+Category inference, and both detection functions. Not duplicated per call site.
+
+### Schema
+See "Pending DB Migrations" above for the exact SQL. `category`/`subcategory` added to both
+`inventory` and `show_floor_transactions` — the latter for the same reason it already carries
+`sport`: the immutable transaction record, and organizer/analytics reporting, shouldn't need to
+join back to `inventory` for a row that may have since changed. `sport` is **not** dropped —
+left in place, deprecated, no longer written to by `cardToDbRow()`/`recordShowTransaction()`/
+`recordManualSaleTransaction()` going forward (all three now write `category`/`subcategory`
+instead; `sport` stays populated only from whatever wrote it historically, e.g. the "Validate
+Sport" pass). Both tables' inserts/updates strip `category`/`subcategory` and retry on the same
+`PGRST204`-detection pattern as every other not-yet-migrated column in this app.
+
+### Add Card / Edit Card modals
+Two cascading `<select>`s, not one flat list — `#ac_category`/`#ac_subcategory` (Add Card,
+right under Card Title, applies to all item types — card/sealed/lot, not gated behind
+`acSetType()`'s card-only rows the way Serial Number/Features are, since a sealed box or a lot
+can be classified the same way a single card can) and `#cem_category`/`#cem_subcategory` (Edit
+Card, mirrored). Each ends in an `Other …` option (`__OTHER__`-style, but using the literal
+"Other Sport"/"Other TCG"/"Other Non-Sport" list entries as the sentinel, matched via
+`/^Other/`) that reveals a free-text input (`#ac_subcategory_other`/`#cem_subcategory_other`).
+
+Shared helpers (app.html, right after `SUBCATEGORY_TO_ROUTING_SPORT`): `_updateSubcategoryOptions()`/
+`_toggleSubcategoryOther()` (repopulate/toggle, called by both modals' `ac`/`cem`-prefixed thin
+wrappers), `_resolveSubcategoryValue(subId, otherId)` (returns the free-text value when an
+`Other …` option is selected — that literal string is a UI affordance for revealing the input,
+never a value that should land in the database — else the select's own value), and
+`_setCategoryFieldValue(catId, subId, otherId, otherRowId, category, subcategory)` (populates
+the pair from stored values on open; falls back to that category's `Other …` option with the
+free-text input filled when the stored subcategory isn't in `CATEGORY_SUBCATEGORIES`, so a
+value saved before this vocabulary existed still round-trips instead of silently resetting).
+
+**Pre-fill on open**: `openCEM()` prefers the card's own `Category`/`Subcategory`; if neither is
+set (legacy inventory), falls back to a best-effort guess via `_categoryFromSportGuess(detectSport(card))`
+— parses a `detectSport()`-style badge label back into `{category, subcategory}` against the
+same `CATEGORY_SUBCATEGORIES` table. Always just a pre-fill the seller can override, never a
+locked value — same "confident guess, human confirms" pattern already used elsewhere in this
+app (bulk scan review, manual sale photo ID). `openAddCard()` just resets both fields to blank
+— a new card has nothing to pre-fill from. **Scoped down from the build spec's own phrasing**:
+the spec also described pre-filling "when opening the modal from a bulk-scan/CSV-imported row,"
+but neither bulk scan review nor CSV import in this app actually opens the Add Card modal per
+row (bulk scan has its own inline card blocks; CSV import writes straight to `inventory[]`) —
+so that part doesn't apply to this app's actual architecture and wasn't built, matching this
+file's established practice of noting a spec/architecture mismatch rather than forcing a
+literal-but-inapplicable implementation.
+
+`saveAddCard()`/`saveCEM()` read `Category` directly from the select, and `Subcategory` via
+`_resolveSubcategoryValue()` — never the raw select value, so an `Other …` selection never
+writes its own sentinel label instead of the seller's typed text.
+
+### Import mapper + export + downloadable template
+- `CS_FIELDS` gained `Category`/`Subcategory` entries.
+- `ALIAS_MAP` gained `/^category$/i` → `Category` and `/^subcategory$/i`/`/^game$/i`/
+  `/^franchise$/i`/`/^tcg$/i` → `Subcategory`, all `'high'` confidence. The old
+  `[/^sport$/i, 'low', '__SKIP__']` entry — which discarded an explicit Sport column entirely —
+  now maps to `Subcategory` at `'low'` confidence instead of being thrown away. If a source
+  file's Sport column actually holds broad-category values (`"Sports"`, `"TCG"`) rather than a
+  specific sport/game name, that's a source-file data-quality issue the mapper can't resolve —
+  same low-confidence treatment as any other ambiguous field, not something worth special-
+  casing.
+- **Import-time Category inference** (`applyMapping()`): a row with a `Subcategory` value but
+  no explicit `Category` gets `Category` inferred by checking which `CATEGORY_SUBCATEGORIES`
+  list contains a case-insensitive match — the same lookup table the UI dropdowns use, not a
+  separate hardcoded list. Left blank, never guessed, when the value doesn't match a known
+  subcategory.
+- `cardToDbRow()`/`dbRowToCard()` — `category`/`subcategory` mapped in both directions,
+  following the exact pattern already used for every other field.
+- `EXPORT_INVENTORY_HEADER`/`_exportInventoryRowValues()` — both columns added (after
+  `Features`), so exported inventory round-trips cleanly back through the importer.
+- Downloadable template — `Category`/`Subcategory` columns added to the `Inventory` sheet
+  (after `Features`, before `Grade`), rebuilt via the same Python/openpyxl script convention as
+  the Serial Number/Print Run Size/Features rebuild above (not hand-edited, not `insert_cols`,
+  for the same "doesn't reliably shift data validations/widths/banding on a ~700-row sheet"
+  reasoning). `Category` gets a flat, non-blocking `Sports,TCG,Non-Sport` data-validation
+  dropdown (low-risk to constrain, only 3 values). **`Subcategory` deliberately gets no data
+  validation at all** — a cascading/dependent dropdown (Excel's INDIRECT+named-range approach
+  for a dropdown whose options depend on another cell's value) is fragile to hand-maintain
+  across CSV/XLSX and easy to break silently when the template is edited later; instead the
+  `Column Guide` sheet lists the full reference vocabulary so a vendor filling the template by
+  hand can see the options without the spreadsheet enforcing them. All 13 example rows were
+  extended with real Category/Subcategory values (Sports/Baseball, Sports/Basketball, Sports/
+  Football, TCG/Pokémon, matching each example's actual content).
+
+### `detectSport(r)` — UI badge
+Now checks `r.Category`/`r.Subcategory` first, rendering the badge directly via
+`categoryBadgeLabel(category, subcategory)` — a new small helper mapping subcategory → emoji
+(`SUBCATEGORY_EMOJI`, falling back to a per-category default `CATEGORY_DEFAULT_EMOJI` for any
+subcategory without a specific icon, including a seller's free-text `Other …` value) and
+formatting `"{subcategory} {emoji}"`. Only falls through to the existing player-name/brand-
+keyword heuristics when both fields are unset — same "trust the explicit/imported field before
+guessing" priority this function already gave the legacy `card.Sport` check, just one tier
+higher since category/subcategory is a real structured field.
+
+The brand/set-name keyword fallback (lowest-priority tier) gained new lines for `one piece`,
+`lorcana`, `digimon`, `dragon ball`, `gundam` (TCG) and `marvel`, `star wars` (Non-Sport — also
+covers "Topps Chrome Star Wars"-style titles, which contain "star wars" as a substring). **No
+hand-maintained player/character-name lists were built for these**, unlike the four major
+sports — that approach is already a documented maintenance burden for just four sports (see
+the Donruss/Kenny Lofton gap earlier in this file) and isn't worth extending to a dozen more
+categories when the real fix is a seller setting the structured fields directly. This matches
+the build spec's own explicit scoping.
+
+### `detectCardSport(card)` — API routing
+Now checks `card.Category`/`card.Subcategory` first (same priority order as `detectSport()`),
+mapped through a new `SUBCATEGORY_TO_ROUTING_SPORT` lookup — **not** a pass-through, since
+`comp-lookup.js`'s `isPokemon`/`isTCG` checks are exact-string against its own `TCG_SPORTS`
+array, which uses different casing/accents than this app's display vocabulary (`'Pokemon'`, no
+accent, vs. our `'Pokémon'`; `'Magic'` vs. our `'Magic: The Gathering'`, etc.). Subcategories
+not in `comp-lookup.js`'s `TCG_SPORTS` list (Gundam, Star Wars Unlimited, Weiss Schwarz, Union
+Arena, any Non-Sport franchise) map to `''` — the same "unpriceable, falls through to the
+sports chain" behavior a blank/unrecognized sport already got before this session, not a
+regression. Falls through to the legacy `card.Sport`/`card.sport` check, then to keyword
+detection — now restructured into per-game groups (see the bug writeup above) instead of a
+single hardcoded `'Pokemon'` return.
+
+### Backfill (one-time, run manually — not auto-executed by this session)
+For existing rows carrying only the legacy `sport` value:
+```sql
+UPDATE inventory
+SET category = CASE
+  WHEN sport ILIKE '%basketball%' THEN 'Sports'
+  WHEN sport ILIKE '%football%'   THEN 'Sports'
+  WHEN sport ILIKE '%baseball%'   THEN 'Sports'
+  WHEN sport ILIKE '%hockey%'     THEN 'Sports'
+  WHEN sport ILIKE '%tcg%'        THEN 'TCG'
+  ELSE NULL
+END,
+subcategory = CASE
+  WHEN sport ILIKE '%basketball%' THEN 'Basketball'
+  WHEN sport ILIKE '%football%'   THEN 'Football'
+  WHEN sport ILIKE '%baseball%'   THEN 'Baseball'
+  WHEN sport ILIKE '%hockey%'     THEN 'Hockey'
+  ELSE NULL  -- see note below — legacy TCG rows deliberately NOT defaulted to any game
+END
+WHERE category IS NULL AND sport IS NOT NULL;
+```
+**Why legacy TCG rows get `subcategory = NULL`, not a guessed game**: the legacy `sport`
+column's only TCG value was the generic `'TCG'` bucket — it never recorded which game.
+Defaulting every legacy TCG row to `'Pokémon'` specifically (the build spec's own draft
+considered this) would be actively wrong for the Magic/Yu-Gi-Oh/Lorcana rows mixed into that
+same bucket — exactly the kind of confidently-wrong guess this whole session's `detectCardSport()`
+fix was written to stop making. `subcategory IS NULL` for these rows is an honest "we know it's
+TCG, we don't know which game," not a confidently wrong one. Run this migration only after
+confirming it matches the seller's/organizer's expectations for their existing data — it's
+documented here for reference, not auto-applied.
+
+### Not built this session (per spec)
+Buyer-facing browse filter by Category/Subcategory (the actual reason the vendor asked for
+this — the natural fast-follow, layered on top of data that has to exist first); organizer
+analytics breakdown by category; hand-maintained player/character-name detection lists for the
+new TCG/non-sport subcategories (see `detectSport()` above); expanding the TCG subcategory
+dropdown beyond the current list.
+
+## Buyer-Facing Category / Subcategory Filter (session 2026-09-24)
+
+The fast-follow flagged above — lets a buyer narrow the grid to Sports vs. TCG vs. Non-Sport,
+then (once one of those is picked) drill into the specific sport/game/franchise actually
+present, across all three buyer-facing surfaces: the in-app Buyer view (`app.html`), the
+public share-link page (`show.html`), and a seller's own storefront (`seller-browse.html`).
+
+### A real gap found before writing any filter UI
+Checking first (per this codebase's own established discipline before touching adjacent
+surfaces) found that the original Category/Subcategory Taxonomy session only touched
+`app.html` — `show.html` and `seller-browse.html` had **zero** awareness of `category`/
+`subcategory`: neither file's DB fetch selected those columns, neither file's `detectSport()`
+copy checked them, and neither had the `CATEGORY_SUBCATEGORIES` vocabulary at all. A seller
+picking a Category/Subcategory in Add/Edit Card (app.html) had no visible effect on either
+public-facing surface until this session. All three gaps are closed here, duplicated per this
+codebase's no-shared-module convention (matching how the sport-detection bugs were fixed
+independently in all three files' `detectSport()` copies previously).
+
+### Effective category resolution
+Every surface needs a `{category, subcategory}` for a card that may or may not have the
+structured fields set yet (most existing inventory doesn't). Each file has its own
+`_effectiveCardCategory(r)`:
+- Prefers `r.Category`/`r.Subcategory` when set (the seller's own classification).
+- Otherwise reverse-looks-up `detectSport(r)`'s existing heuristic-derived badge/label against
+  the locally-duplicated `CATEGORY_SUBCATEGORIES` vocabulary — the exact same "confident guess,
+  never trusted over the real field" pattern `app.html`'s `_categoryFromSportGuess()` already
+  used for the Add/Edit Card modal pre-fill. A card `detectSport()` can't place at all (e.g.
+  item_type sealed/lot, or a genuinely unclassifiable title) returns `null` and is correctly
+  excluded once a specific filter is active, rather than silently matching everything.
+
+`detectSport(r)` itself was updated in all three files to check `r.Category`/`r.Subcategory`
+first, ahead of every keyword/player-name heuristic — `show.html`'s and `seller-browse.html`'s
+copies didn't have this check yet (only `app.html`'s did, from the original taxonomy session);
+now all three match.
+
+### DB fetch changes — and graceful degradation for a not-yet-migrated project
+`app.html`'s `loadBuyerInventoryFromDB()` and `show.html`'s `fetchInventoryFromDB()` both use an
+explicit column-list `SELECT` (not `select('*')`) — `category`/`subcategory` had to be added to
+both lists. Unlike an INSERT/UPDATE against a missing column (which degrades via
+`_isMissingScanColumnError()`'s strip-and-retry, see "Pending DB Migrations" above), a `SELECT`
+of a nonexistent column throws immediately and would otherwise take down the **entire** buyer
+grid over two optional filter fields — not the failure mode a filter feature should ever cause.
+Both functions now retry once, stripped of just those two columns, on an error whose message
+mentions them. `seller-browse.html` already used `select('*')`, so no fetch change was needed
+there — only its own row-mapping object (which builds specific named fields off the wildcard
+row) needed `Category`/`Subcategory` added.
+
+### app.html — Browse tab
+Two new `<select>`s in the existing `.filter-bar` (`#filterCategory`, `#filterSubcategory`,
+between search and the Grade filter — grid updated to 7 columns) — matches this bar's existing
+dropdown-based convention (Grade/Seller/Price). `#filterSubcategory` is populated by
+`renderCategoryFilterOptions()` from what's actually in `showInventory` (never the full static
+vocabulary — same "don't show a choice with zero matching cards" convention
+`renderShowSelectorBuyer()`'s seller list already follows), scoped to the selected Category or
+across all categories when none is picked yet. Wired into `filterBuyer()`/`clearFilters()` and
+into every place `renderShowSelectorBuyer()` already runs (`joinShow()`, the live-sync refresh,
+`skipBuyerShowPicker()`) so the subcategory options stay current as inventory changes mid-show.
+
+### show.html — two-tier chip drill-down
+Extends the existing single-tier sport-chip mechanism (`#sportFilters`, now `#categoryFilters`)
+into two tiers, matching this page's existing chip-based convention rather than introducing a
+dropdown paradigm it didn't have: a top row (All/Sports/TCG/Non-Sport, `buildCategoryChips()`)
+and a second row (`#subcategoryFilters`, `buildSubcategoryChips()`) that appears only once a
+category chip other than "All" is active and more than one subcategory actually exists within
+it — e.g. picking TCG reveals Pokémon/Magic: The Gathering/whatever else is actually in this
+show's inventory, never the full vocabulary. `_browseActiveSport` split into
+`_browseActiveCategory`/`_browseActiveSubcategory`; `setSportFilter()` split into
+`setCategoryFilter()`/`setSubcategoryFilter()` (picking a new top-level category always clears
+the subcategory drill-down). Both tiers collapse to nothing when the show has only one
+category/subcategory, same as the original single-tier chip list already did.
+
+### seller-browse.html — storefront filter bar
+Replaces the old flat `#filterSport` select (Basketball/Football/Baseball/Hockey/TCG only, no
+Non-Sport, no TCG drill-down) with the same `#filterCategory`/`#filterSubcategory` pair
+`app.html` uses — matches this page's own select-based filter-bar convention (`.filter-bar` here
+is `flex-wrap`, not a fixed grid, so no CSS layout change was needed to add the second select).
+`renderCategoryFilterOptions()`/`_sbCategoryChanged()` mirror `app.html`'s exactly, scoped to
+`sellerInventory`. `renderActivePills()`'s removable filter chips and `clearFilters()` both
+updated to reference the two new fields instead of the removed `filterSport`.
+
+### Verified with a headless browser
+All three surfaces tested end-to-end (not just read through): `app.html`'s demo buyer flow —
+selecting Sports correctly scoped the subcategory dropdown to Baseball/Basketball/Football/
+Hockey (data-driven, no TCG/Non-Sport shown since the demo data has none), selecting a specific
+subcategory correctly narrowed results, selecting TCG correctly returned zero results rather
+than erroring; `show.html`'s two-tier chips against synthetic mixed-category data — selecting
+TCG correctly narrowed 5→2 cards and revealed exactly the two TCG subcategories present (not
+Baseball, not Marvel); `seller-browse.html`'s demo storefront — identical select-based
+behavior to `app.html`. `Clear` correctly resets both new fields on all three surfaces.
+
+### Does not change
+Organizer analytics breakdown by category (still flagged as a separate future item, not this
+one), `_orgFetchInventory()` or any other analytics function, the Add/Edit Card modal
+Category/Subcategory dropdowns from the original taxonomy session, RLS policies, no new
+Supabase tables or migrations (reuses the existing `category`/`subcategory` columns and their
+existing migration).
 
 ## Show Configuration (Demo Data)
 - **MLP Card Show** — Oct 17-18, 2026 · Grand Hyatt Tampa Bay, FL · Code: MLPTPA (primary demo, shown to buyers without code)

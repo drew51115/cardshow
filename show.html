@@ -568,7 +568,7 @@ footer {
       </div>
 
       <!-- Search + filter bar -->
-      <div style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:center;margin-bottom:1.2rem" class="reveal reveal-d1">
+      <div style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:center;margin-bottom:0.5rem" class="reveal reveal-d1">
         <div style="position:relative;flex:1;min-width:200px">
           <svg style="position:absolute;left:0.75rem;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none"
             width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -583,10 +583,15 @@ footer {
             onfocus="this.style.borderColor='var(--gold)'"
             onblur="this.style.borderColor='var(--border)'">
         </div>
-        <div id="sportFilters" style="display:flex;gap:0.4rem;flex-wrap:wrap"></div>
+        <div id="categoryFilters" style="display:flex;gap:0.4rem;flex-wrap:wrap"></div>
         <div style="font-family:'DM Mono',monospace;font-size:0.68rem;color:var(--muted);
           letter-spacing:0.06em;white-space:nowrap" id="browseCount"></div>
       </div>
+
+      <!-- Subcategory drill-down — shown only once a Sports/TCG/Non-Sport
+           chip above is active and more than one subcategory exists within
+           it (e.g. picking TCG reveals Pokémon / Magic: The Gathering / …) -->
+      <div id="subcategoryFilters" style="display:flex;gap:0.4rem;flex-wrap:wrap;margin-bottom:1.2rem"></div>
 
       <div class="featured-grid" id="featuredGrid"></div>
 
@@ -665,10 +670,52 @@ footer {
 const SPORT_ICONS = {
   'Basketball': '🏀', 'Football': '🏈', 'Baseball': '⚾',
   'Hockey': '🏒', 'WNBA': '🏀', 'Soccer': '⚽', 'Tennis': '🎾',
-  'Golf': '⛳', 'TCG': '🃏', 'Other': '🃏'
+  'Golf': '⛳', 'TCG': '🃏', 'Other': '🃏',
+  // Category/subcategory taxonomy icons — duplicated from app.html's
+  // SUBCATEGORY_EMOJI (no shared module in this no-build-step codebase; see
+  // CLAUDE.md). Falls back to '🃏' for anything not listed below, same as
+  // the pre-existing entries above.
+  'Pokémon': '🃏', 'Magic: The Gathering': '🃏', 'Yu-Gi-Oh!': '🃏',
+  'One Piece Card Game': '🃏', 'Disney Lorcana': '🃏', 'Digimon Card Game': '🃏',
+  'Marvel': '🦸', 'Star Wars': '⚔️', 'Disney': '🏰', 'DC': '🦇', 'Star Trek': '🖖',
 };
 
+// Duplicated from app.html's CATEGORY_SUBCATEGORIES (see "Category /
+// Subcategory Taxonomy" in CLAUDE.md) — same vocabulary, kept in sync by
+// hand per this codebase's no-shared-module convention. Used only to derive
+// an effective top-level Category for a legacy card whose detectSport()
+// result is a bare sport/game name with no structured Category of its own.
+const CATEGORY_SUBCATEGORIES = {
+  'Sports': ['Baseball','Basketball','Football','Hockey','Soccer','Golf','Boxing','MMA/UFC','Wrestling','Racing/Motorsports','Tennis','WNBA','Other Sport'],
+  'TCG': ['Pokémon','Magic: The Gathering','Yu-Gi-Oh!','One Piece Card Game','Disney Lorcana','Digimon Card Game','Dragon Ball Super Fusion World','Gundam Card Game','Flesh and Blood','Star Wars Unlimited','Weiss Schwarz','Union Arena','TCG','Other TCG'],
+  'Non-Sport': ['Marvel','Star Wars','Disney','DC','Star Trek','Other Non-Sport'],
+};
+
+// Best-effort {category, subcategory} for the two-tier Category/Subcategory
+// filter — prefers the card's own structured fields (see fetchInventoryFromDB()
+// below), falling back to a reverse lookup of detectSport(r)'s bare label
+// against CATEGORY_SUBCATEGORIES for a card that predates this taxonomy.
+// Returns null for a genuinely unclassifiable card (e.g. detectSport()
+// returned 'Other').
+function _effectiveCardCategory(r) {
+  if (r.Category) return { category: r.Category, subcategory: r.Subcategory || '' };
+  const sport = detectSport(r);
+  if (!sport) return null;
+  for (const [cat, subs] of Object.entries(CATEGORY_SUBCATEGORIES)) {
+    if (subs.includes(sport)) return { category: cat, subcategory: sport };
+  }
+  return null;
+}
+
 function detectSport(r) {
+  // Prefer the structured category/subcategory fields (see CLAUDE.md's
+  // "Category / Subcategory Taxonomy") over every heuristic below — matches
+  // app.html's already-updated detectSport() priority. Returned bare/
+  // unbranded (no emoji), matching every other branch in this function —
+  // icons are applied separately via SPORT_ICONS at render time.
+  if (r.Subcategory) return r.Subcategory;
+  if (r.Category)    return r.Category;
+
   const p = (r.Player || '').toLowerCase();
   const s = (r['Set '] || r.Set || '').toLowerCase();
   const t = (r['Card Title'] || '').toLowerCase();
@@ -796,7 +843,8 @@ let hashData = window.location.hash.slice(1);
 
 // ── Browse grid state — declared early to avoid temporal dead zone ──
 let _browseAll        = [];
-let _browseActiveSport = '';
+let _browseActiveCategory    = ''; // 'Sports' | 'TCG' | 'Non-Sport' | ''
+let _browseActiveSubcategory = ''; // e.g. 'Baseball', 'Pokémon' — only meaningful when a category is active
 let _browseExpanded   = false; // true once "See All Cards" has been clicked
 
 function decodeAndRender(hash) {
@@ -908,14 +956,30 @@ async function fetchInventoryFromDB(showId) {
     const cardIds = [...new Set(siRows.map(r => r.card_id).filter(Boolean))];
     if (!cardIds.length) return;
 
-    const { data: cards, error: invErr } = await _sb
+    let { data: cards, error: invErr } = await _sb
       .from('inventory')
       .select(`
         id, seller_id, card_title, player, year, card_set, card_number, parallel,
         grader, grade, condition, price, status,
-        item_type, quantity, product_type, language, edition, sport
+        item_type, quantity, product_type, language, edition, sport, category, subcategory
       `)
       .in('id', cardIds);
+
+    // category/subcategory are the newest inventory columns (see CLAUDE.md's
+    // "Category / Subcategory Taxonomy" migration) — a project that hasn't
+    // run it yet gets a "column does not exist" error on this SELECT. Retry
+    // once without the two new columns rather than showing no cards at all.
+    if (invErr && /category|subcategory/i.test(invErr.message || '')) {
+      ({ data: cards, error: invErr } = await _sb
+        .from('inventory')
+        .select(`
+          id, seller_id, card_title, player, year, card_set, card_number, parallel,
+          grader, grade, condition, price, status,
+          item_type, quantity, product_type, language, edition, sport
+        `)
+        .in('id', cardIds));
+    }
+
     if (invErr || !cards || !cards.length) return;
 
     const available = cards.filter(c => c.status !== 'Sold');
@@ -952,6 +1016,8 @@ async function fetchInventoryFromDB(showId) {
       language:           c.language || '',
       edition:            c.edition || '',
       Sport:              c.sport || '',
+      Category:           c.category || '',
+      Subcategory:        c.subcategory || '',
     }));
 
     if (!dbCards.length) return;
@@ -1189,34 +1255,79 @@ function renderFeaturedCards() {
     return;
   }
 
-  // Build sport filter chips
-  buildSportChips();
+  // Build Category / Subcategory filter chips
+  buildCategoryChips();
   // Render all cards initially
   applyBrowseFilters();
 }
 
-function buildSportChips() {
+// Top tier — All / Sports / TCG / Non-Sport. Counts a card under its
+// _effectiveCardCategory() category (falls back to a detectSport()-derived
+// guess for a card with no structured Category yet — see that function).
+// Collapses to nothing when everything in this show is one category, same
+// "don't show a filter with only one possible value" convention the old
+// single-tier chip list already followed.
+function buildCategoryChips() {
   const counts = {};
   _browseAll.forEach(r => {
-    const s = detectSport(r);
-    counts[s] = (counts[s] || 0) + 1;
+    const eff = _effectiveCardCategory(r);
+    if (!eff) return;
+    counts[eff.category] = (counts[eff.category] || 0) + 1;
   });
-  const sports = Object.entries(counts).sort((a,b) => b[1]-a[1]);
-  if (sports.length <= 1) { document.getElementById('sportFilters').innerHTML = ''; return; }
+  const cats = Object.entries(counts).sort((a,b) => b[1]-a[1]);
+  const el = document.getElementById('categoryFilters');
+  if (cats.length <= 1) { el.innerHTML = ''; buildSubcategoryChips(); return; }
 
-  document.getElementById('sportFilters').innerHTML =
-    `<button class="sport-chip active" data-sport="" onclick="setSportFilter(this,'')">All</button>` +
-    sports.map(([sport]) =>
-      `<button class="sport-chip" data-sport="${sport}" onclick="setSportFilter(this,'${sport}')">
-        ${SPORT_ICONS[sport]||'🃏'} ${sport}
+  const catIcon = { Sports: '🏅', TCG: '🃏', 'Non-Sport': '🎴' };
+  el.innerHTML =
+    `<button class="sport-chip active" onclick="setCategoryFilter(this,'')">All</button>` +
+    cats.map(([cat]) =>
+      `<button class="sport-chip" onclick="setCategoryFilter(this,'${cat}')">
+        ${catIcon[cat] || '🃏'} ${cat}
       </button>`
     ).join('');
 }
 
-function setSportFilter(btn, sport) {
-  _browseActiveSport = sport;
-  _browseExpanded    = false; // reset so drawer reappears for new filter
-  document.querySelectorAll('.sport-chip').forEach(b => b.classList.remove('active'));
+// Second tier — the actual subcategories present within the active
+// Category (e.g. Baseball/Basketball/… under Sports, or Pokémon/Magic: The
+// Gathering/… under TCG) — only the ones with cards in this show, not the
+// full static vocabulary, so a buyer never sees an empty drill-down.
+function buildSubcategoryChips() {
+  const el = document.getElementById('subcategoryFilters');
+  if (!_browseActiveCategory) { el.innerHTML = ''; return; }
+
+  const counts = {};
+  _browseAll.forEach(r => {
+    const eff = _effectiveCardCategory(r);
+    if (!eff || eff.category !== _browseActiveCategory || !eff.subcategory) return;
+    counts[eff.subcategory] = (counts[eff.subcategory] || 0) + 1;
+  });
+  const subs = Object.entries(counts).sort((a,b) => b[1]-a[1]);
+  if (subs.length <= 1) { el.innerHTML = ''; return; }
+
+  el.innerHTML =
+    `<button class="sport-chip active" onclick="setSubcategoryFilter(this,'')">All ${_browseActiveCategory}</button>` +
+    subs.map(([sub]) =>
+      `<button class="sport-chip" onclick="setSubcategoryFilter(this,'${sub}')">
+        ${SPORT_ICONS[sub] || '🃏'} ${sub}
+      </button>`
+    ).join('');
+}
+
+function setCategoryFilter(btn, cat) {
+  _browseActiveCategory    = cat;
+  _browseActiveSubcategory = ''; // a new top-level category always clears the drill-down
+  _browseExpanded           = false; // reset so drawer reappears for new filter
+  document.querySelectorAll('#categoryFilters .sport-chip').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  buildSubcategoryChips();
+  applyBrowseFilters();
+}
+
+function setSubcategoryFilter(btn, sub) {
+  _browseActiveSubcategory = sub;
+  _browseExpanded           = false;
+  document.querySelectorAll('#subcategoryFilters .sport-chip').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   applyBrowseFilters();
 }
@@ -1232,18 +1343,24 @@ function expandBrowse() {
 }
 
 function applyBrowseFilters() {
-  const q     = (document.getElementById('browseSearch')?.value || '').toLowerCase().trim();
-  const sport = _browseActiveSport;
+  const q   = (document.getElementById('browseSearch')?.value || '').toLowerCase().trim();
+  const cat = _browseActiveCategory;
+  const sub = _browseActiveSubcategory;
   const PREVIEW = 12;
 
   const results = _browseAll.filter(r => {
-    const matchSport = !sport || detectSport(r) === sport;
+    let matchCat = true, matchSub = true;
+    if (cat || sub) {
+      const eff = _effectiveCardCategory(r);
+      matchCat = !cat || (eff && eff.category === cat);
+      matchSub = !sub || (eff && eff.subcategory === sub);
+    }
     const matchQ     = !q ||
       (r.Player        || '').toLowerCase().includes(q) ||
       (r['Card Title'] || '').toLowerCase().includes(q) ||
       (r['Set '] || r.Set || '').toLowerCase().includes(q) ||
       (r['Parallel/Variant'] || '').toLowerCase().includes(q);
-    return matchSport && matchQ;
+    return matchCat && matchSub && matchQ;
   });
 
   const grid    = document.getElementById('featuredGrid');
@@ -1261,7 +1378,7 @@ function applyBrowseFilters() {
 
   // When a search/filter is active always show all results — the user is
   // looking for something specific and shouldn't be gated by the drawer
-  const isFiltered    = q || sport;
+  const isFiltered    = q || cat || sub;
   const showAll       = _browseExpanded || isFiltered || results.length <= PREVIEW;
   const visible       = showAll ? results : results.slice(0, PREVIEW);
   const hiddenCount   = results.length - PREVIEW;

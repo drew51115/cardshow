@@ -571,7 +571,7 @@
   /* Filters */
   .filter-bar {
     display: grid;
-    grid-template-columns: 1fr auto auto auto auto;
+    grid-template-columns: 1fr auto auto auto auto auto auto;
     gap: 0.5rem;
     margin-bottom: 0.9rem;
     align-items: center;
@@ -1763,6 +1763,21 @@
     color: var(--muted); cursor: default;
   }
   .seller-dropdown li.empty-state:hover, .seller-dropdown li.more-hint:hover { background: none; }
+
+  /* Inventory Template Vendor Feedback — Features fixed-vocabulary multi-select
+     (Add Card / Edit Card). A checkbox group, not <select multiple>, per the
+     build spec — a multi-select dropdown is a poor mobile experience. */
+  .features-checkbox-group { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+  .feature-chip {
+    display: inline-flex; align-items: center; gap: 0.3rem;
+    padding: 0.35rem 0.6rem;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 999px; font-size: 0.76rem;
+    font-family: 'DM Sans', sans-serif; color: var(--text);
+    cursor: pointer; user-select: none;
+  }
+  .feature-chip input { accent-color: var(--accent); cursor: pointer; margin: 0; }
+  .feature-chip:has(input:checked) { border-color: var(--accent); color: var(--accent); }
 
   /* Show Floor Phase 2 — organizer floor layout editor + buyer map view */
   .floor-layout-body { display: flex; gap: 1rem; margin-top: 0.75rem; flex-wrap: wrap; }
@@ -4960,6 +4975,27 @@
           <input class="show-input" id="ac_title" placeholder="e.g. 2025-26 Topps Chrome Cooper Flagg RC Auto" style="margin:0">
         </div>
 
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.55rem">
+          <div>
+            <div class="section-label" style="margin-bottom:0.3rem">Category</div>
+            <select class="show-input" id="ac_category" style="margin:0" onchange="acUpdateSubcategoryOptions()">
+              <option value="">Select category</option>
+              <option value="Sports">Sports</option>
+              <option value="TCG">TCG</option>
+              <option value="Non-Sport">Non-Sport</option>
+            </select>
+          </div>
+          <div>
+            <div class="section-label" style="margin-bottom:0.3rem">Sport / Game / Franchise</div>
+            <select class="show-input" id="ac_subcategory" style="margin:0" onchange="acToggleSubcategoryOther()">
+              <option value="">Select category first</option>
+            </select>
+          </div>
+        </div>
+        <div id="ac_subcategory_other_row" style="display:none">
+          <input class="show-input" id="ac_subcategory_other" placeholder="Enter game/franchise name" style="margin:0">
+        </div>
+
         <div id="ac_player_row" style="display:grid;grid-template-columns:1fr 1fr;gap:0.55rem">
           <div style="position:relative">
             <div class="section-label" style="margin-bottom:0.3rem">Player</div>
@@ -4989,10 +5025,34 @@
           </div>
         </div>
 
+        <div id="ac_serial_row" style="display:grid;grid-template-columns:1fr 1fr;gap:0.55rem">
+          <div>
+            <div class="section-label" style="margin-bottom:0.3rem">Serial Number <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--muted);font-family:'DM Sans',sans-serif;font-size:0.78rem">— the numbered copy</span></div>
+            <input class="show-input" id="ac_serial" placeholder="e.g. 043" style="margin:0">
+          </div>
+          <div>
+            <div class="section-label" style="margin-bottom:0.3rem">Print Run Size <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--muted);font-family:'DM Sans',sans-serif;font-size:0.78rem">— total made</span></div>
+            <input class="show-input" id="ac_print_run" placeholder="e.g. 99" style="margin:0" inputmode="numeric">
+          </div>
+        </div>
+
         <div id="ac_parallel_row" style="position:relative">
           <div class="section-label" style="margin-bottom:0.3rem">Parallel / Variant</div>
           <input class="show-input" id="ac_parallel" placeholder="e.g. Gold Refractor /50, Sapphire" style="margin:0" oninput="document.getElementById('acParallelSetUUID').value=''" onblur="_tcDismissDropdown('tc_parallel_dd')">
           <div id="tc_parallel_dd"></div>
+        </div>
+
+        <div id="ac_features_row">
+          <div class="section-label" style="margin-bottom:0.3rem">Features</div>
+          <div class="features-checkbox-group" id="ac_features_group">
+            <label class="feature-chip"><input type="checkbox" value="RC"> RC</label>
+            <label class="feature-chip"><input type="checkbox" value="Auto"> Auto</label>
+            <label class="feature-chip"><input type="checkbox" value="Relic/Memorabilia"> Relic/Memorabilia</label>
+            <label class="feature-chip"><input type="checkbox" value="Patch"> Patch</label>
+            <label class="feature-chip"><input type="checkbox" value="Refractor"> Refractor</label>
+            <label class="feature-chip"><input type="checkbox" value="1st Edition"> 1st Edition</label>
+            <label class="feature-chip"><input type="checkbox" value="Short Print"> Short Print</label>
+          </div>
         </div>
 
         <!-- Trading Card API picker UUIDs — internal use only, cleared on close -->
@@ -5024,12 +5084,17 @@
         <div id="ac_grading_row" style="display:grid;grid-template-columns:1fr 1fr 1.6fr;gap:0.55rem">
           <div>
             <div class="section-label" style="margin-bottom:0.3rem">Grader</div>
-            <select class="show-input" id="ac_grader" style="margin:0" onchange="acToggle(); _acFetchComp()">
+            <select class="show-input" id="ac_grader" style="margin:0" onchange="acToggle(); _acFetchComp(); _graderOtherToggle(this,'ac_grader_other_wrap')">
               <option value="">Raw</option>
               <option value="PSA">PSA</option>
               <option value="BGS">BGS</option>
               <option value="CGC">CGC</option>
               <option value="SGC">SGC</option>
+              <option value="TAG">TAG</option>
+              <option value="HGA">HGA</option>
+              <option value="GMA">GMA</option>
+              <option value="Arena Club">Arena Club</option>
+              <option value="__OTHER__">Other…</option>
             </select>
           </div>
           <div>
@@ -5040,6 +5105,11 @@
             <div class="section-label" style="margin-bottom:0.3rem">Cert #</div>
             <input class="show-input" id="ac_cert" placeholder="Cert #" style="margin:0">
           </div>
+        </div>
+
+        <div id="ac_grader_other_wrap" style="display:none">
+          <div class="section-label" style="margin-bottom:0.3rem">Grading Company Name</div>
+          <input class="show-input" id="ac_grader_other" placeholder="e.g. Rare Edge, ISA…" style="margin:0">
         </div>
 
         <div id="ac_cond_row">
@@ -5248,6 +5318,27 @@
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.55rem">
           <div>
+            <div class="section-label" style="margin-bottom:0.3rem">Category</div>
+            <select class="show-input" id="cem_category" style="margin:0" onchange="cemUpdateSubcategoryOptions()">
+              <option value="">Select category</option>
+              <option value="Sports">Sports</option>
+              <option value="TCG">TCG</option>
+              <option value="Non-Sport">Non-Sport</option>
+            </select>
+          </div>
+          <div>
+            <div class="section-label" style="margin-bottom:0.3rem">Sport / Game / Franchise</div>
+            <select class="show-input" id="cem_subcategory" style="margin:0" onchange="cemToggleSubcategoryOther()">
+              <option value="">Select category first</option>
+            </select>
+          </div>
+        </div>
+        <div id="cem_subcategory_other_row" style="display:none">
+          <input class="show-input" id="cem_subcategory_other" placeholder="Enter game/franchise name" style="margin:0">
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.55rem">
+          <div>
             <div class="section-label" style="margin-bottom:0.3rem">Player</div>
             <input class="show-input" id="cem_player" placeholder="Player name" style="margin:0">
           </div>
@@ -5268,20 +5359,49 @@
           </div>
         </div>
 
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.55rem">
+          <div>
+            <div class="section-label" style="margin-bottom:0.3rem">Serial Number <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--muted);font-family:'DM Sans',sans-serif;font-size:0.78rem">— the numbered copy</span></div>
+            <input class="show-input" id="cem_serial" placeholder="e.g. 043" style="margin:0">
+          </div>
+          <div>
+            <div class="section-label" style="margin-bottom:0.3rem">Print Run Size <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--muted);font-family:'DM Sans',sans-serif;font-size:0.78rem">— total made</span></div>
+            <input class="show-input" id="cem_print_run" placeholder="e.g. 99" style="margin:0" inputmode="numeric">
+          </div>
+        </div>
+
         <div>
           <div class="section-label" style="margin-bottom:0.3rem">Parallel / Variant</div>
           <input class="show-input" id="cem_parallel" placeholder="e.g. Gold Refractor /50, Sapphire" style="margin:0">
         </div>
 
+        <div>
+          <div class="section-label" style="margin-bottom:0.3rem">Features</div>
+          <div class="features-checkbox-group" id="cem_features_group">
+            <label class="feature-chip"><input type="checkbox" value="RC"> RC</label>
+            <label class="feature-chip"><input type="checkbox" value="Auto"> Auto</label>
+            <label class="feature-chip"><input type="checkbox" value="Relic/Memorabilia"> Relic/Memorabilia</label>
+            <label class="feature-chip"><input type="checkbox" value="Patch"> Patch</label>
+            <label class="feature-chip"><input type="checkbox" value="Refractor"> Refractor</label>
+            <label class="feature-chip"><input type="checkbox" value="1st Edition"> 1st Edition</label>
+            <label class="feature-chip"><input type="checkbox" value="Short Print"> Short Print</label>
+          </div>
+        </div>
+
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.55rem">
           <div>
             <div class="section-label" style="margin-bottom:0.3rem">Grader</div>
-            <select class="show-input" id="cem_grader" style="margin:0" onchange="cemToggle()">
+            <select class="show-input" id="cem_grader" style="margin:0" onchange="cemToggle(); _graderOtherToggle(this,'cem_grader_other_wrap')">
               <option value="">Raw</option>
               <option value="PSA">PSA</option>
               <option value="BGS">BGS</option>
               <option value="CGC">CGC</option>
               <option value="SGC">SGC</option>
+              <option value="TAG">TAG</option>
+              <option value="HGA">HGA</option>
+              <option value="GMA">GMA</option>
+              <option value="Arena Club">Arena Club</option>
+              <option value="__OTHER__">Other…</option>
             </select>
           </div>
           <div>
@@ -5292,6 +5412,11 @@
             <div class="section-label" style="margin-bottom:0.3rem">Cert #</div>
             <input class="show-input" id="cem_cert" placeholder="Cert #" style="margin:0">
           </div>
+        </div>
+
+        <div id="cem_grader_other_wrap" style="display:none">
+          <div class="section-label" style="margin-bottom:0.3rem">Grading Company Name</div>
+          <input class="show-input" id="cem_grader_other" placeholder="e.g. Rare Edge, ISA…" style="margin:0">
         </div>
 
         <div id="cem_cond_row">
@@ -5335,6 +5460,7 @@
     </div>
   </div>
 
+</div>
 </div>
 
 <!-- ═══════════════ SELL DRAWER ═══════════════ -->
@@ -5538,14 +5664,24 @@
             </div>
             <div class="pos-field">
               <label class="pos-lbl" for="posRGrader">Grader</label>
-              <select id="posRGrader" class="pos-inp pos-select">
+              <select id="posRGrader" class="pos-inp pos-select" onchange="_graderOtherToggle(this,'posRGraderOtherWrap')">
                 <option value="">Raw</option>
                 <option value="PSA">PSA</option>
                 <option value="BGS">BGS</option>
                 <option value="SGC">SGC</option>
                 <option value="CGC">CGC</option>
+                <option value="TAG">TAG</option>
+                <option value="HGA">HGA</option>
+                <option value="GMA">GMA</option>
+                <option value="Arena Club">Arena Club</option>
+                <option value="__OTHER__">Other…</option>
               </select>
             </div>
+          </div>
+
+          <div class="pos-field pos-field-full" id="posRGraderOtherWrap" style="display:none">
+            <label class="pos-lbl" for="posRGraderOther">Grading Company Name</label>
+            <input id="posRGraderOther" class="pos-inp" type="text" placeholder="e.g. Rare Edge, ISA…">
           </div>
 
           <div class="pos-field pos-field-full">
@@ -5617,6 +5753,15 @@
         <span class="search-icon">🔍</span>
         <input type="text" placeholder="Search by player, card title, set…" oninput="filterBuyer()" id="buyerSearch">
       </div>
+      <select class="filter-select" onchange="_buyerCategoryChanged()" id="filterCategory">
+        <option value="">All categories</option>
+        <option value="Sports">🏅 Sports</option>
+        <option value="TCG">🃏 TCG</option>
+        <option value="Non-Sport">🎴 Non-Sport</option>
+      </select>
+      <select class="filter-select" onchange="filterBuyer()" id="filterSubcategory">
+        <option value="">All</option>
+      </select>
       <select class="filter-select" onchange="filterBuyer()" id="filterGrade">
         <option value="">All cards</option>
         <option value="graded">Graded only</option>
@@ -5625,6 +5770,10 @@
         <option value="BGS">BGS (Beckett)</option>
         <option value="CGC">CGC</option>
         <option value="SGC">SGC</option>
+        <option value="TAG">TAG</option>
+        <option value="HGA">HGA</option>
+        <option value="GMA">GMA</option>
+        <option value="Arena Club">Arena Club</option>
       </select>
       <select class="filter-select" onchange="filterBuyer()" id="filterSeller">
         <option value="">All sellers</option>
@@ -7761,17 +7910,25 @@ function _bsVerifySlotHTML(grader) {
 }
 
 function bulkScanCardBlockHTML(c, idx) {
-  const knownGraders = ['PSA', 'BGS', 'CGC', 'SGC'];
-  const graderNorm = (c.grader || '').toString().trim().toUpperCase();
-  const graderVal  = knownGraders.includes(graderNorm) ? graderNorm : '';
-  const graderOptions = ['', ...knownGraders].map(g =>
-    `<option value="${g}" ${g === graderVal ? 'selected' : ''}>${g || 'Raw'}</option>`
-  ).join('');
+  const knownGraders = VALID_GRADERS;
+  const rawGrader  = (c.grader || '').toString().trim();
+  const graderNorm = rawGrader.toUpperCase();
+  const known      = knownGraders.find(g => g.toUpperCase() === graderNorm);
+  // A grader vision returned that isn't on the known list (or a free-text
+  // value from an earlier correction pass) pre-selects "Other…" with the
+  // original text preserved, rather than silently dropping back to Raw.
+  const graderVal      = known || (rawGrader ? '__OTHER__' : '');
+  const graderOtherVal = (!known && rawGrader) ? rawGrader : '';
+  const graderOptions = ['', ...knownGraders, '__OTHER__'].map(g => {
+    const label = g === '__OTHER__' ? 'Other…' : (g || 'Raw');
+    return `<option value="${g}" ${g === graderVal ? 'selected' : ''}>${_bsEsc(label)}</option>`;
+  }).join('');
   const condOptions = ['', 'Gem Mint', 'Near Mint', 'Good', 'Fair', 'Poor'].map(opt =>
     `<option value="${_bsEsc(opt)}">${opt || 'Select condition'}</option>`
   ).join('');
   const condHidden = graderVal ? 'style="display:none"' : '';
-  const psaLookupSupported = ['PSA', 'CGC', 'SGC'].includes(graderVal); // psa-lookup.js doesn't support BGS
+  const graderOtherStyle = graderVal === '__OTHER__' ? 'margin-bottom:0.55rem' : 'display:none';
+  const psaLookupSupported = ['PSA', 'CGC', 'SGC'].includes(known || ''); // psa-lookup.js doesn't support BGS
   const certHidden = psaLookupSupported ? '' : 'style="display:none"';
   const notesHtml = c.notes
     ? `<div class="bulkscan-notes">📝 ${_bsEsc(_capFirst(c.notes))} — not saved, review only</div>`
@@ -7823,13 +7980,17 @@ function bulkScanCardBlockHTML(c, idx) {
           <input class="show-input" data-field="grade" value="${_bsEsc(_numericGrade(c.grade))}" placeholder="e.g. 10" style="margin:0" inputmode="decimal">
         </div>
       </div>
+      <div data-grader-other-row style="${graderOtherStyle}">
+        <div class="section-label" style="margin-bottom:0.3rem">Grading Company Name</div>
+        <input class="show-input" data-field="graderOther" value="${_bsEsc(graderOtherVal)}" placeholder="e.g. Rare Edge, ISA…" style="margin:0">
+      </div>
       <div class="bulkscan-field-grid" data-cert-row ${certHidden}>
         <div>
           <div class="section-label" style="margin-bottom:0.3rem">Cert #</div>
           <input class="show-input" data-field="certNumber" value="${_bsEsc(c.certNumber)}" placeholder="e.g. 12345678" style="margin:0">
         </div>
         <div style="display:flex;align-items:flex-end" data-verify-slot>
-          ${_bsVerifySlotHTML(graderVal)}
+          ${_bsVerifySlotHTML(known || '')}
         </div>
       </div>
       <div class="bulkscan-field-grid">
@@ -7859,6 +8020,9 @@ function bsToggleGraderRow(selectEl) {
 
   const condRow = block.querySelector('[data-cond-row]');
   if (condRow) condRow.style.display = grader ? 'none' : '';
+
+  const otherRow = block.querySelector('[data-grader-other-row]');
+  if (otherRow) otherRow.style.display = grader === '__OTHER__' ? '' : 'none';
 
   const certRow = block.querySelector('[data-cert-row]');
   if (certRow) {
@@ -7993,7 +8157,7 @@ async function confirmBulkScanReview() {
 
   const rawCards = includedBlocks.map(block => {
     const val = (field) => block.querySelector(`[data-field="${field}"]`)?.value.trim() || '';
-    const grader   = val('grader');
+    const grader   = val('grader') === '__OTHER__' ? val('graderOther') : val('grader');
     const gradeVal = _numericGrade(val('grade'));
     return {
       'Card Title':       val('title'),
@@ -8164,28 +8328,292 @@ function parseCSV(text) {
   });
 }
 
-const VALID_GRADERS = ['PSA', 'BGS', 'CGC', 'SGC'];
+// Known grading companies — drives which option pre-selects in every grader
+// dropdown in the app. NOT an exhaustive gate: validateAndNormalizeCard()
+// below preserves any grader outside this list as free text rather than
+// coercing it (see that function's own comment for why — this list used to
+// silently corrupt data by rewriting anything not on it to 'PSA').
+const VALID_GRADERS = ['PSA', 'BGS', 'CGC', 'SGC', 'TAG', 'HGA', 'GMA', 'Arena Club'];
 
 function validateAndNormalizeCard(r) {
   const grade = r.Grade;
   const hasGrade = grade !== null && grade !== undefined && grade !== '' && !isNaN(Number(grade));
 
-  // Normalize grader: only allowed if card is graded, and must be a known service
+  // Normalize grader: only allowed if card is graded.
   if (!hasGrade) {
     // Raw card — strip any grader
     r.Grader = null;
     r.Grade = null;
   } else {
-    const g = (r.Grader || 'PSA').toString().trim().toUpperCase();
-    if (!VALID_GRADERS.includes(g)) {
-      // Unknown grader — default to PSA and flag
-      console.warn(`Unknown grader "${r.Grader}" on card "${r['Card Title']}". Defaulting to PSA.`);
-      r.Grader = 'PSA';
-    } else {
-      r.Grader = g;
-    }
+    const raw = (r.Grader || 'PSA').toString().trim();
+    const g = raw.toUpperCase();
+    // A known grading company normalizes to VALID_GRADERS' own casing
+    // (e.g. "Arena Club", not "ARENA CLUB"). A grader NOT on this list
+    // (GMA, HGA, TAG, Arena Club before it was added, or anything else a
+    // seller/vendor hand-enters or imports) is preserved exactly as typed
+    // — this function used to silently rewrite any unrecognized grader to
+    // 'PSA' here, mislabeling real GMA/HGA/etc. cards as PSA-graded on
+    // every load/import. See CLAUDE.md for the full bug writeup.
+    const known = VALID_GRADERS.find(v => v.toUpperCase() === g);
+    r.Grader = known || raw;
   }
   return r;
+}
+
+// ── "Select a known grader, or pick Other and type one in" — shared by
+// every grader dropdown in the app (Add Card, Edit Card, POS raw entry,
+// Manual Sale, bulk scan review). '__OTHER__' is the sentinel option value
+// (matches this codebase's existing '__SKIP__'-style sentinel convention).
+function _graderOtherToggle(selectEl, wrapId) {
+  const wrap = document.getElementById(wrapId);
+  if (wrap) wrap.style.display = selectEl.value === '__OTHER__' ? '' : 'none';
+}
+
+// Resolves a grader <select>'s real value — the paired free-text input's
+// value when "Other…" is selected, else the select's own value.
+function _resolveGraderValue(selectId, otherId) {
+  const sel = document.getElementById(selectId);
+  if (!sel) return '';
+  if (sel.value === '__OTHER__') {
+    const other = document.getElementById(otherId);
+    return other ? other.value.trim() : '';
+  }
+  return sel.value.trim();
+}
+
+// Populates a "select + Other" grader field pair from a stored card value
+// (e.g. re-opening Edit Card on a card whose grader is a free-text value
+// like "GMA" or "Rare Edge" that isn't one of the select's known options).
+function _setGraderFieldValue(selectId, otherId, wrapId, value) {
+  const sel   = document.getElementById(selectId);
+  const other = document.getElementById(otherId);
+  const wrap  = document.getElementById(wrapId);
+  if (!sel) return;
+  const known = value ? VALID_GRADERS.find(v => v.toUpperCase() === String(value).toUpperCase()) : null;
+  if (!value) {
+    sel.value = '';
+    if (other) other.value = '';
+  } else if (known) {
+    sel.value = known;
+    if (other) other.value = '';
+  } else {
+    sel.value = '__OTHER__';
+    if (other) other.value = value;
+  }
+  if (wrap) wrap.style.display = sel.value === '__OTHER__' ? '' : 'none';
+}
+
+// ── FEATURES — fixed vocabulary (RC / Auto / Relic / Patch / Refractor /
+// 1st Edition / Short Print), stored as a text[] column. A checkbox group,
+// not free text — free text drifts ("RC/Auto" vs "Rookie Autograph") and
+// stops being reliably filterable. Shared by Add Card, Edit Card, and the
+// CSV/XLSX import mapper's Features/Auto/RC column handling. ──
+const FEATURES_VOCAB = ['RC', 'Auto', 'Relic/Memorabilia', 'Patch', 'Refractor', '1st Edition', 'Short Print'];
+
+// Common synonyms a source column's cell value (or a hand-typed import
+// value) might use for the same fixed vocabulary term — e.g. a Ludex "RC /
+// Rookie" column's cells often say "Rookie", not literally "RC".
+const FEATURES_SYNONYMS = {
+  'rc': 'RC', 'rookie': 'RC', 'rookie card': 'RC',
+  'auto': 'Auto', 'autograph': 'Auto', 'autographed': 'Auto', 'signed': 'Auto',
+  'relic': 'Relic/Memorabilia', 'memorabilia': 'Relic/Memorabilia', 'relic/memorabilia': 'Relic/Memorabilia',
+  'patch': 'Patch',
+  'refractor': 'Refractor',
+  '1st edition': '1st Edition', 'first edition': '1st Edition', '1st ed': '1st Edition',
+  'short print': 'Short Print', 'sp': 'Short Print',
+};
+
+// Splits a comma-separated string (CSV/XLSX cell value, or the Auto/RC
+// alias columns' raw cell value) and matches each token against the fixed
+// vocabulary case-insensitively. Unmatched tokens are dropped, not
+// invented as new vocabulary — matches CS_FIELDS' documented import
+// behavior for the Features column.
+function _parseFeaturesString(str) {
+  const seen = new Set();
+  return String(str || '')
+    .split(',')
+    .map(s => s.trim().toLowerCase())
+    .filter(Boolean)
+    .map(tok => FEATURES_SYNONYMS[tok])
+    .filter(Boolean)
+    .filter(v => (seen.has(v) ? false : (seen.add(v), true)));
+}
+
+// Reads the checked values out of a Features checkbox group.
+function _getCheckedFeatures(containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return [];
+  return [...container.querySelectorAll('input[type="checkbox"]:checked')].map(cb => cb.value);
+}
+
+// Checks the boxes in a Features checkbox group matching a stored array.
+function _setCheckedFeatures(containerId, features) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const set = new Set(Array.isArray(features) ? features : []);
+  container.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+    cb.checked = set.has(cb.value);
+  });
+}
+
+// ── CATEGORY / SUBCATEGORY — fixed vocabulary (see CLAUDE.md "Category /
+// Subcategory Taxonomy"). This structured classification is now the source
+// of truth ahead of the heuristic guessing in detectSport()/detectCardSport()
+// below — those remain as a best-effort pre-fill/fallback for cards that
+// don't have category/subcategory set yet (legacy inventory, a freshly-
+// scanned card before the seller reviews it). Shared by the Add/Edit Card
+// cascading dropdowns, the import mapper's Category inference, and both
+// detection functions — one lookup table, not three copies.
+const CATEGORY_SUBCATEGORIES = {
+  'Sports': ['Baseball','Basketball','Football','Hockey','Soccer','Golf','Boxing','MMA/UFC','Wrestling','Racing/Motorsports','Tennis','Other Sport'],
+  'TCG': ['Pokémon','Magic: The Gathering','Yu-Gi-Oh!','One Piece Card Game','Disney Lorcana','Digimon Card Game','Dragon Ball Super Fusion World','Gundam Card Game','Flesh and Blood','Star Wars Unlimited','Weiss Schwarz','Union Arena','Other TCG'],
+  'Non-Sport': ['Marvel','Star Wars','Disney','DC','Star Trek','Other Non-Sport'],
+};
+
+// Badge emoji per subcategory (detectSport() UI badges) — falls back to a
+// per-category default for any subcategory not listed here (including a
+// seller's free-text "Other …" value). Exact emoji choice isn't load-
+// bearing, just kept consistent with this app's existing sport emoji.
+const SUBCATEGORY_EMOJI = {
+  'Baseball': '⚾', 'Basketball': '🏀', 'Football': '🏈', 'Hockey': '🏒',
+  'Soccer': '⚽', 'Golf': '⛳', 'Boxing': '🥊', 'MMA/UFC': '🥋',
+  'Wrestling': '🤼', 'Racing/Motorsports': '🏎️', 'Tennis': '🎾',
+  'Marvel': '🦸', 'Star Wars': '⚔️', 'Disney': '🏰', 'DC': '🦇', 'Star Trek': '🖖',
+};
+const CATEGORY_DEFAULT_EMOJI = { 'Sports': '🏅', 'TCG': '🃏', 'Non-Sport': '🎴' };
+
+// Renders a detectSport()-shaped badge label ("Baseball ⚾") straight from
+// the structured fields — used both when a card already has category/
+// subcategory set, and by the brand/set-keyword fallback additions below.
+function categoryBadgeLabel(category, subcategory) {
+  if (!category) return null;
+  const sub = subcategory || '';
+  const emoji = SUBCATEGORY_EMOJI[sub] || CATEGORY_DEFAULT_EMOJI[category] || '🎴';
+  return sub ? `${sub} ${emoji}` : `${category} ${emoji}`;
+}
+
+// Maps this app's Subcategory vocabulary to the literal routing strings
+// netlify/functions/comp-lookup.js expects on card.sport — confirmed by
+// reading that file's TCG_SPORTS array and pcSportCategory() before writing
+// this (see CLAUDE.md). Casing/accents differ from our display vocabulary
+// ("Pokémon" vs comp-lookup.js's literal 'Pokemon'), so this can't be a
+// pass-through — comp-lookup.js's isPokemon/isTCG checks are exact-string,
+// not case/accent-insensitive. Values not in comp-lookup.js's TCG_SPORTS
+// list map to '' (no dedicated pricing route there yet) — same "unpriceable,
+// falls through to the sports chain" behavior a blank/unrecognized sport
+// already gets today; this is not a regression.
+const SUBCATEGORY_TO_ROUTING_SPORT = {
+  'Baseball': 'Baseball', 'Basketball': 'Basketball', 'Football': 'Football',
+  'Hockey': 'Hockey', 'Soccer': 'Soccer', 'Golf': 'Golf', 'Boxing': 'Boxing',
+  'MMA/UFC': 'MMA/UFC', 'Wrestling': 'Wrestling',
+  'Racing/Motorsports': 'Racing/Motorsports', 'Tennis': 'Tennis',
+  'Pokémon': 'Pokemon', 'Magic: The Gathering': 'Magic', 'Yu-Gi-Oh!': 'Yu-Gi-Oh',
+  'One Piece Card Game': 'One Piece', 'Disney Lorcana': 'Lorcana',
+  'Digimon Card Game': 'Digimon', 'Dragon Ball Super Fusion World': 'Dragon Ball',
+  'Flesh and Blood': 'Flesh and Blood',
+};
+
+// ── Category/Subcategory cascading dropdown — shared by Add Card
+// (ac_category/ac_subcategory) and Edit Card (cem_category/cem_subcategory),
+// which only differ by id prefix. `catId`/`subId`/`otherRowId`/`otherId` are
+// passed explicitly rather than assuming a prefix so either modal can call
+// the same implementation.
+function _updateSubcategoryOptions(catId, subId, otherRowId) {
+  const cat  = document.getElementById(catId).value;
+  const sel  = document.getElementById(subId);
+  const opts = CATEGORY_SUBCATEGORIES[cat] || [];
+  sel.innerHTML = opts.length
+    ? '<option value="">Select…</option>' + opts.map(o => `<option value="${o}">${o}</option>`).join('')
+    : '<option value="">Select category first</option>';
+  _toggleSubcategoryOther(subId, otherRowId);
+}
+
+function _toggleSubcategoryOther(subId, otherRowId) {
+  const val = document.getElementById(subId).value;
+  const isOther = /^Other/.test(val);
+  const row = document.getElementById(otherRowId);
+  if (row) row.style.display = isOther ? 'block' : 'none';
+}
+
+// Resolves a category-dropdown pair's real subcategory value — the free-text
+// input's value when an "Other …" option is selected (the literal string
+// "Other Sport"/"Other TCG"/"Other Non-Sport" is a UI affordance for
+// revealing that input, never a value that should land in the database),
+// else the select's own value.
+function _resolveSubcategoryValue(subId, otherId) {
+  const sel = document.getElementById(subId);
+  if (!sel) return '';
+  if (/^Other/.test(sel.value)) {
+    const other = document.getElementById(otherId);
+    return other ? other.value.trim() : '';
+  }
+  return sel.value;
+}
+
+// Populates a category/subcategory dropdown pair from stored values —
+// selects the matching subcategory option if it's in CATEGORY_SUBCATEGORIES
+// for that category, else falls back to that category's "Other …" option
+// with the free-text input filled from the stored value (so a value saved
+// before this vocabulary existed, or a seller's own free-text entry, still
+// round-trips instead of silently resetting to blank).
+function _setCategoryFieldValue(catId, subId, otherId, otherRowId, category, subcategory) {
+  const catSel = document.getElementById(catId);
+  if (!catSel) return;
+  catSel.value = category || '';
+  _updateSubcategoryOptions(catId, subId, otherRowId);
+  if (!category) return;
+
+  const subSel = document.getElementById(subId);
+  const opts = CATEGORY_SUBCATEGORIES[category] || [];
+  const known = subcategory && opts.includes(subcategory);
+  if (known) {
+    subSel.value = subcategory;
+  } else if (subcategory) {
+    const otherOpt = opts.find(o => /^Other/.test(o));
+    if (otherOpt) subSel.value = otherOpt;
+    const otherInput = document.getElementById(otherId);
+    if (otherInput) otherInput.value = subcategory;
+  }
+  _toggleSubcategoryOther(subId, otherRowId);
+}
+
+function acUpdateSubcategoryOptions() { _updateSubcategoryOptions('ac_category', 'ac_subcategory', 'ac_subcategory_other_row'); }
+function acToggleSubcategoryOther()   { _toggleSubcategoryOther('ac_subcategory', 'ac_subcategory_other_row'); }
+function cemUpdateSubcategoryOptions() { _updateSubcategoryOptions('cem_category', 'cem_subcategory', 'cem_subcategory_other_row'); }
+function cemToggleSubcategoryOther()   { _toggleSubcategoryOther('cem_subcategory', 'cem_subcategory_other_row'); }
+
+// Best-effort {category, subcategory} guess from a detectSport()-style
+// badge label ("Baseball ⚾") or a plain vision-scan sport string
+// ("Baseball"/"Pokemon"/"TCG") — used only to pre-fill the dropdowns when a
+// card has no structured category/subcategory of its own yet. The seller
+// can always override; this never writes anything on its own.
+function _categoryFromSportGuess(guess) {
+  if (!guess) return null;
+  const plain = String(guess).replace(/[^\w\s\/!:'-]/g, '').trim(); // strip emoji
+  if (!plain || plain === '—') return null;
+  for (const [cat, subs] of Object.entries(CATEGORY_SUBCATEGORIES)) {
+    const match = subs.find(s => s.toLowerCase() === plain.toLowerCase());
+    if (match) return { category: cat, subcategory: match };
+  }
+  // vision-scan.js's plain "Pokemon"/"TCG" strings don't exactly match our
+  // display vocabulary ("Pokémon" with an accent; bare "TCG" isn't a game).
+  if (/^pokemon$/i.test(plain)) return { category: 'TCG', subcategory: 'Pokémon' };
+  if (/^tcg$/i.test(plain))     return { category: 'TCG', subcategory: '' };
+  return null;
+}
+
+// Resolves {category, subcategory} for the buyer-facing Category/Subcategory
+// filter (app.html Browse tab) — prefers the card's own structured fields,
+// falling back to a guess derived from detectSport()'s badge label for a
+// card that predates this taxonomy (same "confident guess, never trusted
+// more than the real field" pattern as openCEM()'s pre-fill above). Returns
+// null when nothing usable is available either way, so a card with a
+// genuinely unclassifiable title (item_type sealed/lot, or a card
+// detectSport() itself can't place) is correctly excluded once a specific
+// filter is chosen rather than silently matching everything.
+function _effectiveCardCategory(r) {
+  if (r.Category) return { category: r.Category, subcategory: r.Subcategory || '' };
+  return _categoryFromSportGuess(detectSport(r));
 }
 
 // ── SHOW LOCATION PARSER ───────────────────────────────────────────
@@ -8251,6 +8679,19 @@ function _formatShowDateRange(startDate, endDate) {
 // Separate from detectSport() which is used for UI badges — this is
 // specifically for routing to PriceCharting (sports) vs TCG API (TCG).
 function detectCardSport(card) {
+  // Prefer the structured category/subcategory fields (see CLAUDE.md
+  // "Category / Subcategory Taxonomy") over every guess below — mapped
+  // through SUBCATEGORY_TO_ROUTING_SPORT since comp-lookup.js's routing
+  // checks (isPokemon/isTCG) are exact-string against its own TCG_SPORTS
+  // list, which doesn't share this app's display casing/accents
+  // ("Pokémon" vs its literal 'Pokemon').
+  const category    = card.Category    || card.category    || '';
+  const subcategory = card.Subcategory || card.subcategory || '';
+  if (category) {
+    const mapped = SUBCATEGORY_TO_ROUTING_SPORT[subcategory];
+    return mapped !== undefined ? mapped : '';
+  }
+
   const sport = card.Sport || card.sport || '';
   if (sport) return sport;
 
@@ -8258,13 +8699,29 @@ function detectCardSport(card) {
                 card.Player, card['Parallel/Variant']]
     .filter(Boolean).join(' ').toLowerCase();
 
-  const TCG_KEYWORDS = ['pokemon','charizard','pikachu','mewtwo',
-    'umbreon','eevee','lugia','rayquaza','mtg','magic','yu-gi-oh',
-    'yugioh','lorcana','one piece','dragon ball','digimon',
+  // Per-game TCG keyword groups — each returns its own game's routing name,
+  // not a hardcoded 'Pokemon'. Previously every keyword match here — Magic,
+  // Yu-Gi-Oh, Lorcana, One Piece, and Digimon included — returned the
+  // literal string 'Pokemon', which both mis-routed non-Pokémon comp-price
+  // lookups (via comp-lookup.js's TCG_SPORTS) and mislabeled the
+  // show_floor_transactions.sport column for every such sale (confirmed by
+  // reading comp-lookup.js before this fix — see CLAUDE.md). The returned
+  // strings match comp-lookup.js's TCG_SPORTS array exactly.
+  // 'magic' alone is deliberately not matched as a bare substring — "Magic
+  // Johnson" (a real, very common basketball card) would otherwise
+  // false-positive into Magic: The Gathering.
+  if (/\bmtg\b/.test(text) || /magic\s*:?\s*the\s+gathering/.test(text)) return 'Magic';
+  if (/yu-?gi-?oh/.test(text))         return 'Yu-Gi-Oh';
+  if (text.includes('lorcana'))        return 'Lorcana';
+  if (text.includes('one piece'))      return 'One Piece';
+  if (text.includes('dragon ball'))    return 'Dragon Ball';
+  if (text.includes('digimon'))        return 'Digimon';
+
+  const POKEMON_KEYWORDS = ['pokemon','charizard','pikachu','mewtwo',
+    'umbreon','eevee','lugia','rayquaza',
     'scarlet','violet','base set','jungle','fossil','temporal',
     'evolving skies','lost origin','prismatic','obsidian'];
-
-  if (TCG_KEYWORDS.some(kw => text.includes(kw))) return 'Pokemon';
+  if (POKEMON_KEYWORDS.some(kw => text.includes(kw))) return 'Pokemon';
 
   // Unambiguous sport keywords
   if (/\b(nfl|football|gridiron|quarterback)\b/.test(text)) return 'Football';
@@ -9085,6 +9542,8 @@ function renderBuyerGrid(rows) {
 
 function filterBuyer() {
   const q      = (document.getElementById('buyerSearch')?.value  || '').toLowerCase().trim();
+  const cat    = document.getElementById('filterCategory')?.value    || '';
+  const sub    = document.getElementById('filterSubcategory')?.value || '';
   const grade  = document.getElementById('filterGrade')?.value   || '';
   const seller = document.getElementById('filterSeller')?.value  || '';
   const price  = document.getElementById('filterPrice')?.value   || '';
@@ -9098,11 +9557,21 @@ function filterBuyer() {
       (getSet(r) || '').toLowerCase().includes(q) ||
       (r['Parallel/Variant'] || '').toLowerCase().includes(q);
 
+    // Category/subcategory only resolved when actually needed — most buyer
+    // grids never touch these filters, so skip _effectiveCardCategory()'s
+    // detectSport() fallback call on every card in the common case.
+    let matchCat = true, matchSub = true;
+    if (cat || sub) {
+      const eff = _effectiveCardCategory(r);
+      matchCat = !cat || (eff && eff.category === cat);
+      matchSub = !sub || (eff && eff.subcategory === sub);
+    }
+
     const isGraded = r.Grade && !isNaN(Number(r.Grade));
     const matchGrade = !grade ||
       (grade === 'graded' && isGraded) ||
       (grade === 'raw'    && !isGraded) ||
-      (['PSA','BGS','CGC','SGC'].includes(grade) && (r.Grader || '') === grade);
+      (VALID_GRADERS.includes(grade) && (r.Grader || '') === grade);
 
     const matchSeller = !seller || (r.Seller || '') === seller;
 
@@ -9114,7 +9583,7 @@ function filterBuyer() {
       (price === '1000-10000' && p >= 1000 && p < 10000) ||
       (price === '10000+'     && p >= 10000);
 
-    return matchQ && matchGrade && matchSeller && matchPrice;
+    return matchQ && matchCat && matchSub && matchGrade && matchSeller && matchPrice;
   });
 
   renderBuyerGrid(results);
@@ -9125,11 +9594,53 @@ function filterBuyer() {
   }
 }
 
+// Category select changed — repopulate the Subcategory dropdown for the
+// newly-selected category (scoped to what's actually in showInventory, see
+// renderCategoryFilterOptions()) before re-filtering, since a stale
+// subcategory value from the previous category would silently zero out
+// every result.
+function _buyerCategoryChanged() {
+  document.getElementById('filterSubcategory').value = '';
+  renderCategoryFilterOptions();
+  filterBuyer();
+}
+
+// Populates #filterSubcategory with only the subcategories actually present
+// among the current showInventory (same "don't show a choice with zero
+// matching cards" convention as renderShowSelectorBuyer()'s seller list) —
+// scoped to the selected Category, or across all categories when none is
+// selected yet. Called whenever showInventory changes (alongside
+// renderShowSelectorBuyer()) and whenever the Category select changes.
+function renderCategoryFilterOptions() {
+  const catSel = document.getElementById('filterCategory');
+  const subSel = document.getElementById('filterSubcategory');
+  if (!catSel || !subSel) return;
+  const cat = catSel.value;
+
+  const subs = new Set();
+  showInventory.forEach(r => {
+    if (r.Status === 'Sold') return;
+    const eff = _effectiveCardCategory(r);
+    if (!eff || !eff.subcategory) return;
+    if (cat && eff.category !== cat) return;
+    subs.add(eff.subcategory);
+  });
+
+  const sorted = [...subs].sort((a, b) => a.localeCompare(b));
+  const prevValue = subSel.value;
+  subSel.innerHTML = '<option value="">All' + (cat ? '' : ' categories') + '</option>' +
+    sorted.map(s => `<option value="${s}">${s}</option>`).join('');
+  if (sorted.includes(prevValue)) subSel.value = prevValue;
+}
+
 function clearFilters() {
   document.getElementById('buyerSearch').value = '';
+  document.getElementById('filterCategory').value = '';
+  document.getElementById('filterSubcategory').value = '';
   document.getElementById('filterGrade').value = '';
   document.getElementById('filterSeller').value = '';
   document.getElementById('filterPrice').value = '';
+  renderCategoryFilterOptions();
   renderBuyerGrid(showInventory);
 }
 
@@ -9574,6 +10085,19 @@ function renderBuyerComp(card, result) {
 }
 
 function detectSport(r) {
+  // Prefer the structured category/subcategory fields (see CLAUDE.md
+  // "Category / Subcategory Taxonomy") over every heuristic below — a
+  // seller-set or high-confidence-imported classification is the accurate
+  // value; everything else in this function is now only a pre-fill guess
+  // for cards that don't have it set yet. Same "trust the explicit field
+  // before guessing" priority this function already gives detectSport()'s
+  // legacy card.Sport check, just one tier higher since category/
+  // subcategory is a real structured field rather than a freeform string.
+  if (r.Category || r.category) {
+    const label = categoryBadgeLabel(r.Category || r.category, r.Subcategory || r.subcategory);
+    if (label) return label;
+  }
+
   const title  = (r['Card Title'] || '').toLowerCase();
   const player = (r.Player || '').toLowerCase();
   const set    = (getSet(r) || '').toLowerCase();
@@ -9786,6 +10310,22 @@ function detectSport(r) {
   // Fleer/Upper Deck/Leaf/Pinnacle/Score were added here.
   if (/topps|bowman|fleer|upper deck|donruss|leaf|pinnacle|score/.test(all)) return 'Baseball ⚾';
   if (/pokemon|magic: the gathering|yu-gi-oh|mtg/.test(all)) return 'TCG 🃏';
+
+  // ── Additional TCG/Non-Sport set-name keywords (Category / Subcategory
+  // Taxonomy build) — lowest priority, same tier as the generic TCG line
+  // above. Deliberately no hand-maintained player/character-name lists for
+  // these, unlike the four major sports — that approach is already a known
+  // maintenance burden for just four sports (see the Donruss/Kenny Lofton
+  // gap documented elsewhere in CLAUDE.md) and isn't worth extending to a
+  // dozen more categories when the real fix is a seller setting the
+  // structured Category/Subcategory fields directly.
+  if (/one piece/.test(all))   return categoryBadgeLabel('TCG', 'One Piece Card Game');
+  if (/lorcana/.test(all))     return categoryBadgeLabel('TCG', 'Disney Lorcana');
+  if (/digimon/.test(all))     return categoryBadgeLabel('TCG', 'Digimon Card Game');
+  if (/dragon ball/.test(all)) return categoryBadgeLabel('TCG', 'Dragon Ball Super Fusion World');
+  if (/gundam/.test(all))      return categoryBadgeLabel('TCG', 'Gundam Card Game');
+  if (/\bmarvel\b/.test(all))  return categoryBadgeLabel('Non-Sport', 'Marvel');
+  if (/star wars/.test(all))   return categoryBadgeLabel('Non-Sport', 'Star Wars');
 
   return '—';
 }
@@ -10491,12 +11031,14 @@ function _posReset() {
   _posShowPhotoOptions();
 
   ['posRPlayer','posRYear','posRSet','posRCardNum','posRParallel',
-   'posRGrade','posRCert','posRPrice'].forEach(id => {
+   'posRGrade','posRCert','posRPrice','posRGraderOther'].forEach(id => {
     const el = document.getElementById(id);
     if (el) { el.value = ''; el.classList.remove('pos-filled'); }
   });
   const graderEl = document.getElementById('posRGrader');
   if (graderEl) graderEl.value = '';
+  const graderOtherWrap = document.getElementById('posRGraderOtherWrap');
+  if (graderOtherWrap) graderOtherWrap.style.display = 'none';
 
   const badge = document.getElementById('posConfidenceBadge');
   if (badge) { badge.className = 'pos-confidence-badge'; badge.style.display = 'none'; badge.textContent = ''; }
@@ -10677,8 +11219,8 @@ async function posShowReview(card) {
   fill('posRGrade',    card.grade,       'grade');
   fill('posRCert',     card.cert_number, 'cert_number');
 
-  const graderEl = document.getElementById('posRGrader');
-  if (graderEl) graderEl.value = card.grading_company ? String(card.grading_company).toUpperCase() : '';
+  _setGraderFieldValue('posRGrader', 'posRGraderOther', 'posRGraderOtherWrap',
+    card.grading_company ? String(card.grading_company).toUpperCase() : '');
 
   const badge = document.getElementById('posConfidenceBadge');
   if (badge) {
@@ -10758,7 +11300,7 @@ async function posInsertAndOpenDrawer() {
   const cardNum  = document.getElementById('posRCardNum').value.trim().toLowerCase();
   const parallel = document.getElementById('posRParallel').value.trim().toLowerCase();
   const gradeVal = document.getElementById('posRGrade').value.trim();
-  const grader   = document.getElementById('posRGrader').value.trim();
+  const grader   = _resolveGraderValue('posRGrader', 'posRGraderOther');
   const cert     = document.getElementById('posRCert').value.trim();
   const price    = parseFloat(document.getElementById('posRPrice').value) || 0;
 
@@ -13058,6 +13600,7 @@ async function joinShow(showId) {
     _subscribeBuyerShowLive(showId);
   }
   renderShowSelectorBuyer();
+  renderCategoryFilterOptions();
   filterBuyer();
   switchBuyerTab('browse'); // reset to Browse Cards on new show load
 
@@ -13084,6 +13627,7 @@ function _subscribeBuyerShowLive(showId) {
     if (!show) return;
     loadBuyerInventoryFromDB(showId, show).then(() => {
       renderShowSelectorBuyer();
+      renderCategoryFilterOptions();
       filterBuyer();
     });
   };
@@ -13189,14 +13733,32 @@ async function loadBuyerInventoryFromDB(showId, show) {
     const cardIds = [...new Set(siRows.map(r => r.card_id).filter(Boolean))];
     if (!cardIds.length) return;
 
-    const { data, error } = await db
+    let { data, error } = await db
       .from('inventory')
       .select(`
         id, seller_id, card_title, player, year, card_set, card_number, parallel,
         grader, grade, condition, price, status, location,
-        item_type, quantity, product_type, language, edition
+        item_type, quantity, product_type, language, edition, category, subcategory
       `)
       .in('id', cardIds);
+
+    // category/subcategory are the newest inventory columns (see CLAUDE.md's
+    // "Category / Subcategory Taxonomy" migration) — a project that hasn't run
+    // that migration yet gets a plain "column does not exist" error on this
+    // SELECT (unlike an insert/update, which degrades via
+    // _isMissingScanColumnError()'s strip-and-retry). Retry once without the
+    // two new columns rather than letting the whole buyer grid go blank over
+    // two not-yet-persisted filter fields.
+    if (error && /category|subcategory/i.test(error.message || '')) {
+      ({ data, error } = await db
+        .from('inventory')
+        .select(`
+          id, seller_id, card_title, player, year, card_set, card_number, parallel,
+          grader, grade, condition, price, status, location,
+          item_type, quantity, product_type, language, edition
+        `)
+        .in('id', cardIds));
+    }
 
     if (error) { console.error('loadBuyerInventoryFromDB failed:', error.message); return; }
     if (!data || !data.length) return;
@@ -13245,6 +13807,7 @@ function skipBuyerShowPicker() {
   document.getElementById('buyerShowPicker').classList.remove('open');
   document.body.style.overflow = '';
   // Show all published cards across all shows
+  renderCategoryFilterOptions();
   filterBuyer();
 }
 
@@ -13584,11 +14147,16 @@ const CS_FIELDS = [
   { key: 'Player',           label: 'Player',            required: false, hint: 'Athlete name' },
   { key: 'Year',             label: 'Year',              required: false, hint: 'Card year' },
   { key: 'Set',              label: 'Set',               required: false, hint: 'Card set name' },
-  { key: 'Number',           label: 'Card Number',       required: false, hint: '#/print run' },
+  { key: 'Number',           label: 'Card Number',       required: false, hint: 'Checklist card # (e.g. 101) — not the print run/serial, see Serial Number below' },
   { key: 'Parallel/Variant', label: 'Parallel / Variant',required: false, hint: 'Silver, Gold, Refractor…' },
   { key: 'Grade',            label: 'Grade',             required: false, hint: 'Numeric grade (e.g. 9.5)' },
-  { key: 'Grader',           label: 'Grading Service',   required: false, hint: 'PSA, BGS, CGC, SGC' },
+  { key: 'Grader',           label: 'Grading Service',   required: false, hint: 'PSA, BGS, CGC, SGC, and others — enter any grading company name' },
   { key: 'Cert #',           label: 'Cert # (slab ID)',  required: false, hint: 'PSA/BGS/CGC cert number' },
+  { key: 'Serial Number',    label: 'Serial Number',     required: false, hint: 'e.g. 043 — the numbered copy, distinct from card #' },
+  { key: 'Print Run',        label: 'Print Run Size',    required: false, hint: 'e.g. 99 — total copies made' },
+  { key: 'Features',         label: 'Features',          required: false, hint: 'RC, Auto, Relic, Patch, etc. — comma-separated' },
+  { key: 'Category',         label: 'Category',          required: false, hint: 'Sports, TCG, or Non-Sport' },
+  { key: 'Subcategory',      label: 'Sport / Game / Franchise', required: false, hint: 'e.g. Baseball, Pokémon, Marvel' },
   { key: 'Condition',        label: 'Condition',         required: false, hint: 'Gem Mint, Near Mint…' },
   { key: 'Price',            label: 'Price',             required: false, hint: 'Asking price (numeric)' },
   { key: 'Status',           label: 'Status',            required: false, hint: 'Available, Sold, On Hold' },
@@ -13608,7 +14176,15 @@ const ALIAS_MAP = [
   [/^year$/i,                   'high',   'Year'],
   [/^set\s*$/i,                 'high',   'Set'],
   [/^number$/i,                 'high',   'Number'],
+  [/^serial\s*number$/i,        'high',   'Serial Number'],
+  [/^print\s*run(\s*size)?$/i,  'high',   'Print Run'],
   [/^parallel\/?variant$/i,     'high',   'Parallel/Variant'],
+  [/^features$/i,               'high',   'Features'],
+  [/^category$/i,               'high',   'Category'],
+  [/^subcategory$/i,            'high',   'Subcategory'],
+  [/^game$/i,                   'high',   'Subcategory'],
+  [/^franchise$/i,              'high',   'Subcategory'],
+  [/^tcg$/i,                    'high',   'Subcategory'],
   [/^grade$/i,                  'high',   'Grade'],
   [/^grader$/i,                 'high',   'Grader'],
   [/^condition$/i,              'high',   'Condition'],
@@ -13641,11 +14217,18 @@ const ALIAS_MAP = [
   // ── Flipwise ──
   [/^name$/i,                   'medium', 'Card Title'],
   [/^card\s*name$/i,            'high',   'Card Title'],
-  [/^sport$/i,                  'low',    '__SKIP__'],
+  // A source column named "Sport" previously discarded its values entirely
+  // (__SKIP__) — even a vendor spreadsheet with clean sport/category data
+  // lost it on import. Maps to Subcategory now; if its values turn out to
+  // be broad-category strings ("Sports"/"TCG") rather than a specific
+  // sport/game name, that's a source-file data-quality issue the mapper
+  // can't resolve — same low-confidence treatment as any other field.
+  [/^sport$/i,                  'low',    'Subcategory'],
   [/^product$/i,                'medium', 'Set'],
   [/^set\s*name$/i,             'high',   'Set'],
   [/^series$/i,                 'medium', 'Set'],
-  [/^print\s*run$/i,            'medium', 'Number'],
+  [/^numbered\s*to$/i,          'high',   'Print Run'],
+  [/^\/#$/i,                    'high',   'Print Run'],
   [/^parallel$/i,               'high',   'Parallel/Variant'],
   [/^variant$/i,                'high',   'Parallel/Variant'],
   [/^variation$/i,              'high',   'Parallel/Variant'],
@@ -13675,8 +14258,8 @@ const ALIAS_MAP = [
   [/^manufacturer$/i,           'low',    '__SKIP__'],
   [/^brand$/i,                  'low',    '__SKIP__'],
   [/^team$/i,                   'low',    '__SKIP__'],
-  [/^auto(graph)?$/i,           'low',    'Parallel/Variant'],
-  [/^rc\s*\/?\s*rookie$/i,      'low',    'Parallel/Variant'],
+  [/^auto(graph)?$/i,           'medium', 'Features'],
+  [/^rc\s*\/?\s*rookie$/i,      'medium', 'Features'],
   [/^low\s*value$/i,            'low',    '__SKIP__'],
   [/^high\s*value$/i,           'low',    '__SKIP__'],
   [/^quantity$/i,               'low',    '__SKIP__'],
@@ -13918,7 +14501,33 @@ function applyMapping() {
       const val = rawRow[srcHeader];
       if (val === undefined || val === null || val === '') continue;
       const destKey = csKey === 'Set' ? 'Set ' : csKey;
+      if (destKey === 'Features') {
+        // Multiple source columns can map here (a "Features" text column
+        // plus the low-confidence Auto/RC aliases), so accumulate parsed
+        // tokens rather than letting the last-processed column overwrite
+        // the others. Unmatched tokens are dropped — see _parseFeaturesString().
+        const parsed = _parseFeaturesString(String(val));
+        if (parsed.length) {
+          card['Features'] = [...new Set([...(card['Features'] || []), ...parsed])];
+        }
+        continue;
+      }
       card[destKey] = val;
+    }
+
+    // ── Category inference from Subcategory ──
+    // A row with a Subcategory value but no explicit Category — e.g. the
+    // "Sport" column above mapping straight to Subcategory — gets Category
+    // inferred by checking which CATEGORY_SUBCATEGORIES list contains a
+    // case-insensitive match (the same lookup table the Add/Edit Card
+    // dropdowns use, not a separate hardcoded list). Left blank, never
+    // guessed, when the value doesn't match a known subcategory — it
+    // surfaces like any other low-confidence/unmatched field instead.
+    if (card['Subcategory'] && !card['Category']) {
+      const subVal = String(card['Subcategory']).trim().toLowerCase();
+      for (const [cat, subs] of Object.entries(CATEGORY_SUBCATEGORIES)) {
+        if (subs.some(s => s.toLowerCase() === subVal)) { card['Category'] = cat; break; }
+      }
     }
 
     // ── Shopify-specific transforms ──
@@ -13994,12 +14603,16 @@ let _acGradeTimer = null;
 function openAddCard() {
   // Clear all fields
   ['ac_title','ac_player','ac_year','ac_year_sealed','ac_set',
-   'ac_number','ac_parallel','ac_grade','ac_cert','ac_price','ac_location','ac_lot_desc']
+   'ac_number','ac_serial','ac_print_run','ac_parallel','ac_grade','ac_cert','ac_price','ac_location','ac_lot_desc',
+   'ac_grader_other','ac_subcategory_other']
     .forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
   document.getElementById('ac_grader').value    = '';
+  document.getElementById('ac_grader_other_wrap').style.display = 'none';
   document.getElementById('ac_condition').value = '';
   document.getElementById('ac_sealed_condition').value = 'Factory Sealed';
   document.getElementById('ac_status').value    = 'Available';
+  _setCheckedFeatures('ac_features_group', []);
+  _setCategoryFieldValue('ac_category', 'ac_subcategory', 'ac_subcategory_other', 'ac_subcategory_other_row', '', '');
   tcClearPickerState();
   _acHideComp();
   acSetType('card');
@@ -14054,7 +14667,9 @@ function acSetType(type) {
   _acShow('ac_player_row', isCard);
   _acShow('ac_year_only_row', !isCard);
   _acShow('ac_number_col', isCard);
+  _acShow('ac_serial_row', isCard);
   _acShow('ac_parallel_row', isCard);
+  _acShow('ac_features_row', isCard);
   _acShow('ac_product_type_row', isSealed);
   _acShow('ac_grading_row', isCard);
   _acShow('ac_cond_row', isCard);
@@ -14075,7 +14690,7 @@ function _acShow(id, show) {
 // One-time: persist each ac_ element's intended display value so _acShow can restore it
 (function initAcDisplayVals() {
   ['ac_scan_row','ac_player_row','ac_year_only_row',
-   'ac_number_col','ac_parallel_row','ac_product_type_row',
+   'ac_number_col','ac_serial_row','ac_parallel_row','ac_features_row','ac_product_type_row',
    'ac_grading_row','ac_cond_row','ac_sealed_cond_row','ac_lot_desc_row']
     .forEach(id => {
       const el = document.getElementById(id);
@@ -15008,6 +15623,11 @@ function saveAddCard() {
   const labelMap = { card: 'Card Title', sealed: 'Product Name', lot: 'Lot Title' };
   if (!title) { showToast(`${labelMap[_acItemType] || 'Title'} is required`, 'var(--danger)'); return; }
 
+  // Category/Subcategory Taxonomy — applies to all item types (a sealed
+  // box or lot can be classified the same way a single card can).
+  const category    = document.getElementById('ac_category').value || null;
+  const subcategory = category ? (_resolveSubcategoryValue('ac_subcategory', 'ac_subcategory_other') || null) : null;
+
   let rawCard;
   if (_acItemType === 'sealed') {
     const year = document.getElementById('ac_year_sealed').value.trim() || null;
@@ -15022,6 +15642,8 @@ function saveAddCard() {
       Seller:       currentSeller,
       item_type:    'sealed',
       product_type: document.getElementById('ac_product_type').value || null,
+      Category:     category,
+      Subcategory:  subcategory,
     };
   } else if (_acItemType === 'lot') {
     const year = document.getElementById('ac_year_sealed').value.trim() || null;
@@ -15035,16 +15657,21 @@ function saveAddCard() {
       Seller:       currentSeller,
       item_type:    'lot',
       'Parallel/Variant': document.getElementById('ac_lot_desc').value.trim() || null,
+      Category:     category,
+      Subcategory:  subcategory,
     };
   } else {
-    const grader = document.getElementById('ac_grader').value;
+    const grader = _resolveGraderValue('ac_grader', 'ac_grader_other');
     rawCard = {
       'Card Title':       title,
       Player:             document.getElementById('ac_player').value.trim(),
       Year:               document.getElementById('ac_year').value.trim() || null,
       'Set ':             document.getElementById('ac_set').value.trim(),
       Number:             document.getElementById('ac_number').value.trim(),
+      'Serial Number':    document.getElementById('ac_serial').value.trim() || null,
+      'Print Run':        document.getElementById('ac_print_run').value.trim() || null,
       'Parallel/Variant': document.getElementById('ac_parallel').value.trim(),
+      Features:           _getCheckedFeatures('ac_features_group'),
       Grader:             grader || null,
       Grade:              grader && document.getElementById('ac_grade').value !== ''
                             ? parseFloat(document.getElementById('ac_grade').value) : null,
@@ -15055,6 +15682,8 @@ function saveAddCard() {
       Location:           document.getElementById('ac_location').value.trim() || null,
       Seller:             currentSeller,
       item_type:          'card',
+      Category:           category,
+      Subcategory:        subcategory,
     };
   }
 
@@ -17429,12 +18058,26 @@ function openCEM(idx) {
     [card.Player, card.Year].filter(Boolean).join(' · ');
 
   document.getElementById('cem_title').value     = card['Card Title']       || '';
+  // Category/Subcategory Taxonomy — prefer the card's own structured value;
+  // only guess from the detectSport() heuristic when neither is set yet
+  // (legacy inventory). Always just a pre-fill — the seller can override.
+  {
+    let cat = card.Category || '', sub = card.Subcategory || '';
+    if (!cat) {
+      const guess = _categoryFromSportGuess(detectSport(card));
+      if (guess) { cat = guess.category; sub = guess.subcategory; }
+    }
+    _setCategoryFieldValue('cem_category', 'cem_subcategory', 'cem_subcategory_other', 'cem_subcategory_other_row', cat, sub);
+  }
   document.getElementById('cem_player').value    = card.Player              || '';
   document.getElementById('cem_year').value      = card.Year                || '';
   document.getElementById('cem_set').value       = card['Set '] || card.Set || '';
   document.getElementById('cem_number').value    = card.Number              || '';
+  document.getElementById('cem_serial').value    = card['Serial Number']    || '';
+  document.getElementById('cem_print_run').value = card['Print Run'] != null ? card['Print Run'] : '';
   document.getElementById('cem_parallel').value  = card['Parallel/Variant'] || '';
-  document.getElementById('cem_grader').value    = card.Grader              || '';
+  _setCheckedFeatures('cem_features_group', card.Features || []);
+  _setGraderFieldValue('cem_grader', 'cem_grader_other', 'cem_grader_other_wrap', card.Grader || '');
   document.getElementById('cem_grade').value     = card.Grade != null ? card.Grade : '';
   document.getElementById('cem_cert').value      = card['Cert #']           || '';
   document.getElementById('cem_condition').value = card.Condition           || '';
@@ -17549,7 +18192,9 @@ function getExportInventoryCards() {
 // (compPrice, matchedCard, source, recentSales, etc.) is ever included.
 const EXPORT_INVENTORY_HEADER = [
   'Seller', 'Card Title', 'Player', 'Year', 'Set', 'Number',
-  'Parallel/Variant', 'Grade', 'Grader', 'Cert #', 'Condition',
+  'Serial Number', 'Print Run', 'Parallel/Variant', 'Features',
+  'Category', 'Subcategory',
+  'Grade', 'Grader', 'Cert #', 'Condition',
   'Price', 'Status', 'Location', 'Image URL',
 ];
 
@@ -17561,7 +18206,12 @@ function _exportInventoryRowValues(r) {
     r.Year || '',
     getSet(r),
     r.Number || '',
+    r['Serial Number'] || '',
+    r['Print Run'] != null ? r['Print Run'] : '',
     r['Parallel/Variant'] || '',
+    Array.isArray(r.Features) ? r.Features.join(', ') : '',
+    r.Category || '',
+    r.Subcategory || '',
     r.Grade != null ? r.Grade : '',
     r.Grader || '',
     r['Cert #'] || '',
@@ -17646,13 +18296,19 @@ function saveCEM() {
   const title = document.getElementById('cem_title').value.trim();
   if (!title) { showToast('Card Title is required', 'var(--danger)'); return; }
 
-  const grader = document.getElementById('cem_grader').value;
+  const grader = _resolveGraderValue('cem_grader', 'cem_grader_other');
+  const category = document.getElementById('cem_category').value || null;
   card['Card Title']       = title;
+  card.Category            = category;
+  card.Subcategory         = category ? (_resolveSubcategoryValue('cem_subcategory', 'cem_subcategory_other') || null) : null;
   card.Player              = document.getElementById('cem_player').value.trim();
   card.Year                = document.getElementById('cem_year').value.trim() || null;
   card['Set ']             = document.getElementById('cem_set').value.trim();
   card.Number              = document.getElementById('cem_number').value.trim();
+  card['Serial Number']    = document.getElementById('cem_serial').value.trim() || null;
+  card['Print Run']        = document.getElementById('cem_print_run').value.trim() || null;
   card['Parallel/Variant'] = document.getElementById('cem_parallel').value.trim();
+  card.Features            = _getCheckedFeatures('cem_features_group');
   card.Grader              = grader || null;
   card.Grade               = grader && document.getElementById('cem_grade').value !== ''
                                ? parseFloat(document.getElementById('cem_grade').value) : null;
@@ -17746,7 +18402,7 @@ const CARD_TO_DB = Object.fromEntries(
 function _isMissingScanColumnError(error) {
   return !!error && (
     error.code === 'PGRST204' ||
-    /column .*(fingerprint|detected_confidence|sport).*schema cache/i.test(error.message || '')
+    /column .*(fingerprint|detected_confidence|sport|serial_number|print_run_size|features|category|subcategory).*schema cache/i.test(error.message || '')
   );
 }
 
@@ -17776,6 +18432,23 @@ function cardToDbRow(card) {
     // from one this column doesn't know about yet — both read back as
     // null/undefined and fall through to detectSport()'s own heuristics.
     sport:        card.Sport         || null,
+    // Inventory Template Vendor Feedback (see CLAUDE.md) — serial_number
+    // (text, preserves leading zeros like "043") and print_run_size
+    // (integer) are separate from card_number/Number: a checklist card #
+    // (e.g. "4" of a 102-card set) is not the same thing as the copy
+    // number on a numbered parallel (043/99).
+    serial_number:   card['Serial Number'] || null,
+    print_run_size:  card['Print Run'] ? parseInt(card['Print Run'], 10) || null : null,
+    // Fixed-vocabulary feature tags (RC/Auto/Relic/etc.) — text[]. null
+    // (not []) when nothing is checked, matching this file's null-over-
+    // empty convention for other unset optional columns.
+    features:        Array.isArray(card.Features) && card.Features.length ? card.Features : null,
+    // Category / Subcategory Taxonomy (see CLAUDE.md) — the structured
+    // classification, now the source of truth over the sport/detectSport()
+    // heuristics for anything that has it set. Not dropped/guessed here —
+    // written only from what the seller picked or a confident import match.
+    category:     card.Category     || null,
+    subcategory:  card.Subcategory  || null,
   };
 }
 
@@ -17789,7 +18462,10 @@ function dbRowToCard(row) {
     'Set ':          row.card_set      || '',
     Number:          row.card_number   || null,
     'Card #':        row.card_number   || null,
+    'Serial Number': row.serial_number || null,
+    'Print Run':     row.print_run_size != null ? row.print_run_size : null,
     'Parallel/Variant': row.parallel   || '',
+    Features:        Array.isArray(row.features) ? row.features : [],
     Grader:          row.grader        || null,
     Grade:           row.grade         != null ? row.grade : null,
     'Cert #':        row.cert_number   || null,
@@ -17802,6 +18478,8 @@ function dbRowToCard(row) {
     Fingerprint:        row.fingerprint          || null,
     DetectedConfidence: row.detected_confidence   || null,
     Sport:              row.sport                || '',
+    Category:           row.category             || '',
+    Subcategory:         row.subcategory          || '',
     _shows:          new Set(),
   };
   if (row.sold_price     != null) card.SoldPrice     = row.sold_price;
@@ -17930,12 +18608,14 @@ async function hydrateCardShowMembership(sellerHandle) {
 
 function openManualSaleModal() {
   // Reset every field
-  ['mslPlayer','mslYear','mslSet','mslParallel','mslGrade','mslCert','mslNotes'].forEach(id => {
+  ['mslPlayer','mslYear','mslSet','mslParallel','mslGrade','mslCert','mslNotes','mslGraderOther'].forEach(id => {
     const el = document.getElementById(id);
     if (el) { el.value = ''; el.classList.remove('db-filled'); }
   });
   const graderEl = document.getElementById('mslGrader');
   if (graderEl) { graderEl.value = ''; graderEl.classList.remove('db-filled'); }
+  const graderOtherWrap = document.getElementById('mslGraderOtherWrap');
+  if (graderOtherWrap) graderOtherWrap.style.display = 'none';
 
   const priceEl = document.getElementById('mslPrice');
   if (priceEl)  priceEl.value = '';
@@ -18132,7 +18812,7 @@ async function _mslApplyVisionResult(card, base64) {
 
   const graderEl = document.getElementById('mslGrader');
   if (graderEl && card.grading_company) {
-    graderEl.value = String(card.grading_company).toUpperCase();
+    _setGraderFieldValue('mslGrader', 'mslGraderOther', 'mslGraderOtherWrap', String(card.grading_company).toUpperCase());
     graderEl.classList.add('db-filled');
     graderEl.addEventListener('change', () => graderEl.classList.remove('db-filled'), { once: true });
   }
@@ -18196,7 +18876,7 @@ async function confirmManualSale() {
   const cardSet  = (document.getElementById('mslSet')?.value      || '').trim().toLowerCase();
   const parallel = (document.getElementById('mslParallel')?.value || '').trim().toLowerCase();
   const gradeStr = (document.getElementById('mslGrade')?.value    || '').trim();
-  const grader   = (document.getElementById('mslGrader')?.value   || '').trim();
+  const grader   = _resolveGraderValue('mslGrader', 'mslGraderOther');
   const cert     = (document.getElementById('mslCert')?.value     || '').trim();
   const notes    = (document.getElementById('mslNotes')?.value    || '').trim();
   const showId   = document.getElementById('mslShow')?.value      || null;
@@ -18373,6 +19053,11 @@ async function recordManualSaleTransaction(card, showId) {
       item_type:      card.item_type     || 'card',
       // detectCardSport() is API routing — NOT detectSport() which is UI only
       sport:          detectCardSport(card) || null,
+      // Category / Subcategory Taxonomy (see CLAUDE.md) — structured
+      // classification, same source-of-truth priority as inventory's own
+      // cardToDbRow(). Never guessed here — only what the card already has.
+      category:       card.Category     || null,
+      subcategory:    card.Subcategory  || null,
 
       // Seller snapshot
       seller_id:      sellerUuid,
@@ -18393,9 +19078,20 @@ async function recordManualSaleTransaction(card, showId) {
       data_version:   1,
     };
 
-    const { error } = await db
+    let { error } = await db
       .from('show_floor_transactions')
       .insert(row);
+
+    // Graceful degrade until the category/subcategory migration runs — same
+    // PGRST204 retry-without-the-column pattern as inventory's own writes
+    // (see _isMissingScanColumnError), scoped narrowly here since this
+    // table's other columns (e.g. source) predate this migration and
+    // should still write even if category/subcategory don't exist yet.
+    if (error && _isMissingScanColumnError(error)) {
+      delete row.category;
+      delete row.subcategory;
+      ({ error } = await db.from('show_floor_transactions').insert(row));
+    }
 
     if (error) {
       console.warn('[manual-sale] tx write failed:', error.message);
@@ -18452,6 +19148,11 @@ async function insertCardToDB(card, sellerIdOverride) {
       delete row.fingerprint;
       delete row.detected_confidence;
       delete row.sport;
+      delete row.serial_number;
+      delete row.print_run_size;
+      delete row.features;
+      delete row.category;
+      delete row.subcategory;
       ({ data, error } = await db.from('inventory').insert(row).select('id').maybeSingle());
     }
 
@@ -18510,6 +19211,11 @@ async function updateCardInDB(card) {
       delete payload.fingerprint;
       delete payload.detected_confidence;
       delete payload.sport;
+      delete payload.serial_number;
+      delete payload.print_run_size;
+      delete payload.features;
+      delete payload.category;
+      delete payload.subcategory;
       ({ error } = await db.from('inventory').update(payload).eq('id', card._dbId));
     }
 
@@ -18613,6 +19319,11 @@ async function recordShowTransaction(card) {
       // keyword detection. Do NOT use detectSport() here — that is
       // the UI badge function and returns different values.
       sport: detectCardSport(card) || null,
+      // Category / Subcategory Taxonomy (see CLAUDE.md) — structured
+      // classification, same source-of-truth priority as inventory's own
+      // cardToDbRow(). Never guessed here — only what the card already has.
+      category:    card.Category    || null,
+      subcategory: card.Subcategory || null,
 
       // Seller snapshot
       seller_id:     sellerUuid,
@@ -18633,9 +19344,18 @@ async function recordShowTransaction(card) {
       data_version: 1,
     };
 
-    const { error } = await db
+    let { error } = await db
       .from('show_floor_transactions')
       .insert(row);
+
+    // Graceful degrade until the category/subcategory migration runs —
+    // same PGRST204 retry-without-the-column pattern as inventory's own
+    // writes (see _isMissingScanColumnError).
+    if (error && _isMissingScanColumnError(error)) {
+      delete row.category;
+      delete row.subcategory;
+      ({ error } = await db.from('show_floor_transactions').insert(row));
+    }
 
     if (error) {
       // Non-fatal — log but never surface to seller during a sale
@@ -18712,7 +19432,11 @@ async function upsertCardsToDB(cards) {
     if (toInsert.length) {
       let { data: insertedRows, error } = await db.from('inventory').insert(toInsert).select('id');
       if (error && _isMissingScanColumnError(error)) {
-        toInsert.forEach(row => { delete row.fingerprint; delete row.detected_confidence; delete row.sport; });
+        toInsert.forEach(row => {
+          delete row.fingerprint; delete row.detected_confidence; delete row.sport;
+          delete row.serial_number; delete row.print_run_size; delete row.features;
+          delete row.category; delete row.subcategory;
+        });
         ({ data: insertedRows, error } = await db.from('inventory').insert(toInsert).select('id'));
       }
       if (error) console.warn('Batch insert error:', error.message);
@@ -18727,6 +19451,11 @@ async function upsertCardsToDB(cards) {
         delete updates.fingerprint;
         delete updates.detected_confidence;
         delete updates.sport;
+        delete updates.serial_number;
+        delete updates.print_run_size;
+        delete updates.features;
+        delete updates.category;
+        delete updates.subcategory;
         ({ error } = await db.from('inventory').update(updates).eq('id', id));
       }
       if (error) console.warn('Row update error:', error.message);
@@ -19066,7 +19795,7 @@ async function upsertCardsToDB(cards) {
         </div>
         <div>
           <div class="drawer-field-label">Grader</div>
-          <select id="mslGrader"
+          <select id="mslGrader" onchange="_graderOtherToggle(this,'mslGraderOtherWrap')"
             style="width:100%;padding:9px 12px;font-size:15px;
                    box-sizing:border-box;border-radius:7px;
                    background:var(--card);border:1px solid var(--border);
@@ -19077,8 +19806,22 @@ async function upsertCardsToDB(cards) {
             <option value="BGS">BGS</option>
             <option value="SGC">SGC</option>
             <option value="CGC">CGC</option>
+            <option value="TAG">TAG</option>
+            <option value="HGA">HGA</option>
+            <option value="GMA">GMA</option>
+            <option value="Arena Club">Arena Club</option>
+            <option value="__OTHER__">Other…</option>
           </select>
         </div>
+      </div>
+
+      <!-- Other grading company free-text — shown only when "Other…" is selected -->
+      <div id="mslGraderOtherWrap" style="display:none">
+        <div class="drawer-field-label">Grading Company Name</div>
+        <input id="mslGraderOther" class="sold-price-input"
+          style="font-size:15px;padding:9px 12px;
+                 width:100%;box-sizing:border-box;border-radius:7px"
+          type="text" placeholder="e.g. Rare Edge, ISA…">
       </div>
 
       <!-- Cert # — optional, feeds fingerprint-based duplicate detection -->
