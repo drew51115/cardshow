@@ -23,6 +23,9 @@ netlify/functions/scan-card.js           → Serverless: POST {image_base64, med
 netlify/functions/trading-card-lookup.js → Serverless: POST {query, sport?} → card search results from Trading Card API (Sprint 3); write-through cache via card_search_cache table (7-day TTL)
 netlify/functions/invalidate-search-cache.js → Serverless: POST {query} → deletes matching rows from card_search_cache; protected by x-invalidate-secret header
 netlify/functions/trade-og.js            → Serverless: GET /trade/:id → OG-tagged HTML for social crawlers, redirects humans into trade-zone.html (Trade Zone Phase 5)
+netlify/functions/gtcr-trust-check.js    → Serverless: GTCR Trust Check (READ key) — POST {action:'check'|'resolve'} → stolen/lost cert lookup, sets inventory.trust_flag, logs cert_trust_checks (see "Trust Check via GTCR")
+netlify/functions/gtcr-registry.js       → Serverless: GTCR consent + registration (WRITE key) — POST {action:'status'|'grant'|'revoke'|'drain_removals'|'register'}
+supabase/migrations/20260925120000_gtcr_trust_check.sql → inventory.trust_flag + cert_trust_checks / gtcr_consent_events / gtcr_registrations (RLS: read-own, no client writes)
 netlify/functions/expire-trade-posts.js  → Scheduled (hourly, see netlify.toml): calls expire_stale_trade_posts() RPC to hide stale trade_posts from the live board
 .env.example                             → Placeholder env vars for all keys
 downloads/                               → Static file downloads served by Netlify
@@ -216,6 +219,11 @@ that predates this migration still write even if `category`/`subcategory` don't 
 `sport` is **not** dropped by this migration — it stays in place as a deprecated column no
 longer written to going forward (see "Category / Subcategory Taxonomy" below for the one-time
 backfill that reads it).
+
+Required for Trust Check via GTCR (see that section below):
+`supabase/migrations/20260925120000_gtcr_trust_check.sql`. It adds `inventory.trust_flag` and three
+service-key-only tables. Until it runs, the Trust Check still works in memory (flag badge, publish
+gate) but nothing persists across reload, and the consent/registration function returns errors.
 
 ## Key Data Structures (in-memory runtime cache)
 ```js
@@ -696,6 +704,11 @@ Called from `fillFormFromVision` (vision) and several other card-creation paths 
 | `POKEMON_TCG_API_KEY` | pokemontcg.io API key — optional; raises rate limits. Free tier works without it. Register at dev.pokemontcg.io |
 | `CARDHEDGE_API_KEY` | Card Hedge key — primary sports card comp source. cardhedge.com |
 | `CARDHEDGE_ENABLED` | Set to `false` to disable Card Hedge without removing the key (default: `true`) |
+| `GTCR_READ_API_KEY` | GTCR read-only key — `gtcr-trust-check.js` only |
+| `GTCR_WRITE_API_KEY` | GTCR partner write key — `gtcr-registry.js` only (issued at partner onboarding) |
+| `GTCR_PARTNER_ID` | Attribution string sent on every GTCR call (default `cardshow` — confirm with GTCR) |
+| `GTCR_API_BASE` | Optional; default `https://thegtcr.com/functions` |
+| `GTCR_REGISTRATION_ENABLED` | Must be `true` to allow consent grant + registration. Keep off until pricing is decided |
 | `CARDSIGHT_API_KEY` | CardSight AI key — secondary sports card comp source. Free tier: 750 calls/month. cardsight.ai/for-developers |
 
 ### Credential Injection (no build step workaround)
@@ -2333,6 +2346,12 @@ migration, no new external library.
   taxonomy session. See "Buyer-Facing Category / Subcategory Filter" above for full detail,
   including the missing-column SELECT-retry fix needed for `app.html`/`show.html`'s DB fetches
   and headless-browser verification across all three surfaces.
+
+- **Trust Check via GTCR — Phases 1, 3, 4 (session 2026-09-25)** — stolen/lost cert lookup on
+  insert + re-check on publish (fails open), flag/dispute UI, consent-evidence log, and
+  consent-gated register-on-sale + deregister-on-revoke. Registration is built but **dark**
+  (`GTCR_CONSENT_UI_ENABLED=false` client-side, `GTCR_REGISTRATION_ENABLED` server-side) until
+  pricing is decided. Transfer-on-resale (Phase 5) not built — open decision. See "Trust Check via GTCR".
 
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`
@@ -3973,6 +3992,88 @@ one), `_orgFetchInventory()` or any other analytics function, the Add/Edit Card 
 Category/Subcategory dropdowns from the original taxonomy session, RLS policies, no new
 Supabase tables or migrations (reuses the existing `category`/`subcategory` columns and their
 existing migration).
+
+## Trust Check via GTCR (session 2026-09-25)
+
+Integration with the Global Trading Card Registry (thegtcr.com, run by the CTCA / Nick Jarman),
+built from Build Spec v3. **Nothing Kapture-related exists in this repo.** The spec's "mirror the
+locked Kapture flow" was followed in behavior (insert + publish triggers, flag badge, confirm-removal
+or dispute-and-keep, fail open), but there was no Kapture code to share. `cert_trust_checks.source`
+leaves room for a second provider.
+
+### Keys and endpoints
+Base `https://thegtcr.com/functions/` (confirmed live: returns 401 without a key; POST accepted).
+Two keys, each used by exactly one function, never mixed:
+- `gtcr-trust-check.js` uses `GTCR_READ_API_KEY` for `trustCheckApi`.
+- `gtcr-registry.js` uses `GTCR_WRITE_API_KEY` for `registerCardApi` and `removeRegistrationApi`.
+Every call sends `partner_id` (`GTCR_PARTNER_ID`, default `cardshow`). **Pending with GTCR:** confirm the
+string, and complete onboarding to get the write key.
+
+**Assumed, not yet confirmed:** the Trust Check request shape is sent as a JSON POST body
+`{cert_number, grading_company, partner_id}`. The response is parsed defensively. It looks for
+`reports.active_count` and for `has_stolen_report`/`has_lost_report`/`has_dispute_report`, either
+under `reports` or at the top level. `matched` = active_count > 0, or stolen, or lost. A dispute
+report alone is stored but does not flag. Verify against a real key and a known-reported cert
+before relying on it.
+
+### Phase 1 — Trust Check (live once `GTCR_READ_API_KEY` is set)
+- **Insert:** `insertCardToDB()` fires `gtcrCheckCard(card, id, 'insert')`, which covers Add Card, POS,
+  and bulk scan. CSV/XLSX import calls `_gtcrQueueChecks()` with 3 concurrent workers. Only non-sold
+  cards with a cert # and a grader are checked. A Manual Sale's already-sold card is skipped.
+- **Publish:** `_autoPublishCardToShow()` now awaits `_gtcrClearForPublish()`. That reuses an
+  in-flight insert check, or any check from the last 60s, and otherwise re-checks. `sellerPublishToShow()`
+  skips cards already flagged. The admin `publishShowInventoryToDB()` excludes `trust_flag='flagged'`
+  rows; if the column is missing, it falls back to no filter.
+- **On a match**, the server sets `inventory.trust_flag='flagged'` (unless the seller already disputed)
+  and deletes the card's `show_inventory` rows. That hides the card from buyers on every surface.
+  A later no-match clears a stale `'flagged'`. GTCR logs the partner lookup and notifies the owner
+  itself. CardShow makes no report-back call; the spec's Decision #1 closes with no code.
+- **Seller UI:** a red **⚠ Flagged** badge on the inventory row opens `#gtcrFlagOverlay`, with an
+  optional note and three choices. **Remove from inventory** writes the audit row first, then
+  deletes the card. **Dispute & keep listing** sets `trust_flag='disputed'`, which allows publishing
+  again. **Decide later** just closes. Nothing is ever removed automatically.
+- **Fail open:** any GTCR, network, or function error leaves the flag unchanged and publishing allowed.
+  The next publish re-checks.
+- `trustCheckBulkApi` is not used, because its request/response shape isn't documented yet. The CSV
+  import path would be the one to switch to it.
+
+### Phase 3 — Consent (built, dark)
+- The checkbox is in the Profile modal (`#gtcrConsentSection`), hidden while
+  `GTCR_CONSENT_UI_ENABLED = false`. It is never pre-checked; it only shows checked when a stored
+  `'granted'` event exists.
+- The copy (`GTCR_CONSENT_COPY`, version `GTCR_CONSENT_COPY_VERSION`) is a **DRAFT pending legal
+  review**. Bump the version whenever the text changes.
+- Every consent action goes through `gtcr-registry.js`. The server appends to `gtcr_consent_events`
+  (seller_id, action, occurred_at from the server clock, consent_copy_version, IP from
+  `x-nf-client-connection-ip`/`x-forwarded-for`, user-agent). That table is append-only; its latest
+  row is the current state. Re-granting while already granted keeps the original timestamp.
+- `grant` is refused unless `GTCR_REGISTRATION_ENABLED=true`. `revoke` is always allowed.
+
+### Phase 4 — Register on sale + deregister on revoke (built, dark)
+- **Register:** `sdConfirm()` (Sell Drawer, which also covers the POS hand-off) calls
+  `gtcrRegisterOnSale(card)` after `updateCardInDB()` resolves.
+  - **Manual sales are deliberately not registered.** They record off-platform sales, which fall
+    outside "cards I sell through CardShow". Revisit if that's wrong.
+  - The server loads the card itself and requires four things: the caller owns it, `status='Sold'`,
+    a cert # plus grader, and a latest consent event of `'granted'`. The client sends only `inventory_id`.
+  - `seller_email` is the verified Supabase Auth email. `consent_timestamp` is the consent event's
+    `occurred_at`, not the time of the call.
+  - Grader values map to GTCR's enum; anything unknown maps to `Other`.
+  - Results are logged to `gtcr_registrations`. `already_registered` is treated as success.
+- **Revoke:** appends a `'revoked'` event, then drains the seller's `status='registered'` rows through
+  `removeRegistrationApi` within a 7s budget. The client repeats `drain_removals` until `remaining` is 0.
+  A GTCR 404 counts as removed. An interrupted drain resumes when the seller next logs in
+  (`gtcrLoadConsentState()`).
+- **Launch checklist:** get the write key, confirm `partner_id`, finish legal review of the copy, decide
+  pricing, then flip `GTCR_REGISTRATION_ENABLED=true` and `GTCR_CONSENT_UI_ENABLED=true` together.
+
+### Still open (not built)
+- **Decision A — Phase 5 transfer-on-resale** (`transferOnSaleApi`): not built, per the spec. Without it,
+  a registered card that resells through CardShow keeps the old seller's GTCR registration.
+- **Decision B — pricing/packaging** blocks turning consent on for real sellers.
+- **Integrity caveat:** `inventory` still has permissive RLS, so a seller could in principle clear their
+  own `trust_flag` by writing to the table directly. The audit tables themselves are protected. This
+  closes when inventory RLS is tightened (Tier 1).
 
 ## Show Configuration (Demo Data)
 - **MLP Card Show** — Oct 17-18, 2026 · Grand Hyatt Tampa Bay, FL · Code: MLPTPA (primary demo, shown to buyers without code)

@@ -2274,6 +2274,12 @@
 
 
   /* ── CARD EDIT ── */
+  .gtcr-flag-badge {
+    background: rgba(239,68,68,0.14); color: var(--danger); border: 1px solid rgba(239,68,68,0.55);
+    border-radius: 6px; padding: 0.2rem 0.5rem; font-family: 'DM Mono', monospace; font-size: 0.62rem;
+    letter-spacing: 0.04em; cursor: pointer; white-space: nowrap;
+  }
+  .gtcr-flag-badge.disputed { background: transparent; color: var(--muted); border-color: var(--border); cursor: default; }
   .btn-card-edit {
     background: transparent; border: 1px solid var(--border);
     color: var(--muted); border-radius: 6px; padding: 0.18rem 0.5rem;
@@ -4896,6 +4902,17 @@
           <div class="profile-field-hint">Controls the "Share this sale?" prompt after confirming a sale — saved on this device</div>
         </div>
 
+        <!-- GTCR registration consent. Dark until pricing/packaging is decided
+             (GTCR_CONSENT_UI_ENABLED in the script). Never pre-checked. -->
+        <div id="gtcrConsentSection" style="display:none">
+          <div class="profile-field-label">Global Trading Card Registry</div>
+          <label class="drop-pref-opt" style="align-items:flex-start;gap:0.55rem">
+            <input type="checkbox" id="gtcrConsentToggle" onchange="gtcrConsentToggleChanged(this)" style="margin-top:0.2rem">
+            <span id="gtcrConsentCopy" style="font-size:0.78rem;line-height:1.45"></span>
+          </label>
+          <div class="profile-field-hint" id="gtcrConsentStatus"></div>
+        </div>
+
       </div>
 
       <div class="profile-actions">
@@ -6263,6 +6280,25 @@
 
 <!-- Full-screen loading overlay while the bulk-scan photo is being analyzed —
      visible regardless of sidebar/mobile state, unlike the old toast+button approach -->
+<!-- GTCR Trust Check — flagged-card resolution (see "Trust Check via GTCR" in CLAUDE.md) -->
+<div class="modal-overlay" id="gtcrFlagOverlay" onclick="if(event.target===this)closeGtcrFlagModal()">
+  <div class="modal" style="max-width:420px;padding:1.6rem 1.5rem">
+    <div style="font-family:'Bebas Neue',sans-serif;font-size:1.45rem;letter-spacing:0.04em;color:var(--danger);margin-bottom:0.5rem">⚠ Registry Match</div>
+    <div id="gtcrFlagCardLabel" style="font-family:'DM Sans',sans-serif;font-weight:600;color:var(--text);margin-bottom:0.6rem"></div>
+    <div style="font-size:0.82rem;color:var(--muted);line-height:1.5;margin-bottom:0.9rem">
+      This cert number matches an active report in the Global Trading Card Registry (GTCR)
+      <span id="gtcrFlagReportKinds"></span>. The card is hidden from buyers and can't be published
+      until you choose what to do. If you believe the report is wrong, you can dispute it and keep the listing.
+    </div>
+    <textarea id="gtcrFlagNote" class="sale-notes-input" rows="2" placeholder="Optional note (e.g. where you acquired this card)" style="width:100%;margin-bottom:1rem"></textarea>
+    <div style="display:flex;flex-direction:column;gap:0.5rem">
+      <button class="btn btn-primary" style="background:var(--danger);border-color:var(--danger)" onclick="gtcrResolveFlag('removed')">Remove from inventory</button>
+      <button class="btn btn-ghost" onclick="gtcrResolveFlag('disputed')">Dispute &amp; keep listing</button>
+      <button class="btn-modal-close" onclick="closeGtcrFlagModal()">Decide later</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="bulkScanLoadingOverlay" onclick="if(event.target===this)_cancelBulkScanLoading()">
   <div class="modal" style="max-width:340px;text-align:center;padding:2.2rem 1.75rem">
     <div style="width:44px;height:44px;margin:0 auto 1.1rem;border:3px solid var(--border);border-top-color:var(--gold);border-radius:50%;animation:spin 0.8s linear infinite"></div>
@@ -9421,6 +9457,8 @@ function renderSellerTable(rows) {
             <span class="status-dot"></span>${statusIcon} ${status}
           </div>
           <button class="btn-card-edit" onclick="openCEM(${realIdx})">✏ Edit</button>
+          ${r._trustFlag === 'flagged' ? `<button class="gtcr-flag-badge" onclick="openGtcrFlagModal(${realIdx})" title="Matches an active GTCR stolen/lost report — hidden from buyers until you act">⚠ Flagged</button>`
+            : r._trustFlag === 'disputed' ? `<span class="gtcr-flag-badge disputed" title="You disputed a GTCR registry match — listing allowed">Disputed</span>` : ''}
         </div>
       </td>
       <td data-label="Sold">
@@ -10464,7 +10502,7 @@ function sdConfirm() {
   card.SoldDate      = _todayISO(); // a Sell Drawer sale is always "now" — no backdating
 
   closeSellDrawer();
-  updateCardInDB(card);
+  updateCardInDB(card).then(() => gtcrRegisterOnSale(card)); // GTCR registration needs status=Sold persisted first
   recordShowTransaction(card);   // ← fire-and-forget, no await
   syncBuyerView();
   updateStats();
@@ -11939,6 +11977,8 @@ function loginAsSeller(handle) {
   // Set sign-out handle in profile modal
   const soHandle = document.getElementById('profileSignOutHandle');
   if (soHandle) soHandle.textContent = '@' + handle;
+  _gtcrConsentState = null;
+  gtcrLoadConsentState(); // no-op while GTCR_CONSENT_UI_ENABLED is false
 
   // Hide partnership link — replaced by Profile button for sellers
   const partnerLink = document.getElementById('partnershipLink');
@@ -12146,6 +12186,7 @@ async function signOut() {
   currentRole          = null;
   currentSeller        = null;
   window._currentAdminUid = null;
+  _gtcrConsentState = null;
   sellerQrMode  = 'table';
   buyerShowId   = null;
   _unsubscribeBuyerShowLive();
@@ -13417,9 +13458,11 @@ function sellerPublishToShow(showId) {
     : myCards.filter(r => (r.Status||'Available') !== 'Sold');
 
   let count = 0;
+  let flaggedSkipped = 0;
   selected.forEach(card => {
     if (!card._shows) card._shows = new Set();
     if (card._shows.has(showId)) return; // already published to this show — see note below
+    if (card._trustFlag === 'flagged') { flaggedSkipped++; return; } // GTCR match: blocked pending seller action
     card._shows.add(showId);
     count++;
     // Persist to show_inventory (fire-and-forget) — without this, the
@@ -13442,7 +13485,7 @@ function sellerPublishToShow(showId) {
   _persistActiveShowId(currentSeller, showId);
   renderSellerShowsList();
   buildSellerQrPanel();
-  showToast(`${count} cards added to "${show.name}"`);
+  showToast(`${count} cards added to "${show.name}"` + (flaggedSkipped ? ` · ${flaggedSkipped} flagged card${flaggedSkipped !== 1 ? 's' : ''} held back` : ''));
 }
 
 function sellerRemoveFromShow(showId) {
@@ -17450,6 +17493,9 @@ function openProfile() {
     r.checked = r.value === dropPref;
   });
 
+  _gtcrRenderConsent();
+  if (GTCR_CONSENT_UI_ENABLED) gtcrLoadConsentState().then(_gtcrRenderConsent);
+
   document.getElementById('profileOverlay').classList.add('open');
 }
 
@@ -17867,12 +17913,21 @@ async function publishShowInventoryToDB(showId) {
     if (!sellerRows || !sellerRows.length) return 0;
     const sellerIds = sellerRows.map(r => r.id);
 
-    // Fetch all non-sold card IDs for those sellers
-    const { data: cards, error: cardErr } = await db
-      .from('inventory').select('id')
+    // Fetch all non-sold card IDs for those sellers. GTCR-flagged cards
+    // (trust_flag = 'flagged') are excluded until the seller acts. Falls back to
+    // the unfiltered select if the trust_flag migration hasn't run yet.
+    let { data: cards, error: cardErr } = await db
+      .from('inventory').select('id, trust_flag')
       .in('seller_id', sellerIds)
       .neq('status', 'Sold');
+    if (cardErr && /trust_flag/i.test(cardErr.message || '')) {
+      ({ data: cards, error: cardErr } = await db
+        .from('inventory').select('id')
+        .in('seller_id', sellerIds)
+        .neq('status', 'Sold'));
+    }
     if (cardErr) { console.error('publishShowInventoryToDB fetch failed:', cardErr.message); return 0; }
+    cards = (cards || []).filter(c => c.trust_flag !== 'flagged');
     if (!cards || !cards.length) { console.log('No cards to publish for show', showId); return 0; }
 
     const rows = cards.map(c => ({ show_id: showId, card_id: c.id }));
@@ -18480,6 +18535,7 @@ function dbRowToCard(row) {
     Sport:              row.sport                || '',
     Category:           row.category             || '',
     Subcategory:         row.subcategory          || '',
+    _trustFlag:         row.trust_flag           || null,
     _shows:          new Set(),
   };
   if (row.sold_price     != null) card.SoldPrice     = row.sold_price;
@@ -19104,25 +19160,304 @@ async function recordManualSaleTransaction(card, showId) {
   }
 }
 
+// ════════════════════════════════════════════════════════
+// TRUST CHECK VIA GTCR (Global Trading Card Registry)
+// Phase 1: cert-number stolen/lost lookup on insert + re-check on publish.
+// Phase 3/4: consent-gated registration on sale, deregistration on revoke.
+// All GTCR calls go through netlify/functions/gtcr-trust-check.js (read key)
+// and gtcr-registry.js (partner write key). See CLAUDE.md for the full spec.
+// ════════════════════════════════════════════════════════
+
+// Registration stays dark until pricing/packaging is decided (spec "Flagged
+// decision B"). Flip this, and GTCR_REGISTRATION_ENABLED=true in Netlify,
+// together. The Trust Check itself (Phase 1) doesn't depend on this flag.
+const GTCR_CONSENT_UI_ENABLED = false;
+
+// Bump the version whenever the copy changes. The consent-evidence log records
+// which version the seller saw. DRAFT, pending legal review before launch.
+const GTCR_CONSENT_COPY_VERSION = '2026-09-25-draft1';
+const GTCR_CONSENT_COPY =
+  'Register the graded cards I sell on CardShow with the Global Trading Card Registry (GTCR). ' +
+  'When I complete a sale of a graded card, CardShow will send GTCR its cert number, grading company, ' +
+  'description, grade, and my email so the card has a provenance record. This applies to every graded ' +
+  'card I sell through CardShow while this setting is on, not just one sale. I can turn it off at any time, ' +
+  'and CardShow will then ask GTCR to remove the registrations it made for me.';
+
+const GTCR_RECHECK_WINDOW_MS = 60 * 1000; // an insert-time check this recent covers the publish re-check
+
+async function _gtcrHeaders() {
+  const headers = { 'Content-Type': 'application/json' };
+  try {
+    const { data } = await db.auth.getSession();
+    const token = data?.session?.access_token;
+    if (token) headers.Authorization = 'Bearer ' + token;
+  } catch (_) { /* unauthenticated — lookup still works, just isn't persisted */ }
+  return headers;
+}
+
+function _gtcrEligible(card) {
+  return !!(card && String(card['Cert #'] || '').trim() && card.Grader && (card.Status || 'Available') !== 'Sold');
+}
+
+// Runs one Trust Check for a card. Dedupes concurrent calls per card (insert
+// and auto-publish fire back to back). Resolves to the card's trust flag.
+// Any failure FAILS OPEN: the flag is left as it was, and the next publish re-checks.
+function gtcrCheckCard(card, dbId, trigger) {
+  if (!_gtcrEligible(card) || !dbId || typeof db === 'undefined') return Promise.resolve(card?._trustFlag || null);
+  if (card._gtcrInflight) return card._gtcrInflight;
+
+  const p = (async () => {
+    try {
+      const res = await fetch('/.netlify/functions/gtcr-trust-check', {
+        method: 'POST',
+        headers: await _gtcrHeaders(),
+        body: JSON.stringify({
+          action: 'check',
+          cert_number: String(card['Cert #']).trim(),
+          grading_company: card.Grader,
+          inventory_id: dbId,
+          trigger,
+        }),
+      });
+      const data = await res.json();
+      if (!data.success) return card._trustFlag || null;
+
+      const prev = card._trustFlag || null;
+      // The server's persisted flag wins. It's undefined when persistence is
+      // unavailable (e.g. migration not yet run), so derive the same rule in memory.
+      let flag = data.trust_flag;
+      if (flag === undefined) {
+        flag = data.matched ? (prev === 'disputed' ? 'disputed' : 'flagged')
+                            : (prev === 'flagged' ? null : prev);
+      }
+      card._trustFlag = flag || null;
+      card._gtcrCheckedAt = Date.now();
+      card._gtcrReport = data;
+
+      if (card._trustFlag === 'flagged' && prev !== 'flagged') {
+        // The server already deleted this card's show_inventory rows. Mirror that in memory.
+        if (card._shows) card._shows.clear();
+        showToast(`⚠ ${card.Player || 'Card'} matches a GTCR stolen/lost report — hidden from buyers`, 'var(--danger)');
+      }
+      if (card._trustFlag !== prev && currentRole === 'seller') {
+        renderSellerTable(getSellerInventory());
+        syncBuyerView();
+      }
+      return card._trustFlag;
+    } catch (err) {
+      console.warn('[gtcr] trust check failed (fail open):', err.message);
+      return card._trustFlag || null;
+    } finally {
+      card._gtcrInflight = null;
+    }
+  })();
+  card._gtcrInflight = p;
+  return p;
+}
+
+// Publish gate. Resolves true when the card may be published. A sold card
+// (a Manual Sale publishing for analytics) or an ungraded card passes straight through.
+async function _gtcrClearForPublish(card, dbId) {
+  if (!_gtcrEligible(card)) return true;
+  if (card._trustFlag === 'flagged') return false;
+  if (card._gtcrInflight) {
+    await card._gtcrInflight;
+  } else if (!card._gtcrCheckedAt || Date.now() - card._gtcrCheckedAt > GTCR_RECHECK_WINDOW_MS) {
+    await gtcrCheckCard(card, dbId, 'publish');
+  }
+  return card._trustFlag !== 'flagged';
+}
+
+// Insert-time checks for a batch (CSV/XLSX import). Small concurrency so a
+// large import doesn't flood the function. Cards already checked in the
+// recheck window, or with a check in flight, are skipped.
+async function _gtcrQueueChecks(cards) {
+  const queue = cards.filter(c => _gtcrEligible(c) && c._dbId);
+  const worker = async () => {
+    while (queue.length) {
+      const c = queue.shift();
+      if (c._gtcrInflight || (c._gtcrCheckedAt && Date.now() - c._gtcrCheckedAt < GTCR_RECHECK_WINDOW_MS)) continue;
+      await gtcrCheckCard(c, c._dbId, 'insert');
+    }
+  };
+  await Promise.all([worker(), worker(), worker()]);
+}
+
+// ── Flagged-card resolution modal ──
+let _gtcrFlagIdx = null;
+
+function openGtcrFlagModal(idx) {
+  const card = inventory[idx];
+  if (!card) return;
+  _gtcrFlagIdx = idx;
+  document.getElementById('gtcrFlagCardLabel').textContent =
+    (card['Card Title'] || card.Player || 'Card') + (card['Cert #'] ? ` · ${card.Grader || ''} #${card['Cert #']}` : '');
+  const r = card._gtcrReport || {};
+  const kinds = [r.has_stolen_report && 'stolen', r.has_lost_report && 'lost'].filter(Boolean);
+  document.getElementById('gtcrFlagReportKinds').textContent = kinds.length ? `(reported ${kinds.join(' / ')})` : '';
+  document.getElementById('gtcrFlagNote').value = '';
+  document.getElementById('gtcrFlagOverlay').classList.add('open');
+}
+
+function closeGtcrFlagModal() {
+  document.getElementById('gtcrFlagOverlay').classList.remove('open');
+  _gtcrFlagIdx = null;
+}
+
+async function gtcrResolveFlag(resolution) {
+  const idx = _gtcrFlagIdx;
+  const card = inventory[idx];
+  if (!card) return;
+  const label = card.Player || card['Card Title'] || 'this card';
+  if (resolution === 'removed' && !confirm(`Remove "${label}" from your inventory? This cannot be undone.`)) return;
+  const note = document.getElementById('gtcrFlagNote').value.trim();
+
+  let ok = false;
+  if (card._dbId) {
+    try {
+      const res = await fetch('/.netlify/functions/gtcr-trust-check', {
+        method: 'POST',
+        headers: await _gtcrHeaders(),
+        body: JSON.stringify({ action: 'resolve', inventory_id: card._dbId, resolution, note }),
+      });
+      ok = (await res.json()).success;
+    } catch (err) {
+      console.warn('[gtcr] resolve failed:', err.message);
+    }
+  }
+  closeGtcrFlagModal();
+
+  if (resolution === 'removed') {
+    // Removal is the seller's own decision and goes ahead even if the audit
+    // write failed. The card itself is the thing being protected against.
+    deleteCardFromDB(card);
+    const i = inventory.indexOf(card);
+    if (i >= 0) inventory.splice(i, 1);
+    updateStats();
+    updateReport();
+    syncBuyerView();
+    showToast(`🗑 ${label} removed`);
+  } else {
+    if (!ok) { showToast('⚠️ Could not save your dispute — try again', 'var(--danger)'); return; }
+    card._trustFlag = 'disputed';
+    showToast(`Dispute recorded — ${label} can be published again`);
+  }
+  renderSellerTable(getSellerInventory());
+}
+
+// ── Registration on sale (Phase 4) ──
+// Fire-and-forget after a sale's updateCardInDB() resolves, so the server
+// sees status = 'Sold'. The server re-verifies consent, ownership, sold
+// status and cert/grader, so this is only a cheap client-side pre-filter.
+function gtcrRegisterOnSale(card) {
+  if (!GTCR_CONSENT_UI_ENABLED || !_gtcrConsentState?.consented) return;
+  if (!card?._dbId || !String(card['Cert #'] || '').trim() || !card.Grader) return;
+  (async () => {
+    try {
+      const res = await fetch('/.netlify/functions/gtcr-registry', {
+        method: 'POST',
+        headers: await _gtcrHeaders(),
+        body: JSON.stringify({ action: 'register', inventory_id: card._dbId }),
+      });
+      const data = await res.json();
+      if (!data.success) console.warn('[gtcr] register skipped:', data.error);
+    } catch (err) {
+      console.warn('[gtcr] register failed:', err.message);
+    }
+  })();
+}
+
+// ── Consent (Phase 3) ──
+let _gtcrConsentState = null; // { consented, consented_at, enabled, pending_removals }
+
+async function _gtcrRegistryCall(action, extra) {
+  const res = await fetch('/.netlify/functions/gtcr-registry', {
+    method: 'POST',
+    headers: await _gtcrHeaders(),
+    body: JSON.stringify({ action, ...(extra || {}) }),
+  });
+  return res.json();
+}
+
+async function gtcrLoadConsentState() {
+  if (!GTCR_CONSENT_UI_ENABLED || typeof db === 'undefined') return null;
+  try {
+    const data = await _gtcrRegistryCall('status');
+    if (!data.success) return null;
+    _gtcrConsentState = data;
+    // A revoke that was interrupted mid-drain resumes here.
+    if (!data.consented && data.pending_removals > 0) _gtcrDrainRemovals();
+    return data;
+  } catch (err) {
+    console.warn('[gtcr] consent status failed:', err.message);
+    return null;
+  }
+}
+
+async function _gtcrDrainRemovals() {
+  for (let i = 0; i < 20; i++) {
+    let data;
+    try { data = await _gtcrRegistryCall('drain_removals'); } catch (_) { return; }
+    if (!data.success || !data.remaining || (!data.removed && data.failed)) return;
+  }
+}
+
+function _gtcrRenderConsent() {
+  const section = document.getElementById('gtcrConsentSection');
+  if (!section) return;
+  section.style.display = GTCR_CONSENT_UI_ENABLED ? '' : 'none';
+  if (!GTCR_CONSENT_UI_ENABLED) return;
+  document.getElementById('gtcrConsentCopy').textContent = GTCR_CONSENT_COPY;
+  const toggle = document.getElementById('gtcrConsentToggle');
+  const status = document.getElementById('gtcrConsentStatus');
+  const st = _gtcrConsentState;
+  toggle.checked = !!st?.consented; // never pre-checked: only true with a stored 'granted' event
+  toggle.disabled = !st || (!st.enabled && !st.consented);
+  status.textContent = !st ? 'Loading…'
+    : st.consented ? `On since ${new Date(st.consented_at).toLocaleDateString()}`
+    : !st.enabled ? 'Not available yet'
+    : 'Off';
+}
+
+async function gtcrConsentToggleChanged(el) {
+  const turningOn = el.checked;
+  el.disabled = true;
+  try {
+    const data = await _gtcrRegistryCall(turningOn ? 'grant' : 'revoke', { consent_copy_version: GTCR_CONSENT_COPY_VERSION });
+    if (!data.success) throw new Error(data.error || 'failed');
+    if (!turningOn && data.remaining > 0) await _gtcrDrainRemovals();
+    showToast(turningOn ? '✓ GTCR registration turned on' : 'GTCR registration turned off — removing past registrations');
+  } catch (err) {
+    showToast('⚠️ Could not update GTCR setting — try again', 'var(--danger)');
+  }
+  await gtcrLoadConsentState();
+  _gtcrRenderConsent();
+}
+
 // ── Auto-publish a card to the active show ──────────────────────────────────
 // FIRE-AND-FORGET — never await. On success: upserts { show_id, card_id }
 // to show_inventory, adds showId to card._shows, increments showCardCounts,
 // calls syncBuyerView(). On failure: console.warn only.
+// A graded card with a cert # is first cleared against GTCR (_gtcrClearForPublish).
+// A flagged card is never published. A GTCR outage fails open.
 function _autoPublishCardToShow(card, dbId, showId) {
   if (!showId || !dbId || typeof db === 'undefined') return;
 
-  db.from('show_inventory')
-    .upsert(
-      { show_id: showId, card_id: dbId },
-      { onConflict: 'show_id,card_id' }
-    )
-    .then(({ error }) => {
-      if (error) { console.warn('[auto-publish]', error.message); return; }
-      if (!card._shows) card._shows = new Set();
-      card._shows.add(showId);
-      showCardCounts[showId] = (showCardCounts[showId] || 0) + 1;
-      syncBuyerView();
-    });
+  _gtcrClearForPublish(card, dbId).then(cleared => {
+    if (!cleared) { console.info('[auto-publish] skipped — GTCR flag on', card['Cert #']); return; }
+    db.from('show_inventory')
+      .upsert(
+        { show_id: showId, card_id: dbId },
+        { onConflict: 'show_id,card_id' }
+      )
+      .then(({ error }) => {
+        if (error) { console.warn('[auto-publish]', error.message); return; }
+        if (!card._shows) card._shows = new Set();
+        card._shows.add(showId);
+        showCardCounts[showId] = (showCardCounts[showId] || 0) + 1;
+        syncBuyerView();
+      });
+  });
 }
 
 // ── Insert a single card to Supabase ──
@@ -19157,6 +19492,9 @@ async function insertCardToDB(card, sellerIdOverride) {
     }
 
     if (error) { console.warn('Insert failed:', error.message); return null; }
+    // GTCR Trust Check on insert. Fire-and-forget; _autoPublishCardToShow()
+    // awaits this same in-flight check instead of starting a second one.
+    gtcrCheckCard(card, data.id, 'insert');
     return data.id; // return the UUID so we can store it on the card
   } catch(e) {
     console.warn('insertCardToDB error:', e.message);
@@ -19462,6 +19800,12 @@ async function upsertCardsToDB(cards) {
     }
 
     console.log(`Upserted ${toInsert.length} new + ${toUpdate.length} updated cards`);
+
+    // GTCR Trust Check on insert for imported graded cards.
+    if (insertedIds.length === toInsertCards.length) {
+      toInsertCards.forEach((card, i) => { if (insertedIds[i] && !card._dbId) card._dbId = insertedIds[i]; });
+      _gtcrQueueChecks(toInsertCards);
+    }
 
     // Auto-publish newly inserted cards to the active show. Skip updates —
     // those cards already have a show_inventory row from a prior publish run.
