@@ -19220,7 +19220,11 @@ function gtcrCheckCard(card, dbId, trigger) {
         }),
       });
       const data = await res.json();
-      if (!data.success) return card._trustFlag || null;
+      if (!data.success) {
+        console.warn('[gtcr] trust check did not complete (failing open):', data.reason || data.error, data.gtcr_message || '');
+        return card._trustFlag || null;
+      }
+      if (window.CARDSHOW_DEBUG) console.log('[gtcr] trust check', card['Cert #'], data);
 
       const prev = card._trustFlag || null;
       // The server's persisted flag wins. It's undefined when persistence is

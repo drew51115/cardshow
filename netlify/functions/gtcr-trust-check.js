@@ -90,7 +90,7 @@ function normalizeTrustResponse(body) {
 
 async function callTrustCheck(certNumber, gradingCompany) {
   const key = process.env.GTCR_READ_API_KEY;
-  if (!key) throw new Error('GTCR_READ_API_KEY not set');
+  if (!key) throw Object.assign(new Error('GTCR_READ_API_KEY not set'), { reason: 'missing_read_key' });
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), GTCR_TIMEOUT_MS);
   try {
@@ -105,7 +105,10 @@ async function callTrustCheck(certNumber, gradingCompany) {
     const text = await res.text();
     let body = null;
     try { body = JSON.parse(text); } catch (_) { /* non-JSON */ }
-    if (!res.ok) throw new Error(`trustCheckApi ${res.status}: ${text.slice(0, 200)}`);
+    if (!res.ok) {
+      throw Object.assign(new Error(`trustCheckApi ${res.status}: ${text.slice(0, 200)}`),
+        { reason: `gtcr_http_${res.status}`, gtcrMessage: (body && (body.error || body.message)) || null });
+    }
     return normalizeTrustResponse(body);
   } finally {
     clearTimeout(timer);
@@ -122,7 +125,15 @@ async function handleCheck(db, event, input) {
     result = await callTrustCheck(certNumber, gradingCompany);
   } catch (err) {
     console.warn('[gtcr-trust-check] lookup failed (client fails open):', err.message);
-    return json(200, { success: false, error: 'lookup_failed' });
+    // `reason` / `gtcr_message` are diagnostic only. They carry no key material,
+    // just which step failed: missing key, a GTCR HTTP status, a timeout, or a
+    // network error.
+    return json(200, {
+      success: false,
+      error: 'lookup_failed',
+      reason: err.reason || (err.name === 'AbortError' ? 'timeout' : 'network_error'),
+      gtcr_message: err.gtcrMessage || null,
+    });
   }
 
   let trustFlag;
