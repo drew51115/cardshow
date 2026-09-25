@@ -74,7 +74,7 @@ async function getUser(db, event) {
 // Numbers and booleans pass through. Strings pass through only under
 // enum-like keys (type/status/...), which is where "stolen" vs "lost" lives;
 // free text such as names or notes stays redacted.
-const SHAPE_VISIBLE_KEYS = /^(type|status|kind|state|category|report_type|report_status|reason)$/i;
+const SHAPE_VISIBLE_KEYS = /^(type|status|kind|state|category|report_type|report_status|reason|card_status|verification_level|grading_company|grade)$/i;
 function describeShape(v, depth = 0, key = '') {
   if (depth > 5) return '…';
   if (Array.isArray(v)) return v.length ? [describeShape(v[0], depth + 1, key), `(${v.length} items)`] : [];
