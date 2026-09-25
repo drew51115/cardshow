@@ -2274,21 +2274,31 @@
 
 
   /* ── CARD EDIT ── */
-  .gtcr-alert-overlay { background: rgba(20, 0, 0, 0.78); z-index: 10000; }
-  .gtcr-alert-modal { border: 2px solid var(--danger); box-shadow: 0 0 0 4px rgba(239,68,68,0.18), 0 20px 60px rgba(0,0,0,0.6); }
+  /* GTCR tiers: stolen = red, lost / dispute on file = amber */
+  .gtcr-alert-overlay { --gtcr-c: 239,68,68; background: rgba(20, 0, 0, 0.78); z-index: 10000; }
+  .gtcr-alert-overlay[data-kind="lost"], .gtcr-alert-overlay[data-kind="dispute"] { --gtcr-c: 245,158,11; background: rgba(20, 12, 0, 0.72); }
+  .gtcr-alert-modal { border: 2px solid rgb(var(--gtcr-c)); box-shadow: 0 0 0 4px rgba(var(--gtcr-c),0.18), 0 20px 60px rgba(0,0,0,0.6); }
   .gtcr-alert-icon {
     width: 52px; height: 52px; margin: 0 auto 0.6rem; border-radius: 50%;
-    background: rgba(239,68,68,0.15); color: var(--danger); font-size: 1.6rem;
+    background: rgba(var(--gtcr-c),0.15); color: rgb(var(--gtcr-c)); font-size: 1.6rem;
     display: flex; align-items: center; justify-content: center;
     animation: gtcrPulse 1.4s ease-in-out 3;
   }
-  @keyframes gtcrPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.5); } 50% { box-shadow: 0 0 0 12px rgba(239,68,68,0); } }
+  .gtcr-alert-overlay[data-kind="dispute"] .gtcr-alert-icon { animation: none; }
+  @keyframes gtcrPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(var(--gtcr-c),0.5); } 50% { box-shadow: 0 0 0 12px rgba(var(--gtcr-c),0); } }
+  .gtcr-alert-title { font-family:'Bebas Neue',sans-serif; font-size:1.6rem; letter-spacing:0.04em; color:rgb(var(--gtcr-c)); margin-bottom:0.2rem; text-align:center; }
+  .gtcr-remove-btn, .gtcr-gotit-btn { background: rgb(var(--gtcr-c)) !important; border-color: rgb(var(--gtcr-c)) !important; color: #0a0a0a !important; }
+  .gtcr-alert-overlay[data-kind="dispute"] .gtcr-action-only { display: none; }
+  .gtcr-alert-overlay:not([data-kind="dispute"]) .gtcr-info-only { display: none !important; }
   .gtcr-flag-badge {
-    background: rgba(239,68,68,0.14); color: var(--danger); border: 1px solid rgba(239,68,68,0.55);
+    --gtcr-c: 239,68,68;
+    background: rgba(var(--gtcr-c),0.14); color: rgb(var(--gtcr-c)); border: 1px solid rgba(var(--gtcr-c),0.55);
     border-radius: 6px; padding: 0.2rem 0.5rem; font-family: 'DM Mono', monospace; font-size: 0.62rem;
     letter-spacing: 0.04em; cursor: pointer; white-space: nowrap;
   }
+  .gtcr-flag-badge.lost, .gtcr-flag-badge.dispute { --gtcr-c: 245,158,11; }
   .gtcr-flag-badge.disputed { background: transparent; color: var(--muted); border-color: var(--border); cursor: default; }
+  .gtcr-clear { font-family:'DM Mono',monospace; font-size:0.58rem; color:#22c55e; opacity:0.75; margin-top:0.15rem; }
   .btn-card-edit {
     background: transparent; border: 1px solid var(--border);
     color: var(--muted); border-radius: 6px; padding: 0.18rem 0.5rem;
@@ -6290,23 +6300,28 @@
 <!-- Full-screen loading overlay while the bulk-scan photo is being analyzed —
      visible regardless of sidebar/mobile state, unlike the old toast+button approach -->
 <!-- GTCR Trust Check — flagged-card resolution (see "Trust Check via GTCR" in CLAUDE.md) -->
-<!-- Deliberately no click-outside or Escape close: the seller has to pick one of the three buttons. -->
-<div class="modal-overlay gtcr-alert-overlay" id="gtcrFlagOverlay" role="alertdialog" aria-modal="true" aria-labelledby="gtcrFlagTitle">
+<!-- One modal, three tiers, set by openGtcrFlagModal() via the overlay's data-kind:
+       stolen  red, blocking (must pick a button)
+       lost    amber, blocking (must pick a button), gentler copy
+       dispute amber, informational; dismissable with Got it / backdrop / Escape -->
+<div class="modal-overlay gtcr-alert-overlay" id="gtcrFlagOverlay" data-kind="stolen" role="alertdialog" aria-modal="true" aria-labelledby="gtcrFlagTitle"
+  onclick="if(event.target===this && this.dataset.kind==='dispute') closeGtcrFlagModal()">
   <div class="modal gtcr-alert-modal" style="max-width:420px;padding:1.6rem 1.5rem">
     <div class="gtcr-alert-icon" aria-hidden="true">⚠</div>
-    <div id="gtcrFlagTitle" style="font-family:'Bebas Neue',sans-serif;font-size:1.6rem;letter-spacing:0.04em;color:var(--danger);margin-bottom:0.2rem;text-align:center">Possible Stolen Card</div>
+    <div id="gtcrFlagTitle" class="gtcr-alert-title">Possible Stolen Card</div>
     <div id="gtcrFlagQueueNote" style="font-family:'DM Mono',monospace;font-size:0.65rem;color:var(--muted);text-align:center;margin-bottom:0.6rem"></div>
     <div id="gtcrFlagCardLabel" style="font-family:'DM Sans',sans-serif;font-weight:600;color:var(--text);margin-bottom:0.6rem"></div>
-    <div style="font-size:0.82rem;color:var(--muted);line-height:1.5;margin-bottom:0.9rem">
-      This cert number matches an active report in the Global Trading Card Registry (GTCR)
-      <span id="gtcrFlagReportKinds"></span>. The card is hidden from buyers and can't be published
-      until you choose what to do. If you believe the report is wrong, you can dispute it and keep the listing.
+    <div id="gtcrFlagBody" style="font-size:0.82rem;color:var(--muted);line-height:1.5;margin-bottom:0.9rem"></div>
+    <div class="gtcr-action-only">
+      <textarea id="gtcrFlagNote" class="sale-notes-input" rows="2" placeholder="Optional note (e.g. where you acquired this card)" style="width:100%;margin-bottom:1rem"></textarea>
+      <div style="display:flex;flex-direction:column;gap:0.5rem">
+        <button class="btn btn-primary gtcr-remove-btn" onclick="gtcrResolveFlag('removed')">Remove from inventory</button>
+        <button class="btn btn-ghost" onclick="gtcrResolveFlag('disputed')">Dispute &amp; keep listing</button>
+        <button class="btn-modal-close" onclick="closeGtcrFlagModal()">Decide later — keep it hidden</button>
+      </div>
     </div>
-    <textarea id="gtcrFlagNote" class="sale-notes-input" rows="2" placeholder="Optional note (e.g. where you acquired this card)" style="width:100%;margin-bottom:1rem"></textarea>
-    <div style="display:flex;flex-direction:column;gap:0.5rem">
-      <button class="btn btn-primary" style="background:var(--danger);border-color:var(--danger)" onclick="gtcrResolveFlag('removed')">Remove from inventory</button>
-      <button class="btn btn-ghost" onclick="gtcrResolveFlag('disputed')">Dispute &amp; keep listing</button>
-      <button class="btn-modal-close" onclick="closeGtcrFlagModal()">Decide later — keep it hidden</button>
+    <div class="gtcr-info-only" style="display:flex;flex-direction:column;gap:0.5rem">
+      <button class="btn btn-primary gtcr-gotit-btn" onclick="closeGtcrFlagModal()">Got it</button>
     </div>
   </div>
 </div>
@@ -9459,6 +9474,7 @@ function renderSellerTable(rows) {
       <td data-label="Grade">
         ${gradeBadge(r.Grade, r.Grader)}
         ${isGraded && r['Cert #'] ? `<div style="font-family:'DM Mono',monospace;font-size:0.6rem;color:var(--muted);margin-top:0.2rem">${r['Cert #']}</div>` : ''}
+        ${_gtcrState(r) === 'clear' ? `<div class="gtcr-clear" title="No active reports in the Global Trading Card Registry">✓ Registry clear</div>` : ''}
         ${!isGraded && r.Condition ? `<div style="font-size:0.68rem;color:var(--muted);margin-top:0.2rem">${r.Condition}</div>` : ''}
       </td>
 
@@ -9469,8 +9485,7 @@ function renderSellerTable(rows) {
             <span class="status-dot"></span>${statusIcon} ${status}
           </div>
           <button class="btn-card-edit" onclick="openCEM(${realIdx})">✏ Edit</button>
-          ${r._trustFlag === 'flagged' ? `<button class="gtcr-flag-badge" onclick="openGtcrFlagModal(${realIdx})" title="Matches an active GTCR stolen/lost report — hidden from buyers until you act">⚠ Flagged</button>`
-            : r._trustFlag === 'disputed' ? `<span class="gtcr-flag-badge disputed" title="You disputed a GTCR registry match — listing allowed">Disputed</span>` : ''}
+          ${_gtcrBadgeHTML(r, realIdx)}
         </div>
       </td>
       <td data-label="Sold">
@@ -10382,6 +10397,12 @@ function detectSport(r) {
 
 // Keyboard close
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+// GTCR dispute-on-file notice is informational, so Escape dismisses it. The
+// stolen/lost alerts deliberately ignore Escape: the seller must pick a button.
+document.addEventListener('keydown', e => {
+  const ov = document.getElementById('gtcrFlagOverlay');
+  if (e.key === 'Escape' && ov?.classList.contains('open') && ov.dataset.kind === 'dispute') closeGtcrFlagModal();
+});
 
 // Track what's currently displayed so modal can look up by index
 let currentDisplayRows = [];
@@ -12065,6 +12086,7 @@ function loginAsSeller(handle) {
       // filter to work on anything but a never-refreshed session.
       await hydrateCardShowMembership(handle);
       updateReport(); // safe even if the seller isn't on the Report tab yet
+      gtcrHydrateLatestChecks(); // badges + "Registry clear" markers survive a reload
     }
     checkOnboardingStatus(handle);
   });
@@ -19239,6 +19261,8 @@ function gtcrCheckCard(card, dbId, trigger) {
       if (window.CARDSHOW_DEBUG) console.log('[gtcr] trust check', card['Cert #'], data);
 
       const prev = card._trustFlag || null;
+      const prevState = _gtcrState(card);
+      const hadDispute = !!card._gtcrReport?.has_dispute_report;
       // The server's persisted flag wins. It's undefined when persistence is
       // unavailable (e.g. migration not yet run), so derive the same rule in memory.
       let flag = data.trust_flag;
@@ -19254,8 +19278,10 @@ function gtcrCheckCard(card, dbId, trigger) {
         // The server already deleted this card's show_inventory rows. Mirror that in memory.
         if (card._shows) card._shows.clear();
         _gtcrQueueAlert(card);
+      } else if (_gtcrState(card) === 'dispute' && !hadDispute) {
+        _gtcrQueueAlert(card); // informational, dismissable
       }
-      if (card._trustFlag !== prev && currentRole === 'seller') {
+      if (_gtcrState(card) !== prevState && currentRole === 'seller') {
         renderSellerTable(getSellerInventory());
         syncBuyerView();
       }
@@ -19317,16 +19343,65 @@ function _gtcrQueueAlert(card) {
 function _gtcrUpdateQueueNote() {
   const qn = document.getElementById('gtcrFlagQueueNote');
   const n = _gtcrAlertQueue.length;
-  if (qn) qn.textContent = n ? `${n} more flagged card${n !== 1 ? 's' : ''} after this one` : '';
+  if (qn) qn.textContent = n ? `${n} more after this one` : '';
 }
 
 function _gtcrShowNextAlert() {
   while (_gtcrAlertQueue.length) {
     const card = _gtcrAlertQueue.shift();
     const idx = inventory.indexOf(card);
-    if (idx >= 0 && card._trustFlag === 'flagged') { openGtcrFlagModal(idx); return; }
+    const st = _gtcrState(card);
+    if (idx >= 0 && (st === 'stolen' || st === 'lost' || st === 'dispute')) { openGtcrFlagModal(idx); return; }
   }
 }
+
+// Display tier for a card, from its trust flag and its latest GTCR check.
+//   stolen | lost    active report; card is hidden and needs a decision
+//   disputed         the seller disputed a stolen/lost match and kept the listing
+//   dispute          GTCR has an ownership dispute on file; informational only
+//   clear            checked, nothing on file
+//   null             never checked (not graded, no cert #, or check failed)
+// GTCR's precedence is stolen > lost > dispute, so stolen wins when both exist.
+function _gtcrState(card) {
+  if (!card) return null;
+  const r = card._gtcrReport;
+  if (card._trustFlag === 'flagged') return (r?.has_lost_report && !r?.has_stolen_report) ? 'lost' : 'stolen';
+  if (card._trustFlag === 'disputed') return 'disputed';
+  if (!r) return null;
+  if (r.has_dispute_report) return 'dispute';
+  return r.matched ? null : 'clear';
+}
+
+function _gtcrBadgeHTML(card, idx) {
+  switch (_gtcrState(card)) {
+    case 'stolen':   return `<button class="gtcr-flag-badge" onclick="openGtcrFlagModal(${idx})" title="Active stolen report in the Global Trading Card Registry — hidden from buyers until you act">⚠ Stolen report</button>`;
+    case 'lost':     return `<button class="gtcr-flag-badge lost" onclick="openGtcrFlagModal(${idx})" title="Active lost report in the Global Trading Card Registry — hidden from buyers until you act">⚠ Lost report</button>`;
+    case 'dispute':  return `<button class="gtcr-flag-badge dispute" onclick="openGtcrFlagModal(${idx})" title="An ownership dispute is on file in the Global Trading Card Registry — your listing is unaffected">Dispute on file</button>`;
+    case 'disputed': return `<span class="gtcr-flag-badge disputed" title="You disputed a GTCR registry match — listing allowed">You disputed</span>`;
+    default:         return '';
+  }
+}
+
+const GTCR_ALERT_COPY = {
+  stolen: {
+    title: 'Possible Stolen Card',
+    body: 'This cert number matches an active <strong>stolen</strong> report in the Global Trading Card Registry (GTCR). ' +
+          'The card is hidden from buyers and can\'t be published until you choose what to do. ' +
+          'If you believe the report is wrong, you can dispute it and keep the listing.',
+  },
+  lost: {
+    title: 'Reported Lost',
+    body: 'This cert number matches an active <strong>lost</strong> report in the Global Trading Card Registry (GTCR). ' +
+          'Lost cards often turn up innocently. If you\'re the owner and recovered it, clear the report with GTCR ' +
+          'and CardShow will pick that up the next time the card is published. Until then it\'s hidden from buyers.',
+  },
+  dispute: {
+    title: 'Dispute on File',
+    body: 'The Global Trading Card Registry (GTCR) has an ownership dispute on file for this cert number. ' +
+          'Nothing is blocked: your listing stays live and buyers don\'t see this notice. ' +
+          'It\'s worth checking the card\'s history before you sell it.',
+  },
+};
 
 function openGtcrFlagModal(idx) {
   const card = inventory[idx];
@@ -19334,13 +19409,18 @@ function openGtcrFlagModal(idx) {
   _gtcrFlagIdx = idx;
   _gtcrFlagCard = card;
   _gtcrUpdateQueueNote();
+  const st = _gtcrState(card);
+  const kind = (st === 'lost' || st === 'dispute') ? st : 'stolen';
+  const copy = GTCR_ALERT_COPY[kind];
+  const overlay = document.getElementById('gtcrFlagOverlay');
+  overlay.dataset.kind = kind;
+  overlay.setAttribute('role', kind === 'dispute' ? 'dialog' : 'alertdialog');
+  document.getElementById('gtcrFlagTitle').textContent = copy.title;
+  document.getElementById('gtcrFlagBody').innerHTML = copy.body;
   document.getElementById('gtcrFlagCardLabel').textContent =
     (card['Card Title'] || card.Player || 'Card') + (card['Cert #'] ? ` · ${card.Grader || ''} #${card['Cert #']}` : '');
-  const r = card._gtcrReport || {};
-  const kinds = [r.has_stolen_report && 'stolen', r.has_lost_report && 'lost'].filter(Boolean);
-  document.getElementById('gtcrFlagReportKinds').textContent = kinds.length ? `(reported ${kinds.join(' / ')})` : '';
   document.getElementById('gtcrFlagNote').value = '';
-  document.getElementById('gtcrFlagOverlay').classList.add('open');
+  overlay.classList.add('open');
 }
 
 function closeGtcrFlagModal(advance = true) {
@@ -19394,6 +19474,30 @@ async function gtcrResolveFlag(resolution) {
   }
   renderSellerTable(getSellerInventory());
   _gtcrShowNextAlert();
+}
+
+// Restores each card's latest Trust Check result on login, so tiers and the
+// "Registry clear" marker survive a reload. Reads cert_trust_checks (RLS:
+// seller's own rows). Silent on failure, e.g. before the migration has run.
+async function gtcrHydrateLatestChecks() {
+  if (typeof db === 'undefined') return;
+  const byId = new Map(getSellerInventory().filter(c => c._dbId).map(c => [c._dbId, c]));
+  if (!byId.size) return;
+  try {
+    const { data, error } = await db.from('cert_trust_checks')
+      .select('inventory_id, matched, active_count, has_stolen_report, has_lost_report, has_dispute_report, checked_at')
+      .in('inventory_id', [...byId.keys()])
+      .order('checked_at', { ascending: false });
+    if (error || !data) return;
+    for (const row of data) {
+      const card = byId.get(row.inventory_id);
+      if (!card || card._gtcrReport) continue; // rows are newest-first; keep only the latest
+      card._gtcrReport = { ...row, success: true };
+    }
+    if (currentRole === 'seller') renderSellerTable(getSellerInventory());
+  } catch (err) {
+    console.warn('[gtcr] hydrate checks failed:', err.message);
+  }
 }
 
 // ── Registration on sale (Phase 4) ──

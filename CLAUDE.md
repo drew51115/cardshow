@@ -4028,8 +4028,28 @@ before relying on it.
   and deletes the card's `show_inventory` rows. That hides the card from buyers on every surface.
   A later no-match clears a stale `'flagged'`. GTCR logs the partner lookup and notifies the owner
   itself. CardShow makes no report-back call; the spec's Decision #1 closes with no code.
+- **Status source:** GTCR's `card_status` is authoritative (confirmed by GTCR). Values: `UNREGISTERED`,
+  `REGISTERED`, `REPORTED_STOLEN`, `REPORTED_LOST`, `DISPUTED`, `RECOVERED`, `TRANSFER_PENDING`, with
+  precedence stolen > lost > dispute > recovered > registered > unregistered. `normalizeTrustResponse()`
+  derives the stolen/lost/dispute flags from it, because GTCR's own `has_*_report` booleans were
+  unreliable when this was built. Test certs (all PSA): 999999999 unregistered, 148087893 registered,
+  86234916 stolen, TEST-LOST-001 lost, TEST-DISPUTED-001 disputed, 31566382 recovered,
+  TEST-TRANSFER-001 transfer pending. Sending `debug: true` to `gtcr-trust-check` also returns a
+  `response_shape` (field names; free-text values redacted) for diagnosing mismatches.
+- **Display tiers** (`_gtcrState()`, `_gtcrBadgeHTML()`, `GTCR_ALERT_COPY`):
+  - **stolen** (red): "⚠ Stolen report" badge plus a blocking alert. Card is hidden from buyers.
+  - **lost** (amber): "⚠ Lost report" badge plus a blocking alert with gentler copy (the seller may be
+    the owner who recovered it). Card is hidden from buyers.
+  - **dispute** (amber, `DISPUTED` with no stolen/lost report): "Dispute on file" badge plus a one-time
+    notice that closes with Got it, the backdrop, or Escape. The listing stays live; it does not flag.
+  - **disputed** (grey): the seller chose "Dispute & keep listing" on a stolen/lost match.
+  - **clear**: a small green "✓ Registry clear" under the cert #, so "checked and clean" is
+    distinguishable from "never checked".
+  - Buyers never see any of these.
+  `gtcrHydrateLatestChecks()` reloads each card's latest `cert_trust_checks` row on seller login, so
+  tiers survive a reload.
 - **Seller UI:** when a card becomes flagged, `#gtcrFlagOverlay` opens on its own as a blocking alert
-  ("Possible Stolen Card"). There is no click-outside or Escape close; the seller must pick a button.
+  (title and color set by tier). There is no click-outside or Escape close; the seller must pick a button.
   Several cards flagged at once (e.g. a CSV import) queue up via `_gtcrQueueAlert()` and show one after
   another. The alert holds its card by reference (`_gtcrFlagCard`), not by index, because a removal
   splices `inventory[]`. The red **⚠ Flagged** badge on the row reopens the same alert. It has an
