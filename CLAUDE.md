@@ -330,7 +330,7 @@ Fonts: Bebas Neue (headlines), DM Sans (body), DM Mono (labels/badges), Barlow C
 23. **Report show filter populates after DB load** — `populateReportShowSelector()` is called inside the `loadShowsFromDB().then()` callback in `loginAsSeller()` so the dropdown reflects the seller's authorized shows from Supabase, not just in-memory state at login time.
 24. **`initSidebarState()` must be called on login** — Defined in app.html; adds `sidebar-open` on desktop (>768px) and removes it on mobile. Called from both `loginAsSeller()` and `loginAsAdmin()`. Sidebar HTML starts without `sidebar-open` class; desktop CSS shows sidebar unconditionally so the class only matters on mobile. **The mobile trigger for this class is `#sidebarToggle`, which lives in the sticky `<nav>` bar (session 2026-09-08), not inside `.seller-layout`** — see "Mobile sidebar toggle moved into nav" below for why.
 25. **Admin sidebar hidden on mobile** — `body.role-admin #mainSidebar { display: none !important }` in `≤599px` media query. Quick Actions (Create New Show, Back to Shows) are redundant with main content on mobile. Admin grid uses `grid-template-columns: 1fr` on mobile so main content fills full width.
-26. **FAB (`#fabAddCard`) is seller-only** — Shown via `style.display=''` in `loginAsSeller()`, hidden in `loginAsAdmin()` and `signOut()`. Only visible at `≤767px` via CSS. Black background + gold border + gold "+" text for maximum contrast against dark UI. A secondary stacked FAB for Bulk Scan was tried and then removed — all card-add actions on mobile (including Bulk Scan, via the shortcut link in `#ac_scan_row`) now live behind this single primary FAB → Add Card modal, rather than multiple competing entry points.
+26. **FAB (`#fabAddCard`) is seller-only, and it is the only mobile FAB** — a "+ Sell / Add" pill that opens the Sell / Add menu (`openQuickActions()`, see "Sell / Add Menu" below). Shown via `style.display=''` in `loginAsSeller()`, hidden in `loginAsAdmin()`, `signOut()` and on the Report tab (`switchSellerTab()`). Only visible at `≤767px` via CSS. The separate `#fabScanToSell` button was removed (session 2026-09-26, vendor feedback: too large, floated over content); Scan to Sell is now reached through the menu.
 27. **Comp search includes parallel** — `comp-lookup.js` search query: `[player, year, cardSet, parallel].filter(Boolean).join(' ')`. Cache fingerprint: `player|year|cardSet|cardNumber|parallel|grade|grader`. Both changes ensure autos/variants get correct prices instead of base card prices.
 28. **show_floor_transactions is IMMUTABLE.** Four RLS policies: SELECT + INSERT permissive, UPDATE + DELETE restrictive (USING false). Corrections are new rows, never edits. Never add permissive UPDATE or DELETE policies to this table.
 29. **recordShowTransaction() must never be awaited from sdConfirm().** Fire-and-forget. Sold confirmation UI must complete instantly.
@@ -2476,7 +2476,7 @@ duplicating its price/payment UI.
 
 ### Flow
 ```
-#fabScanToSell (mobile only, seller view) → posOpenPhotoSheet()
+Sell / Add menu → "Sell a card" → "It's not in my inventory" → posOpenPhotoSheet()
   └─ #posOverlay/#posSheet bottom sheet opens, #posPhotoPhase shown
        ├─ "Take Photo" → posTriggerCamera() → hidden #posFileInput (capture="environment")
        ├─ "Choose from Library" → posTriggerLibrary() → hidden #posLibraryFileInput
@@ -2585,15 +2585,9 @@ integration, no new Supabase tables or migrations — POS writes to the same `in
 app already uses.
 
 ### FAB visibility
-`#fabScanToSell` (mobile only, `≤767px`, fixed bottom, stacked above the circular
-`#fabAddCard` "+" button via `bottom: calc(5.75rem + env(safe-area-inset-bottom,0px))`)
-follows the exact same show/hide pattern as `#fabAddCard`: cleared (`style.display=''`)
-in `loginAsSeller()`, set to `'none'` in `loginAsAdmin()` and `signOut()`. `enterAsBuyer()`
-doesn't need to touch it — like `#fabAddCard`, it starts hidden by default and is only ever
-shown from `loginAsSeller()`, never reached from a fresh anonymous buyer session. Mobile
-`.toast` bottom offset raised to `9.5rem` to clear both stacked FABs. `--gold` is not a real
-CSS variable (see the Critical Note in the Trading Card API section below) — all new POS
-CSS uses the real `var(--accent)` token instead.
+`#fabScanToSell` was removed (session 2026-09-26). Scan to Sell is now opened from the Sell / Add
+menu ("Sell a card" → "It's not in my inventory"), and from the Feature guide. See "Sell / Add
+Menu" below. `--gold` is not a real CSS variable; POS CSS uses `var(--accent)`.
 
 ### Notable deviations from the original design drafts (and why)
 An earlier build-out across several sessions added a materially different design on this
@@ -4140,6 +4134,38 @@ seller features to `FEATURE_GUIDE` when they ship. GTCR consent is deliberately 
 
 ### Not built yet (planned next)
 A self-completing "Getting started" checklist in the sidebar, and one-time first-use tips.
+
+## Sell / Add Menu (session 2026-09-26)
+
+Vendor feedback: the floating "Scan to Sell" button was too large and covered content, and the
+screen was too busy for older sellers. The two mobile FABs were replaced with one smaller
+"+ Sell / Add" pill (`#fabAddCard`, 52px tall, bottom-right) that opens a bottom sheet
+(`#qaOverlay`) asking one question per screen, with large text and tap targets.
+
+### Screens
+- **Root** — "Sell a card" / "Add cards to my inventory".
+- **Sell** ("Is the card already in your inventory?") — "It's in my inventory" → **Pick**;
+  "It's not in my inventory" → `posOpenPhotoSheet()` (Scan to Sell).
+- **Pick** — a search box plus a list of the seller's unsold cards (`qaRenderPick()`, multi-word
+  match over title/player/year/set/parallel/grader/grade/cert, capped at `QA_PICK_LIMIT` = 50).
+  Tapping a card closes the sheet and calls `openSellDrawer(idx)`, the unmodified Sell Drawer.
+- **Add** — photo of one card (`openAddCard()` + `openCertScanner()`), photo of a whole case
+  (`#bulkScanInput` click), upload a spreadsheet (`#uploadZone` file input click), type it in
+  (`openAddCard()`), plus a template download link.
+
+Back (`qaBack()`, via `QA_PARENT`) and Cancel on every screen; Escape closes. On desktop the
+sheet is centered. `#view-seller` gets 5rem bottom padding on mobile so the pill never covers the
+last row.
+
+### Key functions (app.html)
+`openQuickActions(screen?)` / `closeQuickActions()` / `qaShow(screen)` / `qaBack()` /
+`qaGo(kind)` / `qaRenderPick()` / `qaSellCard(idx)`. `qaGo()` starts the tool **before** closing
+the sheet, inside the same click, so mobile browsers still allow the file pickers. The Feature
+guide's two sell entries point at `openQuickActions('pick')` and `posOpenPhotoSheet()`.
+
+### Does not change
+Sell Drawer / `sdConfirm()`, Scan-to-Sell POS, Add Card, bulk scan, CSV import, the desktop
+toolbar and sidebar buttons.
 
 ## Show Configuration (Demo Data)
 - **MLP Card Show** — Oct 17-18, 2026 · Grand Hyatt Tampa Bay, FL · Code: MLPTPA (primary demo, shown to buyers without code)

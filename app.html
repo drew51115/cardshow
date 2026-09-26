@@ -441,15 +441,17 @@
       display: flex;
       align-items: center;
       justify-content: center;
+      gap: 0.4rem;
       position: fixed;
-      bottom: 1.5rem;
-      right: 1.25rem;
-      width: 56px;
-      height: 56px;
-      border-radius: 50%;
+      bottom: calc(1.25rem + env(safe-area-inset-bottom, 0px));
+      right: 1rem;
+      height: 52px;
+      padding: 0 1.1rem 0 0.9rem;
+      border-radius: 26px;
       background: #07080c;
       color: var(--gold);
-      font-size: 1.7rem;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 1rem;
       font-weight: 700;
       border: 2px solid var(--gold);
       cursor: pointer;
@@ -462,8 +464,11 @@
       transform: scale(0.93);
       box-shadow: 0 1px 6px rgba(0,0,0,0.6), 0 0 0 1px rgba(245,200,66,0.15);
     }
+    .fab-add-plus { font-size: 1.5rem; line-height: 1; }
     /* push toast above FAB on mobile */
     .toast { bottom: 5.5rem; }
+    /* room under the inventory list so the FAB never hides the last row */
+    #view-seller { padding-bottom: 5rem; }
   }
 
   /* ── BUYER VIEW ── */
@@ -3049,6 +3054,70 @@
   .ob-steps li { font-size: 0.8rem; color: var(--muted); line-height: 1.4; }
   .ob-steps li strong { color: var(--text); }
 
+
+  /* ── SELL / ADD MENU (#qaOverlay) — large type and tap targets on purpose ── */
+  .qa-overlay {
+    position: fixed; inset: 0; z-index: 950;
+    background: rgba(0,0,0,0.7);
+    display: none; align-items: flex-end; justify-content: center;
+  }
+  .qa-overlay.open { display: flex; }
+  .qa-sheet {
+    width: 100%; max-width: 520px; max-height: 92vh; overflow-y: auto;
+    background: var(--card); border: 1px solid var(--border); border-bottom: none;
+    border-radius: 18px 18px 0 0;
+    padding: 0.9rem 1.1rem calc(1.4rem + env(safe-area-inset-bottom, 0px));
+  }
+  @media (min-width: 768px) {
+    .qa-overlay { align-items: center; }
+    .qa-sheet { border-radius: 18px; border-bottom: 1px solid var(--border); }
+  }
+  .qa-head { display: flex; justify-content: space-between; align-items: center; }
+  .qa-back, .qa-cancel {
+    background: none; border: none; color: var(--accent); cursor: pointer;
+    font-family: 'DM Sans', sans-serif; font-size: 1.05rem; font-weight: 600;
+    min-height: 44px; padding: 0 0.25rem;
+  }
+  .qa-cancel { color: var(--muted); }
+  .qa-title {
+    font-family: 'DM Sans', sans-serif; font-size: 1.45rem; font-weight: 700;
+    color: var(--text); margin: 0.3rem 0 1rem; line-height: 1.25;
+  }
+  .qa-screen { display: flex; flex-direction: column; gap: 0.75rem; }
+  .qa-choice {
+    display: flex; align-items: center; gap: 1rem; width: 100%; min-height: 76px;
+    padding: 0.9rem 1rem; text-align: left; cursor: pointer;
+    background: var(--surface); color: var(--text);
+    border: 2px solid var(--border); border-radius: 14px;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .qa-choice:hover, .qa-choice:focus-visible { border-color: var(--accent); outline: none; }
+  .qa-choice:active { transform: scale(0.99); }
+  .qa-choice-icon { font-size: 1.8rem; flex-shrink: 0; }
+  .qa-choice-text strong { display: block; font-size: 1.15rem; line-height: 1.3; }
+  .qa-choice-text span   { display: block; font-size: 0.95rem; color: var(--muted); line-height: 1.35; margin-top: 0.15rem; }
+  .qa-link { font-size: 0.95rem; color: var(--accent); text-decoration: none; padding: 0.5rem 0.25rem; }
+  .qa-search {
+    width: 100%; min-height: 52px; padding: 0 1rem; box-sizing: border-box;
+    background: var(--surface); color: var(--text);
+    border: 2px solid var(--border); border-radius: 12px;
+    font-family: 'DM Sans', sans-serif; font-size: 1.1rem;
+  }
+  .qa-search:focus { border-color: var(--accent); outline: none; }
+  .qa-pick-list { display: flex; flex-direction: column; gap: 0.5rem; }
+  .qa-pick-item {
+    display: flex; justify-content: space-between; align-items: center; gap: 0.75rem;
+    width: 100%; min-height: 64px; padding: 0.7rem 0.9rem; text-align: left; cursor: pointer;
+    background: var(--surface); color: var(--text);
+    border: 1px solid var(--border); border-radius: 12px; font-family: 'DM Sans', sans-serif;
+  }
+  .qa-pick-item:hover, .qa-pick-item:focus-visible { border-color: var(--accent); outline: none; }
+  .qa-pick-main { min-width: 0; }
+  .qa-pick-main strong { display: block; font-size: 1.05rem; line-height: 1.3; }
+  .qa-pick-main span   { display: block; font-size: 0.9rem; color: var(--muted); line-height: 1.3; }
+  .qa-pick-price { font-size: 1.1rem; font-weight: 700; color: var(--accent); flex-shrink: 0; }
+  .qa-empty { font-size: 1rem; color: var(--muted); line-height: 1.5; padding: 0.5rem 0.25rem; }
+
   /* ── HELP MENU + FEATURE GUIDE ── */
   .nav-help-wrap { position: relative; }
   .nav-help-btn {
@@ -3271,40 +3340,6 @@
      SCAN-TO-SELL POS — photo-first identification
      Chains into the existing sell drawer for price/payment.
   ════════════════════════════════════════════════ */
-
-  /* Scan-to-Sell FAB — mobile only, stacks above the circular Add Card FAB */
-  .fab-scan-to-sell { display: none; }
-  @media (max-width: 767px) {
-    .fab-scan-to-sell {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      position: fixed;
-      bottom: calc(5.75rem + env(safe-area-inset-bottom, 0px));
-      left: 50%;
-      transform: translateX(-50%);
-      width: calc(100% - 2rem);
-      max-width: 340px;
-      height: 52px;
-      background: var(--accent);
-      color: var(--black);
-      border: none;
-      border-radius: 14px;
-      font-family: 'Barlow Condensed', sans-serif;
-      font-size: 17px;
-      font-weight: 700;
-      letter-spacing: 0.07em;
-      text-transform: uppercase;
-      cursor: pointer;
-      z-index: 90;
-      box-shadow: 0 4px 20px rgba(245, 200, 66, 0.28);
-      -webkit-tap-highlight-color: transparent;
-      touch-action: manipulation;
-    }
-    .fab-scan-to-sell:active { opacity: 0.85; transform: translateX(-50%) scale(0.98); }
-    /* push toast above both stacked FABs on mobile */
-    .toast { bottom: 9.5rem; }
-  }
 
   /* Overlay */
   .pos-overlay {
@@ -5623,19 +5658,70 @@
   </div>
 </div>
 
-<!-- FAB — mobile Add Card button, seller view only -->
-<button class="fab-add" id="fabAddCard" onclick="openAddCard()" style="display:none" aria-label="Add card">+</button>
-
-<!-- Scan-to-Sell FAB — seller + mobile only, stacks above #fabAddCard -->
-<button
-  id="fabScanToSell"
-  class="fab-scan-to-sell"
-  onclick="posOpenPhotoSheet()"
-  style="display:none"
-  aria-label="Scan to Sell"
->
-  📷 Scan to Sell
+<!-- FAB — mobile only, seller view. Opens the Sell / Add menu (#qaOverlay). -->
+<button class="fab-add" id="fabAddCard" onclick="openQuickActions()" style="display:none" aria-label="Sell or add cards">
+  <span class="fab-add-plus" aria-hidden="true">+</span><span>Sell / Add</span>
 </button>
+
+<!-- ── SELL / ADD MENU ──
+     One question per screen, large buttons, plain words. Each choice hands off
+     to an existing flow (sell drawer, Scan to Sell, Add Card, bulk scan, import). -->
+<div class="qa-overlay" id="qaOverlay" onclick="if(event.target===this)closeQuickActions()">
+  <div class="qa-sheet" role="dialog" aria-modal="true" aria-labelledby="qaTitle">
+    <div class="qa-head">
+      <button class="qa-back" id="qaBackBtn" onclick="qaBack()" style="visibility:hidden">← Back</button>
+      <button class="qa-cancel" onclick="closeQuickActions()">Cancel</button>
+    </div>
+    <div class="qa-title" id="qaTitle">What would you like to do?</div>
+
+    <div class="qa-screen" id="qaScreenRoot">
+      <button class="qa-choice" onclick="qaShow('sell')">
+        <span class="qa-choice-icon" aria-hidden="true">💵</span>
+        <span class="qa-choice-text"><strong>Sell a card</strong><span>Record a sale at your table</span></span>
+      </button>
+      <button class="qa-choice" onclick="qaShow('add')">
+        <span class="qa-choice-icon" aria-hidden="true">➕</span>
+        <span class="qa-choice-text"><strong>Add cards to my inventory</strong><span>Photo, spreadsheet, or type them in</span></span>
+      </button>
+    </div>
+
+    <div class="qa-screen" id="qaScreenSell" style="display:none">
+      <button class="qa-choice" onclick="qaShow('pick')">
+        <span class="qa-choice-icon" aria-hidden="true">📋</span>
+        <span class="qa-choice-text"><strong>It's in my inventory</strong><span>Find the card, then enter the price</span></span>
+      </button>
+      <button class="qa-choice" onclick="qaGo('scanSell')">
+        <span class="qa-choice-icon" aria-hidden="true">📷</span>
+        <span class="qa-choice-text"><strong>It's not in my inventory</strong><span>Take a photo of the card and record the sale</span></span>
+      </button>
+    </div>
+
+    <div class="qa-screen" id="qaScreenAdd" style="display:none">
+      <button class="qa-choice" onclick="qaGo('scanOne')">
+        <span class="qa-choice-icon" aria-hidden="true">📷</span>
+        <span class="qa-choice-text"><strong>Take a photo of one card</strong><span>The details fill in for you</span></span>
+      </button>
+      <button class="qa-choice" onclick="qaGo('bulk')">
+        <span class="qa-choice-icon" aria-hidden="true">📸</span>
+        <span class="qa-choice-text"><strong>Take a photo of a whole case</strong><span>Finds every card in the picture</span></span>
+      </button>
+      <button class="qa-choice" onclick="qaGo('upload')">
+        <span class="qa-choice-icon" aria-hidden="true">📊</span>
+        <span class="qa-choice-text"><strong>Upload a spreadsheet</strong><span>A CSV or Excel file of your cards</span></span>
+      </button>
+      <button class="qa-choice" onclick="qaGo('type')">
+        <span class="qa-choice-icon" aria-hidden="true">✏️</span>
+        <span class="qa-choice-text"><strong>Type it in</strong><span>Fill in the details yourself</span></span>
+      </button>
+      <a class="qa-link" href="/downloads/CardShow_Inventory_Template.xlsx" download>⬇ Download the spreadsheet template</a>
+    </div>
+
+    <div class="qa-screen" id="qaScreenPick" style="display:none">
+      <input class="qa-search" id="qaSearch" type="search" placeholder="Search by player or card" autocomplete="off" oninput="qaRenderPick()">
+      <div class="qa-pick-list" id="qaPickList"></div>
+    </div>
+  </div>
+</div>
 
 <!-- ═══════════════════════════════════════════════
      SCAN-TO-SELL — Photo identification sheet
@@ -12100,8 +12186,6 @@ function loginAsSeller(handle) {
   if (sidebarToggleBtn) sidebarToggleBtn.style.display = '';
   const fabAdd = document.getElementById('fabAddCard');
   if (fabAdd) fabAdd.style.display = '';
-  const fabScan = document.getElementById('fabScanToSell');
-  if (fabScan) fabScan.style.display = '';
   const navHelpWrap = document.getElementById('navHelpWrap');
   if (navHelpWrap) navHelpWrap.style.display = '';
 
@@ -12232,8 +12316,6 @@ function loginAsAdmin() {
   if (sidebarToggleBtnAdm) sidebarToggleBtnAdm.style.display = 'none';
   const fabAddAdm = document.getElementById('fabAddCard');
   if (fabAddAdm) fabAddAdm.style.display = 'none';
-  const fabScanAdm = document.getElementById('fabScanToSell');
-  if (fabScanAdm) fabScanAdm.style.display = 'none';
   const navHelpWrapAdm = document.getElementById('navHelpWrap');
   if (navHelpWrapAdm) navHelpWrapAdm.style.display = 'none';
   const sellerTabBarAdm = document.getElementById('sellerTabBar');
@@ -12328,11 +12410,10 @@ async function signOut() {
   if (sidebarToggleBtnSO) sidebarToggleBtnSO.style.display = 'none';
   const fabAddSO = document.getElementById('fabAddCard');
   if (fabAddSO) fabAddSO.style.display = 'none';
-  const fabScanSO = document.getElementById('fabScanToSell');
-  if (fabScanSO) fabScanSO.style.display = 'none';
   const navHelpWrapSO = document.getElementById('navHelpWrap');
   if (navHelpWrapSO) navHelpWrapSO.style.display = 'none';
   closeFeatureGuide();
+  closeQuickActions();
   const sellerTabBarSO = document.getElementById('sellerTabBar');
   if (sellerTabBarSO) { sellerTabBarSO.style.display = 'none'; switchSellerTab('inventory'); }
 
@@ -16179,13 +16260,12 @@ function switchSellerTab(tab) {
 
   [invBtn, rptBtn].forEach(b => b && b.classList.remove('active'));
 
-  // Mobile FABs (Scan to Sell / Add Card) are for building inventory — on
+  // The mobile Sell / Add button is for working the inventory list — on
   // the Report tab they just float over report cards/CTAs (Log a Manual
   // Sale, Export CSV, the transaction log's Share buttons) that are more
   // relevant there and don't need a competing floating action on top of
   // them. Hidden on Report, restored (back to CSS's mobile-only default)
   // on Inventory — same style.display convention loginAsSeller() etc. use.
-  const fabScan = document.getElementById('fabScanToSell');
   const fabAdd  = document.getElementById('fabAddCard');
   // Select All / Check Comps act on the inventory table rows — meaningless
   // on the Report tab, which has no rows to select. Hidden here (rather
@@ -16199,7 +16279,6 @@ function switchSellerTab(tab) {
     rptBtn && rptBtn.classList.add('active');
     if (tableWrap) tableWrap.style.display = 'none';
     if (rptPanel)  rptPanel.style.display  = 'block';
-    if (fabScan) fabScan.style.display = 'none';
     if (fabAdd)  fabAdd.style.display  = 'none';
     if (selectAllBtn) selectAllBtn.style.display = 'none';
     if (compCheckBtn) compCheckBtn.style.display = 'none';
@@ -16211,7 +16290,6 @@ function switchSellerTab(tab) {
     invBtn && invBtn.classList.add('active');
     if (tableWrap) tableWrap.style.display = '';
     if (rptPanel)  rptPanel.style.display  = 'none';
-    if (fabScan) fabScan.style.display = '';
     if (fabAdd)  fabAdd.style.display  = '';
     if (selectAllBtn) selectAllBtn.style.display = '';
     if (compCheckBtn) compCheckBtn.style.display = '';
@@ -17781,6 +17859,102 @@ async function _obSaveProfile() {
   }
 }
 
+// ── SELL / ADD MENU (#qaOverlay) ──
+// One question per screen: Sell or Add, then how. Each final choice hands off
+// to an existing flow. Launches run inside the tap so file pickers still open.
+const QA_TITLES = {
+  root: 'What would you like to do?',
+  sell: 'Is the card already in your inventory?',
+  add:  'How do you want to add cards?',
+  pick: 'Which card are you selling?',
+};
+const QA_PARENT = { sell: 'root', add: 'root', pick: 'sell' };
+let _qaScreen = 'root';
+
+function openQuickActions(screen) {
+  qaShow(screen || 'root');
+  document.getElementById('qaOverlay').classList.add('open');
+}
+
+function closeQuickActions() {
+  document.getElementById('qaOverlay')?.classList.remove('open');
+}
+
+function qaShow(screen) {
+  _qaScreen = screen;
+  const ids = { root: 'qaScreenRoot', sell: 'qaScreenSell', add: 'qaScreenAdd', pick: 'qaScreenPick' };
+  Object.entries(ids).forEach(([k, id]) => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = k === screen ? '' : 'none';
+  });
+  document.getElementById('qaTitle').textContent = QA_TITLES[screen];
+  document.getElementById('qaBackBtn').style.visibility = QA_PARENT[screen] ? 'visible' : 'hidden';
+  if (screen === 'pick') {
+    const search = document.getElementById('qaSearch');
+    search.value = '';
+    qaRenderPick();
+  }
+}
+
+function qaBack() {
+  if (QA_PARENT[_qaScreen]) qaShow(QA_PARENT[_qaScreen]);
+}
+
+function qaGo(kind) {
+  if (kind === 'scanSell') posOpenPhotoSheet();
+  else if (kind === 'scanOne') { openAddCard(); openCertScanner(); }
+  else if (kind === 'bulk') document.getElementById('bulkScanInput')?.click();
+  else if (kind === 'upload') document.querySelector('#uploadZone input[type="file"]')?.click();
+  else if (kind === 'type') openAddCard();
+  closeQuickActions();
+}
+
+// "It's in my inventory": the seller's unsold cards, searchable. Tapping one
+// opens the regular sell drawer for it.
+const QA_PICK_LIMIT = 50;
+function qaRenderPick() {
+  const list = document.getElementById('qaPickList');
+  const q = (document.getElementById('qaSearch').value || '').trim().toLowerCase();
+  const unsold = getSellerInventory().filter(r => r.Status !== 'Sold');
+  if (!unsold.length) {
+    list.innerHTML = `<div class="qa-empty">You don't have any unsold cards yet.</div>
+      <button class="qa-choice" onclick="qaShow('add')"><span class="qa-choice-icon" aria-hidden="true">➕</span>
+      <span class="qa-choice-text"><strong>Add cards to my inventory</strong></span></button>`;
+    return;
+  }
+  const words = q.split(/\s+/).filter(Boolean);
+  const matches = unsold.filter(r => {
+    const hay = [r['Card Title'], r.Player, r.Year, r['Set '], r['Parallel/Variant'], r.Grader, r.Grade, r['Cert #']]
+      .filter(v => v != null).join(' ').toLowerCase();
+    return words.every(w => hay.includes(w));
+  });
+  if (!matches.length) {
+    list.innerHTML = `<div class="qa-empty">No unsold cards match "${_escHtml(q)}".</div>`;
+    return;
+  }
+  const shown = matches.slice(0, QA_PICK_LIMIT);
+  list.innerHTML = shown.map(r => {
+    const idx = inventory.indexOf(r);
+    const title = r.Player || r['Card Title'] || 'Card';
+    const sub = [r.Year, r['Set '], r['Parallel/Variant'],
+      r.Grader && r.Grade != null && r.Grade !== '' ? `${r.Grader} ${r.Grade}` : null].filter(Boolean).join(' · ');
+    const price = r.Price != null && r.Price !== '' ? '$' + Number(r.Price).toLocaleString() : '';
+    return `<button class="qa-pick-item" onclick="qaSellCard(${idx})">
+      <span class="qa-pick-main"><strong>${_escHtml(title)}</strong><span>${_escHtml(sub || r['Card Title'] || '')}</span></span>
+      <span class="qa-pick-price">${_escHtml(price)}</span></button>`;
+  }).join('') + (matches.length > shown.length
+    ? `<div class="qa-empty">Showing ${shown.length} of ${matches.length}. Type more to narrow it down.</div>` : '');
+}
+
+function qaSellCard(idx) {
+  closeQuickActions();
+  if (inventory[idx]) openSellDrawer(idx);
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && document.getElementById('qaOverlay')?.classList.contains('open')) closeQuickActions();
+});
+
 // ── HELP MENU + FEATURE GUIDE ──
 function toggleHelpMenu(e) {
   if (e) e.stopPropagation();
@@ -17843,8 +18017,8 @@ const FEATURE_GUIDE = [
     { icon: '📲', name: 'Your QR code', desc: 'Buyers scan it at your table to browse your cards. Download or print it.', action: () => openSellerQRModal() },
   ]},
   { group: 'Sell', items: [
-    { icon: '✅', name: 'Mark a card sold', desc: "Tap the card's Available status, then enter the price and how they paid.", action: () => switchSellerTab('inventory') },
-    { icon: '📷', name: 'Scan to Sell', desc: 'Selling a card you never added? Photograph it, check the details, then record the sale.', action: () => posOpenPhotoSheet() },
+    { icon: '✅', name: 'Sell a card from your inventory', desc: "Find the card and enter the price and how they paid. On a phone: Sell / Add → Sell a card. You can also tap a card's Available status.", action: () => openQuickActions('pick') },
+    { icon: '📷', name: 'Sell a card you never added', desc: 'Take a photo of it, check the details, then record the sale.', action: () => posOpenPhotoSheet() },
     { icon: '📝', name: 'Log a manual sale', desc: 'Record a sale after the fact, with the show and the date it happened.', action: () => openManualSaleModal() },
     { icon: '📤', name: 'Share a sale', desc: 'Turn any sale into an image and caption for Instagram or X. Use the 📤 button next to it in the Report tab.', action: () => switchSellerTab('report') },
   ]},
@@ -20341,17 +20515,17 @@ async function upsertCardsToDB(cards) {
     <div id="obStep4" class="ob-body" style="display:none">
       <div class="ob-icon">🤝</div>
       <div class="ob-title">Selling at Your Table</div>
-      <div class="ob-subtitle">Every sale lands in your Report tab.</div>
+      <div class="ob-subtitle">On a phone, tap <strong>Sell / Add</strong> at the bottom of the screen and choose <strong>Sell a card</strong>. Every sale lands in your Report tab.</div>
       <div class="ob-showday-grid">
         <div class="ob-tip">
           <div class="ob-tip-icon">✅</div>
-          <strong>Mark a card sold</strong>
-          <span>Tap the card's <em>Available</em> status, then enter the price and how they paid.</span>
+          <strong>Card in your inventory</strong>
+          <span>Pick it from your list, then enter the price and how they paid.</span>
         </div>
         <div class="ob-tip">
           <div class="ob-tip-icon">📷</div>
-          <strong>Scan to Sell</strong>
-          <span>Selling a card you never added? Photograph it and record the sale in one go.</span>
+          <strong>Card you never added</strong>
+          <span>Take a photo of it and record the sale in one go.</span>
         </div>
         <div class="ob-tip">
           <div class="ob-tip-icon">📝</div>
