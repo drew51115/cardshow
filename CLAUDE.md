@@ -220,6 +220,13 @@ that predates this migration still write even if `category`/`subcategory` don't 
 longer written to going forward (see "Category / Subcategory Taxonomy" below for the one-time
 backfill that reads it).
 
+Required for the Getting started checklist and first-use tips to sync across a seller's devices
+(see "Seller Onboarding Tour + Help Menu" below):
+`supabase/migrations/20260926120000_seller_onboarding_state.sql`, which runs
+`ALTER TABLE sellers ADD COLUMN IF NOT EXISTS onboarding_state jsonb;`. Until it runs,
+`loadOnboardingState()` gets a column error, logs it, and leaves syncing off. The checklist and
+tips then work exactly as before, saved per device in localStorage.
+
 Required for Trust Check via GTCR (see that section below):
 `supabase/migrations/20260925120000_gtcr_trust_check.sql`. It adds `inventory.trust_flag` and three
 service-key-only tables. Until it runs, the Trust Check still works in memory (flag badge, publish
@@ -4146,8 +4153,9 @@ on phones). Six steps, each with a button that opens the tool:
 6. Look at your Report: set by `switchSellerTab('report')`
 
 Steps 1, 2, 3 and 5 are worked out from data that's already loaded. Steps 4 and 6 leave no data
-trail, so `gsMark(step)` records them in localStorage. Hide and collapse are stored there too,
-under key `gsChecklist:<handle>`, so all of it is per device, not per account (no DB column).
+trail, so `gsMark(step)` records them. Hide and collapse are recorded the same way, under the
+localStorage key `gsChecklist:<handle>`. All of this syncs across devices through
+`sellers.onboarding_state` (see "Sync across devices" below).
 
 How it behaves:
 - `gsRender()` is called from `updateStats()`, `renderSellerShowsList()`, `switchSellerTab()`
@@ -4162,7 +4170,7 @@ How it behaves:
 
 ### First-use tips (`#tipCard`, `TIPS`, `showTipOnce(key)`)
 One short card near the top of the screen with "Got it" and "Don't show tips". Its z-index is
-100000, so it sits above the modal it describes. Each tip shows once per device, stored in
+100000, so it sits above the modal it describes. Each tip shows once per seller (synced, see below), stored locally in
 localStorage (`cardshowTipsSeen`, `cardshowTipsOff`). Tips wait in a queue if one is already
 open, and are skipped (not marked seen) while the onboarding tour is open.
 
@@ -4176,6 +4184,22 @@ open, and are skipped (not marked seen) while the onboarding tour is open.
 
 ? → Show tips again clears both keys. `signOut()` hides any open tip and resets `_gsDataReady`.
 Add a tip by adding a `TIPS` entry and calling `showTipOnce(key)` where the feature opens.
+
+### Sync across devices (`sellers.onboarding_state` jsonb)
+Shape: `{ gs: {qr, report, dismissed, collapsed}, tipsSeen: {key: true}, tipsOff }`.
+
+localStorage stays the working copy, and the column is the source of truth:
+- **On login,** `loadOnboardingState(handle)` runs in parallel with the profile fetch.
+  - If the row has state, it overwrites the local copy.
+  - If it has none, the device's local state is uploaded. This carries over state saved before
+    the column existed.
+- **On every change** (`_gsSave`, tip seen, tips off/reset), `_obQueueStateSave()` saves the
+  whole bundle with an 800ms debounce, and `signOut()` flushes a pending save.
+- **Before the load finishes,** the checklist stays hidden and tips are held back
+  (`_obStateLoaded`), so nothing already seen on another device shows first.
+- **If the column is missing,** `_obStateSync` stays false and everything runs local-only.
+- **Conflicts:** the last save wins. Two devices used at the same moment could undo each other's
+  newest tick until the next action, which is acceptable for UI hints.
 
 ### Fixed alongside: Sell Drawer toast showed "null"
 `sdConfirm()` built its confirmation toast from `sdSelectedPayment` after `closeSellDrawer()`
