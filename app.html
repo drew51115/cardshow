@@ -3028,6 +3028,58 @@
     margin-top: 0.5rem;
   }
 
+  .ob-actions { display: flex; flex-direction: column; gap: 0.5rem; }
+  .ob-action {
+    display: flex; gap: 0.75rem; align-items: flex-start; text-align: left;
+    width: 100%; padding: 0.7rem 0.8rem; cursor: pointer;
+    background: var(--surface); color: var(--text);
+    border: 1px solid var(--border); border-radius: 10px;
+    font-family: inherit; transition: border-color 0.15s;
+  }
+  .ob-action:hover, .ob-action:focus-visible { border-color: var(--accent); outline: none; }
+  .ob-action-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 1px; }
+  .ob-action-text strong { display: block; font-size: 0.85rem; }
+  .ob-action-text span   { font-size: 0.75rem; color: var(--muted); line-height: 1.35; }
+  .ob-link { font-size: 0.75rem; color: var(--accent); text-decoration: none; }
+  .ob-link:hover { text-decoration: underline; }
+  .ob-hint { font-size: 0.75rem; color: var(--muted); line-height: 1.4; }
+  .ob-hint-mobile { display: none; }
+  @media (max-width: 599px) { .ob-hint-mobile { display: block; } }
+  .ob-steps { margin: 0; padding-left: 1.2rem; display: flex; flex-direction: column; gap: 0.6rem; }
+  .ob-steps li { font-size: 0.8rem; color: var(--muted); line-height: 1.4; }
+  .ob-steps li strong { color: var(--text); }
+
+  /* ── HELP MENU + FEATURE GUIDE ── */
+  .nav-help-wrap { position: relative; }
+  .nav-help-btn {
+    width: 28px; height: 28px; border-radius: 50%; cursor: pointer;
+    background: transparent; color: var(--muted);
+    border: 1px solid var(--border); font-weight: 700; font-size: 0.85rem;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .nav-help-btn:hover, .nav-help-btn.open { color: var(--accent); border-color: var(--accent); }
+  .nav-help-menu { position: fixed; z-index: 1000; width: 220px; max-height: none; }
+  .nav-help-menu a.tc-dropdown-item { display: block; color: inherit; text-decoration: none; }
+  .fg-group { margin-bottom: 1.1rem; }
+  .fg-group-title {
+    font-family: 'DM Mono', monospace; font-size: 0.68rem; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--accent); margin-bottom: 0.4rem;
+  }
+  .fg-item {
+    display: flex; gap: 0.7rem; align-items: flex-start;
+    padding: 0.55rem 0; border-top: 1px solid var(--border);
+  }
+  .fg-item-icon { font-size: 1rem; flex-shrink: 0; margin-top: 1px; }
+  .fg-item-text { flex: 1; min-width: 0; }
+  .fg-item-text strong { display: block; font-size: 0.85rem; color: var(--text); }
+  .fg-item-text span   { font-size: 0.75rem; color: var(--muted); line-height: 1.4; }
+  .fg-try {
+    flex-shrink: 0; font-size: 0.72rem; padding: 0.25rem 0.6rem; cursor: pointer;
+    background: transparent; color: var(--accent);
+    border: 1px solid var(--accent); border-radius: 6px; font-family: inherit;
+  }
+  .help-pulse { box-shadow: 0 0 0 2px var(--accent); transition: box-shadow 0.3s; }
+
   .profile-overlay {
     position: fixed; inset: 0; z-index: 1000;
     background: rgba(0,0,0,0.7); display: none;
@@ -4249,6 +4301,11 @@
     <button class="nav-tab" id="navTabBuyer" onclick="switchView('buyer')">◎ Buyer</button>
   </div>
   <div class="nav-right">
+    <!-- Help menu — seller only. Replays the onboarding tour and opens the Feature guide. -->
+    <div class="nav-help-wrap" id="navHelpWrap" style="display:none">
+      <button class="nav-help-btn" id="navHelpBtn" onclick="toggleHelpMenu(event)"
+        aria-label="Help" aria-haspopup="true" title="Help">?</button>
+    </div>
     <!-- Seller profile button — only visible when logged in as seller -->
     <button class="nav-profile-btn" id="navProfileBtn"
       onclick="openProfile()" style="display:none" title="Edit your seller profile &amp; contact info">
@@ -4280,6 +4337,13 @@
       onclick="signOut()" style="display:none">Sign out</button>
   </div>
 </nav>
+<!-- Lives outside <nav>: nav has overflow:hidden and a backdrop-filter, which would clip it -->
+<div id="navHelpMenu" class="tc-dropdown nav-help-menu" style="display:none" role="menu">
+    <div class="tc-dropdown-item" role="menuitem" onclick="replayOnboarding()">▶ Replay the tour</div>
+    <div class="tc-dropdown-item" role="menuitem" onclick="openFeatureGuide()">📖 Feature guide</div>
+    <a class="tc-dropdown-item" role="menuitem" href="/downloads/CardShow_Inventory_Template.xlsx" download onclick="closeHelpMenu()">⬇ Spreadsheet template</a>
+    <a class="tc-dropdown-item" role="menuitem" href="mailto:stephen.a.wilhelm@gmail.com?subject=CardShow%20help" onclick="closeHelpMenu()">✉ Contact support</a>
+  </div>
 
 <!-- ═══════════════ SELLER VIEW ═══════════════ -->
 <div id="view-seller" class="view active">
@@ -12038,6 +12102,8 @@ function loginAsSeller(handle) {
   if (fabAdd) fabAdd.style.display = '';
   const fabScan = document.getElementById('fabScanToSell');
   if (fabScan) fabScan.style.display = '';
+  const navHelpWrap = document.getElementById('navHelpWrap');
+  if (navHelpWrap) navHelpWrap.style.display = '';
 
   // Show Select All for seller, hide admin-only buttons
   const selectAllBtn = document.getElementById('selectAllBtn');
@@ -12168,6 +12234,8 @@ function loginAsAdmin() {
   if (fabAddAdm) fabAddAdm.style.display = 'none';
   const fabScanAdm = document.getElementById('fabScanToSell');
   if (fabScanAdm) fabScanAdm.style.display = 'none';
+  const navHelpWrapAdm = document.getElementById('navHelpWrap');
+  if (navHelpWrapAdm) navHelpWrapAdm.style.display = 'none';
   const sellerTabBarAdm = document.getElementById('sellerTabBar');
   if (sellerTabBarAdm) sellerTabBarAdm.style.display = 'none';
 
@@ -12262,6 +12330,9 @@ async function signOut() {
   if (fabAddSO) fabAddSO.style.display = 'none';
   const fabScanSO = document.getElementById('fabScanToSell');
   if (fabScanSO) fabScanSO.style.display = 'none';
+  const navHelpWrapSO = document.getElementById('navHelpWrap');
+  if (navHelpWrapSO) navHelpWrapSO.style.display = 'none';
+  closeFeatureGuide();
   const sellerTabBarSO = document.getElementById('sellerTabBar');
   if (sellerTabBarSO) { sellerTabBarSO.style.display = 'none'; switchSellerTab('inventory'); }
 
@@ -17536,7 +17607,7 @@ function openProfile() {
 /* ── SELLER ONBOARDING ── */
 let _onboardingStep   = 0;
 let _onboardingActive = false;
-const OB_TOTAL_STEPS  = 5; // steps 0–5 (6 screens), progress based on 0–4
+const OB_SCREENS      = 5; // obStep0–obStep4
 
 async function checkOnboardingStatus(handle) {
   if (typeof db === 'undefined') return;
@@ -17587,6 +17658,12 @@ async function markOnboardingComplete(handle) {
 function _openOnboarding() {
   _onboardingStep   = 0;
   _onboardingActive = true;
+  // Prefill from the saved profile, so a replayed tour shows what's already set
+  const p = getProfile(currentSeller);
+  const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
+  setVal('obDisplayName', p.displayName);
+  setVal('obWhatsapp', p.whatsapp);
+  setVal('obInstagram', p.instagram ? '@' + p.instagram : '');
   _obRender();
   const el = document.getElementById('obOverlay');
   if (!el) { console.error('[onboarding] obOverlay element not found'); return; }
@@ -17613,58 +17690,77 @@ function _closeOnboarding() {
 
 
 function _obRender() {
-  const totalScreens = 6; // 0–5
-  const progress = _onboardingStep === 0 ? 0
-    : Math.round((_onboardingStep / (totalScreens - 1)) * 100);
+  const progress = Math.round(((_onboardingStep + 1) / OB_SCREENS) * 100);
   document.getElementById('obProgressBar').style.width = progress + '%';
 
-  for (let i = 0; i < totalScreens; i++) {
+  for (let i = 0; i < OB_SCREENS; i++) {
     const el = document.getElementById('obStep' + i);
     if (el) el.style.display = i === _onboardingStep ? '' : 'none';
   }
 
-  const isLast = _onboardingStep === totalScreens - 1;
-  const nextBtn = document.getElementById('obNextBtn');
+  const isLast = _onboardingStep === OB_SCREENS - 1;
+  document.getElementById('obNextBtn').textContent =
+    _onboardingStep === 0 ? 'Take the tour →' : isLast ? 'Done' : 'Next →';
   const skipBtn = document.getElementById('obSkipBtn');
-  const label   = document.getElementById('obStepLabel');
-
-  nextBtn.textContent = _onboardingStep === 0 ? 'Get started →'
-    : isLast ? 'Start adding cards' : 'Next →';
   skipBtn.style.display = isLast ? 'none' : '';
-  label.textContent = isLast ? 'All done!' : `Step ${_onboardingStep + 1} of ${totalScreens - 1}`;
+  skipBtn.textContent = _onboardingStep === 0 ? 'Skip for now' : 'Skip tour';
+  document.getElementById('obStepLabel').textContent = `Step ${_onboardingStep + 1} of ${OB_SCREENS}`;
 }
 
 async function obNext() {
-  const totalScreens = 6;
+  if (_onboardingStep === 1) await _obSaveProfile();
 
-  // Step 1: save profile fields
-  if (_onboardingStep === 1) {
-    await _obSaveProfile();
-  }
-
-  if (_onboardingStep === totalScreens - 1) {
-    // Final step — mark complete and close
-    await markOnboardingComplete(currentSeller);
-    _closeOnboarding();
+  if (_onboardingStep === OB_SCREENS - 1) {
+    _obFinish();
     return;
   }
-
   _onboardingStep++;
   _obRender();
 }
 
-async function obSkip() {
-  await _obSaveProfile();
-  await markOnboardingComplete(currentSeller);
+function obSkip() {
+  _obFinish();
+}
+
+// Closes the tour, saves the profile fields and marks onboarding done.
+// Not awaited, so a caller can launch a file picker in the same click.
+function _obFinish() {
   _closeOnboarding();
+  _obSaveProfile();
+  markOnboardingComplete(currentSeller);
+  showToast('Replay the tour anytime from the ? button');
+}
+
+// Step 2's buttons: close the tour and open the chosen way to add cards.
+// The launch runs first, inside the click, so browsers allow the file picker.
+function obAction(kind) {
+  if (kind === 'add') openAddCard();
+  else if (kind === 'scan') { openAddCard(); openCertScanner(); }
+  else if (kind === 'bulk') document.getElementById('bulkScanInput')?.click();
+  else if (kind === 'upload') document.querySelector('#uploadZone input[type="file"]')?.click();
+  _closeOnboarding();
+  _obSaveProfile();
+  markOnboardingComplete(currentSeller);
+}
+
+// Same cleanup the Profile modal applies: digits only for WhatsApp, no "@" or
+// spaces for Instagram. The WhatsApp contact link needs the digits-only form.
+function _normalizeProfileContact(name, whatsapp, instagram) {
+  return {
+    displayName: String(name || '').trim(),
+    whatsapp:    String(whatsapp || '').replace(/\D/g, ''),
+    instagram:   String(instagram || '').trim().replace(/^@/, '').replace(/\s/g, ''),
+  };
 }
 
 async function _obSaveProfile() {
   const handle = currentSeller;
   if (!handle) return;
-  const displayName = (document.getElementById('obDisplayName')?.value || '').trim();
-  const whatsapp    = (document.getElementById('obWhatsapp')?.value    || '').trim();
-  const instagram   = (document.getElementById('obInstagram')?.value   || '').trim();
+  const { displayName, whatsapp, instagram } = _normalizeProfileContact(
+    document.getElementById('obDisplayName')?.value,
+    document.getElementById('obWhatsapp')?.value,
+    document.getElementById('obInstagram')?.value,
+  );
   if (!displayName && !whatsapp && !instagram) return;
 
   if (!sellerProfiles[handle]) sellerProfiles[handle] = {};
@@ -17685,6 +17781,111 @@ async function _obSaveProfile() {
   }
 }
 
+// ── HELP MENU + FEATURE GUIDE ──
+function toggleHelpMenu(e) {
+  if (e) e.stopPropagation();
+  const menu = document.getElementById('navHelpMenu');
+  if (!menu) return;
+  const btn = document.getElementById('navHelpBtn');
+  const opening = menu.style.display === 'none';
+  if (opening && btn) {
+    const r = btn.getBoundingClientRect();
+    menu.style.top   = (r.bottom + 6) + 'px';
+    menu.style.right = Math.max(8, window.innerWidth - r.right) + 'px';
+  }
+  menu.style.display = opening ? 'block' : 'none';
+  btn?.classList.toggle('open', opening);
+}
+
+function closeHelpMenu() {
+  const menu = document.getElementById('navHelpMenu');
+  if (menu) menu.style.display = 'none';
+  document.getElementById('navHelpBtn')?.classList.remove('open');
+}
+
+document.addEventListener('click', (e) => {
+  const wrap = document.getElementById('navHelpWrap');
+  const menu = document.getElementById('navHelpMenu');
+  if (wrap && !wrap.contains(e.target) && !(menu && menu.contains(e.target))) closeHelpMenu();
+});
+
+function replayOnboarding() {
+  closeHelpMenu();
+  _openOnboarding();
+}
+
+// Opens the inventory tab and briefly outlines a toolbar button.
+function _helpPoint(elId) {
+  switchSellerTab('inventory');
+  const el = document.getElementById(elId);
+  if (!el) return;
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  el.classList.add('help-pulse');
+  setTimeout(() => el.classList.remove('help-pulse'), 2500);
+}
+
+// Opens the sidebar (collapsed on phones) and scrolls to a section of it.
+function _helpShowSidebar(elId) {
+  const sidebar = document.getElementById('mainSidebar');
+  if (sidebar && !sidebar.classList.contains('sidebar-open')) toggleSidebar();
+  document.getElementById(elId)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+const FEATURE_GUIDE = [
+  { group: 'Add cards', items: [
+    { icon: '✏️', name: 'Add a card', desc: 'Type a player name and pick the set and card from the list, or fill in the fields yourself.', action: () => openAddCard() },
+    { icon: '📷', name: 'Scan a card', desc: 'Take a photo of a slab or raw card and the details fill in for you.', action: () => { openAddCard(); openCertScanner(); } },
+    { icon: '📸', name: 'Bulk scan a showcase', desc: 'One photo of a case or tray finds every card in it. Check them over, then add them together.', action: () => document.getElementById('bulkScanInput')?.click() },
+    { icon: '📊', name: 'Upload a spreadsheet', desc: 'CSV or Excel. Columns are matched automatically, including Shopify, Ludex and Flipwise exports.', action: () => document.querySelector('#uploadZone input[type="file"]')?.click() },
+  ]},
+  { group: 'At the show', items: [
+    { icon: '⚡', name: 'Go live at a show', desc: 'Once an organizer adds you, the show appears under My Shows. Tap Add My Cards to put your cards in front of buyers there.', action: () => _helpShowSidebar('sellerShowsList') },
+    { icon: '📲', name: 'Your QR code', desc: 'Buyers scan it at your table to browse your cards. Download or print it.', action: () => openSellerQRModal() },
+  ]},
+  { group: 'Sell', items: [
+    { icon: '✅', name: 'Mark a card sold', desc: "Tap the card's Available status, then enter the price and how they paid.", action: () => switchSellerTab('inventory') },
+    { icon: '📷', name: 'Scan to Sell', desc: 'Selling a card you never added? Photograph it, check the details, then record the sale.', action: () => posOpenPhotoSheet() },
+    { icon: '📝', name: 'Log a manual sale', desc: 'Record a sale after the fact, with the show and the date it happened.', action: () => openManualSaleModal() },
+    { icon: '📤', name: 'Share a sale', desc: 'Turn any sale into an image and caption for Instagram or X. Use the 📤 button next to it in the Report tab.', action: () => switchSellerTab('report') },
+  ]},
+  { group: 'Price and manage', items: [
+    { icon: '💲', name: 'Check comps', desc: 'Look up recent market prices for the cards you select (or all unsold cards) and update your prices.', action: () => _helpPoint('compCheckBtn') },
+    { icon: '🏷️', name: 'Validate sport', desc: 'Fills in the sport for cards that show no sport badge.', action: () => _helpPoint('sportValidateBtn') },
+    { icon: '⬇', name: 'Export inventory', desc: 'Download your unsold cards as CSV or Excel to list them on other platforms.', action: () => _helpPoint('exportInventoryBtn') },
+    { icon: '🛡️', name: 'Theft check', desc: 'Graded cards with a cert number are checked against the Global Trading Card Registry. A card reported stolen or lost is hidden from buyers until you decide what to do. Nothing to set up.' },
+  ]},
+  { group: 'After the show', items: [
+    { icon: '📊', name: 'Report', desc: 'Revenue, sell-through, best sales and every transaction, for one show or all time. Export it as CSV.', action: () => switchSellerTab('report') },
+    { icon: '👤', name: 'Profile and contact', desc: 'Your display name and how buyers reach you.', action: () => openProfile() },
+  ]},
+];
+
+function openFeatureGuide() {
+  closeHelpMenu();
+  const body = document.getElementById('featureGuideBody');
+  body.innerHTML = FEATURE_GUIDE.map((g, gi) => `
+    <div class="fg-group">
+      <div class="fg-group-title">${g.group}</div>
+      ${g.items.map((it, ii) => `
+        <div class="fg-item">
+          <div class="fg-item-icon">${it.icon}</div>
+          <div class="fg-item-text"><strong>${it.name}</strong><span>${it.desc}</span></div>
+          ${it.action ? `<button class="fg-try" onclick="_featureGuideTry(${gi}, ${ii})">Show me</button>` : ''}
+        </div>`).join('')}
+    </div>`).join('');
+  document.getElementById('featureGuideOverlay').classList.add('open');
+}
+
+function closeFeatureGuide() {
+  document.getElementById('featureGuideOverlay').classList.remove('open');
+}
+
+function _featureGuideTry(gi, ii) {
+  const item = FEATURE_GUIDE[gi]?.items[ii];
+  closeFeatureGuide();
+  if (item?.action) item.action();
+}
+
 function closeProfile() {
   document.getElementById('profileOverlay').classList.remove('open');
 }
@@ -17693,9 +17894,11 @@ function saveProfile() {
   const handle = currentSeller;
   if (!handle) return;
 
-  const name  = document.getElementById('prof_name').value.trim();
-  const waRaw = document.getElementById('prof_wa').value.replace(/\D/g,'');
-  const ig    = document.getElementById('prof_ig').value.trim().replace(/^@/,'').replace(/\s/g,'');
+  const { displayName: name, whatsapp: waRaw, instagram: ig } = _normalizeProfileContact(
+    document.getElementById('prof_name').value,
+    document.getElementById('prof_wa').value,
+    document.getElementById('prof_ig').value,
+  );
 
   // Update in-memory profile
   if (!sellerProfiles[handle]) sellerProfiles[handle] = {};
@@ -20042,6 +20245,17 @@ async function upsertCardsToDB(cards) {
 
 </script>
 
+<!-- ── FEATURE GUIDE (help menu) ── -->
+<div class="modal-overlay" id="featureGuideOverlay" onclick="if(event.target===this)closeFeatureGuide()">
+  <div class="modal" style="max-width:520px;padding:1.5rem">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:1.6rem;letter-spacing:0.04em;color:var(--text)">Feature Guide</div>
+      <button class="btn-modal-close" onclick="closeFeatureGuide()" aria-label="Close">✕</button>
+    </div>
+    <div id="featureGuideBody"></div>
+  </div>
+</div>
+
 <!-- ── SELLER ONBOARDING OVERLAY ── -->
 <div class="ob-overlay" id="obOverlay">
   <div class="ob-modal">
@@ -20053,11 +20267,12 @@ async function upsertCardsToDB(cards) {
     <div id="obStep0" class="ob-body">
       <div class="ob-icon">👋</div>
       <div class="ob-title">Welcome to CardShow</div>
-      <div class="ob-subtitle">You're 3 minutes away from having your inventory live at your next card show. Let's get you set up.</div>
+      <div class="ob-subtitle">A quick tour of how to get your cards in front of buyers at your next show. About two minutes.</div>
       <ul class="ob-checklist">
-        <li>Set up your seller profile</li>
-        <li>Add your first cards (manual, scan, or CSV)</li>
-        <li>Know what to do on show day</li>
+        <li>Set up how buyers reach you</li>
+        <li>Add your first cards</li>
+        <li>Go live at a show</li>
+        <li>Record sales at your table</li>
       </ul>
     </div>
 
@@ -20065,14 +20280,14 @@ async function upsertCardsToDB(cards) {
     <div id="obStep1" class="ob-body" style="display:none">
       <div class="ob-icon">🏷️</div>
       <div class="ob-title">Your Seller Profile</div>
-      <div class="ob-subtitle">Buyers tap your QR code to browse. Give them a name and a way to reach you.</div>
+      <div class="ob-subtitle">Buyers see this when they scan your QR code. Add at least one way for them to reach you.</div>
       <div class="ob-profile-fields">
         <div class="ob-field">
           <label>Display Name</label>
           <input id="obDisplayName" type="text" placeholder="e.g. Mike's Cards" autocomplete="off">
         </div>
         <div class="ob-field">
-          <label>WhatsApp (optional)</label>
+          <label>WhatsApp number (optional)</label>
           <input id="obWhatsapp" type="tel" placeholder="+1 555-000-0000">
         </div>
         <div class="ob-field">
@@ -20080,99 +20295,83 @@ async function upsertCardsToDB(cards) {
           <input id="obInstagram" type="text" placeholder="@yourhandle">
         </div>
       </div>
+      <div class="ob-hint">You can change these anytime from the contact button at the top of the screen.</div>
     </div>
 
-    <!-- Step 2: What you'll need -->
+    <!-- Step 2: Add cards -->
     <div id="obStep2" class="ob-body" style="display:none">
-      <div class="ob-icon">📋</div>
-      <div class="ob-title">Before the Show</div>
-      <div class="ob-subtitle">Here's what to have ready before show day:</div>
-      <ul class="ob-checklist">
-        <li>Your card inventory — graded slabs, raw cards, sealed boxes</li>
-        <li>Prices for each card (you can update right from your phone)</li>
-        <li>A phone or tablet to display your QR code at the table</li>
-        <li>An organizer access code to join the show</li>
-      </ul>
-    </div>
-
-    <!-- Step 3: Upload method -->
-    <div id="obStep3" class="ob-body" style="display:none">
       <div class="ob-icon">📦</div>
-      <div class="ob-title">Adding Your Inventory</div>
-      <div class="ob-subtitle">Three ways to load your cards — pick whatever fits your workflow:</div>
-      <div class="ob-options">
-        <div class="ob-option">
-          <div class="ob-option-icon">📷</div>
-          <div class="ob-option-text">
-            <strong>Scan a card</strong>
-            <span>Point your camera at any PSA/BGS/CGC slab or raw card. Auto-fills player, set, grade, and parallel.</span>
-          </div>
-        </div>
-        <div class="ob-option">
-          <div class="ob-option-icon">📊</div>
-          <div class="ob-option-text">
-            <strong>Upload a spreadsheet</strong>
-            <span>Drop a CSV or Excel file. Download our template for the correct column layout.</span>
-          </div>
-        </div>
-        <div class="ob-option">
-          <div class="ob-option-icon">✏️</div>
-          <div class="ob-option-text">
-            <strong>Add cards manually</strong>
-            <span>Type in each card one at a time. Great for a quick few cards before a show.</span>
-          </div>
-        </div>
+      <div class="ob-title">Add Your First Cards</div>
+      <div class="ob-subtitle">Pick one to start now. The tour closes and you can come back to it from the <strong>?</strong> button.</div>
+      <div class="ob-actions">
+        <button class="ob-action" onclick="obAction('scan')">
+          <span class="ob-action-icon">📷</span>
+          <span class="ob-action-text"><strong>Scan a card</strong><span>Photo of a slab or raw card fills in the details for you.</span></span>
+        </button>
+        <button class="ob-action" onclick="obAction('bulk')">
+          <span class="ob-action-icon">📸</span>
+          <span class="ob-action-text"><strong>Scan a whole showcase</strong><span>One photo of a case or tray. Review the cards it finds, then add them all.</span></span>
+        </button>
+        <button class="ob-action" onclick="obAction('upload')">
+          <span class="ob-action-icon">📊</span>
+          <span class="ob-action-text"><strong>Upload a spreadsheet</strong><span>CSV or Excel, including exports from Shopify, Ludex, and Flipwise.</span></span>
+        </button>
+        <button class="ob-action" onclick="obAction('add')">
+          <span class="ob-action-icon">✏️</span>
+          <span class="ob-action-text"><strong>Type one in</strong><span>Start typing a player name and pick the set and card from the list.</span></span>
+        </button>
       </div>
+      <a class="ob-link" href="/downloads/CardShow_Inventory_Template.xlsx" download>⬇ Download the spreadsheet template</a>
     </div>
 
-    <!-- Step 4: Show day -->
-    <div id="obStep4" class="ob-body" style="display:none">
+    <!-- Step 3: Go live -->
+    <div id="obStep3" class="ob-body" style="display:none">
       <div class="ob-icon">🎪</div>
-      <div class="ob-title">Show Day Playbook</div>
-      <div class="ob-subtitle">You're at the show. Here's the drill:</div>
+      <div class="ob-title">Go Live at a Show</div>
+      <div class="ob-subtitle">Buyers at a show only see your cards after this step.</div>
+      <ol class="ob-steps">
+        <li><strong>The organizer adds you.</strong> Once they do, the show appears under <em>My Shows</em>. You don't need a code.</li>
+        <li><strong>Tap ⚡ Add My Cards</strong> on that show. Your cards go live for buyers there, and your sales count toward the show.</li>
+        <li><strong>Put your QR code on your table.</strong> Open <em>My QR Code</em>, then download or print it. Buyers scan it to see your cards.</li>
+      </ol>
+      <div class="ob-hint ob-hint-mobile">On a phone, My Shows and My QR Code are behind the <strong>☰</strong> button at the top left.</div>
+    </div>
+
+    <!-- Step 4: Selling -->
+    <div id="obStep4" class="ob-body" style="display:none">
+      <div class="ob-icon">🤝</div>
+      <div class="ob-title">Selling at Your Table</div>
+      <div class="ob-subtitle">Every sale lands in your Report tab.</div>
       <div class="ob-showday-grid">
         <div class="ob-tip">
-          <div class="ob-tip-icon">📲</div>
-          <strong>Share your QR</strong>
-          <span>Tap "My QR Code" and prop your phone up. Buyers scan to browse your table.</span>
+          <div class="ob-tip-icon">✅</div>
+          <strong>Mark a card sold</strong>
+          <span>Tap the card's <em>Available</em> status, then enter the price and how they paid.</span>
         </div>
         <div class="ob-tip">
-          <div class="ob-tip-icon">🤝</div>
-          <strong>Mark cards sold</strong>
-          <span>Tap any card → "Mark Sold" → log price and payment method.</span>
+          <div class="ob-tip-icon">📷</div>
+          <strong>Scan to Sell</strong>
+          <span>Selling a card you never added? Photograph it and record the sale in one go.</span>
         </div>
         <div class="ob-tip">
-          <div class="ob-tip-icon">💰</div>
-          <strong>Check comps</strong>
-          <span>Tap "Check Comps" for live market prices before you price a card.</span>
+          <div class="ob-tip-icon">📝</div>
+          <strong>Log a Manual Sale</strong>
+          <span>Forgot to record one? Add it later from the Report tab, with the date it happened.</span>
         </div>
         <div class="ob-tip">
-          <div class="ob-tip-icon">📊</div>
-          <strong>End-of-day report</strong>
-          <span>Report tab shows revenue, sell-through, and best performers.</span>
+          <div class="ob-tip-icon">📤</div>
+          <strong>Share the sale</strong>
+          <span>Turn any sale into a post for Instagram or X, with a photo of the card.</span>
         </div>
       </div>
-    </div>
-
-    <!-- Step 5: Ready -->
-    <div id="obStep5" class="ob-body" style="display:none">
-      <div class="ob-ready-badge">
-        <span class="ob-icon">🏆</span>
-        <div class="ob-ready-title">You're All Set</div>
-      </div>
-      <div class="ob-subtitle" style="text-align:center">Your profile is saved. Start adding cards whenever you're ready — scan, upload, or type them in.</div>
-      <ul class="ob-checklist">
-        <li>Profile saved</li>
-        <li>Scanner and CSV import ready</li>
-        <li>Reach out via the ? menu if you need help</li>
-      </ul>
+      <div class="ob-hint">More tools, like price checks and exports, are listed in the Feature guide under the <strong>?</strong> button.</div>
     </div>
 
     <div class="ob-footer">
       <span class="ob-step-label" id="obStepLabel">Step 1 of 5</span>
       <div class="ob-btn-row">
         <button class="ob-skip" id="obSkipBtn" onclick="obSkip()">Skip setup</button>
-        <button class="ob-next" id="obNextBtn" onclick="obNext()">Get started →</button>
+        <button class="ob-next" id="obNextBtn" onclick="obNext()">Take the tour →</button>
       </div>
     </div>
   </div>

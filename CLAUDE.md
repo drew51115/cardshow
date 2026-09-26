@@ -4104,6 +4104,43 @@ the response has no `card_status` at all.
   own `trust_flag` by writing to the table directly. The audit tables themselves are protected. This
   closes when inventory RLS is tightened (Tier 1).
 
+## Seller Onboarding Tour + Help Menu (session 2026-09-26)
+
+Rewrote the first-login onboarding overlay (`#obOverlay`) and added a seller-only **?** help
+menu in the nav. Replaces the 6-screen version described under "Seller onboarding flow" in
+Shipped (same `onboarding_complete` gate, same `checkOnboardingStatus()`/`markOnboardingComplete()`).
+
+### Fixes to the old tour
+- It told sellers they needed "an organizer access code to join the show". Access codes are for
+  buyers; sellers are added by the organizer, then tap **⚡ Add My Cards**.
+- It pointed to a "? menu" that didn't exist. The menu now exists (below).
+- Its profile step saved WhatsApp/Instagram raw, while the Profile modal stripped non-digits and
+  "@". Both now go through `_normalizeProfileContact()`, so the WhatsApp contact link gets digits.
+
+### Tour screens (`obStep0`–`obStep4`, `OB_SCREENS = 5`)
+Welcome · Profile (prefilled from the saved profile on replay) · Add your first cards (four buttons
+that open the real tools: scan, bulk scan, spreadsheet upload, type one in, plus the template link) ·
+Go live at a show (organizer adds you → Add My Cards → table QR; a mobile-only hint points to ☰) ·
+Selling at your table (mark sold via the Available status, Scan to Sell, Log a Manual Sale, share).
+`obAction(kind)` launches the chosen tool **before** closing the tour and saving, inside the same
+click, so browsers still allow the file picker. `_obFinish()` (Done / Skip) saves, marks complete,
+and toasts that the tour can be replayed from **?**.
+
+### Help menu (`#navHelpWrap` button, `#navHelpMenu` dropdown)
+Replay the tour · Feature guide · Spreadsheet template · Contact support (mailto). Shown in
+`loginAsSeller()`, hidden in `loginAsAdmin()`/`signOut()`. **The dropdown lives outside `<nav>`**:
+`nav` has `overflow:hidden` and a `backdrop-filter` (which also traps `position:fixed` children),
+so a menu inside it is clipped. `toggleHelpMenu()` positions it (`position:fixed`) under the button.
+
+### Feature guide (`#featureGuideOverlay`, `FEATURE_GUIDE` array)
+Every seller feature grouped as Add cards / At the show / Sell / Price and manage / After the show,
+each with a one-line description and a "Show me" button that opens the tool, switches tab, or
+opens the sidebar (`_helpShowSidebar()`), or outlines a toolbar button (`_helpPoint()`). Add new
+seller features to `FEATURE_GUIDE` when they ship. GTCR consent is deliberately not listed (dark).
+
+### Not built yet (planned next)
+A self-completing "Getting started" checklist in the sidebar, and one-time first-use tips.
+
 ## Show Configuration (Demo Data)
 - **MLP Card Show** — Oct 17-18, 2026 · Grand Hyatt Tampa Bay, FL · Code: MLPTPA (primary demo, shown to buyers without code)
 - **Chicago Sports Card Expo** — Nov 8, 2026 · Navy Pier, Chicago, IL · CHI2026
