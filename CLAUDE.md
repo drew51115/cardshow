@@ -4132,8 +4132,55 @@ each with a one-line description and a "Show me" button that opens the tool, swi
 opens the sidebar (`_helpShowSidebar()`), or outlines a toolbar button (`_helpPoint()`). Add new
 seller features to `FEATURE_GUIDE` when they ship. GTCR consent is deliberately not listed (dark).
 
-### Not built yet (planned next)
-A self-completing "Getting started" checklist in the sidebar, and one-time first-use tips.
+### Getting started checklist (`#gsChecklist`)
+Sits under the seller tab bar on the My Inventory tab (not the sidebar, which is hidden behind ☰
+on phones). Six steps, each with a button that opens the tool:
+1. Fill in your profile: display name plus WhatsApp or Instagram (`openProfile()`)
+2. Add your first card (`openQuickActions('add')`)
+3. Put your cards in a show: `activeShowId` set, or any card with a non-empty `_shows`
+   (`_helpShowSidebar('sellerShowsPanel')`). The hint changes when the seller hasn't been added
+   to any show yet.
+4. Get your table QR code: set by `downloadSellerQR()`, `downloadSellerQRModal()` or
+   `openSellerQRModal()`
+5. Record your first sale: any card with `Status === 'Sold'` (`openQuickActions('sell')`)
+6. Look at your Report: set by `switchSellerTab('report')`
+
+Steps 1, 2, 3 and 5 are worked out from data that's already loaded. Steps 4 and 6 leave no data
+trail, so `gsMark(step)` records them in localStorage. Hide and collapse are stored there too,
+under key `gsChecklist:<handle>`, so all of it is per device, not per account (no DB column).
+
+How it behaves:
+- `gsRender()` is called from `updateStats()`, `renderSellerShowsList()`, `switchSellerTab()`
+  and both profile saves.
+- It waits for `_gsDataReady`, which is set after the seller's inventory loads. That way a
+  returning seller never sees a false "0 done" first.
+- The first time a device sees a seller who already has cards and a sale, the list starts
+  hidden, so experienced sellers aren't nagged.
+- Finishing all six hides the list and shows "You're all set up". The toast is delayed 3.5s so
+  the toast from the finishing action doesn't overwrite it.
+- ? → Getting started list brings it back.
+
+### First-use tips (`#tipCard`, `TIPS`, `showTipOnce(key)`)
+One short card near the top of the screen with "Got it" and "Don't show tips". Its z-index is
+100000, so it sits above the modal it describes. Each tip shows once per device, stored in
+localStorage (`cardshowTipsSeen`, `cardshowTipsOff`). Tips wait in a queue if one is already
+open, and are skipped (not marked seen) while the onboarding tour is open.
+
+| Key | Fires from |
+|-----|------------|
+| `compResults` | comp results modal opens |
+| `bulkReview` | bulk scan review opens |
+| `report` | first `switchSellerTab('report')` |
+| `firstSale` | `sdConfirm()` / `confirmManualSale()` |
+| `live` | `sellerPublishToShow()` when at least one card is added |
+
+? → Show tips again clears both keys. `signOut()` hides any open tip and resets `_gsDataReady`.
+Add a tip by adding a `TIPS` entry and calling `showTipOnce(key)` where the feature opens.
+
+### Fixed alongside: Sell Drawer toast showed "null"
+`sdConfirm()` built its confirmation toast from `sdSelectedPayment` after `closeSellDrawer()`
+had already reset it to null, so every Sell Drawer sale toasted "· null". It now reads
+`card.PaymentMethod`.
 
 ## Sell / Add Menu (session 2026-09-26)
 

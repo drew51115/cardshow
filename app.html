@@ -3055,6 +3055,65 @@
   .ob-steps li strong { color: var(--text); }
 
 
+  /* ── GETTING STARTED CHECKLIST (#gsChecklist) ── */
+  .gs-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 0.85rem 1rem; margin-bottom: 0.75rem;
+  }
+  .gs-head { display: flex; align-items: center; gap: 0.5rem; }
+  .gs-toggle {
+    flex: 1; display: flex; align-items: center; gap: 0.6rem; min-width: 0;
+    background: none; border: none; color: var(--text); cursor: pointer; padding: 0; text-align: left;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .gs-title { font-size: 1.05rem; font-weight: 700; }
+  .gs-count { font-size: 0.85rem; color: var(--muted); }
+  .gs-chev { margin-left: auto; color: var(--muted); transition: transform 0.15s; }
+  .gs-card.collapsed .gs-chev { transform: rotate(-90deg); }
+  .gs-card.collapsed .gs-list { display: none; }
+  .gs-hide {
+    background: none; border: none; color: var(--muted); cursor: pointer;
+    font-size: 0.85rem; padding: 0.35rem 0.4rem; text-decoration: underline;
+  }
+  .gs-bar { height: 6px; background: var(--surface); border-radius: 3px; margin: 0.6rem 0 0.2rem; overflow: hidden; }
+  .gs-bar-fill { height: 100%; width: 0; background: var(--accent); transition: width 0.3s; }
+  .gs-list { list-style: none; margin: 0.5rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.35rem; }
+  .gs-item {
+    display: flex; align-items: center; gap: 0.75rem;
+    padding: 0.55rem 0.2rem; border-top: 1px solid var(--border);
+  }
+  .gs-check {
+    flex: 0 0 auto; width: 28px; height: 28px; border-radius: 50%;
+    border: 2px solid var(--border); display: flex; align-items: center; justify-content: center;
+    font-size: 0.95rem; font-weight: 700; color: var(--muted);
+  }
+  .gs-item.done .gs-check { background: var(--green, #22c55e); border-color: var(--green, #22c55e); color: #07080c; }
+  .gs-text { flex: 1; min-width: 0; }
+  .gs-label { font-size: 1rem; font-weight: 600; color: var(--text); }
+  .gs-item.done .gs-label { color: var(--muted); text-decoration: line-through; font-weight: 500; }
+  .gs-hint { font-size: 0.85rem; color: var(--muted); line-height: 1.35; margin-top: 0.1rem; }
+  .gs-item.done .gs-hint { display: none; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .gs-go {
+    flex: 0 0 auto; min-height: 40px; padding: 0.4rem 0.9rem; font-size: 0.9rem; font-weight: 700;
+    background: var(--surface); color: var(--accent); border: 1px solid var(--accent);
+    border-radius: 8px; cursor: pointer;
+  }
+
+  /* ── FIRST-USE TIPS (#tipCard) — above every modal, below nothing ── */
+  .tip-card {
+    position: fixed; z-index: 100000;
+    top: calc(64px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%);
+    width: min(440px, calc(100vw - 2rem));
+    background: var(--card); border: 2px solid var(--accent); border-radius: 14px;
+    padding: 1rem 1.1rem; box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+  }
+  .tip-title { font-size: 1.1rem; font-weight: 700; color: var(--text); margin-bottom: 0.35rem; }
+  .tip-body { font-size: 0.98rem; color: var(--text); line-height: 1.45; }
+  .tip-actions { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-top: 0.85rem; }
+  .tip-off { background: none; border: none; color: var(--muted); font-size: 0.85rem; text-decoration: underline; cursor: pointer; padding: 0.3rem 0; }
+  .tip-card .btn { min-height: 44px; padding: 0.5rem 1.4rem; font-size: 1rem; }
+
   /* ── SELL / ADD MENU (#qaOverlay) — large type and tap targets on purpose ── */
   .qa-overlay {
     position: fixed; inset: 0; z-index: 950;
@@ -4376,9 +4435,21 @@
 <div id="navHelpMenu" class="tc-dropdown nav-help-menu" style="display:none" role="menu">
     <div class="tc-dropdown-item" role="menuitem" onclick="replayOnboarding()">▶ Replay the tour</div>
     <div class="tc-dropdown-item" role="menuitem" onclick="openFeatureGuide()">📖 Feature guide</div>
+    <div class="tc-dropdown-item" role="menuitem" onclick="gsShowAgain()">☑ Getting started list</div>
+    <div class="tc-dropdown-item" role="menuitem" onclick="tipsReset()">💡 Show tips again</div>
     <a class="tc-dropdown-item" role="menuitem" href="/downloads/CardShow_Inventory_Template.xlsx" download onclick="closeHelpMenu()">⬇ Spreadsheet template</a>
     <a class="tc-dropdown-item" role="menuitem" href="mailto:stephen.a.wilhelm@gmail.com?subject=CardShow%20help" onclick="closeHelpMenu()">✉ Contact support</a>
   </div>
+
+<!-- First-use tip: one short card, shown once per feature per device (showTipOnce) -->
+<div id="tipCard" class="tip-card" style="display:none" role="dialog" aria-labelledby="tipTitle">
+  <div class="tip-title" id="tipTitle"></div>
+  <div class="tip-body" id="tipBody"></div>
+  <div class="tip-actions">
+    <button type="button" class="tip-off" onclick="tipsTurnOff()">Don't show tips</button>
+    <button type="button" class="btn btn-primary" onclick="tipDismiss()">Got it</button>
+  </div>
+</div>
 
 <!-- ═══════════════ SELLER VIEW ═══════════════ -->
 <div id="view-seller" class="view active">
@@ -4835,6 +4906,20 @@
             <button class="admin-tab active" id="sellerTabInventory" onclick="switchSellerTab('inventory')">📋 My Inventory</button>
             <button class="admin-tab" id="sellerTabReport" onclick="switchSellerTab('report')">📊 Report</button>
           </div>
+        </div>
+
+        <!-- Getting started checklist — sellers only, ticks itself off (gsRender) -->
+        <div id="gsChecklist" class="gs-card" style="display:none">
+          <div class="gs-head">
+            <button type="button" class="gs-toggle" id="gsToggle" onclick="gsToggleCollapse()" aria-expanded="true" aria-controls="gsList">
+              <span class="gs-title">Getting started</span>
+              <span class="gs-count" id="gsCount"></span>
+              <span class="gs-chev" aria-hidden="true">▾</span>
+            </button>
+            <button type="button" class="gs-hide" onclick="gsDismiss()">Hide</button>
+          </div>
+          <div class="gs-bar"><div class="gs-bar-fill" id="gsBarFill"></div></div>
+          <ol class="gs-list" id="gsList"></ol>
         </div>
 
         <div class="toolbar">
@@ -7682,6 +7767,7 @@ function renderBulkScanReview(cards) {
   }
 
   document.getElementById('bulkScanReviewOverlay').classList.add('open');
+  showTipOnce('bulkReview');
   document.body.style.overflow = 'hidden';
 
   _autoVerifyPsaCards(bulkScanReviewCards); // fire-and-forget, runs in the background while the seller reviews
@@ -9166,6 +9252,7 @@ function showCompCheckSummary(results, rangePct) {
   if (commitBtn) commitBtn.style.display = 'none';
 
   document.getElementById('compResultsOverlay').classList.add('open');
+  showTipOnce('compResults');
 }
 
 function closeCompResults() {
@@ -9712,6 +9799,7 @@ function updateStats() {
   const revBox     = el('statRevenueBox');
   if (soldBox) soldBox.style.display = showActive ? '' : 'none';
   if (revBox)  revBox.style.display  = showActive ? '' : 'none';
+  gsRender();
 }
 
 function renderBuyerGrid(rows) {
@@ -10691,7 +10779,8 @@ function sdConfirm() {
   updateStats();
   updateReport();
   renderSellerTable(getSellerInventory());
-  showToast(`✓ ${card.Player || 'Card'} · $${price.toLocaleString()} · ${sdSelectedPayment}`);
+  showToast(`✓ ${card.Player || 'Card'} · $${price.toLocaleString()} · ${card.PaymentMethod}`); // closeSellDrawer() already cleared sdSelectedPayment
+  showTipOnce('firstSale');
 
   // "The Drop" — post-sale share prompt. Gated by the opt-in preference;
   // a POS-originated sale (card._posOrigin, set by posInsertAndOpenDrawer())
@@ -12237,6 +12326,8 @@ function loginAsSeller(handle) {
       await hydrateCardShowMembership(handle);
       updateReport(); // safe even if the seller isn't on the Report tab yet
       gtcrHydrateLatestChecks(); // badges + "Registry clear" markers survive a reload
+      _gsDataReady = true; // the checklist waits for real data, so returning sellers never see a false "0 done"
+      gsRender();
     }
     checkOnboardingStatus(handle);
   });
@@ -12371,6 +12462,9 @@ async function signOut() {
   currentSeller        = null;
   window._currentAdminUid = null;
   _gtcrConsentState = null;
+  _gsDataReady = false;
+  _gsLastDone  = null;
+  _tipsHideAll();
   sellerQrMode  = 'table';
   buyerShowId   = null;
   _unsubscribeBuyerShowLive();
@@ -12536,6 +12630,7 @@ function copySellerQrLink() {
 }
 
 function openSellerQRModal() {
+  gsMark('qr');
   const url = getSellerInventoryUrl(currentSeller, sellerQrMode);
   const cardCount = getSellerInventory().filter(r => r.Status !== 'Sold').length;
 
@@ -12597,11 +12692,13 @@ async function _downloadBrandedQrPng(qrCanvas, filename) {
 async function downloadSellerQR() {
   const canvas = document.getElementById('sellerQrCanvas');
   await _downloadBrandedQrPng(canvas, `cardshow-qr-${currentSeller}-${sellerQrMode}.png`);
+  gsMark('qr');
 }
 
 async function downloadSellerQRModal() {
   const canvas = document.getElementById('sellerQrModalCanvas');
   await _downloadBrandedQrPng(canvas, `cardshow-qr-${currentSeller}-${sellerQrMode}-large.png`);
+  gsMark('qr');
 }
 
 // Override renderQR to accept an explicit URL parameter
@@ -13564,6 +13661,7 @@ async function publishSelectedToShow(showId) {
 function renderSellerShowsList() {
   const el = document.getElementById('sellerShowsList');
   if (!el || currentRole !== 'seller') return;
+  gsRender();
   const handle = currentSeller;
   const available = Object.values(shows).filter(s => s.sellers.has(handle));
 
@@ -13671,6 +13769,7 @@ function sellerPublishToShow(showId) {
   _persistActiveShowId(currentSeller, showId);
   renderSellerShowsList();
   buildSellerQrPanel();
+  if (count) showTipOnce('live');
   showToast(`${count} cards added to "${show.name}"` + (flaggedSkipped ? ` · ${flaggedSkipped} flagged card${flaggedSkipped !== 1 ? 's' : ''} held back` : ''));
 }
 
@@ -16286,6 +16385,8 @@ function switchSellerTab(tab) {
     if (exportInvWrap) { exportInvWrap.style.display = 'none'; closeExportInventoryMenu(); }
     populateReportShowSelector();
     updateReport();
+    gsMark('report');
+    showTipOnce('report');
   } else {
     invBtn && invBtn.classList.add('active');
     if (tableWrap) tableWrap.style.display = '';
@@ -16296,6 +16397,7 @@ function switchSellerTab(tab) {
     if (sportValidateBtn) sportValidateBtn.style.display = '';
     if (exportInvWrap) exportInvWrap.style.display = '';
   }
+  gsRender();
 }
 
 // ── ADMIN TAB SYSTEM ──
@@ -17845,6 +17947,7 @@ async function _obSaveProfile() {
   if (displayName) sellerProfiles[handle].displayName = displayName;
   if (whatsapp)    sellerProfiles[handle].whatsapp    = whatsapp;
   if (instagram)   sellerProfiles[handle].instagram   = instagram;
+  gsRender();
   updateProfileUI(handle);
 
   if (typeof db !== 'undefined') {
@@ -18005,6 +18108,202 @@ function _helpShowSidebar(elId) {
   document.getElementById(elId)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
+/* ── GETTING STARTED CHECKLIST ──
+   Six steps that tick themselves off from what the seller has actually done.
+   Four come from data the app already loads (profile, cards, show membership,
+   sales). "QR code" and "Report" have no data trail, so those two are
+   remembered on this device, as are Hide and the collapsed state. */
+let _gsDataReady = false;   // set once the seller's inventory has loaded
+let _gsLastDone  = null;    // done count at the last render, to spot the finish
+
+function _gsKey() { return 'gsChecklist:' + (currentSeller || ''); }
+function _gsState() {
+  try { return JSON.parse(localStorage.getItem(_gsKey()) || 'null'); } catch (_) { return null; }
+}
+function _gsSave(patch) {
+  const next = Object.assign({}, _gsState() || {}, patch);
+  try { localStorage.setItem(_gsKey(), JSON.stringify(next)); } catch (_) {}
+  return next;
+}
+// For steps with no data trail: record it, then redraw.
+function gsMark(step) {
+  if (currentRole !== 'seller' || !currentSeller) return;
+  const st = _gsState() || {};
+  if (st[step]) return;
+  _gsSave({ [step]: true });
+  gsRender();
+}
+
+function _gsSteps() {
+  const p     = getProfile(currentSeller);
+  const mine  = getSellerInventory();
+  const st    = _gsState() || {};
+  const hasShowAccess = Object.values(shows).some(s => s.sellers instanceof Set && s.sellers.has(currentSeller));
+  const live  = !!activeShowId || mine.some(c => c._shows instanceof Set && c._shows.size > 0);
+  return [
+    { id: 'profile', label: 'Fill in your profile',
+      hint: 'Your name, plus WhatsApp or Instagram, so buyers can reach you.',
+      done: !!(p.displayName && (p.whatsapp || p.instagram)),
+      go: 'Open', action: () => openProfile() },
+    { id: 'card', label: 'Add your first card',
+      hint: 'Take a photo, upload a spreadsheet, or type it in.',
+      done: mine.length > 0,
+      go: 'Add', action: () => openQuickActions('add') },
+    { id: 'show', label: 'Put your cards in a show',
+      hint: hasShowAccess
+        ? 'Under My Shows, tap ⚡ Add My Cards.'
+        : 'Ask the show organizer to add you. Then tap ⚡ Add My Cards under My Shows.',
+      done: live,
+      go: 'Show me', action: () => _helpShowSidebar('sellerShowsPanel') },
+    { id: 'qr', label: 'Get your table QR code',
+      hint: 'Buyers scan it at your table. Save it or open it full screen.',
+      done: !!st.qr,
+      go: 'Open', action: () => openSellerQRModal() },
+    { id: 'sale', label: 'Record your first sale',
+      hint: 'Pick the card, then enter the price and how they paid.',
+      done: mine.some(c => c.Status === 'Sold'),
+      go: 'Sell', action: () => openQuickActions('sell') },
+    { id: 'report', label: 'Look at your Report',
+      hint: 'Your sales and totals, show by show.',
+      done: !!st.report,
+      go: 'Open', action: () => switchSellerTab('report') },
+  ];
+}
+
+function gsRender() {
+  const box = document.getElementById('gsChecklist');
+  if (!box) return;
+  const rptOpen = document.getElementById('adminReportPanel')?.style.display === 'block';
+  if (currentRole !== 'seller' || !currentSeller || !_gsDataReady || rptOpen) {
+    box.style.display = 'none';
+    return;
+  }
+  const steps = _gsSteps();
+  const done  = steps.filter(s => s.done).length;
+  let st = _gsState();
+
+  // First look on this device: a seller who already has cards and a sale
+  // isn't new, so the list starts hidden (? → Getting started list brings it back).
+  if (!st) {
+    const veteran = steps.find(s => s.id === 'card').done && steps.find(s => s.id === 'sale').done;
+    st = _gsSave({ dismissed: veteran });
+  }
+  if (st.dismissed) { box.style.display = 'none'; _gsLastDone = done; return; }
+
+  if (done === steps.length) {
+    box.style.display = 'none';
+    // Delayed so it isn't overwritten by the toast of the action that finished the list
+    if (_gsLastDone !== null && _gsLastDone < steps.length) setTimeout(() => showToast("✓ You're all set up"), 3500);
+    _gsSave({ dismissed: true });
+    _gsLastDone = done;
+    return;
+  }
+  _gsLastDone = done;
+
+  box.style.display = '';
+  box.classList.toggle('collapsed', !!st.collapsed);
+  document.getElementById('gsToggle')?.setAttribute('aria-expanded', st.collapsed ? 'false' : 'true');
+  document.getElementById('gsCount').textContent = `${done} of ${steps.length} done`;
+  document.getElementById('gsBarFill').style.width = Math.round(done / steps.length * 100) + '%';
+  document.getElementById('gsList').innerHTML = steps.map((s, i) => `
+    <li class="gs-item${s.done ? ' done' : ''}">
+      <span class="gs-check" aria-hidden="true">${s.done ? '✓' : i + 1}</span>
+      <div class="gs-text">
+        <div class="gs-label">${_escHtml(s.label)}${s.done ? '<span class="sr-only"> (done)</span>' : ''}</div>
+        <div class="gs-hint">${_escHtml(s.hint)}</div>
+      </div>
+      ${s.done ? '' : `<button type="button" class="gs-go" onclick="gsDo('${s.id}')">${_escHtml(s.go)}</button>`}
+    </li>`).join('');
+}
+
+function gsDo(id) {
+  const step = _gsSteps().find(s => s.id === id);
+  if (step) step.action();
+}
+function gsToggleCollapse() {
+  const st = _gsState() || {};
+  _gsSave({ collapsed: !st.collapsed });
+  gsRender();
+}
+function gsDismiss() {
+  _gsSave({ dismissed: true });
+  gsRender();
+  showToast('Bring it back anytime from the ? button');
+}
+function gsShowAgain() {
+  closeHelpMenu();
+  _gsSave({ dismissed: false, collapsed: false });
+  _gsLastDone = null;
+  switchSellerTab('inventory');
+  gsRender();
+  const steps = _gsSteps();
+  if (steps.every(s => s.done)) { showToast("✓ You've done every step"); return; }
+  document.getElementById('gsChecklist')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+/* ── FIRST-USE TIPS ──
+   A short card the first time a seller reaches a feature. Each shows once per
+   device; "Don't show tips" turns them all off, ? → Show tips again resets. */
+const TIPS = {
+  compResults: { title: 'Picking a price',
+    body: 'Tap ✓ Use on the price you want for each card. When you tap Done, the prices you picked are saved.' },
+  bulkReview: { title: 'Check your cards before adding',
+    body: 'Fix anything that looks wrong and untick any card you don’t want. Every card needs a title. ✓ VERIFIED means the player was found in the card database.' },
+  report: { title: 'Your Report',
+    body: 'Pick a show at the top to see just that show. Use Log a Manual Sale for a sale you made outside CardShow. Tap 📤 on a sale to make a picture to share.' },
+  firstSale: { title: 'Sale recorded',
+    body: 'The card is marked Sold and your totals are updated. Every sale is listed in the Report tab.' },
+  live: { title: 'Your cards are live',
+    body: 'Buyers at the show can now see your cards. Set out your table QR code so they can scan it and browse.' },
+};
+let _tipQueue   = [];
+let _tipCurrent = null;
+
+function _tipsSeen() {
+  try { return JSON.parse(localStorage.getItem('cardshowTipsSeen') || '{}'); } catch (_) { return {}; }
+}
+function _tipsOff() {
+  try { return localStorage.getItem('cardshowTipsOff') === '1'; } catch (_) { return false; }
+}
+function showTipOnce(key) {
+  if (currentRole !== 'seller' || !TIPS[key] || _tipsOff()) return;
+  if (_onboardingActive) return; // don't stack on the tour; it shows next time
+  if (_tipsSeen()[key] || _tipCurrent === key || _tipQueue.includes(key)) return;
+  if (_tipCurrent) { _tipQueue.push(key); return; }
+  _tipOpen(key);
+}
+function _tipOpen(key) {
+  _tipCurrent = key;
+  const seen = _tipsSeen(); seen[key] = true;
+  try { localStorage.setItem('cardshowTipsSeen', JSON.stringify(seen)); } catch (_) {}
+  document.getElementById('tipTitle').textContent = TIPS[key].title;
+  document.getElementById('tipBody').textContent  = TIPS[key].body;
+  document.getElementById('tipCard').style.display = '';
+}
+function tipDismiss() {
+  document.getElementById('tipCard').style.display = 'none';
+  _tipCurrent = null;
+  const next = _tipQueue.shift();
+  if (next && !_tipsOff()) _tipOpen(next);
+}
+function tipsTurnOff() {
+  try { localStorage.setItem('cardshowTipsOff', '1'); } catch (_) {}
+  _tipQueue = [];
+  tipDismiss();
+  showToast('Tips turned off. Turn them back on from the ? button');
+}
+function tipsReset() {
+  closeHelpMenu();
+  try { localStorage.removeItem('cardshowTipsSeen'); localStorage.removeItem('cardshowTipsOff'); } catch (_) {}
+  showToast('Tips will show again as you use each feature');
+}
+function _tipsHideAll() {
+  _tipQueue = [];
+  const el = document.getElementById('tipCard');
+  if (el) el.style.display = 'none';
+  _tipCurrent = null;
+}
+
 const FEATURE_GUIDE = [
   { group: 'Add cards', items: [
     { icon: '✏️', name: 'Add a card', desc: 'Type a player name and pick the set and card from the list, or fill in the fields yourself.', action: () => openAddCard() },
@@ -18079,6 +18378,7 @@ function saveProfile() {
   if (name)  sellerProfiles[handle].displayName = name;
   if (waRaw) sellerProfiles[handle].whatsapp    = waRaw;
   if (ig)    sellerProfiles[handle].instagram   = ig;
+  gsRender();
 
   // Persist to Supabase sellers table
   if (typeof db !== 'undefined') {
@@ -19454,6 +19754,7 @@ async function confirmManualSale() {
   showToast(
     `✓ ${player.slice(0, 28)} · $${price.toLocaleString()} · ${payment} · logged`
   );
+  showTipOnce('firstSale');
 
   // "The Drop" — post-sale share prompt. 'manual_only' opts in specifically
   // to this path (as well as 'always'); 'never' suppresses both.
