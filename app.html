@@ -441,15 +441,17 @@
       display: flex;
       align-items: center;
       justify-content: center;
+      gap: 0.4rem;
       position: fixed;
-      bottom: 1.5rem;
-      right: 1.25rem;
-      width: 56px;
-      height: 56px;
-      border-radius: 50%;
+      bottom: calc(1.25rem + env(safe-area-inset-bottom, 0px));
+      right: 1rem;
+      height: 52px;
+      padding: 0 1.1rem 0 0.9rem;
+      border-radius: 26px;
       background: #07080c;
       color: var(--gold);
-      font-size: 1.7rem;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 1rem;
       font-weight: 700;
       border: 2px solid var(--gold);
       cursor: pointer;
@@ -462,8 +464,11 @@
       transform: scale(0.93);
       box-shadow: 0 1px 6px rgba(0,0,0,0.6), 0 0 0 1px rgba(245,200,66,0.15);
     }
+    .fab-add-plus { font-size: 1.5rem; line-height: 1; }
     /* push toast above FAB on mobile */
     .toast { bottom: 5.5rem; }
+    /* room under the inventory list so the FAB never hides the last row */
+    #view-seller { padding-bottom: 5rem; }
   }
 
   /* ── BUYER VIEW ── */
@@ -2274,6 +2279,31 @@
 
 
   /* ── CARD EDIT ── */
+  /* GTCR tiers: stolen = red, lost / dispute on file = amber */
+  .gtcr-alert-overlay { --gtcr-c: 239,68,68; background: rgba(20, 0, 0, 0.78); z-index: 10000; }
+  .gtcr-alert-overlay[data-kind="lost"], .gtcr-alert-overlay[data-kind="dispute"] { --gtcr-c: 245,158,11; background: rgba(20, 12, 0, 0.72); }
+  .gtcr-alert-modal { border: 2px solid rgb(var(--gtcr-c)); box-shadow: 0 0 0 4px rgba(var(--gtcr-c),0.18), 0 20px 60px rgba(0,0,0,0.6); }
+  .gtcr-alert-icon {
+    width: 52px; height: 52px; margin: 0 auto 0.6rem; border-radius: 50%;
+    background: rgba(var(--gtcr-c),0.15); color: rgb(var(--gtcr-c)); font-size: 1.6rem;
+    display: flex; align-items: center; justify-content: center;
+    animation: gtcrPulse 1.4s ease-in-out 3;
+  }
+  .gtcr-alert-overlay[data-kind="dispute"] .gtcr-alert-icon { animation: none; }
+  @keyframes gtcrPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(var(--gtcr-c),0.5); } 50% { box-shadow: 0 0 0 12px rgba(var(--gtcr-c),0); } }
+  .gtcr-alert-title { font-family:'Bebas Neue',sans-serif; font-size:1.6rem; letter-spacing:0.04em; color:rgb(var(--gtcr-c)); margin-bottom:0.2rem; text-align:center; }
+  .gtcr-remove-btn, .gtcr-gotit-btn { background: rgb(var(--gtcr-c)) !important; border-color: rgb(var(--gtcr-c)) !important; color: #0a0a0a !important; }
+  .gtcr-alert-overlay[data-kind="dispute"] .gtcr-action-only { display: none; }
+  .gtcr-alert-overlay:not([data-kind="dispute"]) .gtcr-info-only { display: none !important; }
+  .gtcr-flag-badge {
+    --gtcr-c: 239,68,68;
+    background: rgba(var(--gtcr-c),0.14); color: rgb(var(--gtcr-c)); border: 1px solid rgba(var(--gtcr-c),0.55);
+    border-radius: 6px; padding: 0.2rem 0.5rem; font-family: 'DM Mono', monospace; font-size: 0.62rem;
+    letter-spacing: 0.04em; cursor: pointer; white-space: nowrap;
+  }
+  .gtcr-flag-badge.lost, .gtcr-flag-badge.dispute { --gtcr-c: 245,158,11; }
+  .gtcr-flag-badge.disputed { background: transparent; color: var(--muted); border-color: var(--border); cursor: default; }
+  .gtcr-clear { font-family:'DM Mono',monospace; font-size:0.58rem; color:#22c55e; opacity:0.75; margin-top:0.15rem; }
   .btn-card-edit {
     background: transparent; border: 1px solid var(--border);
     color: var(--muted); border-radius: 6px; padding: 0.18rem 0.5rem;
@@ -3003,6 +3033,181 @@
     margin-top: 0.5rem;
   }
 
+  .ob-actions { display: flex; flex-direction: column; gap: 0.5rem; }
+  .ob-action {
+    display: flex; gap: 0.75rem; align-items: flex-start; text-align: left;
+    width: 100%; padding: 0.7rem 0.8rem; cursor: pointer;
+    background: var(--surface); color: var(--text);
+    border: 1px solid var(--border); border-radius: 10px;
+    font-family: inherit; transition: border-color 0.15s;
+  }
+  .ob-action:hover, .ob-action:focus-visible { border-color: var(--accent); outline: none; }
+  .ob-action-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 1px; }
+  .ob-action-text strong { display: block; font-size: 0.85rem; }
+  .ob-action-text span   { font-size: 0.75rem; color: var(--muted); line-height: 1.35; }
+  .ob-link { font-size: 0.75rem; color: var(--accent); text-decoration: none; }
+  .ob-link:hover { text-decoration: underline; }
+  .ob-hint { font-size: 0.75rem; color: var(--muted); line-height: 1.4; }
+  .ob-hint-mobile { display: none; }
+  @media (max-width: 599px) { .ob-hint-mobile { display: block; } }
+  .ob-steps { margin: 0; padding-left: 1.2rem; display: flex; flex-direction: column; gap: 0.6rem; }
+  .ob-steps li { font-size: 0.8rem; color: var(--muted); line-height: 1.4; }
+  .ob-steps li strong { color: var(--text); }
+
+
+  /* ── GETTING STARTED CHECKLIST (#gsChecklist) ── */
+  .gs-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 0.85rem 1rem; margin-bottom: 0.75rem;
+  }
+  .gs-head { display: flex; align-items: center; gap: 0.5rem; }
+  .gs-toggle {
+    flex: 1; display: flex; align-items: center; gap: 0.6rem; min-width: 0;
+    background: none; border: none; color: var(--text); cursor: pointer; padding: 0; text-align: left;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .gs-title { font-size: 1.05rem; font-weight: 700; }
+  .gs-count { font-size: 0.85rem; color: var(--muted); }
+  .gs-chev { margin-left: auto; color: var(--muted); transition: transform 0.15s; }
+  .gs-card.collapsed .gs-chev { transform: rotate(-90deg); }
+  .gs-card.collapsed .gs-list { display: none; }
+  .gs-hide {
+    background: none; border: none; color: var(--muted); cursor: pointer;
+    font-size: 0.85rem; padding: 0.35rem 0.4rem; text-decoration: underline;
+  }
+  .gs-bar { height: 6px; background: var(--surface); border-radius: 3px; margin: 0.6rem 0 0.2rem; overflow: hidden; }
+  .gs-bar-fill { height: 100%; width: 0; background: var(--accent); transition: width 0.3s; }
+  .gs-list { list-style: none; margin: 0.5rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.35rem; }
+  .gs-item {
+    display: flex; align-items: center; gap: 0.75rem;
+    padding: 0.55rem 0.2rem; border-top: 1px solid var(--border);
+  }
+  .gs-check {
+    flex: 0 0 auto; width: 28px; height: 28px; border-radius: 50%;
+    border: 2px solid var(--border); display: flex; align-items: center; justify-content: center;
+    font-size: 0.95rem; font-weight: 700; color: var(--muted);
+  }
+  .gs-item.done .gs-check { background: var(--green, #22c55e); border-color: var(--green, #22c55e); color: #07080c; }
+  .gs-text { flex: 1; min-width: 0; }
+  .gs-label { font-size: 1rem; font-weight: 600; color: var(--text); }
+  .gs-item.done .gs-label { color: var(--muted); text-decoration: line-through; font-weight: 500; }
+  .gs-hint { font-size: 0.85rem; color: var(--muted); line-height: 1.35; margin-top: 0.1rem; }
+  .gs-item.done .gs-hint { display: none; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .gs-go {
+    flex: 0 0 auto; min-height: 40px; padding: 0.4rem 0.9rem; font-size: 0.9rem; font-weight: 700;
+    background: var(--surface); color: var(--accent); border: 1px solid var(--accent);
+    border-radius: 8px; cursor: pointer;
+  }
+
+  /* ── FIRST-USE TIPS (#tipCard) — above every modal, below nothing ── */
+  .tip-card {
+    position: fixed; z-index: 100000;
+    top: calc(64px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%);
+    width: min(440px, calc(100vw - 2rem));
+    background: var(--card); border: 2px solid var(--accent); border-radius: 14px;
+    padding: 1rem 1.1rem; box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+  }
+  .tip-title { font-size: 1.1rem; font-weight: 700; color: var(--text); margin-bottom: 0.35rem; }
+  .tip-body { font-size: 0.98rem; color: var(--text); line-height: 1.45; }
+  .tip-actions { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-top: 0.85rem; }
+  .tip-off { background: none; border: none; color: var(--muted); font-size: 0.85rem; text-decoration: underline; cursor: pointer; padding: 0.3rem 0; }
+  .tip-card .btn { min-height: 44px; padding: 0.5rem 1.4rem; font-size: 1rem; }
+
+  /* ── SELL / ADD MENU (#qaOverlay) — large type and tap targets on purpose ── */
+  .qa-overlay {
+    position: fixed; inset: 0; z-index: 950;
+    background: rgba(0,0,0,0.7);
+    display: none; align-items: flex-end; justify-content: center;
+  }
+  .qa-overlay.open { display: flex; }
+  .qa-sheet {
+    width: 100%; max-width: 520px; max-height: 92vh; overflow-y: auto;
+    background: var(--card); border: 1px solid var(--border); border-bottom: none;
+    border-radius: 18px 18px 0 0;
+    padding: 0.9rem 1.1rem calc(1.4rem + env(safe-area-inset-bottom, 0px));
+  }
+  @media (min-width: 768px) {
+    .qa-overlay { align-items: center; }
+    .qa-sheet { border-radius: 18px; border-bottom: 1px solid var(--border); }
+  }
+  .qa-head { display: flex; justify-content: space-between; align-items: center; }
+  .qa-back, .qa-cancel {
+    background: none; border: none; color: var(--accent); cursor: pointer;
+    font-family: 'DM Sans', sans-serif; font-size: 1.05rem; font-weight: 600;
+    min-height: 44px; padding: 0 0.25rem;
+  }
+  .qa-cancel { color: var(--muted); }
+  .qa-title {
+    font-family: 'DM Sans', sans-serif; font-size: 1.45rem; font-weight: 700;
+    color: var(--text); margin: 0.3rem 0 1rem; line-height: 1.25;
+  }
+  .qa-screen { display: flex; flex-direction: column; gap: 0.75rem; }
+  .qa-choice {
+    display: flex; align-items: center; gap: 1rem; width: 100%; min-height: 76px;
+    padding: 0.9rem 1rem; text-align: left; cursor: pointer;
+    background: var(--surface); color: var(--text);
+    border: 2px solid var(--border); border-radius: 14px;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .qa-choice:hover, .qa-choice:focus-visible { border-color: var(--accent); outline: none; }
+  .qa-choice:active { transform: scale(0.99); }
+  .qa-choice-icon { font-size: 1.8rem; flex-shrink: 0; }
+  .qa-choice-text strong { display: block; font-size: 1.15rem; line-height: 1.3; }
+  .qa-choice-text span   { display: block; font-size: 0.95rem; color: var(--muted); line-height: 1.35; margin-top: 0.15rem; }
+  .qa-link { font-size: 0.95rem; color: var(--accent); text-decoration: none; padding: 0.5rem 0.25rem; }
+  .qa-search {
+    width: 100%; min-height: 52px; padding: 0 1rem; box-sizing: border-box;
+    background: var(--surface); color: var(--text);
+    border: 2px solid var(--border); border-radius: 12px;
+    font-family: 'DM Sans', sans-serif; font-size: 1.1rem;
+  }
+  .qa-search:focus { border-color: var(--accent); outline: none; }
+  .qa-pick-list { display: flex; flex-direction: column; gap: 0.5rem; }
+  .qa-pick-item {
+    display: flex; justify-content: space-between; align-items: center; gap: 0.75rem;
+    width: 100%; min-height: 64px; padding: 0.7rem 0.9rem; text-align: left; cursor: pointer;
+    background: var(--surface); color: var(--text);
+    border: 1px solid var(--border); border-radius: 12px; font-family: 'DM Sans', sans-serif;
+  }
+  .qa-pick-item:hover, .qa-pick-item:focus-visible { border-color: var(--accent); outline: none; }
+  .qa-pick-main { min-width: 0; }
+  .qa-pick-main strong { display: block; font-size: 1.05rem; line-height: 1.3; }
+  .qa-pick-main span   { display: block; font-size: 0.9rem; color: var(--muted); line-height: 1.3; }
+  .qa-pick-price { font-size: 1.1rem; font-weight: 700; color: var(--accent); flex-shrink: 0; }
+  .qa-empty { font-size: 1rem; color: var(--muted); line-height: 1.5; padding: 0.5rem 0.25rem; }
+
+  /* ── HELP MENU + FEATURE GUIDE ── */
+  .nav-help-wrap { position: relative; }
+  .nav-help-btn {
+    width: 28px; height: 28px; border-radius: 50%; cursor: pointer;
+    background: transparent; color: var(--muted);
+    border: 1px solid var(--border); font-weight: 700; font-size: 0.85rem;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .nav-help-btn:hover, .nav-help-btn.open { color: var(--accent); border-color: var(--accent); }
+  .nav-help-menu { position: fixed; z-index: 1000; width: 220px; max-height: none; }
+  .nav-help-menu a.tc-dropdown-item { display: block; color: inherit; text-decoration: none; }
+  .fg-group { margin-bottom: 1.1rem; }
+  .fg-group-title {
+    font-family: 'DM Mono', monospace; font-size: 0.68rem; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--accent); margin-bottom: 0.4rem;
+  }
+  .fg-item {
+    display: flex; gap: 0.7rem; align-items: flex-start;
+    padding: 0.55rem 0; border-top: 1px solid var(--border);
+  }
+  .fg-item-icon { font-size: 1rem; flex-shrink: 0; margin-top: 1px; }
+  .fg-item-text { flex: 1; min-width: 0; }
+  .fg-item-text strong { display: block; font-size: 0.85rem; color: var(--text); }
+  .fg-item-text span   { font-size: 0.75rem; color: var(--muted); line-height: 1.4; }
+  .fg-try {
+    flex-shrink: 0; font-size: 0.72rem; padding: 0.25rem 0.6rem; cursor: pointer;
+    background: transparent; color: var(--accent);
+    border: 1px solid var(--accent); border-radius: 6px; font-family: inherit;
+  }
+  .help-pulse { box-shadow: 0 0 0 2px var(--accent); transition: box-shadow 0.3s; }
+
   .profile-overlay {
     position: fixed; inset: 0; z-index: 1000;
     background: rgba(0,0,0,0.7); display: none;
@@ -3194,40 +3399,6 @@
      SCAN-TO-SELL POS — photo-first identification
      Chains into the existing sell drawer for price/payment.
   ════════════════════════════════════════════════ */
-
-  /* Scan-to-Sell FAB — mobile only, stacks above the circular Add Card FAB */
-  .fab-scan-to-sell { display: none; }
-  @media (max-width: 767px) {
-    .fab-scan-to-sell {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      position: fixed;
-      bottom: calc(5.75rem + env(safe-area-inset-bottom, 0px));
-      left: 50%;
-      transform: translateX(-50%);
-      width: calc(100% - 2rem);
-      max-width: 340px;
-      height: 52px;
-      background: var(--accent);
-      color: var(--black);
-      border: none;
-      border-radius: 14px;
-      font-family: 'Barlow Condensed', sans-serif;
-      font-size: 17px;
-      font-weight: 700;
-      letter-spacing: 0.07em;
-      text-transform: uppercase;
-      cursor: pointer;
-      z-index: 90;
-      box-shadow: 0 4px 20px rgba(245, 200, 66, 0.28);
-      -webkit-tap-highlight-color: transparent;
-      touch-action: manipulation;
-    }
-    .fab-scan-to-sell:active { opacity: 0.85; transform: translateX(-50%) scale(0.98); }
-    /* push toast above both stacked FABs on mobile */
-    .toast { bottom: 9.5rem; }
-  }
 
   /* Overlay */
   .pos-overlay {
@@ -4224,6 +4395,11 @@
     <button class="nav-tab" id="navTabBuyer" onclick="switchView('buyer')">◎ Buyer</button>
   </div>
   <div class="nav-right">
+    <!-- Help menu — seller only. Replays the onboarding tour and opens the Feature guide. -->
+    <div class="nav-help-wrap" id="navHelpWrap" style="display:none">
+      <button class="nav-help-btn" id="navHelpBtn" onclick="toggleHelpMenu(event)"
+        aria-label="Help" aria-haspopup="true" title="Help">?</button>
+    </div>
     <!-- Seller profile button — only visible when logged in as seller -->
     <button class="nav-profile-btn" id="navProfileBtn"
       onclick="openProfile()" style="display:none" title="Edit your seller profile &amp; contact info">
@@ -4255,6 +4431,25 @@
       onclick="signOut()" style="display:none">Sign out</button>
   </div>
 </nav>
+<!-- Lives outside <nav>: nav has overflow:hidden and a backdrop-filter, which would clip it -->
+<div id="navHelpMenu" class="tc-dropdown nav-help-menu" style="display:none" role="menu">
+    <div class="tc-dropdown-item" role="menuitem" onclick="replayOnboarding()">▶ Replay the tour</div>
+    <div class="tc-dropdown-item" role="menuitem" onclick="openFeatureGuide()">📖 Feature guide</div>
+    <div class="tc-dropdown-item" role="menuitem" onclick="gsShowAgain()">☑ Getting started list</div>
+    <div class="tc-dropdown-item" role="menuitem" onclick="tipsReset()">💡 Show tips again</div>
+    <a class="tc-dropdown-item" role="menuitem" href="/downloads/CardShow_Inventory_Template.xlsx" download onclick="closeHelpMenu()">⬇ Spreadsheet template</a>
+    <a class="tc-dropdown-item" role="menuitem" href="mailto:stephen.a.wilhelm@gmail.com?subject=CardShow%20help" onclick="closeHelpMenu()">✉ Contact support</a>
+  </div>
+
+<!-- First-use tip: one short card, shown once per feature per device (showTipOnce) -->
+<div id="tipCard" class="tip-card" style="display:none" role="dialog" aria-labelledby="tipTitle">
+  <div class="tip-title" id="tipTitle"></div>
+  <div class="tip-body" id="tipBody"></div>
+  <div class="tip-actions">
+    <button type="button" class="tip-off" onclick="tipsTurnOff()">Don't show tips</button>
+    <button type="button" class="btn btn-primary" onclick="tipDismiss()">Got it</button>
+  </div>
+</div>
 
 <!-- ═══════════════ SELLER VIEW ═══════════════ -->
 <div id="view-seller" class="view active">
@@ -4713,6 +4908,20 @@
           </div>
         </div>
 
+        <!-- Getting started checklist — sellers only, ticks itself off (gsRender) -->
+        <div id="gsChecklist" class="gs-card" style="display:none">
+          <div class="gs-head">
+            <button type="button" class="gs-toggle" id="gsToggle" onclick="gsToggleCollapse()" aria-expanded="true" aria-controls="gsList">
+              <span class="gs-title">Getting started</span>
+              <span class="gs-count" id="gsCount"></span>
+              <span class="gs-chev" aria-hidden="true">▾</span>
+            </button>
+            <button type="button" class="gs-hide" onclick="gsDismiss()">Hide</button>
+          </div>
+          <div class="gs-bar"><div class="gs-bar-fill" id="gsBarFill"></div></div>
+          <ol class="gs-list" id="gsList"></ol>
+        </div>
+
         <div class="toolbar">
           <h2 id="inventoryTitle">Inventory</h2>
           <input type="text" class="search-input" id="sellerSearchInput" placeholder="Search cards…" oninput="applyInventoryFilters()">
@@ -4894,6 +5103,17 @@
             </label>
           </div>
           <div class="profile-field-hint">Controls the "Share this sale?" prompt after confirming a sale — saved on this device</div>
+        </div>
+
+        <!-- GTCR registration consent. Dark until pricing/packaging is decided
+             (GTCR_CONSENT_UI_ENABLED in the script). Never pre-checked. -->
+        <div id="gtcrConsentSection" style="display:none">
+          <div class="profile-field-label">Global Trading Card Registry</div>
+          <label class="drop-pref-opt" style="align-items:flex-start;gap:0.55rem">
+            <input type="checkbox" id="gtcrConsentToggle" onchange="gtcrConsentToggleChanged(this)" style="margin-top:0.2rem">
+            <span id="gtcrConsentCopy" style="font-size:0.78rem;line-height:1.45"></span>
+          </label>
+          <div class="profile-field-hint" id="gtcrConsentStatus"></div>
         </div>
 
       </div>
@@ -5523,19 +5743,70 @@
   </div>
 </div>
 
-<!-- FAB — mobile Add Card button, seller view only -->
-<button class="fab-add" id="fabAddCard" onclick="openAddCard()" style="display:none" aria-label="Add card">+</button>
-
-<!-- Scan-to-Sell FAB — seller + mobile only, stacks above #fabAddCard -->
-<button
-  id="fabScanToSell"
-  class="fab-scan-to-sell"
-  onclick="posOpenPhotoSheet()"
-  style="display:none"
-  aria-label="Scan to Sell"
->
-  📷 Scan to Sell
+<!-- FAB — mobile only, seller view. Opens the Sell / Add menu (#qaOverlay). -->
+<button class="fab-add" id="fabAddCard" onclick="openQuickActions()" style="display:none" aria-label="Sell or add cards">
+  <span class="fab-add-plus" aria-hidden="true">+</span><span>Sell / Add</span>
 </button>
+
+<!-- ── SELL / ADD MENU ──
+     One question per screen, large buttons, plain words. Each choice hands off
+     to an existing flow (sell drawer, Scan to Sell, Add Card, bulk scan, import). -->
+<div class="qa-overlay" id="qaOverlay" onclick="if(event.target===this)closeQuickActions()">
+  <div class="qa-sheet" role="dialog" aria-modal="true" aria-labelledby="qaTitle">
+    <div class="qa-head">
+      <button class="qa-back" id="qaBackBtn" onclick="qaBack()" style="visibility:hidden">← Back</button>
+      <button class="qa-cancel" onclick="closeQuickActions()">Cancel</button>
+    </div>
+    <div class="qa-title" id="qaTitle">What would you like to do?</div>
+
+    <div class="qa-screen" id="qaScreenRoot">
+      <button class="qa-choice" onclick="qaShow('sell')">
+        <span class="qa-choice-icon" aria-hidden="true">💵</span>
+        <span class="qa-choice-text"><strong>Sell a card</strong><span>Record a sale at your table</span></span>
+      </button>
+      <button class="qa-choice" onclick="qaShow('add')">
+        <span class="qa-choice-icon" aria-hidden="true">➕</span>
+        <span class="qa-choice-text"><strong>Add cards to my inventory</strong><span>Photo, spreadsheet, or type them in</span></span>
+      </button>
+    </div>
+
+    <div class="qa-screen" id="qaScreenSell" style="display:none">
+      <button class="qa-choice" onclick="qaShow('pick')">
+        <span class="qa-choice-icon" aria-hidden="true">📋</span>
+        <span class="qa-choice-text"><strong>It's in my inventory</strong><span>Find the card, then enter the price</span></span>
+      </button>
+      <button class="qa-choice" onclick="qaGo('scanSell')">
+        <span class="qa-choice-icon" aria-hidden="true">📷</span>
+        <span class="qa-choice-text"><strong>It's not in my inventory</strong><span>Take a photo of the card and record the sale</span></span>
+      </button>
+    </div>
+
+    <div class="qa-screen" id="qaScreenAdd" style="display:none">
+      <button class="qa-choice" onclick="qaGo('scanOne')">
+        <span class="qa-choice-icon" aria-hidden="true">📷</span>
+        <span class="qa-choice-text"><strong>Take a photo of one card</strong><span>The details fill in for you</span></span>
+      </button>
+      <button class="qa-choice" onclick="qaGo('bulk')">
+        <span class="qa-choice-icon" aria-hidden="true">📸</span>
+        <span class="qa-choice-text"><strong>Take a photo of a whole case</strong><span>Finds every card in the picture</span></span>
+      </button>
+      <button class="qa-choice" onclick="qaGo('upload')">
+        <span class="qa-choice-icon" aria-hidden="true">📊</span>
+        <span class="qa-choice-text"><strong>Upload a spreadsheet</strong><span>A CSV or Excel file of your cards</span></span>
+      </button>
+      <button class="qa-choice" onclick="qaGo('type')">
+        <span class="qa-choice-icon" aria-hidden="true">✏️</span>
+        <span class="qa-choice-text"><strong>Type it in</strong><span>Fill in the details yourself</span></span>
+      </button>
+      <a class="qa-link" href="/downloads/CardShow_Inventory_Template.xlsx" download>⬇ Download the spreadsheet template</a>
+    </div>
+
+    <div class="qa-screen" id="qaScreenPick" style="display:none">
+      <input class="qa-search" id="qaSearch" type="search" placeholder="Search by player or card" autocomplete="off" oninput="qaRenderPick()">
+      <div class="qa-pick-list" id="qaPickList"></div>
+    </div>
+  </div>
+</div>
 
 <!-- ═══════════════════════════════════════════════
      SCAN-TO-SELL — Photo identification sheet
@@ -6263,6 +6534,33 @@
 
 <!-- Full-screen loading overlay while the bulk-scan photo is being analyzed —
      visible regardless of sidebar/mobile state, unlike the old toast+button approach -->
+<!-- GTCR Trust Check — flagged-card resolution (see "Trust Check via GTCR" in CLAUDE.md) -->
+<!-- One modal, three tiers, set by openGtcrFlagModal() via the overlay's data-kind:
+       stolen  red, blocking (must pick a button)
+       lost    amber, blocking (must pick a button), gentler copy
+       dispute amber, informational; dismissable with Got it / backdrop / Escape -->
+<div class="modal-overlay gtcr-alert-overlay" id="gtcrFlagOverlay" data-kind="stolen" role="alertdialog" aria-modal="true" aria-labelledby="gtcrFlagTitle"
+  onclick="if(event.target===this && this.dataset.kind==='dispute') closeGtcrFlagModal()">
+  <div class="modal gtcr-alert-modal" style="max-width:420px;padding:1.6rem 1.5rem">
+    <div class="gtcr-alert-icon" aria-hidden="true">⚠</div>
+    <div id="gtcrFlagTitle" class="gtcr-alert-title">Possible Stolen Card</div>
+    <div id="gtcrFlagQueueNote" style="font-family:'DM Mono',monospace;font-size:0.65rem;color:var(--muted);text-align:center;margin-bottom:0.6rem"></div>
+    <div id="gtcrFlagCardLabel" style="font-family:'DM Sans',sans-serif;font-weight:600;color:var(--text);margin-bottom:0.6rem"></div>
+    <div id="gtcrFlagBody" style="font-size:0.82rem;color:var(--muted);line-height:1.5;margin-bottom:0.9rem"></div>
+    <div class="gtcr-action-only">
+      <textarea id="gtcrFlagNote" class="sale-notes-input" rows="2" placeholder="Optional note (e.g. where you acquired this card)" style="width:100%;margin-bottom:1rem"></textarea>
+      <div style="display:flex;flex-direction:column;gap:0.5rem">
+        <button class="btn btn-primary gtcr-remove-btn" onclick="gtcrResolveFlag('removed')">Remove from inventory</button>
+        <button class="btn btn-ghost" onclick="gtcrResolveFlag('disputed')">Dispute &amp; keep listing</button>
+        <button class="btn-modal-close" onclick="closeGtcrFlagModal()">Decide later — keep it hidden</button>
+      </div>
+    </div>
+    <div class="gtcr-info-only" style="display:flex;flex-direction:column;gap:0.5rem">
+      <button class="btn btn-primary gtcr-gotit-btn" onclick="closeGtcrFlagModal()">Got it</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="bulkScanLoadingOverlay" onclick="if(event.target===this)_cancelBulkScanLoading()">
   <div class="modal" style="max-width:340px;text-align:center;padding:2.2rem 1.75rem">
     <div style="width:44px;height:44px;margin:0 auto 1.1rem;border:3px solid var(--border);border-top-color:var(--gold);border-radius:50%;animation:spin 0.8s linear infinite"></div>
@@ -7469,6 +7767,7 @@ function renderBulkScanReview(cards) {
   }
 
   document.getElementById('bulkScanReviewOverlay').classList.add('open');
+  showTipOnce('bulkReview');
   document.body.style.overflow = 'hidden';
 
   _autoVerifyPsaCards(bulkScanReviewCards); // fire-and-forget, runs in the background while the seller reviews
@@ -8953,6 +9252,7 @@ function showCompCheckSummary(results, rangePct) {
   if (commitBtn) commitBtn.style.display = 'none';
 
   document.getElementById('compResultsOverlay').classList.add('open');
+  showTipOnce('compResults');
 }
 
 function closeCompResults() {
@@ -9411,6 +9711,7 @@ function renderSellerTable(rows) {
       <td data-label="Grade">
         ${gradeBadge(r.Grade, r.Grader)}
         ${isGraded && r['Cert #'] ? `<div style="font-family:'DM Mono',monospace;font-size:0.6rem;color:var(--muted);margin-top:0.2rem">${r['Cert #']}</div>` : ''}
+        ${_gtcrState(r) === 'clear' ? `<div class="gtcr-clear" title="No active reports in the Global Trading Card Registry">✓ Registry clear</div>` : ''}
         ${!isGraded && r.Condition ? `<div style="font-size:0.68rem;color:var(--muted);margin-top:0.2rem">${r.Condition}</div>` : ''}
       </td>
 
@@ -9421,6 +9722,7 @@ function renderSellerTable(rows) {
             <span class="status-dot"></span>${statusIcon} ${status}
           </div>
           <button class="btn-card-edit" onclick="openCEM(${realIdx})">✏ Edit</button>
+          ${_gtcrBadgeHTML(r, realIdx)}
         </div>
       </td>
       <td data-label="Sold">
@@ -9497,6 +9799,7 @@ function updateStats() {
   const revBox     = el('statRevenueBox');
   if (soldBox) soldBox.style.display = showActive ? '' : 'none';
   if (revBox)  revBox.style.display  = showActive ? '' : 'none';
+  gsRender();
 }
 
 function renderBuyerGrid(rows) {
@@ -10332,6 +10635,12 @@ function detectSport(r) {
 
 // Keyboard close
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+// GTCR dispute-on-file notice is informational, so Escape dismisses it. The
+// stolen/lost alerts deliberately ignore Escape: the seller must pick a button.
+document.addEventListener('keydown', e => {
+  const ov = document.getElementById('gtcrFlagOverlay');
+  if (e.key === 'Escape' && ov?.classList.contains('open') && ov.dataset.kind === 'dispute') closeGtcrFlagModal();
+});
 
 // Track what's currently displayed so modal can look up by index
 let currentDisplayRows = [];
@@ -10464,13 +10773,14 @@ function sdConfirm() {
   card.SoldDate      = _todayISO(); // a Sell Drawer sale is always "now" — no backdating
 
   closeSellDrawer();
-  updateCardInDB(card);
+  updateCardInDB(card).then(() => gtcrRegisterOnSale(card)); // GTCR registration needs status=Sold persisted first
   recordShowTransaction(card);   // ← fire-and-forget, no await
   syncBuyerView();
   updateStats();
   updateReport();
   renderSellerTable(getSellerInventory());
-  showToast(`✓ ${card.Player || 'Card'} · $${price.toLocaleString()} · ${sdSelectedPayment}`);
+  showToast(`✓ ${card.Player || 'Card'} · $${price.toLocaleString()} · ${card.PaymentMethod}`); // closeSellDrawer() already cleared sdSelectedPayment
+  showTipOnce('firstSale');
 
   // "The Drop" — post-sale share prompt. Gated by the opt-in preference;
   // a POS-originated sale (card._posOrigin, set by posInsertAndOpenDrawer())
@@ -11939,6 +12249,8 @@ function loginAsSeller(handle) {
   // Set sign-out handle in profile modal
   const soHandle = document.getElementById('profileSignOutHandle');
   if (soHandle) soHandle.textContent = '@' + handle;
+  _gtcrConsentState = null;
+  gtcrLoadConsentState(); // no-op while GTCR_CONSENT_UI_ENABLED is false
 
   // Hide partnership link — replaced by Profile button for sellers
   const partnerLink = document.getElementById('partnershipLink');
@@ -11963,8 +12275,8 @@ function loginAsSeller(handle) {
   if (sidebarToggleBtn) sidebarToggleBtn.style.display = '';
   const fabAdd = document.getElementById('fabAddCard');
   if (fabAdd) fabAdd.style.display = '';
-  const fabScan = document.getElementById('fabScanToSell');
-  if (fabScan) fabScan.style.display = '';
+  const navHelpWrap = document.getElementById('navHelpWrap');
+  if (navHelpWrap) navHelpWrap.style.display = '';
 
   // Show Select All for seller, hide admin-only buttons
   const selectAllBtn = document.getElementById('selectAllBtn');
@@ -12013,6 +12325,9 @@ function loginAsSeller(handle) {
       // filter to work on anything but a never-refreshed session.
       await hydrateCardShowMembership(handle);
       updateReport(); // safe even if the seller isn't on the Report tab yet
+      gtcrHydrateLatestChecks(); // badges + "Registry clear" markers survive a reload
+      _gsDataReady = true; // the checklist waits for real data, so returning sellers never see a false "0 done"
+      gsRender();
     }
     checkOnboardingStatus(handle);
   });
@@ -12023,6 +12338,8 @@ function loginAsSeller(handle) {
     populateReportShowSelector();
     _restoreActiveShowId(handle); // survives a reload mid-show — see comment above the function
   });
+
+  loadOnboardingState(handle); // checklist + tips state, synced across devices
 
   // Load seller profile from Supabase (display name, WhatsApp, Instagram)
   if (typeof db !== 'undefined') {
@@ -12092,8 +12409,8 @@ function loginAsAdmin() {
   if (sidebarToggleBtnAdm) sidebarToggleBtnAdm.style.display = 'none';
   const fabAddAdm = document.getElementById('fabAddCard');
   if (fabAddAdm) fabAddAdm.style.display = 'none';
-  const fabScanAdm = document.getElementById('fabScanToSell');
-  if (fabScanAdm) fabScanAdm.style.display = 'none';
+  const navHelpWrapAdm = document.getElementById('navHelpWrap');
+  if (navHelpWrapAdm) navHelpWrapAdm.style.display = 'none';
   const sellerTabBarAdm = document.getElementById('sellerTabBar');
   if (sellerTabBarAdm) sellerTabBarAdm.style.display = 'none';
 
@@ -12142,10 +12459,16 @@ function initSidebarState() {
 }
 
 async function signOut() {
+  if (_obStateTimer) _obSaveStateNow(); // flush a pending checklist/tips save while currentSeller is still set
+  _obStateLoaded = false; _obStateSync = false;
   await db.auth.signOut().catch(() => {});
   currentRole          = null;
   currentSeller        = null;
   window._currentAdminUid = null;
+  _gtcrConsentState = null;
+  _gsDataReady = false;
+  _gsLastDone  = null;
+  _tipsHideAll();
   sellerQrMode  = 'table';
   buyerShowId   = null;
   _unsubscribeBuyerShowLive();
@@ -12185,8 +12508,10 @@ async function signOut() {
   if (sidebarToggleBtnSO) sidebarToggleBtnSO.style.display = 'none';
   const fabAddSO = document.getElementById('fabAddCard');
   if (fabAddSO) fabAddSO.style.display = 'none';
-  const fabScanSO = document.getElementById('fabScanToSell');
-  if (fabScanSO) fabScanSO.style.display = 'none';
+  const navHelpWrapSO = document.getElementById('navHelpWrap');
+  if (navHelpWrapSO) navHelpWrapSO.style.display = 'none';
+  closeFeatureGuide();
+  closeQuickActions();
   const sellerTabBarSO = document.getElementById('sellerTabBar');
   if (sellerTabBarSO) { sellerTabBarSO.style.display = 'none'; switchSellerTab('inventory'); }
 
@@ -12309,6 +12634,7 @@ function copySellerQrLink() {
 }
 
 function openSellerQRModal() {
+  gsMark('qr');
   const url = getSellerInventoryUrl(currentSeller, sellerQrMode);
   const cardCount = getSellerInventory().filter(r => r.Status !== 'Sold').length;
 
@@ -12370,11 +12696,13 @@ async function _downloadBrandedQrPng(qrCanvas, filename) {
 async function downloadSellerQR() {
   const canvas = document.getElementById('sellerQrCanvas');
   await _downloadBrandedQrPng(canvas, `cardshow-qr-${currentSeller}-${sellerQrMode}.png`);
+  gsMark('qr');
 }
 
 async function downloadSellerQRModal() {
   const canvas = document.getElementById('sellerQrModalCanvas');
   await _downloadBrandedQrPng(canvas, `cardshow-qr-${currentSeller}-${sellerQrMode}-large.png`);
+  gsMark('qr');
 }
 
 // Override renderQR to accept an explicit URL parameter
@@ -13337,6 +13665,7 @@ async function publishSelectedToShow(showId) {
 function renderSellerShowsList() {
   const el = document.getElementById('sellerShowsList');
   if (!el || currentRole !== 'seller') return;
+  gsRender();
   const handle = currentSeller;
   const available = Object.values(shows).filter(s => s.sellers.has(handle));
 
@@ -13417,9 +13746,11 @@ function sellerPublishToShow(showId) {
     : myCards.filter(r => (r.Status||'Available') !== 'Sold');
 
   let count = 0;
+  let flaggedSkipped = 0;
   selected.forEach(card => {
     if (!card._shows) card._shows = new Set();
     if (card._shows.has(showId)) return; // already published to this show — see note below
+    if (card._trustFlag === 'flagged') { flaggedSkipped++; return; } // GTCR match: blocked pending seller action
     card._shows.add(showId);
     count++;
     // Persist to show_inventory (fire-and-forget) — without this, the
@@ -13442,7 +13773,8 @@ function sellerPublishToShow(showId) {
   _persistActiveShowId(currentSeller, showId);
   renderSellerShowsList();
   buildSellerQrPanel();
-  showToast(`${count} cards added to "${show.name}"`);
+  if (count) showTipOnce('live');
+  showToast(`${count} cards added to "${show.name}"` + (flaggedSkipped ? ` · ${flaggedSkipped} flagged card${flaggedSkipped !== 1 ? 's' : ''} held back` : ''));
 }
 
 function sellerRemoveFromShow(showId) {
@@ -16031,13 +16363,12 @@ function switchSellerTab(tab) {
 
   [invBtn, rptBtn].forEach(b => b && b.classList.remove('active'));
 
-  // Mobile FABs (Scan to Sell / Add Card) are for building inventory — on
+  // The mobile Sell / Add button is for working the inventory list — on
   // the Report tab they just float over report cards/CTAs (Log a Manual
   // Sale, Export CSV, the transaction log's Share buttons) that are more
   // relevant there and don't need a competing floating action on top of
   // them. Hidden on Report, restored (back to CSS's mobile-only default)
   // on Inventory — same style.display convention loginAsSeller() etc. use.
-  const fabScan = document.getElementById('fabScanToSell');
   const fabAdd  = document.getElementById('fabAddCard');
   // Select All / Check Comps act on the inventory table rows — meaningless
   // on the Report tab, which has no rows to select. Hidden here (rather
@@ -16051,7 +16382,6 @@ function switchSellerTab(tab) {
     rptBtn && rptBtn.classList.add('active');
     if (tableWrap) tableWrap.style.display = 'none';
     if (rptPanel)  rptPanel.style.display  = 'block';
-    if (fabScan) fabScan.style.display = 'none';
     if (fabAdd)  fabAdd.style.display  = 'none';
     if (selectAllBtn) selectAllBtn.style.display = 'none';
     if (compCheckBtn) compCheckBtn.style.display = 'none';
@@ -16059,17 +16389,19 @@ function switchSellerTab(tab) {
     if (exportInvWrap) { exportInvWrap.style.display = 'none'; closeExportInventoryMenu(); }
     populateReportShowSelector();
     updateReport();
+    gsMark('report');
+    showTipOnce('report');
   } else {
     invBtn && invBtn.classList.add('active');
     if (tableWrap) tableWrap.style.display = '';
     if (rptPanel)  rptPanel.style.display  = 'none';
-    if (fabScan) fabScan.style.display = '';
     if (fabAdd)  fabAdd.style.display  = '';
     if (selectAllBtn) selectAllBtn.style.display = '';
     if (compCheckBtn) compCheckBtn.style.display = '';
     if (sportValidateBtn) sportValidateBtn.style.display = '';
     if (exportInvWrap) exportInvWrap.style.display = '';
   }
+  gsRender();
 }
 
 // ── ADMIN TAB SYSTEM ──
@@ -17450,13 +17782,16 @@ function openProfile() {
     r.checked = r.value === dropPref;
   });
 
+  _gtcrRenderConsent();
+  if (GTCR_CONSENT_UI_ENABLED) gtcrLoadConsentState().then(_gtcrRenderConsent);
+
   document.getElementById('profileOverlay').classList.add('open');
 }
 
 /* ── SELLER ONBOARDING ── */
 let _onboardingStep   = 0;
 let _onboardingActive = false;
-const OB_TOTAL_STEPS  = 5; // steps 0–5 (6 screens), progress based on 0–4
+const OB_SCREENS      = 5; // obStep0–obStep4
 
 async function checkOnboardingStatus(handle) {
   if (typeof db === 'undefined') return;
@@ -17507,6 +17842,12 @@ async function markOnboardingComplete(handle) {
 function _openOnboarding() {
   _onboardingStep   = 0;
   _onboardingActive = true;
+  // Prefill from the saved profile, so a replayed tour shows what's already set
+  const p = getProfile(currentSeller);
+  const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
+  setVal('obDisplayName', p.displayName);
+  setVal('obWhatsapp', p.whatsapp);
+  setVal('obInstagram', p.instagram ? '@' + p.instagram : '');
   _obRender();
   const el = document.getElementById('obOverlay');
   if (!el) { console.error('[onboarding] obOverlay element not found'); return; }
@@ -17533,64 +17874,84 @@ function _closeOnboarding() {
 
 
 function _obRender() {
-  const totalScreens = 6; // 0–5
-  const progress = _onboardingStep === 0 ? 0
-    : Math.round((_onboardingStep / (totalScreens - 1)) * 100);
+  const progress = Math.round(((_onboardingStep + 1) / OB_SCREENS) * 100);
   document.getElementById('obProgressBar').style.width = progress + '%';
 
-  for (let i = 0; i < totalScreens; i++) {
+  for (let i = 0; i < OB_SCREENS; i++) {
     const el = document.getElementById('obStep' + i);
     if (el) el.style.display = i === _onboardingStep ? '' : 'none';
   }
 
-  const isLast = _onboardingStep === totalScreens - 1;
-  const nextBtn = document.getElementById('obNextBtn');
+  const isLast = _onboardingStep === OB_SCREENS - 1;
+  document.getElementById('obNextBtn').textContent =
+    _onboardingStep === 0 ? 'Take the tour →' : isLast ? 'Done' : 'Next →';
   const skipBtn = document.getElementById('obSkipBtn');
-  const label   = document.getElementById('obStepLabel');
-
-  nextBtn.textContent = _onboardingStep === 0 ? 'Get started →'
-    : isLast ? 'Start adding cards' : 'Next →';
   skipBtn.style.display = isLast ? 'none' : '';
-  label.textContent = isLast ? 'All done!' : `Step ${_onboardingStep + 1} of ${totalScreens - 1}`;
+  skipBtn.textContent = _onboardingStep === 0 ? 'Skip for now' : 'Skip tour';
+  document.getElementById('obStepLabel').textContent = `Step ${_onboardingStep + 1} of ${OB_SCREENS}`;
 }
 
 async function obNext() {
-  const totalScreens = 6;
+  if (_onboardingStep === 1) await _obSaveProfile();
 
-  // Step 1: save profile fields
-  if (_onboardingStep === 1) {
-    await _obSaveProfile();
-  }
-
-  if (_onboardingStep === totalScreens - 1) {
-    // Final step — mark complete and close
-    await markOnboardingComplete(currentSeller);
-    _closeOnboarding();
+  if (_onboardingStep === OB_SCREENS - 1) {
+    _obFinish();
     return;
   }
-
   _onboardingStep++;
   _obRender();
 }
 
-async function obSkip() {
-  await _obSaveProfile();
-  await markOnboardingComplete(currentSeller);
+function obSkip() {
+  _obFinish();
+}
+
+// Closes the tour, saves the profile fields and marks onboarding done.
+// Not awaited, so a caller can launch a file picker in the same click.
+function _obFinish() {
   _closeOnboarding();
+  _obSaveProfile();
+  markOnboardingComplete(currentSeller);
+  showToast('Replay the tour anytime from the ? button');
+}
+
+// Step 2's buttons: close the tour and open the chosen way to add cards.
+// The launch runs first, inside the click, so browsers allow the file picker.
+function obAction(kind) {
+  if (kind === 'add') openAddCard();
+  else if (kind === 'scan') { openAddCard(); openCertScanner(); }
+  else if (kind === 'bulk') document.getElementById('bulkScanInput')?.click();
+  else if (kind === 'upload') document.querySelector('#uploadZone input[type="file"]')?.click();
+  _closeOnboarding();
+  _obSaveProfile();
+  markOnboardingComplete(currentSeller);
+}
+
+// Same cleanup the Profile modal applies: digits only for WhatsApp, no "@" or
+// spaces for Instagram. The WhatsApp contact link needs the digits-only form.
+function _normalizeProfileContact(name, whatsapp, instagram) {
+  return {
+    displayName: String(name || '').trim(),
+    whatsapp:    String(whatsapp || '').replace(/\D/g, ''),
+    instagram:   String(instagram || '').trim().replace(/^@/, '').replace(/\s/g, ''),
+  };
 }
 
 async function _obSaveProfile() {
   const handle = currentSeller;
   if (!handle) return;
-  const displayName = (document.getElementById('obDisplayName')?.value || '').trim();
-  const whatsapp    = (document.getElementById('obWhatsapp')?.value    || '').trim();
-  const instagram   = (document.getElementById('obInstagram')?.value   || '').trim();
+  const { displayName, whatsapp, instagram } = _normalizeProfileContact(
+    document.getElementById('obDisplayName')?.value,
+    document.getElementById('obWhatsapp')?.value,
+    document.getElementById('obInstagram')?.value,
+  );
   if (!displayName && !whatsapp && !instagram) return;
 
   if (!sellerProfiles[handle]) sellerProfiles[handle] = {};
   if (displayName) sellerProfiles[handle].displayName = displayName;
   if (whatsapp)    sellerProfiles[handle].whatsapp    = whatsapp;
   if (instagram)   sellerProfiles[handle].instagram   = instagram;
+  gsRender();
   updateProfileUI(handle);
 
   if (typeof db !== 'undefined') {
@@ -17605,6 +17966,459 @@ async function _obSaveProfile() {
   }
 }
 
+// ── SELL / ADD MENU (#qaOverlay) ──
+// One question per screen: Sell or Add, then how. Each final choice hands off
+// to an existing flow. Launches run inside the tap so file pickers still open.
+const QA_TITLES = {
+  root: 'What would you like to do?',
+  sell: 'Is the card already in your inventory?',
+  add:  'How do you want to add cards?',
+  pick: 'Which card are you selling?',
+};
+const QA_PARENT = { sell: 'root', add: 'root', pick: 'sell' };
+let _qaScreen = 'root';
+
+function openQuickActions(screen) {
+  qaShow(screen || 'root');
+  document.getElementById('qaOverlay').classList.add('open');
+}
+
+function closeQuickActions() {
+  document.getElementById('qaOverlay')?.classList.remove('open');
+}
+
+function qaShow(screen) {
+  _qaScreen = screen;
+  const ids = { root: 'qaScreenRoot', sell: 'qaScreenSell', add: 'qaScreenAdd', pick: 'qaScreenPick' };
+  Object.entries(ids).forEach(([k, id]) => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = k === screen ? '' : 'none';
+  });
+  document.getElementById('qaTitle').textContent = QA_TITLES[screen];
+  document.getElementById('qaBackBtn').style.visibility = QA_PARENT[screen] ? 'visible' : 'hidden';
+  if (screen === 'pick') {
+    const search = document.getElementById('qaSearch');
+    search.value = '';
+    qaRenderPick();
+  }
+}
+
+function qaBack() {
+  if (QA_PARENT[_qaScreen]) qaShow(QA_PARENT[_qaScreen]);
+}
+
+function qaGo(kind) {
+  if (kind === 'scanSell') posOpenPhotoSheet();
+  else if (kind === 'scanOne') { openAddCard(); openCertScanner(); }
+  else if (kind === 'bulk') document.getElementById('bulkScanInput')?.click();
+  else if (kind === 'upload') document.querySelector('#uploadZone input[type="file"]')?.click();
+  else if (kind === 'type') openAddCard();
+  closeQuickActions();
+}
+
+// "It's in my inventory": the seller's unsold cards, searchable. Tapping one
+// opens the regular sell drawer for it.
+const QA_PICK_LIMIT = 50;
+function qaRenderPick() {
+  const list = document.getElementById('qaPickList');
+  const q = (document.getElementById('qaSearch').value || '').trim().toLowerCase();
+  const unsold = getSellerInventory().filter(r => r.Status !== 'Sold');
+  if (!unsold.length) {
+    list.innerHTML = `<div class="qa-empty">You don't have any unsold cards yet.</div>
+      <button class="qa-choice" onclick="qaShow('add')"><span class="qa-choice-icon" aria-hidden="true">➕</span>
+      <span class="qa-choice-text"><strong>Add cards to my inventory</strong></span></button>`;
+    return;
+  }
+  const words = q.split(/\s+/).filter(Boolean);
+  const matches = unsold.filter(r => {
+    const hay = [r['Card Title'], r.Player, r.Year, r['Set '], r['Parallel/Variant'], r.Grader, r.Grade, r['Cert #']]
+      .filter(v => v != null).join(' ').toLowerCase();
+    return words.every(w => hay.includes(w));
+  });
+  if (!matches.length) {
+    list.innerHTML = `<div class="qa-empty">No unsold cards match "${_escHtml(q)}".</div>`;
+    return;
+  }
+  const shown = matches.slice(0, QA_PICK_LIMIT);
+  list.innerHTML = shown.map(r => {
+    const idx = inventory.indexOf(r);
+    const title = r.Player || r['Card Title'] || 'Card';
+    const sub = [r.Year, r['Set '], r['Parallel/Variant'],
+      r.Grader && r.Grade != null && r.Grade !== '' ? `${r.Grader} ${r.Grade}` : null].filter(Boolean).join(' · ');
+    const price = r.Price != null && r.Price !== '' ? '$' + Number(r.Price).toLocaleString() : '';
+    return `<button class="qa-pick-item" onclick="qaSellCard(${idx})">
+      <span class="qa-pick-main"><strong>${_escHtml(title)}</strong><span>${_escHtml(sub || r['Card Title'] || '')}</span></span>
+      <span class="qa-pick-price">${_escHtml(price)}</span></button>`;
+  }).join('') + (matches.length > shown.length
+    ? `<div class="qa-empty">Showing ${shown.length} of ${matches.length}. Type more to narrow it down.</div>` : '');
+}
+
+function qaSellCard(idx) {
+  closeQuickActions();
+  if (inventory[idx]) openSellDrawer(idx);
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && document.getElementById('qaOverlay')?.classList.contains('open')) closeQuickActions();
+});
+
+// ── HELP MENU + FEATURE GUIDE ──
+function toggleHelpMenu(e) {
+  if (e) e.stopPropagation();
+  const menu = document.getElementById('navHelpMenu');
+  if (!menu) return;
+  const btn = document.getElementById('navHelpBtn');
+  const opening = menu.style.display === 'none';
+  if (opening && btn) {
+    const r = btn.getBoundingClientRect();
+    menu.style.top   = (r.bottom + 6) + 'px';
+    menu.style.right = Math.max(8, window.innerWidth - r.right) + 'px';
+  }
+  menu.style.display = opening ? 'block' : 'none';
+  btn?.classList.toggle('open', opening);
+}
+
+function closeHelpMenu() {
+  const menu = document.getElementById('navHelpMenu');
+  if (menu) menu.style.display = 'none';
+  document.getElementById('navHelpBtn')?.classList.remove('open');
+}
+
+document.addEventListener('click', (e) => {
+  const wrap = document.getElementById('navHelpWrap');
+  const menu = document.getElementById('navHelpMenu');
+  if (wrap && !wrap.contains(e.target) && !(menu && menu.contains(e.target))) closeHelpMenu();
+});
+
+function replayOnboarding() {
+  closeHelpMenu();
+  _openOnboarding();
+}
+
+// Opens the inventory tab and briefly outlines a toolbar button.
+function _helpPoint(elId) {
+  switchSellerTab('inventory');
+  const el = document.getElementById(elId);
+  if (!el) return;
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  el.classList.add('help-pulse');
+  setTimeout(() => el.classList.remove('help-pulse'), 2500);
+}
+
+// Opens the sidebar (collapsed on phones) and scrolls to a section of it.
+function _helpShowSidebar(elId) {
+  const sidebar = document.getElementById('mainSidebar');
+  if (sidebar && !sidebar.classList.contains('sidebar-open')) toggleSidebar();
+  document.getElementById(elId)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+/* ── CHECKLIST + TIPS SYNC (sellers.onboarding_state) ──
+   localStorage is the working copy; the sellers row is the source of truth
+   across devices. On login the server copy overwrites the local one (or, if
+   the server has none yet, the local one is uploaded). Every change is saved
+   back, debounced. If the column doesn't exist yet, it stays local-only. */
+let _obStateLoaded = false;  // load attempt finished (success or not)
+let _obStateSync   = false;  // server column is usable, so saves go through
+let _obStateTimer  = null;
+
+function _obLocalBundle() {
+  return { gs: _gsState() || null, tipsSeen: _tipsSeen(), tipsOff: _tipsOff() };
+}
+function _obApplyBundle(b) {
+  try {
+    if (b.gs) localStorage.setItem(_gsKey(), JSON.stringify(b.gs));
+    else localStorage.removeItem(_gsKey());
+    localStorage.setItem('cardshowTipsSeen', JSON.stringify(b.tipsSeen || {}));
+    if (b.tipsOff) localStorage.setItem('cardshowTipsOff', '1');
+    else localStorage.removeItem('cardshowTipsOff');
+  } catch (_) {}
+}
+async function loadOnboardingState(handle) {
+  _obStateLoaded = false; _obStateSync = false;
+  try {
+    if (typeof db === 'undefined') return;
+    const { data, error } = await db.from('sellers')
+      .select('onboarding_state').eq('handle', handle).maybeSingle();
+    if (handle !== currentSeller) return; // signed out / switched meanwhile
+    if (error) { console.warn('[onboarding_state] not synced (run the migration?):', error.message); return; }
+    _obStateSync = true;
+    if (data && data.onboarding_state) _obApplyBundle(data.onboarding_state);
+    else if (data) _obSaveStateNow(); // first sync: upload what this device has
+  } catch (e) {
+    console.warn('[onboarding_state] load failed:', e.message);
+  } finally {
+    if (handle === currentSeller) { _obStateLoaded = true; gsRender(); }
+  }
+}
+function _obQueueStateSave() {
+  if (!_obStateSync) return;
+  clearTimeout(_obStateTimer);
+  _obStateTimer = setTimeout(_obSaveStateNow, 800);
+}
+function _obSaveStateNow() {
+  clearTimeout(_obStateTimer); _obStateTimer = null;
+  if (!_obStateSync || !currentSeller || typeof db === 'undefined') return;
+  const bundle = _obLocalBundle();
+  db.from('sellers').update({ onboarding_state: bundle }).eq('handle', currentSeller)
+    .then(({ error }) => { if (error) console.warn('[onboarding_state] save failed:', error.message); });
+}
+
+/* ── GETTING STARTED CHECKLIST ──
+   Six steps that tick themselves off from what the seller has actually done.
+   Four come from data the app already loads (profile, cards, show membership,
+   sales). "QR code" and "Report" have no data trail, so those two are
+   remembered on this device, as are Hide and the collapsed state. */
+let _gsDataReady = false;   // set once the seller's inventory has loaded
+let _gsLastDone  = null;    // done count at the last render, to spot the finish
+
+function _gsKey() { return 'gsChecklist:' + (currentSeller || ''); }
+function _gsState() {
+  try { return JSON.parse(localStorage.getItem(_gsKey()) || 'null'); } catch (_) { return null; }
+}
+function _gsSave(patch) {
+  const next = Object.assign({}, _gsState() || {}, patch);
+  try { localStorage.setItem(_gsKey(), JSON.stringify(next)); } catch (_) {}
+  _obQueueStateSave();
+  return next;
+}
+// For steps with no data trail: record it, then redraw.
+function gsMark(step) {
+  if (currentRole !== 'seller' || !currentSeller) return;
+  const st = _gsState() || {};
+  if (st[step]) return;
+  _gsSave({ [step]: true });
+  gsRender();
+}
+
+function _gsSteps() {
+  const p     = getProfile(currentSeller);
+  const mine  = getSellerInventory();
+  const st    = _gsState() || {};
+  const hasShowAccess = Object.values(shows).some(s => s.sellers instanceof Set && s.sellers.has(currentSeller));
+  const live  = !!activeShowId || mine.some(c => c._shows instanceof Set && c._shows.size > 0);
+  return [
+    { id: 'profile', label: 'Fill in your profile',
+      hint: 'Your name, plus WhatsApp or Instagram, so buyers can reach you.',
+      done: !!(p.displayName && (p.whatsapp || p.instagram)),
+      go: 'Open', action: () => openProfile() },
+    { id: 'card', label: 'Add your first card',
+      hint: 'Take a photo, upload a spreadsheet, or type it in.',
+      done: mine.length > 0,
+      go: 'Add', action: () => openQuickActions('add') },
+    { id: 'show', label: 'Put your cards in a show',
+      hint: hasShowAccess
+        ? 'Under My Shows, tap ⚡ Add My Cards.'
+        : 'Ask the show organizer to add you. Then tap ⚡ Add My Cards under My Shows.',
+      done: live,
+      go: 'Show me', action: () => _helpShowSidebar('sellerShowsPanel') },
+    { id: 'qr', label: 'Get your table QR code',
+      hint: 'Buyers scan it at your table. Save it or open it full screen.',
+      done: !!st.qr,
+      go: 'Open', action: () => openSellerQRModal() },
+    { id: 'sale', label: 'Record your first sale',
+      hint: 'Pick the card, then enter the price and how they paid.',
+      done: mine.some(c => c.Status === 'Sold'),
+      go: 'Sell', action: () => openQuickActions('sell') },
+    { id: 'report', label: 'Look at your Report',
+      hint: 'Your sales and totals, show by show.',
+      done: !!st.report,
+      go: 'Open', action: () => switchSellerTab('report') },
+  ];
+}
+
+function gsRender() {
+  const box = document.getElementById('gsChecklist');
+  if (!box) return;
+  const rptOpen = document.getElementById('adminReportPanel')?.style.display === 'block';
+  if (currentRole !== 'seller' || !currentSeller || !_gsDataReady || !_obStateLoaded || rptOpen) {
+    box.style.display = 'none';
+    return;
+  }
+  const steps = _gsSteps();
+  const done  = steps.filter(s => s.done).length;
+  let st = _gsState();
+
+  // First look on this device: a seller who already has cards and a sale
+  // isn't new, so the list starts hidden (? → Getting started list brings it back).
+  if (!st) {
+    const veteran = steps.find(s => s.id === 'card').done && steps.find(s => s.id === 'sale').done;
+    st = _gsSave({ dismissed: veteran });
+  }
+  if (st.dismissed) { box.style.display = 'none'; _gsLastDone = done; return; }
+
+  if (done === steps.length) {
+    box.style.display = 'none';
+    // Delayed so it isn't overwritten by the toast of the action that finished the list
+    if (_gsLastDone !== null && _gsLastDone < steps.length) setTimeout(() => showToast("✓ You're all set up"), 3500);
+    _gsSave({ dismissed: true });
+    _gsLastDone = done;
+    return;
+  }
+  _gsLastDone = done;
+
+  box.style.display = '';
+  box.classList.toggle('collapsed', !!st.collapsed);
+  document.getElementById('gsToggle')?.setAttribute('aria-expanded', st.collapsed ? 'false' : 'true');
+  document.getElementById('gsCount').textContent = `${done} of ${steps.length} done`;
+  document.getElementById('gsBarFill').style.width = Math.round(done / steps.length * 100) + '%';
+  document.getElementById('gsList').innerHTML = steps.map((s, i) => `
+    <li class="gs-item${s.done ? ' done' : ''}">
+      <span class="gs-check" aria-hidden="true">${s.done ? '✓' : i + 1}</span>
+      <div class="gs-text">
+        <div class="gs-label">${_escHtml(s.label)}${s.done ? '<span class="sr-only"> (done)</span>' : ''}</div>
+        <div class="gs-hint">${_escHtml(s.hint)}</div>
+      </div>
+      ${s.done ? '' : `<button type="button" class="gs-go" onclick="gsDo('${s.id}')">${_escHtml(s.go)}</button>`}
+    </li>`).join('');
+}
+
+function gsDo(id) {
+  const step = _gsSteps().find(s => s.id === id);
+  if (step) step.action();
+}
+function gsToggleCollapse() {
+  const st = _gsState() || {};
+  _gsSave({ collapsed: !st.collapsed });
+  gsRender();
+}
+function gsDismiss() {
+  _gsSave({ dismissed: true });
+  gsRender();
+  showToast('Bring it back anytime from the ? button');
+}
+function gsShowAgain() {
+  closeHelpMenu();
+  _gsSave({ dismissed: false, collapsed: false });
+  _gsLastDone = null;
+  switchSellerTab('inventory');
+  gsRender();
+  const steps = _gsSteps();
+  if (steps.every(s => s.done)) { showToast("✓ You've done every step"); return; }
+  document.getElementById('gsChecklist')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+/* ── FIRST-USE TIPS ──
+   A short card the first time a seller reaches a feature. Each shows once per
+   device; "Don't show tips" turns them all off, ? → Show tips again resets. */
+const TIPS = {
+  compResults: { title: 'Picking a price',
+    body: 'Tap ✓ Use on the price you want for each card. When you tap Done, the prices you picked are saved.' },
+  bulkReview: { title: 'Check your cards before adding',
+    body: 'Fix anything that looks wrong and untick any card you don’t want. Every card needs a title. ✓ VERIFIED means the player was found in the card database.' },
+  report: { title: 'Your Report',
+    body: 'Pick a show at the top to see just that show. Use Log a Manual Sale for a sale you made outside CardShow. Tap 📤 on a sale to make a picture to share.' },
+  firstSale: { title: 'Sale recorded',
+    body: 'The card is marked Sold and your totals are updated. Every sale is listed in the Report tab.' },
+  live: { title: 'Your cards are live',
+    body: 'Buyers at the show can now see your cards. Set out your table QR code so they can scan it and browse.' },
+};
+let _tipQueue   = [];
+let _tipCurrent = null;
+
+function _tipsSeen() {
+  try { return JSON.parse(localStorage.getItem('cardshowTipsSeen') || '{}'); } catch (_) { return {}; }
+}
+function _tipsOff() {
+  try { return localStorage.getItem('cardshowTipsOff') === '1'; } catch (_) { return false; }
+}
+function showTipOnce(key) {
+  if (currentRole !== 'seller' || !TIPS[key] || _tipsOff()) return;
+  if (_onboardingActive) return; // don't stack on the tour; it shows next time
+  if (!_obStateLoaded) return;   // may already be seen on another device
+  if (_tipsSeen()[key] || _tipCurrent === key || _tipQueue.includes(key)) return;
+  if (_tipCurrent) { _tipQueue.push(key); return; }
+  _tipOpen(key);
+}
+function _tipOpen(key) {
+  _tipCurrent = key;
+  const seen = _tipsSeen(); seen[key] = true;
+  try { localStorage.setItem('cardshowTipsSeen', JSON.stringify(seen)); } catch (_) {}
+  _obQueueStateSave();
+  document.getElementById('tipTitle').textContent = TIPS[key].title;
+  document.getElementById('tipBody').textContent  = TIPS[key].body;
+  document.getElementById('tipCard').style.display = '';
+}
+function tipDismiss() {
+  document.getElementById('tipCard').style.display = 'none';
+  _tipCurrent = null;
+  const next = _tipQueue.shift();
+  if (next && !_tipsOff()) _tipOpen(next);
+}
+function tipsTurnOff() {
+  try { localStorage.setItem('cardshowTipsOff', '1'); } catch (_) {}
+  _obQueueStateSave();
+  _tipQueue = [];
+  tipDismiss();
+  showToast('Tips turned off. Turn them back on from the ? button');
+}
+function tipsReset() {
+  closeHelpMenu();
+  try { localStorage.removeItem('cardshowTipsSeen'); localStorage.removeItem('cardshowTipsOff'); } catch (_) {}
+  _obQueueStateSave();
+  showToast('Tips will show again as you use each feature');
+}
+function _tipsHideAll() {
+  _tipQueue = [];
+  const el = document.getElementById('tipCard');
+  if (el) el.style.display = 'none';
+  _tipCurrent = null;
+}
+
+const FEATURE_GUIDE = [
+  { group: 'Add cards', items: [
+    { icon: '✏️', name: 'Add a card', desc: 'Type a player name and pick the set and card from the list, or fill in the fields yourself.', action: () => openAddCard() },
+    { icon: '📷', name: 'Scan a card', desc: 'Take a photo of a slab or raw card and the details fill in for you.', action: () => { openAddCard(); openCertScanner(); } },
+    { icon: '📸', name: 'Bulk scan a showcase', desc: 'One photo of a case or tray finds every card in it. Check them over, then add them together.', action: () => document.getElementById('bulkScanInput')?.click() },
+    { icon: '📊', name: 'Upload a spreadsheet', desc: 'CSV or Excel. Columns are matched automatically, including Shopify, Ludex and Flipwise exports.', action: () => document.querySelector('#uploadZone input[type="file"]')?.click() },
+  ]},
+  { group: 'At the show', items: [
+    { icon: '⚡', name: 'Go live at a show', desc: 'Once an organizer adds you, the show appears under My Shows. Tap Add My Cards to put your cards in front of buyers there.', action: () => _helpShowSidebar('sellerShowsList') },
+    { icon: '📲', name: 'Your QR code', desc: 'Buyers scan it at your table to browse your cards. Download or print it.', action: () => openSellerQRModal() },
+  ]},
+  { group: 'Sell', items: [
+    { icon: '✅', name: 'Sell a card from your inventory', desc: "Find the card and enter the price and how they paid. On a phone: Sell / Add → Sell a card. You can also tap a card's Available status.", action: () => openQuickActions('pick') },
+    { icon: '📷', name: 'Sell a card you never added', desc: 'Take a photo of it, check the details, then record the sale.', action: () => posOpenPhotoSheet() },
+    { icon: '📝', name: 'Log a manual sale', desc: 'Record a sale after the fact, with the show and the date it happened.', action: () => openManualSaleModal() },
+    { icon: '📤', name: 'Share a sale', desc: 'Turn any sale into an image and caption for Instagram or X. Use the 📤 button next to it in the Report tab.', action: () => switchSellerTab('report') },
+  ]},
+  { group: 'Price and manage', items: [
+    { icon: '💲', name: 'Check comps', desc: 'Look up recent market prices for the cards you select (or all unsold cards) and update your prices.', action: () => _helpPoint('compCheckBtn') },
+    { icon: '🏷️', name: 'Validate sport', desc: 'Fills in the sport for cards that show no sport badge.', action: () => _helpPoint('sportValidateBtn') },
+    { icon: '⬇', name: 'Export inventory', desc: 'Download your unsold cards as CSV or Excel to list them on other platforms.', action: () => _helpPoint('exportInventoryBtn') },
+    { icon: '🛡️', name: 'Theft check', desc: 'Graded cards with a cert number are checked against the Global Trading Card Registry. A card reported stolen or lost is hidden from buyers until you decide what to do. Nothing to set up.' },
+  ]},
+  { group: 'After the show', items: [
+    { icon: '📊', name: 'Report', desc: 'Revenue, sell-through, best sales and every transaction, for one show or all time. Export it as CSV.', action: () => switchSellerTab('report') },
+    { icon: '👤', name: 'Profile and contact', desc: 'Your display name and how buyers reach you.', action: () => openProfile() },
+  ]},
+];
+
+function openFeatureGuide() {
+  closeHelpMenu();
+  const body = document.getElementById('featureGuideBody');
+  body.innerHTML = FEATURE_GUIDE.map((g, gi) => `
+    <div class="fg-group">
+      <div class="fg-group-title">${g.group}</div>
+      ${g.items.map((it, ii) => `
+        <div class="fg-item">
+          <div class="fg-item-icon">${it.icon}</div>
+          <div class="fg-item-text"><strong>${it.name}</strong><span>${it.desc}</span></div>
+          ${it.action ? `<button class="fg-try" onclick="_featureGuideTry(${gi}, ${ii})">Show me</button>` : ''}
+        </div>`).join('')}
+    </div>`).join('');
+  document.getElementById('featureGuideOverlay').classList.add('open');
+}
+
+function closeFeatureGuide() {
+  document.getElementById('featureGuideOverlay').classList.remove('open');
+}
+
+function _featureGuideTry(gi, ii) {
+  const item = FEATURE_GUIDE[gi]?.items[ii];
+  closeFeatureGuide();
+  if (item?.action) item.action();
+}
+
 function closeProfile() {
   document.getElementById('profileOverlay').classList.remove('open');
 }
@@ -17613,15 +18427,18 @@ function saveProfile() {
   const handle = currentSeller;
   if (!handle) return;
 
-  const name  = document.getElementById('prof_name').value.trim();
-  const waRaw = document.getElementById('prof_wa').value.replace(/\D/g,'');
-  const ig    = document.getElementById('prof_ig').value.trim().replace(/^@/,'').replace(/\s/g,'');
+  const { displayName: name, whatsapp: waRaw, instagram: ig } = _normalizeProfileContact(
+    document.getElementById('prof_name').value,
+    document.getElementById('prof_wa').value,
+    document.getElementById('prof_ig').value,
+  );
 
   // Update in-memory profile
   if (!sellerProfiles[handle]) sellerProfiles[handle] = {};
   if (name)  sellerProfiles[handle].displayName = name;
   if (waRaw) sellerProfiles[handle].whatsapp    = waRaw;
   if (ig)    sellerProfiles[handle].instagram   = ig;
+  gsRender();
 
   // Persist to Supabase sellers table
   if (typeof db !== 'undefined') {
@@ -17867,12 +18684,21 @@ async function publishShowInventoryToDB(showId) {
     if (!sellerRows || !sellerRows.length) return 0;
     const sellerIds = sellerRows.map(r => r.id);
 
-    // Fetch all non-sold card IDs for those sellers
-    const { data: cards, error: cardErr } = await db
-      .from('inventory').select('id')
+    // Fetch all non-sold card IDs for those sellers. GTCR-flagged cards
+    // (trust_flag = 'flagged') are excluded until the seller acts. Falls back to
+    // the unfiltered select if the trust_flag migration hasn't run yet.
+    let { data: cards, error: cardErr } = await db
+      .from('inventory').select('id, trust_flag')
       .in('seller_id', sellerIds)
       .neq('status', 'Sold');
+    if (cardErr && /trust_flag/i.test(cardErr.message || '')) {
+      ({ data: cards, error: cardErr } = await db
+        .from('inventory').select('id')
+        .in('seller_id', sellerIds)
+        .neq('status', 'Sold'));
+    }
     if (cardErr) { console.error('publishShowInventoryToDB fetch failed:', cardErr.message); return 0; }
+    cards = (cards || []).filter(c => c.trust_flag !== 'flagged');
     if (!cards || !cards.length) { console.log('No cards to publish for show', showId); return 0; }
 
     const rows = cards.map(c => ({ show_id: showId, card_id: c.id }));
@@ -18480,6 +19306,7 @@ function dbRowToCard(row) {
     Sport:              row.sport                || '',
     Category:           row.category             || '',
     Subcategory:         row.subcategory          || '',
+    _trustFlag:         row.trust_flag           || null,
     _shows:          new Set(),
   };
   if (row.sold_price     != null) card.SoldPrice     = row.sold_price;
@@ -18987,6 +19814,7 @@ async function confirmManualSale() {
   showToast(
     `✓ ${player.slice(0, 28)} · $${price.toLocaleString()} · ${payment} · logged`
   );
+  showTipOnce('firstSale');
 
   // "The Drop" — post-sale share prompt. 'manual_only' opts in specifically
   // to this path (as well as 'always'); 'never' suppresses both.
@@ -19104,25 +19932,444 @@ async function recordManualSaleTransaction(card, showId) {
   }
 }
 
+// ════════════════════════════════════════════════════════
+// TRUST CHECK VIA GTCR (Global Trading Card Registry)
+// Phase 1: cert-number stolen/lost lookup on insert + re-check on publish.
+// Phase 3/4: consent-gated registration on sale, deregistration on revoke.
+// All GTCR calls go through netlify/functions/gtcr-trust-check.js (read key)
+// and gtcr-registry.js (partner write key). See CLAUDE.md for the full spec.
+// ════════════════════════════════════════════════════════
+
+// Registration stays dark until pricing/packaging is decided (spec "Flagged
+// decision B"). Flip this, and GTCR_REGISTRATION_ENABLED=true in Netlify,
+// together. The Trust Check itself (Phase 1) doesn't depend on this flag.
+const GTCR_CONSENT_UI_LAUNCHED = false;
+
+// Test switch: open the app with ?gtcr_consent=1 to show the consent section
+// on this browser before launch (?gtcr_consent=0 turns it back off). It's
+// remembered in localStorage because the login flow reloads the page. Only
+// the UI is unlocked: the server still refuses a grant until
+// GTCR_REGISTRATION_ENABLED=true is set for that deploy.
+const GTCR_CONSENT_TEST_KEY = 'gtcrConsentTest';
+function _gtcrConsentTestOverride() {
+  try {
+    const p = new URLSearchParams(location.search).get('gtcr_consent');
+    if (p === '1') localStorage.setItem(GTCR_CONSENT_TEST_KEY, '1');
+    else if (p === '0') localStorage.removeItem(GTCR_CONSENT_TEST_KEY);
+    return localStorage.getItem(GTCR_CONSENT_TEST_KEY) === '1';
+  } catch (_) {
+    return false;
+  }
+}
+const GTCR_CONSENT_UI_ENABLED = GTCR_CONSENT_UI_LAUNCHED || _gtcrConsentTestOverride();
+
+// Bump the version whenever the copy changes. The consent-evidence log records
+// which version the seller saw. DRAFT, pending legal review before launch.
+const GTCR_CONSENT_COPY_VERSION = '2026-09-25-draft1';
+const GTCR_CONSENT_COPY =
+  'Register the graded cards I sell on CardShow with the Global Trading Card Registry (GTCR). ' +
+  'When I complete a sale of a graded card, CardShow will send GTCR its cert number, grading company, ' +
+  'description, grade, and my email so the card has a provenance record. This applies to every graded ' +
+  'card I sell through CardShow while this setting is on, not just one sale. I can turn it off at any time, ' +
+  'and CardShow will then ask GTCR to remove the registrations it made for me.';
+
+const GTCR_RECHECK_WINDOW_MS = 60 * 1000; // an insert-time check this recent covers the publish re-check
+
+async function _gtcrHeaders() {
+  const headers = { 'Content-Type': 'application/json' };
+  try {
+    const { data } = await db.auth.getSession();
+    const token = data?.session?.access_token;
+    if (token) headers.Authorization = 'Bearer ' + token;
+  } catch (_) { /* unauthenticated — lookup still works, just isn't persisted */ }
+  return headers;
+}
+
+function _gtcrEligible(card) {
+  return !!(card && String(card['Cert #'] || '').trim() && card.Grader && (card.Status || 'Available') !== 'Sold');
+}
+
+// Runs one Trust Check for a card. Dedupes concurrent calls per card (insert
+// and auto-publish fire back to back). Resolves to the card's trust flag.
+// Any failure FAILS OPEN: the flag is left as it was, and the next publish re-checks.
+function gtcrCheckCard(card, dbId, trigger) {
+  if (!_gtcrEligible(card) || !dbId || typeof db === 'undefined') return Promise.resolve(card?._trustFlag || null);
+  if (card._gtcrInflight) return card._gtcrInflight;
+
+  const p = (async () => {
+    try {
+      const res = await fetch('/.netlify/functions/gtcr-trust-check', {
+        method: 'POST',
+        headers: await _gtcrHeaders(),
+        body: JSON.stringify({
+          action: 'check',
+          cert_number: String(card['Cert #']).trim(),
+          grading_company: card.Grader,
+          inventory_id: dbId,
+          trigger,
+        }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        console.warn('[gtcr] trust check did not complete (failing open):', data.reason || data.error, data.gtcr_message || '');
+        return card._trustFlag || null;
+      }
+      if (window.CARDSHOW_DEBUG) console.log('[gtcr] trust check', card['Cert #'], data);
+
+      const prev = card._trustFlag || null;
+      const prevState = _gtcrState(card);
+      const hadDispute = !!card._gtcrReport?.has_dispute_report;
+      // The server's persisted flag wins. It's undefined when persistence is
+      // unavailable (e.g. migration not yet run), so derive the same rule in memory.
+      let flag = data.trust_flag;
+      if (flag === undefined) {
+        flag = data.matched ? (prev === 'disputed' ? 'disputed' : 'flagged')
+                            : (prev === 'flagged' ? null : prev);
+      }
+      card._trustFlag = flag || null;
+      card._gtcrCheckedAt = Date.now();
+      card._gtcrReport = data;
+
+      if (card._trustFlag === 'flagged' && prev !== 'flagged') {
+        // The server already deleted this card's show_inventory rows. Mirror that in memory.
+        if (card._shows) card._shows.clear();
+        _gtcrQueueAlert(card);
+      } else if (_gtcrState(card) === 'dispute' && !hadDispute) {
+        _gtcrQueueAlert(card); // informational, dismissable
+      }
+      if (_gtcrState(card) !== prevState && currentRole === 'seller') {
+        renderSellerTable(getSellerInventory());
+        syncBuyerView();
+      }
+      return card._trustFlag;
+    } catch (err) {
+      console.warn('[gtcr] trust check failed (fail open):', err.message);
+      return card._trustFlag || null;
+    } finally {
+      card._gtcrInflight = null;
+    }
+  })();
+  card._gtcrInflight = p;
+  return p;
+}
+
+// Publish gate. Resolves true when the card may be published. A sold card
+// (a Manual Sale publishing for analytics) or an ungraded card passes straight through.
+async function _gtcrClearForPublish(card, dbId) {
+  if (!_gtcrEligible(card)) return true;
+  if (card._trustFlag === 'flagged') return false;
+  if (card._gtcrInflight) {
+    await card._gtcrInflight;
+  } else if (!card._gtcrCheckedAt || Date.now() - card._gtcrCheckedAt > GTCR_RECHECK_WINDOW_MS) {
+    await gtcrCheckCard(card, dbId, 'publish');
+  }
+  return card._trustFlag !== 'flagged';
+}
+
+// Insert-time checks for a batch (CSV/XLSX import). Small concurrency so a
+// large import doesn't flood the function. Cards already checked in the
+// recheck window, or with a check in flight, are skipped.
+async function _gtcrQueueChecks(cards) {
+  const queue = cards.filter(c => _gtcrEligible(c) && c._dbId);
+  const worker = async () => {
+    while (queue.length) {
+      const c = queue.shift();
+      if (c._gtcrInflight || (c._gtcrCheckedAt && Date.now() - c._gtcrCheckedAt < GTCR_RECHECK_WINDOW_MS)) continue;
+      await gtcrCheckCard(c, c._dbId, 'insert');
+    }
+  };
+  await Promise.all([worker(), worker(), worker()]);
+}
+
+// ── Flagged-card resolution modal ──
+// Opens automatically the moment a card becomes flagged, and must be dismissed
+// with a button. If several cards flag at once (e.g. a CSV import), they queue
+// and show one after another.
+let _gtcrFlagIdx = null;
+let _gtcrFlagCard = null; // held by reference: a removal splices inventory[] and shifts indexes
+const _gtcrAlertQueue = [];
+
+function _gtcrQueueAlert(card) {
+  if (currentRole !== 'seller' || _gtcrAlertQueue.includes(card)) return;
+  _gtcrAlertQueue.push(card);
+  if (_gtcrFlagCard === null) _gtcrShowNextAlert();
+  else _gtcrUpdateQueueNote();
+}
+
+function _gtcrUpdateQueueNote() {
+  const qn = document.getElementById('gtcrFlagQueueNote');
+  const n = _gtcrAlertQueue.length;
+  if (qn) qn.textContent = n ? `${n} more after this one` : '';
+}
+
+function _gtcrShowNextAlert() {
+  while (_gtcrAlertQueue.length) {
+    const card = _gtcrAlertQueue.shift();
+    const idx = inventory.indexOf(card);
+    const st = _gtcrState(card);
+    if (idx >= 0 && (st === 'stolen' || st === 'lost' || st === 'dispute')) { openGtcrFlagModal(idx); return; }
+  }
+}
+
+// Display tier for a card, from its trust flag and its latest GTCR check.
+//   stolen | lost    active report; card is hidden and needs a decision
+//   disputed         the seller disputed a stolen/lost match and kept the listing
+//   dispute          GTCR has an ownership dispute on file; informational only
+//   clear            checked, nothing on file
+//   null             never checked (not graded, no cert #, or check failed)
+// GTCR's precedence is stolen > lost > dispute, so stolen wins when both exist.
+function _gtcrState(card) {
+  if (!card) return null;
+  const r = card._gtcrReport;
+  if (card._trustFlag === 'flagged') return (r?.has_lost_report && !r?.has_stolen_report) ? 'lost' : 'stolen';
+  if (card._trustFlag === 'disputed') return 'disputed';
+  if (!r) return null;
+  if (r.has_dispute_report) return 'dispute';
+  return r.matched ? null : 'clear';
+}
+
+function _gtcrBadgeHTML(card, idx) {
+  switch (_gtcrState(card)) {
+    case 'stolen':   return `<button class="gtcr-flag-badge" onclick="openGtcrFlagModal(${idx})" title="Active stolen report in the Global Trading Card Registry — hidden from buyers until you act">⚠ Stolen report</button>`;
+    case 'lost':     return `<button class="gtcr-flag-badge lost" onclick="openGtcrFlagModal(${idx})" title="Active lost report in the Global Trading Card Registry — hidden from buyers until you act">⚠ Lost report</button>`;
+    case 'dispute':  return `<button class="gtcr-flag-badge dispute" onclick="openGtcrFlagModal(${idx})" title="An ownership dispute is on file in the Global Trading Card Registry — your listing is unaffected">Dispute on file</button>`;
+    case 'disputed': return `<span class="gtcr-flag-badge disputed" title="You disputed a GTCR registry match — listing allowed">You disputed</span>`;
+    default:         return '';
+  }
+}
+
+const GTCR_ALERT_COPY = {
+  stolen: {
+    title: 'Possible Stolen Card',
+    body: 'This cert number matches an active <strong>stolen</strong> report in the Global Trading Card Registry (GTCR). ' +
+          'The card is hidden from buyers and can\'t be published until you choose what to do. ' +
+          'If you believe the report is wrong, you can dispute it and keep the listing.',
+  },
+  lost: {
+    title: 'Reported Lost',
+    body: 'This cert number matches an active <strong>lost</strong> report in the Global Trading Card Registry (GTCR). ' +
+          'Lost cards often turn up innocently. If you\'re the owner and recovered it, clear the report with GTCR ' +
+          'and CardShow will pick that up the next time the card is published. Until then it\'s hidden from buyers.',
+  },
+  dispute: {
+    title: 'Dispute on File',
+    body: 'The Global Trading Card Registry (GTCR) has an ownership dispute on file for this cert number. ' +
+          'Nothing is blocked: your listing stays live and buyers don\'t see this notice. ' +
+          'It\'s worth checking the card\'s history before you sell it.',
+  },
+};
+
+function openGtcrFlagModal(idx) {
+  const card = inventory[idx];
+  if (!card) return;
+  _gtcrFlagIdx = idx;
+  _gtcrFlagCard = card;
+  _gtcrUpdateQueueNote();
+  const st = _gtcrState(card);
+  const kind = (st === 'lost' || st === 'dispute') ? st : 'stolen';
+  const copy = GTCR_ALERT_COPY[kind];
+  const overlay = document.getElementById('gtcrFlagOverlay');
+  overlay.dataset.kind = kind;
+  overlay.setAttribute('role', kind === 'dispute' ? 'dialog' : 'alertdialog');
+  document.getElementById('gtcrFlagTitle').textContent = copy.title;
+  document.getElementById('gtcrFlagBody').innerHTML = copy.body;
+  document.getElementById('gtcrFlagCardLabel').textContent =
+    (card['Card Title'] || card.Player || 'Card') + (card['Cert #'] ? ` · ${card.Grader || ''} #${card['Cert #']}` : '');
+  document.getElementById('gtcrFlagNote').value = '';
+  overlay.classList.add('open');
+}
+
+function closeGtcrFlagModal(advance = true) {
+  document.getElementById('gtcrFlagOverlay').classList.remove('open');
+  _gtcrFlagIdx = null;
+  _gtcrFlagCard = null;
+  if (advance) _gtcrShowNextAlert();
+}
+
+async function gtcrResolveFlag(resolution) {
+  const card = _gtcrFlagCard;
+  if (!card) return;
+  const label = card.Player || card['Card Title'] || 'this card';
+  if (resolution === 'removed' && !confirm(`Remove "${label}" from your inventory? This cannot be undone.`)) return;
+  const note = document.getElementById('gtcrFlagNote').value.trim();
+
+  let ok = false;
+  if (card._dbId) {
+    try {
+      const res = await fetch('/.netlify/functions/gtcr-trust-check', {
+        method: 'POST',
+        headers: await _gtcrHeaders(),
+        body: JSON.stringify({ action: 'resolve', inventory_id: card._dbId, resolution, note }),
+      });
+      ok = (await res.json()).success;
+    } catch (err) {
+      console.warn('[gtcr] resolve failed:', err.message);
+    }
+  }
+  closeGtcrFlagModal(false); // show the next queued alert only after this one is fully handled
+
+  if (resolution === 'removed') {
+    // Removal is the seller's own decision and goes ahead even if the audit
+    // write failed. The card itself is the thing being protected against.
+    deleteCardFromDB(card);
+    const i = inventory.indexOf(card);
+    if (i >= 0) inventory.splice(i, 1);
+    updateStats();
+    updateReport();
+    syncBuyerView();
+    showToast(`🗑 ${label} removed`);
+  } else {
+    if (!ok) {
+      showToast('⚠️ Could not save your dispute — try again', 'var(--danger)');
+      _gtcrAlertQueue.unshift(card); // still flagged: bring its alert back
+      _gtcrShowNextAlert();
+      return;
+    }
+    card._trustFlag = 'disputed';
+    showToast(`Dispute recorded — ${label} can be published again`);
+  }
+  renderSellerTable(getSellerInventory());
+  _gtcrShowNextAlert();
+}
+
+// Restores each card's latest Trust Check result on login, so tiers and the
+// "Registry clear" marker survive a reload. Reads cert_trust_checks (RLS:
+// seller's own rows). Silent on failure, e.g. before the migration has run.
+async function gtcrHydrateLatestChecks() {
+  if (typeof db === 'undefined') return;
+  const byId = new Map(getSellerInventory().filter(c => c._dbId).map(c => [c._dbId, c]));
+  if (!byId.size) return;
+  try {
+    const { data, error } = await db.from('cert_trust_checks')
+      .select('inventory_id, matched, active_count, has_stolen_report, has_lost_report, has_dispute_report, checked_at')
+      .in('inventory_id', [...byId.keys()])
+      .order('checked_at', { ascending: false });
+    if (error || !data) return;
+    for (const row of data) {
+      const card = byId.get(row.inventory_id);
+      if (!card || card._gtcrReport) continue; // rows are newest-first; keep only the latest
+      card._gtcrReport = { ...row, success: true };
+    }
+    if (currentRole === 'seller') renderSellerTable(getSellerInventory());
+  } catch (err) {
+    console.warn('[gtcr] hydrate checks failed:', err.message);
+  }
+}
+
+// ── Registration on sale (Phase 4) ──
+// Fire-and-forget after a sale's updateCardInDB() resolves, so the server
+// sees status = 'Sold'. The server re-verifies consent, ownership, sold
+// status and cert/grader, so this is only a cheap client-side pre-filter.
+function gtcrRegisterOnSale(card) {
+  if (!GTCR_CONSENT_UI_ENABLED || !_gtcrConsentState?.consented) return;
+  if (!card?._dbId || !String(card['Cert #'] || '').trim() || !card.Grader) return;
+  (async () => {
+    try {
+      const res = await fetch('/.netlify/functions/gtcr-registry', {
+        method: 'POST',
+        headers: await _gtcrHeaders(),
+        body: JSON.stringify({ action: 'register', inventory_id: card._dbId }),
+      });
+      const data = await res.json();
+      if (!data.success) console.warn('[gtcr] register skipped:', data.error);
+    } catch (err) {
+      console.warn('[gtcr] register failed:', err.message);
+    }
+  })();
+}
+
+// ── Consent (Phase 3) ──
+let _gtcrConsentState = null; // { consented, consented_at, enabled, pending_removals }
+
+async function _gtcrRegistryCall(action, extra) {
+  const res = await fetch('/.netlify/functions/gtcr-registry', {
+    method: 'POST',
+    headers: await _gtcrHeaders(),
+    body: JSON.stringify({ action, ...(extra || {}) }),
+  });
+  return res.json();
+}
+
+async function gtcrLoadConsentState() {
+  if (!GTCR_CONSENT_UI_ENABLED || typeof db === 'undefined') return null;
+  try {
+    const data = await _gtcrRegistryCall('status');
+    if (!data.success) return null;
+    _gtcrConsentState = data;
+    // A revoke that was interrupted mid-drain resumes here.
+    if (!data.consented && data.pending_removals > 0) _gtcrDrainRemovals();
+    return data;
+  } catch (err) {
+    console.warn('[gtcr] consent status failed:', err.message);
+    return null;
+  }
+}
+
+async function _gtcrDrainRemovals() {
+  for (let i = 0; i < 20; i++) {
+    let data;
+    try { data = await _gtcrRegistryCall('drain_removals'); } catch (_) { return; }
+    if (!data.success || !data.remaining || (!data.removed && data.failed)) return;
+  }
+}
+
+function _gtcrRenderConsent() {
+  const section = document.getElementById('gtcrConsentSection');
+  if (!section) return;
+  section.style.display = GTCR_CONSENT_UI_ENABLED ? '' : 'none';
+  if (!GTCR_CONSENT_UI_ENABLED) return;
+  document.getElementById('gtcrConsentCopy').textContent = GTCR_CONSENT_COPY;
+  const toggle = document.getElementById('gtcrConsentToggle');
+  const status = document.getElementById('gtcrConsentStatus');
+  const st = _gtcrConsentState;
+  toggle.checked = !!st?.consented; // never pre-checked: only true with a stored 'granted' event
+  toggle.disabled = !st || (!st.enabled && !st.consented);
+  status.textContent = !st ? 'Loading…'
+    : st.consented ? `On since ${new Date(st.consented_at).toLocaleDateString()}`
+    : !st.enabled ? 'Not available yet'
+    : 'Off';
+  if (!GTCR_CONSENT_UI_LAUNCHED) status.textContent += ' · test mode';
+}
+
+async function gtcrConsentToggleChanged(el) {
+  const turningOn = el.checked;
+  el.disabled = true;
+  try {
+    const data = await _gtcrRegistryCall(turningOn ? 'grant' : 'revoke', { consent_copy_version: GTCR_CONSENT_COPY_VERSION });
+    if (!data.success) throw new Error(data.error || 'failed');
+    if (!turningOn && data.remaining > 0) await _gtcrDrainRemovals();
+    showToast(turningOn ? '✓ GTCR registration turned on' : 'GTCR registration turned off — removing past registrations');
+  } catch (err) {
+    showToast('⚠️ Could not update GTCR setting — try again', 'var(--danger)');
+  }
+  await gtcrLoadConsentState();
+  _gtcrRenderConsent();
+}
+
 // ── Auto-publish a card to the active show ──────────────────────────────────
 // FIRE-AND-FORGET — never await. On success: upserts { show_id, card_id }
 // to show_inventory, adds showId to card._shows, increments showCardCounts,
 // calls syncBuyerView(). On failure: console.warn only.
+// A graded card with a cert # is first cleared against GTCR (_gtcrClearForPublish).
+// A flagged card is never published. A GTCR outage fails open.
 function _autoPublishCardToShow(card, dbId, showId) {
   if (!showId || !dbId || typeof db === 'undefined') return;
 
-  db.from('show_inventory')
-    .upsert(
-      { show_id: showId, card_id: dbId },
-      { onConflict: 'show_id,card_id' }
-    )
-    .then(({ error }) => {
-      if (error) { console.warn('[auto-publish]', error.message); return; }
-      if (!card._shows) card._shows = new Set();
-      card._shows.add(showId);
-      showCardCounts[showId] = (showCardCounts[showId] || 0) + 1;
-      syncBuyerView();
-    });
+  _gtcrClearForPublish(card, dbId).then(cleared => {
+    if (!cleared) { console.info('[auto-publish] skipped — GTCR flag on', card['Cert #']); return; }
+    db.from('show_inventory')
+      .upsert(
+        { show_id: showId, card_id: dbId },
+        { onConflict: 'show_id,card_id' }
+      )
+      .then(({ error }) => {
+        if (error) { console.warn('[auto-publish]', error.message); return; }
+        if (!card._shows) card._shows = new Set();
+        card._shows.add(showId);
+        showCardCounts[showId] = (showCardCounts[showId] || 0) + 1;
+        syncBuyerView();
+      });
+  });
 }
 
 // ── Insert a single card to Supabase ──
@@ -19157,6 +20404,9 @@ async function insertCardToDB(card, sellerIdOverride) {
     }
 
     if (error) { console.warn('Insert failed:', error.message); return null; }
+    // GTCR Trust Check on insert. Fire-and-forget; _autoPublishCardToShow()
+    // awaits this same in-flight check instead of starting a second one.
+    gtcrCheckCard(card, data.id, 'insert');
     return data.id; // return the UUID so we can store it on the card
   } catch(e) {
     console.warn('insertCardToDB error:', e.message);
@@ -19463,6 +20713,12 @@ async function upsertCardsToDB(cards) {
 
     console.log(`Upserted ${toInsert.length} new + ${toUpdate.length} updated cards`);
 
+    // GTCR Trust Check on insert for imported graded cards.
+    if (insertedIds.length === toInsertCards.length) {
+      toInsertCards.forEach((card, i) => { if (insertedIds[i] && !card._dbId) card._dbId = insertedIds[i]; });
+      _gtcrQueueChecks(toInsertCards);
+    }
+
     // Auto-publish newly inserted cards to the active show. Skip updates —
     // those cards already have a show_inventory row from a prior publish run.
     if (activeShowId && insertedIds.length === toInsertCards.length) {
@@ -19524,6 +20780,17 @@ async function upsertCardsToDB(cards) {
 
 </script>
 
+<!-- ── FEATURE GUIDE (help menu) ── -->
+<div class="modal-overlay" id="featureGuideOverlay" onclick="if(event.target===this)closeFeatureGuide()">
+  <div class="modal" style="max-width:520px;padding:1.5rem">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:1.6rem;letter-spacing:0.04em;color:var(--text)">Feature Guide</div>
+      <button class="btn-modal-close" onclick="closeFeatureGuide()" aria-label="Close">✕</button>
+    </div>
+    <div id="featureGuideBody"></div>
+  </div>
+</div>
+
 <!-- ── SELLER ONBOARDING OVERLAY ── -->
 <div class="ob-overlay" id="obOverlay">
   <div class="ob-modal">
@@ -19535,11 +20802,12 @@ async function upsertCardsToDB(cards) {
     <div id="obStep0" class="ob-body">
       <div class="ob-icon">👋</div>
       <div class="ob-title">Welcome to CardShow</div>
-      <div class="ob-subtitle">You're 3 minutes away from having your inventory live at your next card show. Let's get you set up.</div>
+      <div class="ob-subtitle">A quick tour of how to get your cards in front of buyers at your next show. About two minutes.</div>
       <ul class="ob-checklist">
-        <li>Set up your seller profile</li>
-        <li>Add your first cards (manual, scan, or CSV)</li>
-        <li>Know what to do on show day</li>
+        <li>Set up how buyers reach you</li>
+        <li>Add your first cards</li>
+        <li>Go live at a show</li>
+        <li>Record sales at your table</li>
       </ul>
     </div>
 
@@ -19547,14 +20815,14 @@ async function upsertCardsToDB(cards) {
     <div id="obStep1" class="ob-body" style="display:none">
       <div class="ob-icon">🏷️</div>
       <div class="ob-title">Your Seller Profile</div>
-      <div class="ob-subtitle">Buyers tap your QR code to browse. Give them a name and a way to reach you.</div>
+      <div class="ob-subtitle">Buyers see this when they scan your QR code. Add at least one way for them to reach you.</div>
       <div class="ob-profile-fields">
         <div class="ob-field">
           <label>Display Name</label>
           <input id="obDisplayName" type="text" placeholder="e.g. Mike's Cards" autocomplete="off">
         </div>
         <div class="ob-field">
-          <label>WhatsApp (optional)</label>
+          <label>WhatsApp number (optional)</label>
           <input id="obWhatsapp" type="tel" placeholder="+1 555-000-0000">
         </div>
         <div class="ob-field">
@@ -19562,99 +20830,83 @@ async function upsertCardsToDB(cards) {
           <input id="obInstagram" type="text" placeholder="@yourhandle">
         </div>
       </div>
+      <div class="ob-hint">You can change these anytime from the contact button at the top of the screen.</div>
     </div>
 
-    <!-- Step 2: What you'll need -->
+    <!-- Step 2: Add cards -->
     <div id="obStep2" class="ob-body" style="display:none">
-      <div class="ob-icon">📋</div>
-      <div class="ob-title">Before the Show</div>
-      <div class="ob-subtitle">Here's what to have ready before show day:</div>
-      <ul class="ob-checklist">
-        <li>Your card inventory — graded slabs, raw cards, sealed boxes</li>
-        <li>Prices for each card (you can update right from your phone)</li>
-        <li>A phone or tablet to display your QR code at the table</li>
-        <li>An organizer access code to join the show</li>
-      </ul>
-    </div>
-
-    <!-- Step 3: Upload method -->
-    <div id="obStep3" class="ob-body" style="display:none">
       <div class="ob-icon">📦</div>
-      <div class="ob-title">Adding Your Inventory</div>
-      <div class="ob-subtitle">Three ways to load your cards — pick whatever fits your workflow:</div>
-      <div class="ob-options">
-        <div class="ob-option">
-          <div class="ob-option-icon">📷</div>
-          <div class="ob-option-text">
-            <strong>Scan a card</strong>
-            <span>Point your camera at any PSA/BGS/CGC slab or raw card. Auto-fills player, set, grade, and parallel.</span>
-          </div>
-        </div>
-        <div class="ob-option">
-          <div class="ob-option-icon">📊</div>
-          <div class="ob-option-text">
-            <strong>Upload a spreadsheet</strong>
-            <span>Drop a CSV or Excel file. Download our template for the correct column layout.</span>
-          </div>
-        </div>
-        <div class="ob-option">
-          <div class="ob-option-icon">✏️</div>
-          <div class="ob-option-text">
-            <strong>Add cards manually</strong>
-            <span>Type in each card one at a time. Great for a quick few cards before a show.</span>
-          </div>
-        </div>
+      <div class="ob-title">Add Your First Cards</div>
+      <div class="ob-subtitle">Pick one to start now. The tour closes and you can come back to it from the <strong>?</strong> button.</div>
+      <div class="ob-actions">
+        <button class="ob-action" onclick="obAction('scan')">
+          <span class="ob-action-icon">📷</span>
+          <span class="ob-action-text"><strong>Scan a card</strong><span>Photo of a slab or raw card fills in the details for you.</span></span>
+        </button>
+        <button class="ob-action" onclick="obAction('bulk')">
+          <span class="ob-action-icon">📸</span>
+          <span class="ob-action-text"><strong>Scan a whole showcase</strong><span>One photo of a case or tray. Review the cards it finds, then add them all.</span></span>
+        </button>
+        <button class="ob-action" onclick="obAction('upload')">
+          <span class="ob-action-icon">📊</span>
+          <span class="ob-action-text"><strong>Upload a spreadsheet</strong><span>CSV or Excel, including exports from Shopify, Ludex, and Flipwise.</span></span>
+        </button>
+        <button class="ob-action" onclick="obAction('add')">
+          <span class="ob-action-icon">✏️</span>
+          <span class="ob-action-text"><strong>Type one in</strong><span>Start typing a player name and pick the set and card from the list.</span></span>
+        </button>
       </div>
+      <a class="ob-link" href="/downloads/CardShow_Inventory_Template.xlsx" download>⬇ Download the spreadsheet template</a>
     </div>
 
-    <!-- Step 4: Show day -->
-    <div id="obStep4" class="ob-body" style="display:none">
+    <!-- Step 3: Go live -->
+    <div id="obStep3" class="ob-body" style="display:none">
       <div class="ob-icon">🎪</div>
-      <div class="ob-title">Show Day Playbook</div>
-      <div class="ob-subtitle">You're at the show. Here's the drill:</div>
+      <div class="ob-title">Go Live at a Show</div>
+      <div class="ob-subtitle">Buyers at a show only see your cards after this step.</div>
+      <ol class="ob-steps">
+        <li><strong>The organizer adds you.</strong> Once they do, the show appears under <em>My Shows</em>. You don't need a code.</li>
+        <li><strong>Tap ⚡ Add My Cards</strong> on that show. Your cards go live for buyers there, and your sales count toward the show.</li>
+        <li><strong>Put your QR code on your table.</strong> Open <em>My QR Code</em>, then download or print it. Buyers scan it to see your cards.</li>
+      </ol>
+      <div class="ob-hint ob-hint-mobile">On a phone, My Shows and My QR Code are behind the <strong>☰</strong> button at the top left.</div>
+    </div>
+
+    <!-- Step 4: Selling -->
+    <div id="obStep4" class="ob-body" style="display:none">
+      <div class="ob-icon">🤝</div>
+      <div class="ob-title">Selling at Your Table</div>
+      <div class="ob-subtitle">On a phone, tap <strong>Sell / Add</strong> at the bottom of the screen and choose <strong>Sell a card</strong>. Every sale lands in your Report tab.</div>
       <div class="ob-showday-grid">
         <div class="ob-tip">
-          <div class="ob-tip-icon">📲</div>
-          <strong>Share your QR</strong>
-          <span>Tap "My QR Code" and prop your phone up. Buyers scan to browse your table.</span>
+          <div class="ob-tip-icon">✅</div>
+          <strong>Card in your inventory</strong>
+          <span>Pick it from your list, then enter the price and how they paid.</span>
         </div>
         <div class="ob-tip">
-          <div class="ob-tip-icon">🤝</div>
-          <strong>Mark cards sold</strong>
-          <span>Tap any card → "Mark Sold" → log price and payment method.</span>
+          <div class="ob-tip-icon">📷</div>
+          <strong>Card you never added</strong>
+          <span>Take a photo of it and record the sale in one go.</span>
         </div>
         <div class="ob-tip">
-          <div class="ob-tip-icon">💰</div>
-          <strong>Check comps</strong>
-          <span>Tap "Check Comps" for live market prices before you price a card.</span>
+          <div class="ob-tip-icon">📝</div>
+          <strong>Log a Manual Sale</strong>
+          <span>Forgot to record one? Add it later from the Report tab, with the date it happened.</span>
         </div>
         <div class="ob-tip">
-          <div class="ob-tip-icon">📊</div>
-          <strong>End-of-day report</strong>
-          <span>Report tab shows revenue, sell-through, and best performers.</span>
+          <div class="ob-tip-icon">📤</div>
+          <strong>Share the sale</strong>
+          <span>Turn any sale into a post for Instagram or X, with a photo of the card.</span>
         </div>
       </div>
-    </div>
-
-    <!-- Step 5: Ready -->
-    <div id="obStep5" class="ob-body" style="display:none">
-      <div class="ob-ready-badge">
-        <span class="ob-icon">🏆</span>
-        <div class="ob-ready-title">You're All Set</div>
-      </div>
-      <div class="ob-subtitle" style="text-align:center">Your profile is saved. Start adding cards whenever you're ready — scan, upload, or type them in.</div>
-      <ul class="ob-checklist">
-        <li>Profile saved</li>
-        <li>Scanner and CSV import ready</li>
-        <li>Reach out via the ? menu if you need help</li>
-      </ul>
+      <div class="ob-hint">More tools, like price checks and exports, are listed in the Feature guide under the <strong>?</strong> button.</div>
     </div>
 
     <div class="ob-footer">
       <span class="ob-step-label" id="obStepLabel">Step 1 of 5</span>
       <div class="ob-btn-row">
         <button class="ob-skip" id="obSkipBtn" onclick="obSkip()">Skip setup</button>
-        <button class="ob-next" id="obNextBtn" onclick="obNext()">Get started →</button>
+        <button class="ob-next" id="obNextBtn" onclick="obNext()">Take the tour →</button>
       </div>
     </div>
   </div>

@@ -23,6 +23,9 @@ netlify/functions/scan-card.js           → Serverless: POST {image_base64, med
 netlify/functions/trading-card-lookup.js → Serverless: POST {query, sport?} → card search results from Trading Card API (Sprint 3); write-through cache via card_search_cache table (7-day TTL)
 netlify/functions/invalidate-search-cache.js → Serverless: POST {query} → deletes matching rows from card_search_cache; protected by x-invalidate-secret header
 netlify/functions/trade-og.js            → Serverless: GET /trade/:id → OG-tagged HTML for social crawlers, redirects humans into trade-zone.html (Trade Zone Phase 5)
+netlify/functions/gtcr-trust-check.js    → Serverless: GTCR Trust Check (READ key) — POST {action:'check'|'resolve'} → stolen/lost cert lookup, sets inventory.trust_flag, logs cert_trust_checks (see "Trust Check via GTCR")
+netlify/functions/gtcr-registry.js       → Serverless: GTCR consent + registration (WRITE key) — POST {action:'status'|'grant'|'revoke'|'drain_removals'|'register'}
+supabase/migrations/20260925120000_gtcr_trust_check.sql → inventory.trust_flag + cert_trust_checks / gtcr_consent_events / gtcr_registrations (RLS: read-own, no client writes)
 netlify/functions/expire-trade-posts.js  → Scheduled (hourly, see netlify.toml): calls expire_stale_trade_posts() RPC to hide stale trade_posts from the live board
 .env.example                             → Placeholder env vars for all keys
 downloads/                               → Static file downloads served by Netlify
@@ -217,6 +220,18 @@ that predates this migration still write even if `category`/`subcategory` don't 
 longer written to going forward (see "Category / Subcategory Taxonomy" below for the one-time
 backfill that reads it).
 
+Required for the Getting started checklist and first-use tips to sync across a seller's devices
+(see "Seller Onboarding Tour + Help Menu" below):
+`supabase/migrations/20260926120000_seller_onboarding_state.sql`, which runs
+`ALTER TABLE sellers ADD COLUMN IF NOT EXISTS onboarding_state jsonb;`. Until it runs,
+`loadOnboardingState()` gets a column error, logs it, and leaves syncing off. The checklist and
+tips then work exactly as before, saved per device in localStorage.
+
+Required for Trust Check via GTCR (see that section below):
+`supabase/migrations/20260925120000_gtcr_trust_check.sql`. It adds `inventory.trust_flag` and three
+service-key-only tables. Until it runs, the Trust Check still works in memory (flag badge, publish
+gate) but nothing persists across reload, and the consent/registration function returns errors.
+
 ## Key Data Structures (in-memory runtime cache)
 ```js
 inventory[]          // [{Seller, 'Card Title', Player, Year, 'Set ', Price, Status, item_type, product_type, _dbId, _shows: Set, ...}]
@@ -322,7 +337,7 @@ Fonts: Bebas Neue (headlines), DM Sans (body), DM Mono (labels/badges), Barlow C
 23. **Report show filter populates after DB load** — `populateReportShowSelector()` is called inside the `loadShowsFromDB().then()` callback in `loginAsSeller()` so the dropdown reflects the seller's authorized shows from Supabase, not just in-memory state at login time.
 24. **`initSidebarState()` must be called on login** — Defined in app.html; adds `sidebar-open` on desktop (>768px) and removes it on mobile. Called from both `loginAsSeller()` and `loginAsAdmin()`. Sidebar HTML starts without `sidebar-open` class; desktop CSS shows sidebar unconditionally so the class only matters on mobile. **The mobile trigger for this class is `#sidebarToggle`, which lives in the sticky `<nav>` bar (session 2026-09-08), not inside `.seller-layout`** — see "Mobile sidebar toggle moved into nav" below for why.
 25. **Admin sidebar hidden on mobile** — `body.role-admin #mainSidebar { display: none !important }` in `≤599px` media query. Quick Actions (Create New Show, Back to Shows) are redundant with main content on mobile. Admin grid uses `grid-template-columns: 1fr` on mobile so main content fills full width.
-26. **FAB (`#fabAddCard`) is seller-only** — Shown via `style.display=''` in `loginAsSeller()`, hidden in `loginAsAdmin()` and `signOut()`. Only visible at `≤767px` via CSS. Black background + gold border + gold "+" text for maximum contrast against dark UI. A secondary stacked FAB for Bulk Scan was tried and then removed — all card-add actions on mobile (including Bulk Scan, via the shortcut link in `#ac_scan_row`) now live behind this single primary FAB → Add Card modal, rather than multiple competing entry points.
+26. **FAB (`#fabAddCard`) is seller-only, and it is the only mobile FAB** — a "+ Sell / Add" pill that opens the Sell / Add menu (`openQuickActions()`, see "Sell / Add Menu" below). Shown via `style.display=''` in `loginAsSeller()`, hidden in `loginAsAdmin()`, `signOut()` and on the Report tab (`switchSellerTab()`). Only visible at `≤767px` via CSS. The separate `#fabScanToSell` button was removed (session 2026-09-26, vendor feedback: too large, floated over content); Scan to Sell is now reached through the menu.
 27. **Comp search includes parallel** — `comp-lookup.js` search query: `[player, year, cardSet, parallel].filter(Boolean).join(' ')`. Cache fingerprint: `player|year|cardSet|cardNumber|parallel|grade|grader`. Both changes ensure autos/variants get correct prices instead of base card prices.
 28. **show_floor_transactions is IMMUTABLE.** Four RLS policies: SELECT + INSERT permissive, UPDATE + DELETE restrictive (USING false). Corrections are new rows, never edits. Never add permissive UPDATE or DELETE policies to this table.
 29. **recordShowTransaction() must never be awaited from sdConfirm().** Fire-and-forget. Sold confirmation UI must complete instantly.
@@ -696,6 +711,11 @@ Called from `fillFormFromVision` (vision) and several other card-creation paths 
 | `POKEMON_TCG_API_KEY` | pokemontcg.io API key — optional; raises rate limits. Free tier works without it. Register at dev.pokemontcg.io |
 | `CARDHEDGE_API_KEY` | Card Hedge key — primary sports card comp source. cardhedge.com |
 | `CARDHEDGE_ENABLED` | Set to `false` to disable Card Hedge without removing the key (default: `true`) |
+| `GTCR_READ_API_KEY` | GTCR read-only key — `gtcr-trust-check.js` only |
+| `GTCR_WRITE_API_KEY` | GTCR partner write key — `gtcr-registry.js` only (issued at partner onboarding) |
+| `GTCR_PARTNER_ID` | Attribution string sent on every GTCR call (default `cardshow` — confirm with GTCR) |
+| `GTCR_API_BASE` | Optional; default `https://thegtcr.com/functions` |
+| `GTCR_REGISTRATION_ENABLED` | Must be `true` to allow consent grant + registration. Keep off until pricing is decided |
 | `CARDSIGHT_API_KEY` | CardSight AI key — secondary sports card comp source. Free tier: 750 calls/month. cardsight.ai/for-developers |
 
 ### Credential Injection (no build step workaround)
@@ -2334,6 +2354,12 @@ migration, no new external library.
   including the missing-column SELECT-retry fix needed for `app.html`/`show.html`'s DB fetches
   and headless-browser verification across all three surfaces.
 
+- **Trust Check via GTCR — Phases 1, 3, 4 (session 2026-09-25)** — stolen/lost cert lookup on
+  insert + re-check on publish (fails open), flag/dispute UI, consent-evidence log, and
+  consent-gated register-on-sale + deregister-on-revoke. Registration is built but **dark**
+  (`GTCR_CONSENT_UI_LAUNCHED=false` client-side, `?gtcr_consent=1` test switch, `GTCR_REGISTRATION_ENABLED` server-side) until
+  pricing is decided. Transfer-on-resale (Phase 5) not built — open decision. See "Trust Check via GTCR".
+
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`
 - ~~**eBay comp lookup at card entry**~~ — replaced by PriceCharting + TCG API comp check (see Comp Pricing section)
@@ -2457,7 +2483,7 @@ duplicating its price/payment UI.
 
 ### Flow
 ```
-#fabScanToSell (mobile only, seller view) → posOpenPhotoSheet()
+Sell / Add menu → "Sell a card" → "It's not in my inventory" → posOpenPhotoSheet()
   └─ #posOverlay/#posSheet bottom sheet opens, #posPhotoPhase shown
        ├─ "Take Photo" → posTriggerCamera() → hidden #posFileInput (capture="environment")
        ├─ "Choose from Library" → posTriggerLibrary() → hidden #posLibraryFileInput
@@ -2566,15 +2592,9 @@ integration, no new Supabase tables or migrations — POS writes to the same `in
 app already uses.
 
 ### FAB visibility
-`#fabScanToSell` (mobile only, `≤767px`, fixed bottom, stacked above the circular
-`#fabAddCard` "+" button via `bottom: calc(5.75rem + env(safe-area-inset-bottom,0px))`)
-follows the exact same show/hide pattern as `#fabAddCard`: cleared (`style.display=''`)
-in `loginAsSeller()`, set to `'none'` in `loginAsAdmin()` and `signOut()`. `enterAsBuyer()`
-doesn't need to touch it — like `#fabAddCard`, it starts hidden by default and is only ever
-shown from `loginAsSeller()`, never reached from a fresh anonymous buyer session. Mobile
-`.toast` bottom offset raised to `9.5rem` to clear both stacked FABs. `--gold` is not a real
-CSS variable (see the Critical Note in the Trading Card API section below) — all new POS
-CSS uses the real `var(--accent)` token instead.
+`#fabScanToSell` was removed (session 2026-09-26). Scan to Sell is now opened from the Sell / Add
+menu ("Sell a card" → "It's not in my inventory"), and from the Feature guide. See "Sell / Add
+Menu" below. `--gold` is not a real CSS variable; POS CSS uses `var(--accent)`.
 
 ### Notable deviations from the original design drafts (and why)
 An earlier build-out across several sessions added a materially different design on this
@@ -3973,6 +3993,250 @@ one), `_orgFetchInventory()` or any other analytics function, the Add/Edit Card 
 Category/Subcategory dropdowns from the original taxonomy session, RLS policies, no new
 Supabase tables or migrations (reuses the existing `category`/`subcategory` columns and their
 existing migration).
+
+## Trust Check via GTCR (session 2026-09-25)
+
+Integration with the Global Trading Card Registry (thegtcr.com, run by the CTCA / Nick Jarman),
+built from Build Spec v3. **Nothing Kapture-related exists in this repo.** The spec's "mirror the
+locked Kapture flow" was followed in behavior (insert + publish triggers, flag badge, confirm-removal
+or dispute-and-keep, fail open), but there was no Kapture code to share. `cert_trust_checks.source`
+leaves room for a second provider.
+
+### Keys and endpoints
+Base `https://thegtcr.com/functions/` (confirmed live: returns 401 without a key; POST accepted).
+Two keys, each used by exactly one function, never mixed:
+- `gtcr-trust-check.js` uses `GTCR_READ_API_KEY` for `trustCheckApi`.
+- `gtcr-registry.js` uses `GTCR_WRITE_API_KEY` for `registerCardApi` and `removeRegistrationApi`.
+Every call sends `partner_id` (`GTCR_PARTNER_ID`, default `cardshow`). **Pending with GTCR:** confirm the
+string, and complete onboarding to get the write key.
+
+The Trust Check request is a JSON POST body `{cert_number, grading_company, partner_id}` (confirmed
+live). `matched` = a stolen or lost report. A dispute alone is stored but never flags. GTCR's
+`reports.active_count` counts open disputes too (since 2026-09-25), so it only decides a match when
+the response has no `card_status` at all.
+
+### Phase 1 — Trust Check (live once `GTCR_READ_API_KEY` is set)
+- **Insert:** `insertCardToDB()` fires `gtcrCheckCard(card, id, 'insert')`, which covers Add Card, POS,
+  and bulk scan. CSV/XLSX import calls `_gtcrQueueChecks()` with 3 concurrent workers. Only non-sold
+  cards with a cert # and a grader are checked. A Manual Sale's already-sold card is skipped.
+- **Publish:** `_autoPublishCardToShow()` now awaits `_gtcrClearForPublish()`. That reuses an
+  in-flight insert check, or any check from the last 60s, and otherwise re-checks. `sellerPublishToShow()`
+  skips cards already flagged. The admin `publishShowInventoryToDB()` excludes `trust_flag='flagged'`
+  rows; if the column is missing, it falls back to no filter.
+- **On a match**, the server sets `inventory.trust_flag='flagged'` (unless the seller already disputed)
+  and deletes the card's `show_inventory` rows. That hides the card from buyers on every surface.
+  A later no-match clears a stale `'flagged'`. GTCR logs the partner lookup and notifies the owner
+  itself. CardShow makes no report-back call; the spec's Decision #1 closes with no code.
+- **Status source:** GTCR's `card_status` is authoritative (confirmed by GTCR). Values: `UNREGISTERED`,
+  `REGISTERED`, `REPORTED_STOLEN`, `REPORTED_LOST`, `DISPUTED`, `RECOVERED`, `TRANSFER_PENDING`, with
+  precedence stolen > lost > dispute > recovered > registered > unregistered. `normalizeTrustResponse()`
+  derives the stolen/lost/dispute flags from it; GTCR's `has_*_report` booleans were unreliable at
+  first and now agree with it (all 7 test certs verified 2026-09-25). Test certs (all PSA): 999999999 unregistered, 148087893 registered,
+  86234916 stolen, TEST-LOST-001 lost, TEST-DISPUTED-001 disputed, 31566382 recovered,
+  TEST-TRANSFER-001 transfer pending. Sending `debug: true` to `gtcr-trust-check` also returns a
+  `response_shape` (field names; free-text values redacted) for diagnosing mismatches.
+- **Display tiers** (`_gtcrState()`, `_gtcrBadgeHTML()`, `GTCR_ALERT_COPY`):
+  - **stolen** (red): "⚠ Stolen report" badge plus a blocking alert. Card is hidden from buyers.
+  - **lost** (amber): "⚠ Lost report" badge plus a blocking alert with gentler copy (the seller may be
+    the owner who recovered it). Card is hidden from buyers.
+  - **dispute** (amber, `DISPUTED` with no stolen/lost report): "Dispute on file" badge plus a one-time
+    notice that closes with Got it, the backdrop, or Escape. The listing stays live; it does not flag.
+  - **disputed** (grey): the seller chose "Dispute & keep listing" on a stolen/lost match.
+  - **clear**: a small green "✓ Registry clear" under the cert #, so "checked and clean" is
+    distinguishable from "never checked".
+  - Buyers never see any of these.
+  `gtcrHydrateLatestChecks()` reloads each card's latest `cert_trust_checks` row on seller login, so
+  tiers survive a reload.
+- **Seller UI:** when a card becomes flagged, `#gtcrFlagOverlay` opens on its own as a blocking alert
+  (title and color set by tier). There is no click-outside or Escape close; the seller must pick a button.
+  Several cards flagged at once (e.g. a CSV import) queue up via `_gtcrQueueAlert()` and show one after
+  another. The alert holds its card by reference (`_gtcrFlagCard`), not by index, because a removal
+  splices `inventory[]`. The red **⚠ Flagged** badge on the row reopens the same alert. It has an
+  optional note and three choices. **Remove from inventory** writes the audit row first, then
+  deletes the card. **Dispute & keep listing** sets `trust_flag='disputed'`, which allows publishing
+  again. **Decide later** just closes. Nothing is ever removed automatically.
+- **Fail open:** any GTCR, network, or function error leaves the flag unchanged and publishing allowed.
+  The next publish re-checks.
+  The function returns a `reason` (`missing_read_key`, `gtcr_http_<status>`, `timeout`, `network_error`)
+  and the app logs `[gtcr] trust check did not complete …` to the console. A new Netlify env var only
+  takes effect after a redeploy, and a preview built before the key was added fails every lookup this way.
+- `trustCheckBulkApi` is not used, because its request/response shape isn't documented yet. The CSV
+  import path would be the one to switch to it.
+
+### Phase 3 — Consent (built, dark)
+- The checkbox is in the Profile modal (`#gtcrConsentSection`), hidden until launch
+  (`GTCR_CONSENT_UI_LAUNCHED = false`). It is never pre-checked; it only shows checked when a stored
+  `'granted'` event exists.
+- **Test switch:** open the app with `?gtcr_consent=1` to show the section on that browser (remembered
+  in localStorage as `gtcrConsentTest`; `?gtcr_consent=0` clears it). The status line reads "· test mode".
+  It unlocks the UI only: the toggle stays disabled ("Not available yet") until the deploy has
+  `GTCR_REGISTRATION_ENABLED=true`, so set that on deploy previews only, never production, while testing.
+- The copy (`GTCR_CONSENT_COPY`, version `GTCR_CONSENT_COPY_VERSION`) is a **DRAFT pending legal
+  review**. Bump the version whenever the text changes.
+- Every consent action goes through `gtcr-registry.js`. The server appends to `gtcr_consent_events`
+  (seller_id, action, occurred_at from the server clock, consent_copy_version, IP from
+  `x-nf-client-connection-ip`/`x-forwarded-for`, user-agent). That table is append-only; its latest
+  row is the current state. Re-granting while already granted keeps the original timestamp.
+- `grant` is refused unless `GTCR_REGISTRATION_ENABLED=true`. `revoke` is always allowed.
+
+### Phase 4 — Register on sale + deregister on revoke (built, dark)
+- **Register:** `sdConfirm()` (Sell Drawer, which also covers the POS hand-off) calls
+  `gtcrRegisterOnSale(card)` after `updateCardInDB()` resolves.
+  - **Manual sales are deliberately not registered.** They record off-platform sales, which fall
+    outside "cards I sell through CardShow". Revisit if that's wrong.
+  - The server loads the card itself and requires four things: the caller owns it, `status='Sold'`,
+    a cert # plus grader, and a latest consent event of `'granted'`. The client sends only `inventory_id`.
+  - `seller_email` is the verified Supabase Auth email. `consent_timestamp` is the consent event's
+    `occurred_at`, not the time of the call.
+  - Grader values map to GTCR's enum; anything unknown maps to `Other`.
+  - Results are logged to `gtcr_registrations`. `already_registered` is treated as success.
+- **Revoke:** appends a `'revoked'` event, then drains the seller's `status='registered'` rows through
+  `removeRegistrationApi` within a 7s budget. The client repeats `drain_removals` until `remaining` is 0.
+  A GTCR 404 counts as removed. An interrupted drain resumes when the seller next logs in
+  (`gtcrLoadConsentState()`).
+- **Launch checklist:** get the write key, confirm `partner_id`, finish legal review of the copy, decide
+  pricing, then flip `GTCR_REGISTRATION_ENABLED=true` and `GTCR_CONSENT_UI_LAUNCHED=true` together.
+
+### Still open (not built)
+- **Decision A — Phase 5 transfer-on-resale** (`transferOnSaleApi`): not built, per the spec. Without it,
+  a registered card that resells through CardShow keeps the old seller's GTCR registration.
+- **Decision B — pricing/packaging** blocks turning consent on for real sellers.
+- **Integrity caveat:** `inventory` still has permissive RLS, so a seller could in principle clear their
+  own `trust_flag` by writing to the table directly. The audit tables themselves are protected. This
+  closes when inventory RLS is tightened (Tier 1).
+
+## Seller Onboarding Tour + Help Menu (session 2026-09-26)
+
+Rewrote the first-login onboarding overlay (`#obOverlay`) and added a seller-only **?** help
+menu in the nav. Replaces the 6-screen version described under "Seller onboarding flow" in
+Shipped (same `onboarding_complete` gate, same `checkOnboardingStatus()`/`markOnboardingComplete()`).
+
+### Fixes to the old tour
+- It told sellers they needed "an organizer access code to join the show". Access codes are for
+  buyers; sellers are added by the organizer, then tap **⚡ Add My Cards**.
+- It pointed to a "? menu" that didn't exist. The menu now exists (below).
+- Its profile step saved WhatsApp/Instagram raw, while the Profile modal stripped non-digits and
+  "@". Both now go through `_normalizeProfileContact()`, so the WhatsApp contact link gets digits.
+
+### Tour screens (`obStep0`–`obStep4`, `OB_SCREENS = 5`)
+Welcome · Profile (prefilled from the saved profile on replay) · Add your first cards (four buttons
+that open the real tools: scan, bulk scan, spreadsheet upload, type one in, plus the template link) ·
+Go live at a show (organizer adds you → Add My Cards → table QR; a mobile-only hint points to ☰) ·
+Selling at your table (mark sold via the Available status, Scan to Sell, Log a Manual Sale, share).
+`obAction(kind)` launches the chosen tool **before** closing the tour and saving, inside the same
+click, so browsers still allow the file picker. `_obFinish()` (Done / Skip) saves, marks complete,
+and toasts that the tour can be replayed from **?**.
+
+### Help menu (`#navHelpWrap` button, `#navHelpMenu` dropdown)
+Replay the tour · Feature guide · Spreadsheet template · Contact support (mailto). Shown in
+`loginAsSeller()`, hidden in `loginAsAdmin()`/`signOut()`. **The dropdown lives outside `<nav>`**:
+`nav` has `overflow:hidden` and a `backdrop-filter` (which also traps `position:fixed` children),
+so a menu inside it is clipped. `toggleHelpMenu()` positions it (`position:fixed`) under the button.
+
+### Feature guide (`#featureGuideOverlay`, `FEATURE_GUIDE` array)
+Every seller feature grouped as Add cards / At the show / Sell / Price and manage / After the show,
+each with a one-line description and a "Show me" button that opens the tool, switches tab, or
+opens the sidebar (`_helpShowSidebar()`), or outlines a toolbar button (`_helpPoint()`). Add new
+seller features to `FEATURE_GUIDE` when they ship. GTCR consent is deliberately not listed (dark).
+
+### Getting started checklist (`#gsChecklist`)
+Sits under the seller tab bar on the My Inventory tab (not the sidebar, which is hidden behind ☰
+on phones). Six steps, each with a button that opens the tool:
+1. Fill in your profile: display name plus WhatsApp or Instagram (`openProfile()`)
+2. Add your first card (`openQuickActions('add')`)
+3. Put your cards in a show: `activeShowId` set, or any card with a non-empty `_shows`
+   (`_helpShowSidebar('sellerShowsPanel')`). The hint changes when the seller hasn't been added
+   to any show yet.
+4. Get your table QR code: set by `downloadSellerQR()`, `downloadSellerQRModal()` or
+   `openSellerQRModal()`
+5. Record your first sale: any card with `Status === 'Sold'` (`openQuickActions('sell')`)
+6. Look at your Report: set by `switchSellerTab('report')`
+
+Steps 1, 2, 3 and 5 are worked out from data that's already loaded. Steps 4 and 6 leave no data
+trail, so `gsMark(step)` records them. Hide and collapse are recorded the same way, under the
+localStorage key `gsChecklist:<handle>`. All of this syncs across devices through
+`sellers.onboarding_state` (see "Sync across devices" below).
+
+How it behaves:
+- `gsRender()` is called from `updateStats()`, `renderSellerShowsList()`, `switchSellerTab()`
+  and both profile saves.
+- It waits for `_gsDataReady`, which is set after the seller's inventory loads. That way a
+  returning seller never sees a false "0 done" first.
+- The first time a device sees a seller who already has cards and a sale, the list starts
+  hidden, so experienced sellers aren't nagged.
+- Finishing all six hides the list and shows "You're all set up". The toast is delayed 3.5s so
+  the toast from the finishing action doesn't overwrite it.
+- ? → Getting started list brings it back.
+
+### First-use tips (`#tipCard`, `TIPS`, `showTipOnce(key)`)
+One short card near the top of the screen with "Got it" and "Don't show tips". Its z-index is
+100000, so it sits above the modal it describes. Each tip shows once per seller (synced, see below), stored locally in
+localStorage (`cardshowTipsSeen`, `cardshowTipsOff`). Tips wait in a queue if one is already
+open, and are skipped (not marked seen) while the onboarding tour is open.
+
+| Key | Fires from |
+|-----|------------|
+| `compResults` | comp results modal opens |
+| `bulkReview` | bulk scan review opens |
+| `report` | first `switchSellerTab('report')` |
+| `firstSale` | `sdConfirm()` / `confirmManualSale()` |
+| `live` | `sellerPublishToShow()` when at least one card is added |
+
+? → Show tips again clears both keys. `signOut()` hides any open tip and resets `_gsDataReady`.
+Add a tip by adding a `TIPS` entry and calling `showTipOnce(key)` where the feature opens.
+
+### Sync across devices (`sellers.onboarding_state` jsonb)
+Shape: `{ gs: {qr, report, dismissed, collapsed}, tipsSeen: {key: true}, tipsOff }`.
+
+localStorage stays the working copy, and the column is the source of truth:
+- **On login,** `loadOnboardingState(handle)` runs in parallel with the profile fetch.
+  - If the row has state, it overwrites the local copy.
+  - If it has none, the device's local state is uploaded. This carries over state saved before
+    the column existed.
+- **On every change** (`_gsSave`, tip seen, tips off/reset), `_obQueueStateSave()` saves the
+  whole bundle with an 800ms debounce, and `signOut()` flushes a pending save.
+- **Before the load finishes,** the checklist stays hidden and tips are held back
+  (`_obStateLoaded`), so nothing already seen on another device shows first.
+- **If the column is missing,** `_obStateSync` stays false and everything runs local-only.
+- **Conflicts:** the last save wins. Two devices used at the same moment could undo each other's
+  newest tick until the next action, which is acceptable for UI hints.
+
+### Fixed alongside: Sell Drawer toast showed "null"
+`sdConfirm()` built its confirmation toast from `sdSelectedPayment` after `closeSellDrawer()`
+had already reset it to null, so every Sell Drawer sale toasted "· null". It now reads
+`card.PaymentMethod`.
+
+## Sell / Add Menu (session 2026-09-26)
+
+Vendor feedback: the floating "Scan to Sell" button was too large and covered content, and the
+screen was too busy for older sellers. The two mobile FABs were replaced with one smaller
+"+ Sell / Add" pill (`#fabAddCard`, 52px tall, bottom-right) that opens a bottom sheet
+(`#qaOverlay`) asking one question per screen, with large text and tap targets.
+
+### Screens
+- **Root** — "Sell a card" / "Add cards to my inventory".
+- **Sell** ("Is the card already in your inventory?") — "It's in my inventory" → **Pick**;
+  "It's not in my inventory" → `posOpenPhotoSheet()` (Scan to Sell).
+- **Pick** — a search box plus a list of the seller's unsold cards (`qaRenderPick()`, multi-word
+  match over title/player/year/set/parallel/grader/grade/cert, capped at `QA_PICK_LIMIT` = 50).
+  Tapping a card closes the sheet and calls `openSellDrawer(idx)`, the unmodified Sell Drawer.
+- **Add** — photo of one card (`openAddCard()` + `openCertScanner()`), photo of a whole case
+  (`#bulkScanInput` click), upload a spreadsheet (`#uploadZone` file input click), type it in
+  (`openAddCard()`), plus a template download link.
+
+Back (`qaBack()`, via `QA_PARENT`) and Cancel on every screen; Escape closes. On desktop the
+sheet is centered. `#view-seller` gets 5rem bottom padding on mobile so the pill never covers the
+last row.
+
+### Key functions (app.html)
+`openQuickActions(screen?)` / `closeQuickActions()` / `qaShow(screen)` / `qaBack()` /
+`qaGo(kind)` / `qaRenderPick()` / `qaSellCard(idx)`. `qaGo()` starts the tool **before** closing
+the sheet, inside the same click, so mobile browsers still allow the file pickers. The Feature
+guide's two sell entries point at `openQuickActions('pick')` and `posOpenPhotoSheet()`.
+
+### Does not change
+Sell Drawer / `sdConfirm()`, Scan-to-Sell POS, Add Card, bulk scan, CSV import, the desktop
+toolbar and sidebar buttons.
 
 ## Show Configuration (Demo Data)
 - **MLP Card Show** — Oct 17-18, 2026 · Grand Hyatt Tampa Bay, FL · Code: MLPTPA (primary demo, shown to buyers without code)
