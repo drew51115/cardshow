@@ -13,7 +13,7 @@ CardShow is a sports card show inventory platform connecting buyers, sellers, an
 ```
 index.html                        → Landing/marketing page (formerly landing.html)
 app.html                          → Main platform — seller/admin/buyer views (formerly index.html)
-show.html                         → Public show page (URL hash-encoded inventory)
+show.html                         → Public show page (short link show.html?id=<showId>, loads from the DB; old hash-encoded links still open)
 seller-browse.html                → Buyer-facing seller storefront (QR scan destination)
 _redirects                        → Netlify routing rules
 netlify.toml                      → Disables pretty URLs (critical for show.html hash routing); functions = "netlify/functions"
@@ -299,8 +299,7 @@ Fonts: Bebas Neue (headlines), DM Sans (body), DM Mono (labels/badges), Barlow C
 - `switchSellerTab('inventory'|'report')` — seller tab switcher; toggles table-wrap vs adminReportPanel
 - `switchView(v)` — switches active view panel; safe to call from async code (guards `event?.target`)
 - `publishSelectedToShow(showId)` — publish all authorized seller cards
-- `buildShowPageUrl(showId)` — generates full hash-encoded show page URL (up to 50 cards)
-- `buildShowQrUrl(showId)` — generates minimal metadata-only URL for QR codes (no card payload, avoids QR data limit)
+- `buildShowPageUrl(showId)` / `buildShowQrUrl(showId)` — both return the short link `https://getcardshow.com/show.html?id=<showId>` (see "Short show links" below)
 - `copyShowPageLink(showId)` — opens share modal with URL
 - `saveProfile()` — saves display name, WhatsApp, Instagram to memory + DB
 - `saveShow()` / `deleteShow(showId)` — create/delete shows
@@ -312,7 +311,7 @@ Fonts: Bebas Neue (headlines), DM Sans (body), DM Mono (labels/badges), Barlow C
 - `acToggle()` — shows/hides condition field based on grader selection (card mode only)
 
 ## Critical Implementation Notes
-1. **show.html hash routing** — inventory encoded in URL hash via TextEncoder/TextDecoder. netlify.toml disables pretty URLs to prevent hash stripping on redirect. Hash must be decoded with TextDecoder, not escape/unescape (deprecated).
+1. **show.html links** — new links are `show.html?id=<showId>` and load everything from the DB (see "Short show links"). Old links with the show encoded in the URL hash still open: the hash is decoded with TextDecoder (not escape/unescape), and netlify.toml disables pretty URLs so the hash isn't stripped on redirect.
 2. **sellers Set** — always a `Set`, never an array. Defensive check: `if (!(show.sellers instanceof Set)) show.sellers = new Set(show.sellers || [])` before .has()/.add()
 3. **_dbId on cards** — cards get their Supabase UUID stored as `card._dbId` after insert. Required for updateCardInDB and publishShowInventoryToDB.
 4. **.maybeSingle() not .single()** — always use maybeSingle() for queries that might return 0 rows. .single() returns 406 on empty result.
@@ -330,7 +329,7 @@ Fonts: Bebas Neue (headlines), DM Sans (body), DM Mono (labels/badges), Barlow C
 16. **Stat strip is two-state** — 3 chips (Available / Ask Value / Graded) by default; Sold + Revenue chips appear only when `activeShowId` is set. Grid is 2-column so chips never overflow the sidebar.
 17. **Supabase Site URL must be set** — Authentication → URL Configuration in Supabase dashboard must point to `https://getcardshow.com` or confirmation email links go to localhost.
 18. **Admin sidebar seller dropdown uses DB cache** — `renderAdminShowsList()` reads `_allSellerHandles` (populated by `refreshSellerHandlesCache()` on login) rather than in-memory `inventory[]`. This ensures renamed/updated seller handles appear correctly. Falls back to inventory[] if cache is empty.
-19. **QR codes use metadata-only URL** — `buildShowQrUrl()` encodes only show metadata + seller list (no card data). Full hash URLs with 50 cards exceed the QR data limit (~2–3KB) and cause silent rendering failure. The share link still uses the full `buildShowPageUrl()`.
+19. **QR codes and share links use the short `?id=` URL** — encoding cards in the URL made links too long for QR codes (~2–3KB limit) and for link shorteners. Never put card data back into a link.
 20. **item_type on inventory cards** — values are `'card'` (default), `'sealed'`, `'lot'`. `product_type` stores the specific sealed format (e.g. 'Blaster Box'). Both fields are passed through `cardToDbRow`/`dbRowToCard` and require the DB migration above to persist.
 21. **Seller-only sidebar visibility** — `#sellerUploadSection` (wraps the Upload Inventory drop zone + "+ Add Card" button) and `#sellerStatsRow` (the `.stats-row` stat chips) are hidden via `style.display='none'` in `loginAsAdmin()` and restored via `style.display=''` in both `loginAsSeller()` and `signOut()`. The admin sidebar shows only `#adminShowsPanel` (Quick Actions) and `#sellerQrPanel` is already correctly toggled via `.visible` class. This was a targeted display-toggle fix — the Shows dashboard, asc-header/asc-stats, and action bars in the main content area were not changed.
 22. **Seller tab bar vs admin tab bar** — `#sellerTabBar` (My Inventory / Report) is shown only for sellers; `#adminTabBar` (Shows / All Inventory) is shown only for admins. `adminTabReport` is permanently hidden from the admin tab bar — sellers use `switchSellerTab('report')` for their dedicated Report tab. `loginAsSeller()` shows `#sellerTabBar` and defaults to inventory tab; `loginAsAdmin()` and `signOut()` hide it.
@@ -2372,7 +2371,7 @@ migration, no new external library.
 - Price refresh before show (medium complexity)
 - Per-show card selection toggle (medium complexity)
 - Post-show summary for sellers (low complexity)
-- Show page from DB — removes 50-card hash cap (high complexity)
+- ~~Show page from DB — removes 50-card hash cap~~ — shipped (see "Short show links")
 
 ### Tier 3 — Growth and monetisation
 - Want list / saved cards for buyers
@@ -4237,6 +4236,26 @@ guide's two sell entries point at `openQuickActions('pick')` and `posOpenPhotoSh
 ### Does not change
 Sell Drawer / `sdConfirm()`, Scan-to-Sell POS, Add Card, bulk scan, CSV import, the desktop
 toolbar and sidebar buttons.
+
+## Short show links (session 2026-09-29)
+
+Organizer report: shortening the Monster Show's share link failed with `INVALID_ARG_LONG_URL`.
+`buildShowPageUrl()` packed the show's details, seller list, table numbers and up to 50 cards
+into the URL hash as base64 JSON, which made the link several KB long. show.html already
+reloaded the live cards from the DB on open, so the card data in the link was only a preview.
+
+- **Links:** `buildShowPageUrl()` and `buildShowQrUrl()` both return
+  `https://getcardshow.com/show.html?id=<showId>` via `_showPageUrl()`.
+- **show.html `init()`:** order is now: URL hash (old links) → `?id=` →
+  `loadShowMetaFromDB(id)`. That reads `shows` (name, date, location, status), then
+  `show_sellers` and `sellers` in two plain queries for the seller list and table numbers. Then
+  it runs the existing `fetchInventoryFromDB()` and `subscribeShowLive()`. If the show isn't in
+  the DB, `initFromCacheOrDemo()` tries the localStorage copy, then the three demo shows, then
+  the error page.
+- **Share button on show.html (`copyShowLink()`):** always copies the short link, even when the
+  page was opened from an old long link.
+- **Unchanged:** old hash links keep working. Table numbers show exactly as before, since the
+  old hash carried them too.
 
 ## Show Configuration (Demo Data)
 - **MLP Card Show** — Oct 17-18, 2026 · Grand Hyatt Tampa Bay, FL · Code: MLPTPA (primary demo, shown to buyers without code)
