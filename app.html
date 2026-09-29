@@ -13269,113 +13269,24 @@ function renderAdminShowsList() {
 
 // Builds a minimal URL for QR codes — show metadata only, no card payload.
 // QR codes have a ~2-3KB data limit; the full card hash often exceeds this.
-function buildShowQrUrl(showId) {
-  const s = shows[showId];
-  if (!s) return null;
-  const prodOrigin = 'https://getcardshow.com';
+// Share and QR links carry only the show id; show.html loads the show, its
+// sellers and live inventory from the database. The old links packed show
+// details plus up to 50 cards into the URL hash, which grew past what link
+// shorteners accept (INVALID_ARG_LONG_URL). Old hash links still open.
+function _showPageUrl(showId) {
+  if (!shows[showId]) return null;
   const origin = (window.location.hostname === 'localhost' ||
                   window.location.hostname === '127.0.0.1')
-    ? window.location.origin : prodOrigin;
+    ? window.location.origin : 'https://getcardshow.com';
+  return `${origin}/show.html?id=${encodeURIComponent(showId)}`;
+}
 
-  const sellersSet = (s.sellers instanceof Set) ? s.sellers : new Set(Array.isArray(s.sellers) ? s.sellers : []);
-  const sellersArr = [...sellersSet];
-
-  const payload = {
-    m: {
-      id: s.id,
-      n:  s.name,
-      d:  s.date     || '',
-      l:  s.location || '',
-      st: s.status   || 'upcoming',
-      tb: s.tables   || {},
-      sl: sellersArr,
-      tc: 0,
-    },
-    c: [],
-  };
-
-  try {
-    const json   = JSON.stringify(payload);
-    const bytes  = new TextEncoder().encode(json);
-    const binary = Array.from(bytes).map(b => String.fromCharCode(b)).join('');
-    const encoded = btoa(binary).replace(/=+$/, '');
-    return `${origin}/show.html#${encoded}`;
-  } catch(e) {
-    console.error('buildShowQrUrl encode failed:', e);
-    return null;
-  }
+function buildShowQrUrl(showId) {
+  return _showPageUrl(showId);
 }
 
 function buildShowPageUrl(showId) {
-  const s = shows[showId];
-  if (!s) return null;
-  const prodOrigin = 'https://getcardshow.com';
-  const origin = (window.location.hostname === 'localhost' ||
-                  window.location.hostname === '127.0.0.1')
-    ? window.location.origin : prodOrigin;
-
-  // Normalise sellers — could be a Set or an Array depending on how the show was created
-  const sellersSet = (s.sellers instanceof Set)
-    ? s.sellers
-    : new Set(Array.isArray(s.sellers) ? s.sellers : []);
-  const sellersArr = [...sellersSet];
-
-  function compact(r) {
-    const c = {};
-    if (r.Seller)              c.s  = r.Seller;
-    if (r['Card Title'])       c.t  = r['Card Title'];
-    if (r.Player)              c.p  = r.Player;
-    if (r.Year)                c.y  = r.Year;
-    const set = r['Set '] || r.Set;
-    if (set)                   c.st = set;
-    if (r['Parallel/Variant']) c.v  = r['Parallel/Variant'];
-    if (r.Grade)               c.g  = r.Grade;
-    if (r.Grader)              c.gr = r.Grader;
-    if (r.Condition)           c.c  = r.Condition;
-    c.pr = r.Price || 0;
-    return c;
-  }
-
-  // All available cards from authorized sellers
-  const available = inventory
-    .filter(r => sellersSet.has(r.Seller) && r.Status !== 'Sold')
-    .sort((a, b) => Number(b.Price || 0) - Number(a.Price || 0));
-
-  // Up to 50 preview cards — one per seller first, then fill by price
-  const preview = [];
-  const seen = new Set();
-  for (const r of available) {
-    if (!seen.has(r.Seller) && preview.length < 50) { preview.push(r); seen.add(r.Seller); }
-  }
-  for (const r of available) {
-    if (!preview.includes(r) && preview.length < 50) preview.push(r);
-  }
-
-  const payload = {
-    m: {
-      id: s.id,
-      n:  s.name,
-      d:  s.date       || '',
-      l:  s.location   || '',
-      st: s.status     || 'upcoming',
-      tb: s.tables     || {},
-      sl: sellersArr,
-      tc: available.length,
-    },
-    c: preview.map(compact),
-  };
-
-  try {
-    // Use TextEncoder for robust Unicode-safe base64 encoding
-    const json   = JSON.stringify(payload);
-    const bytes  = new TextEncoder().encode(json);
-    const binary = Array.from(bytes).map(b => String.fromCharCode(b)).join('');
-    const encoded = btoa(binary).replace(/=+$/, '');
-    return `${origin}/show.html#${encoded}`;
-  } catch(e) {
-    console.error('buildShowPageUrl encode failed:', e);
-    return null;
-  }
+  return _showPageUrl(showId);
 }
 
 function storeShowPayload() {} // kept for compat — no longer used
@@ -13386,8 +13297,8 @@ async function copyShowPageLink(showId) {
 
   const sellersSet = (s.sellers instanceof Set) ? s.sellers : new Set(s.sellers || []);
 
-  // Fetch all authorized sellers' inventory so the URL contains real cards
-  // (admin sessions don't have seller cards in memory by default)
+  // Fetch all authorized sellers' inventory for the card count shown in the
+  // dialog (admin sessions don't have seller cards in memory by default)
   if (sellersSet.size) {
     showToast('Building show link…');
     await Promise.all([...sellersSet].map(h => fetchSellerInventoryFromDB(h)));

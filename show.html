@@ -1044,6 +1044,58 @@ async function fetchInventoryFromDB(showId) {
   }
 }
 
+// Loads the show's name/date/location/status and its sellers + table numbers
+// from the database, for short links of the form show.html?id=<showId>.
+// Share links used to carry all of this (plus up to 50 cards) in the URL hash,
+// which made them too long for link shorteners. Two plain queries, same
+// no-embedded-join rule as fetchInventoryFromDB() above.
+async function loadShowMetaFromDB(id) {
+  if (!_sb || !id) return false;
+  try {
+    const { data: row, error } = await _sb
+      .from('shows')
+      .select('id, name, date, location, status')
+      .eq('id', id)
+      .maybeSingle();
+    if (error || !row) return false;
+
+    const tables = {};
+    const sellers = [];
+    const { data: ss } = await _sb
+      .from('show_sellers')
+      .select('seller_id, table_number')
+      .eq('show_id', id);
+    const ids = [...new Set((ss || []).map(r => r.seller_id).filter(Boolean))];
+    if (ids.length) {
+      const { data: srows } = await _sb.from('sellers').select('id, handle').in('id', ids);
+      const handleById = {};
+      (srows || []).forEach(r => { handleById[r.id] = r.handle; });
+      (ss || []).forEach(r => {
+        const h = handleById[r.seller_id];
+        if (!h) return;
+        if (!sellers.includes(h)) sellers.push(h);
+        if (r.table_number) tables[h] = String(r.table_number);
+      });
+    }
+
+    showMeta = {
+      id: row.id,
+      name: row.name || 'Card Show',
+      date: row.date || '',
+      location: row.location || '',
+      status: row.status || 'upcoming',
+      tables,
+      sellers,
+      totalCards: 0,
+    };
+    inventory = [];
+    return true;
+  } catch (e) {
+    console.warn('loadShowMetaFromDB error:', e.message);
+    return false;
+  }
+}
+
 // ── Live show inventory sync ──
 // Lets this page reflect a seller's add/edit/delete/sold change without a
 // manual reload or the organizer re-pushing a new share link. Same two-layer
@@ -1093,7 +1145,27 @@ function subscribeShowLive(showId) {
     return;
   }
 
-  // 2. Try localStorage (same-browser fallback)
+  // 2. Short link: show.html?id=<showId> — everything comes from the database
+  if (showId) {
+    loadShowMetaFromDB(showId).then(ok => {
+      if (ok) {
+        renderPage();
+        fetchInventoryFromDB(showMeta.id);
+        subscribeShowLive(showMeta.id);
+      } else {
+        initFromCacheOrDemo();
+      }
+    });
+    return;
+  }
+
+  initFromCacheOrDemo();
+})();
+
+// Older fallbacks, used when the show isn't in the database (demo shows) or
+// the database can't be reached.
+function initFromCacheOrDemo() {
+  // localStorage (same-browser fallback)
   if (showId) {
     try {
       const stored = localStorage.getItem(`cardshow_show_${showId}`);
@@ -1116,9 +1188,9 @@ function subscribeShowLive(showId) {
     }
   }
 
-  // 3. Hardcoded demo fallback for the three sample shows
+  // Hardcoded demo fallback for the three sample shows
   showDemoFallback(showId);
-})();
+}
 
 // Safety net: some mobile browsers set the hash after DOMContentLoaded
 window.addEventListener('hashchange', () => {
@@ -1548,7 +1620,11 @@ function renderSellerRoster() {
 
 // ── SHARE ──
 function copyShowLink() {
-  const url = window.location.href;
+  // Always share the short ?id= form, even if this page was opened from an
+  // old long hash link, so the copied link can go through a link shortener.
+  const url = (showMeta && showMeta.id)
+    ? `${window.location.origin}/show.html?id=${encodeURIComponent(showMeta.id)}`
+    : window.location.href;
   if (navigator.clipboard) {
     navigator.clipboard.writeText(url).then(() => showToast('Show link copied!'));
   } else {
