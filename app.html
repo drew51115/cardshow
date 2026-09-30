@@ -9712,6 +9712,7 @@ function renderSellerTable(rows) {
         ${gradeBadge(r.Grade, r.Grader)}
         ${isGraded && r['Cert #'] ? `<div style="font-family:'DM Mono',monospace;font-size:0.6rem;color:var(--muted);margin-top:0.2rem">${r['Cert #']}</div>` : ''}
         ${_gtcrState(r) === 'clear' ? `<div class="gtcr-clear" title="No active reports in the Global Trading Card Registry">✓ Registry clear</div>` : ''}
+        ${r._gtcrRegistered ? `<div class="gtcr-clear" title="Registered to you in the Global Trading Card Registry">✓ Registered with GTCR</div>` : ''}
         ${!isGraded && r.Condition ? `<div style="font-size:0.68rem;color:var(--muted);margin-top:0.2rem">${r.Condition}</div>` : ''}
       </td>
 
@@ -10773,7 +10774,7 @@ function sdConfirm() {
   card.SoldDate      = _todayISO(); // a Sell Drawer sale is always "now" — no backdating
 
   closeSellDrawer();
-  updateCardInDB(card).then(() => gtcrRegisterOnSale(card)); // GTCR registration needs status=Sold persisted first
+  updateCardInDB(card); // also schedules a GTCR reconcile, which removes this card's registration
   recordShowTransaction(card);   // ← fire-and-forget, no await
   syncBuyerView();
   updateStats();
@@ -12326,6 +12327,7 @@ function loginAsSeller(handle) {
       await hydrateCardShowMembership(handle);
       updateReport(); // safe even if the seller isn't on the Report tab yet
       gtcrHydrateLatestChecks(); // badges + "Registry clear" markers survive a reload
+      gtcrHydrateRegistrations(); // "Registered with GTCR" markers
       _gsDataReady = true; // the checklist waits for real data, so returning sellers never see a false "0 done"
       gsRender();
     }
@@ -12466,6 +12468,7 @@ async function signOut() {
   currentSeller        = null;
   window._currentAdminUid = null;
   _gtcrConsentState = null;
+  clearTimeout(_gtcrReconcileTimer);
   _gsDataReady = false;
   _gsLastDone  = null;
   _tipsHideAll();
@@ -18220,6 +18223,10 @@ const TIPS = {
     body: 'Pick a show at the top to see just that show. Use Log a Manual Sale for a sale you made outside CardShow. Tap 📤 on a sale to make a picture to share.' },
   firstSale: { title: 'Sale recorded',
     body: 'The card is marked Sold and your totals are updated. Every sale is listed in the Report tab.' },
+  gtcrRegistered: { title: 'Registered with GTCR',
+    body: 'Your graded cards are now registered to you in the Global Trading Card Registry. When you sell or delete a card, CardShow removes its registration for you.' },
+  gtcrClaim: { title: 'Claim your GTCR registrations',
+    body: 'Your graded cards are registered with the Global Trading Card Registry under your CardShow email. Create a free account at thegtcr.com with that same email to see them and manage reports.' },
   live: { title: 'Your cards are live',
     body: 'Buyers at the show can now see your cards. Set out your table QR code so they can scan it and browse.' },
 };
@@ -19846,7 +19853,8 @@ async function recordManualSaleTransaction(card, showId) {
 // ════════════════════════════════════════════════════════
 // TRUST CHECK VIA GTCR (Global Trading Card Registry)
 // Phase 1: cert-number stolen/lost lookup on insert + re-check on publish.
-// Phase 3/4: consent-gated registration on sale, deregistration on revoke.
+// Phase 3/4: with consent, graded cards are registered while the seller owns
+// them and deregistered on sale, delete, change, trust flag or consent withdrawal.
 // All GTCR calls go through netlify/functions/gtcr-trust-check.js (read key)
 // and gtcr-registry.js (partner write key). See CLAUDE.md for the full spec.
 // ════════════════════════════════════════════════════════
@@ -19876,13 +19884,15 @@ const GTCR_CONSENT_UI_ENABLED = GTCR_CONSENT_UI_LAUNCHED || _gtcrConsentTestOver
 
 // Bump the version whenever the copy changes. The consent-evidence log records
 // which version the seller saw. DRAFT, pending legal review before launch.
-const GTCR_CONSENT_COPY_VERSION = '2026-09-25-draft1';
+const GTCR_CONSENT_COPY_VERSION = '2026-09-30-draft2';
 const GTCR_CONSENT_COPY =
-  'Register the graded cards I sell on CardShow with the Global Trading Card Registry (GTCR). ' +
-  'When I complete a sale of a graded card, CardShow will send GTCR its cert number, grading company, ' +
-  'description, grade, and my email so the card has a provenance record. This applies to every graded ' +
-  'card I sell through CardShow while this setting is on, not just one sale. I can turn it off at any time, ' +
-  'and CardShow will then ask GTCR to remove the registrations it made for me.';
+  'Register the graded cards in my CardShow inventory with the Global Trading Card Registry (GTCR). ' +
+  'While this is on, CardShow sends GTCR the cert number, grading company, grade and description of each ' +
+  'graded card I have in CardShow, along with my name and email, so each card is recorded under me. ' +
+  'If a registered card is ever reported stolen or lost, that record helps show it was mine. ' +
+  'When I sell or delete a card, CardShow asks GTCR to remove its registration. GTCR may link these ' +
+  'registrations to a GTCR account that uses the same email. I can turn this off at any time, and CardShow ' +
+  'will then ask GTCR to remove every registration it made for me.';
 
 const GTCR_RECHECK_WINDOW_MS = 60 * 1000; // an insert-time check this recent covers the publish re-check
 
@@ -19952,6 +19962,7 @@ function gtcrCheckCard(card, dbId, trigger) {
         renderSellerTable(getSellerInventory());
         syncBuyerView();
       }
+      if ((card._trustFlag || null) !== (prev || null)) gtcrScheduleReconcile();
       return card._trustFlag;
     } catch (err) {
       console.warn('[gtcr] trust check failed (fail open):', err.message);
@@ -20167,30 +20178,83 @@ async function gtcrHydrateLatestChecks() {
   }
 }
 
-// ── Registration on sale (Phase 4) ──
-// Fire-and-forget after a sale's updateCardInDB() resolves, so the server
-// sees status = 'Sold'. The server re-verifies consent, ownership, sold
-// status and cert/grader, so this is only a cheap client-side pre-filter.
-function gtcrRegisterOnSale(card) {
-  if (!GTCR_CONSENT_UI_ENABLED || !_gtcrConsentState?.consented) return;
-  if (!card?._dbId || !String(card['Cert #'] || '').trim() || !card.Grader) return;
-  (async () => {
-    try {
-      const res = await fetch('/.netlify/functions/gtcr-registry', {
-        method: 'POST',
-        headers: await _gtcrHeaders(),
-        body: JSON.stringify({ action: 'register', inventory_id: card._dbId }),
-      });
-      const data = await res.json();
-      if (!data.success) console.warn('[gtcr] register skipped:', data.error);
-    } catch (err) {
-      console.warn('[gtcr] register failed:', err.message);
+// ── Registration lifecycle (Phase 4, Option A) ──
+// The server's 'reconcile' action compares the seller's inventory with their
+// active GTCR registrations: it registers graded cards the seller owns and
+// removes registrations for cards that were sold, deleted, changed, flagged,
+// or when consent is withdrawn. Every inventory write schedules one
+// (debounced), so the triggers here don't need to know why something changed.
+let _gtcrReconcileTimer = null;
+let _gtcrReconciling = false;
+let _gtcrReconcileAgain = false;
+
+function _gtcrNeedsReconcile() {
+  const st = _gtcrConsentState;
+  if (!GTCR_CONSENT_UI_ENABLED || !st || currentRole !== 'seller') return false;
+  return st.consented || st.registered_count > 0;
+}
+
+function gtcrScheduleReconcile(delay = 2500) {
+  if (!_gtcrNeedsReconcile()) return;
+  clearTimeout(_gtcrReconcileTimer);
+  _gtcrReconcileTimer = setTimeout(() => gtcrReconcile(), delay);
+}
+
+// Calls reconcile until nothing is left or nothing moves (each call works
+// within a time budget). onProgress gets running totals.
+async function gtcrReconcile(onProgress) {
+  if (_gtcrReconciling) { _gtcrReconcileAgain = true; return null; }
+  _gtcrReconciling = true;
+  const totals = { registered: 0, removed: 0, failed: 0, unlinked: false, authError: false };
+  try {
+    for (let i = 0; i < 100; i++) {
+      let data;
+      try { data = await _gtcrRegistryCall('reconcile'); } catch (_) { break; }
+      if (!data.success) { console.warn('[gtcr] reconcile:', data.error); break; }
+      totals.registered += data.registered || 0;
+      totals.removed    += data.removed || 0;
+      totals.failed     += data.failed || 0;
+      totals.unlinked    = totals.unlinked || !!data.unlinked;
+      totals.authError   = totals.authError || !!data.auth_error;
+      if (onProgress) onProgress(totals, data.remaining || 0);
+      if (!data.remaining || data.auth_error || (!data.registered && !data.removed)) break;
     }
-  })();
+    if (totals.failed) console.warn('[gtcr] some registrations did not go through:', totals);
+    await gtcrHydrateRegistrations();
+    if (_gtcrConsentState?.consented) {
+      if (totals.unlinked) showTipOnce('gtcrClaim');
+      else if (totals.registered) showTipOnce('gtcrRegistered');
+    }
+  } finally {
+    _gtcrReconciling = false;
+    if (_gtcrReconcileAgain) { _gtcrReconcileAgain = false; gtcrScheduleReconcile(500); }
+  }
+  return totals;
+}
+
+// Marks cards with an active registration, for the "Registered with GTCR"
+// line under the cert #. Reads gtcr_registrations (RLS: own rows only).
+async function gtcrHydrateRegistrations() {
+  if (!GTCR_CONSENT_UI_ENABLED || typeof db === 'undefined' || currentRole !== 'seller') return;
+  try {
+    const { data, error } = await db.from('gtcr_registrations')
+      .select('inventory_id').eq('status', 'registered');
+    if (error) return;
+    const ids = new Set((data || []).map(r => r.inventory_id).filter(Boolean));
+    let changed = false;
+    for (const c of getSellerInventory()) {
+      const on = !!(c._dbId && ids.has(c._dbId));
+      if (!!c._gtcrRegistered !== on) { c._gtcrRegistered = on; changed = true; }
+    }
+    if (_gtcrConsentState) _gtcrConsentState.registered_count = ids.size;
+    if (changed) renderSellerTable(getSellerInventory());
+  } catch (err) {
+    console.warn('[gtcr] hydrate registrations failed:', err.message);
+  }
 }
 
 // ── Consent (Phase 3) ──
-let _gtcrConsentState = null; // { consented, consented_at, enabled, pending_removals }
+let _gtcrConsentState = null; // { consented, consented_at, enabled, registered_count, pending_removals }
 
 async function _gtcrRegistryCall(action, extra) {
   const res = await fetch('/.netlify/functions/gtcr-registry', {
@@ -20207,20 +20271,12 @@ async function gtcrLoadConsentState() {
     const data = await _gtcrRegistryCall('status');
     if (!data.success) return null;
     _gtcrConsentState = data;
-    // A revoke that was interrupted mid-drain resumes here.
-    if (!data.consented && data.pending_removals > 0) _gtcrDrainRemovals();
+    // Catches anything missed while offline, and resumes an interrupted removal.
+    gtcrScheduleReconcile(1500);
     return data;
   } catch (err) {
     console.warn('[gtcr] consent status failed:', err.message);
     return null;
-  }
-}
-
-async function _gtcrDrainRemovals() {
-  for (let i = 0; i < 20; i++) {
-    let data;
-    try { data = await _gtcrRegistryCall('drain_removals'); } catch (_) { return; }
-    if (!data.success || !data.remaining || (!data.removed && data.failed)) return;
   }
 }
 
@@ -20236,7 +20292,7 @@ function _gtcrRenderConsent() {
   toggle.checked = !!st?.consented; // never pre-checked: only true with a stored 'granted' event
   toggle.disabled = !st || (!st.enabled && !st.consented);
   status.textContent = !st ? 'Loading…'
-    : st.consented ? `On since ${new Date(st.consented_at).toLocaleDateString()}`
+    : st.consented ? `On since ${new Date(st.consented_at).toLocaleDateString()} · ${st.registered_count || 0} registered`
     : !st.enabled ? 'Not available yet'
     : 'Off';
   if (!GTCR_CONSENT_UI_LAUNCHED) status.textContent += ' · test mode';
@@ -20248,8 +20304,18 @@ async function gtcrConsentToggleChanged(el) {
   try {
     const data = await _gtcrRegistryCall(turningOn ? 'grant' : 'revoke', { consent_copy_version: GTCR_CONSENT_COPY_VERSION });
     if (!data.success) throw new Error(data.error || 'failed');
-    if (!turningOn && data.remaining > 0) await _gtcrDrainRemovals();
-    showToast(turningOn ? '✓ GTCR registration turned on' : 'GTCR registration turned off — removing past registrations');
+    await gtcrLoadConsentState();
+    _gtcrRenderConsent();
+    clearTimeout(_gtcrReconcileTimer);
+    showToast(turningOn ? 'Registering your graded cards with GTCR…' : 'Removing your GTCR registrations…');
+    const totals = await gtcrReconcile((t, remaining) => {
+      const n = turningOn ? t.registered : t.removed;
+      if (remaining) showToast(`${turningOn ? 'Registering' : 'Removing'}… ${n} done, ${remaining} to go`);
+    });
+    if (totals?.authError) showToast('⚠️ GTCR is not accepting CardShow\'s key right now. Please contact support.', 'var(--danger)');
+    else if (totals) showToast(turningOn
+      ? `✓ ${totals.registered} graded card${totals.registered === 1 ? '' : 's'} registered with GTCR`
+      : `✓ ${totals.removed} registration${totals.removed === 1 ? '' : 's'} removed from GTCR`);
   } catch (err) {
     showToast('⚠️ Could not update GTCR setting — try again', 'var(--danger)');
   }
@@ -20318,6 +20384,7 @@ async function insertCardToDB(card, sellerIdOverride) {
     // GTCR Trust Check on insert. Fire-and-forget; _autoPublishCardToShow()
     // awaits this same in-flight check instead of starting a second one.
     gtcrCheckCard(card, data.id, 'insert');
+    gtcrScheduleReconcile(); // registers it with GTCR, if the seller opted in
     return data.id; // return the UUID so we can store it on the card
   } catch(e) {
     console.warn('insertCardToDB error:', e.message);
@@ -20346,6 +20413,7 @@ async function deleteCardFromDB(card) {
       .delete()
       .eq('id', card._dbId);
     if (error) console.warn('deleteCardFromDB failed:', error.message);
+    else gtcrScheduleReconcile(); // removes its GTCR registration
   } catch(e) {
     console.warn('deleteCardFromDB error:', e.message);
   }
@@ -20388,6 +20456,7 @@ async function updateCardInDB(card) {
     }
 
     if (error) console.warn('Update failed:', error.message);
+    else gtcrScheduleReconcile(); // sale or cert/grader edit may change its GTCR registration
   } catch(e) {
     console.warn('updateCardInDB error:', e.message);
   }
@@ -20628,6 +20697,7 @@ async function upsertCardsToDB(cards) {
     if (insertedIds.length === toInsertCards.length) {
       toInsertCards.forEach((card, i) => { if (insertedIds[i] && !card._dbId) card._dbId = insertedIds[i]; });
       _gtcrQueueChecks(toInsertCards);
+      gtcrScheduleReconcile(5000);
     }
 
     // Auto-publish newly inserted cards to the active show. Skip updates —
