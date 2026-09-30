@@ -19883,7 +19883,9 @@ function _gtcrConsentTestOverride() {
 const GTCR_CONSENT_UI_ENABLED = GTCR_CONSENT_UI_LAUNCHED || _gtcrConsentTestOverride();
 
 // Bump the version whenever the copy changes. The consent-evidence log records
-// which version the seller saw. DRAFT, pending legal review before launch.
+// which version the seller saw, and consent to an older version stops counting,
+// so sellers must agree again. Also update CURRENT_CONSENT_COPY_VERSION in
+// netlify/functions/gtcr-registry.js. DRAFT, pending legal review before launch.
 const GTCR_CONSENT_COPY_VERSION = '2026-09-30-draft2';
 const GTCR_CONSENT_COPY =
   'Register the graded cards in my CardShow inventory with the Global Trading Card Registry (GTCR). ' +
@@ -20254,7 +20256,7 @@ async function gtcrHydrateRegistrations() {
 }
 
 // ── Consent (Phase 3) ──
-let _gtcrConsentState = null; // { consented, consented_at, enabled, registered_count, pending_removals }
+let _gtcrConsentState = null; // { consented, consent_outdated, consented_at, enabled, registered_count, pending_removals }
 
 async function _gtcrRegistryCall(action, extra) {
   const res = await fetch('/.netlify/functions/gtcr-registry', {
@@ -20294,6 +20296,7 @@ function _gtcrRenderConsent() {
   status.textContent = !st ? 'Loading…'
     : st.consented ? `On since ${new Date(st.consented_at).toLocaleDateString()} · ${st.registered_count || 0} registered`
     : !st.enabled ? 'Not available yet'
+    : st.consent_outdated ? 'The wording above has changed since you agreed. Tick the box to agree to it.'
     : 'Off';
   if (!GTCR_CONSENT_UI_LAUNCHED) status.textContent += ' · test mode';
 }

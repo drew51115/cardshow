@@ -42,6 +42,10 @@ const RECONCILE_BUDGET_MS = 6500; // stay under Netlify's ~10s synchronous ceili
 const FAILED_RETRY_MS  = 6 * 60 * 60 * 1000; // don't retry a rejected registration for 6h
 const DESCRIPTION_MAX  = 300;
 const REGISTRATION_ENABLED = () => process.env.GTCR_REGISTRATION_ENABLED === 'true';
+// The consent wording sellers currently agree to. Must match
+// GTCR_CONSENT_COPY_VERSION in app.html. A 'granted' event for an older
+// version doesn't count: the seller has to agree to the new wording.
+const CURRENT_CONSENT_COPY_VERSION = '2026-09-30-draft2';
 
 // Duplicated from gtcr-trust-check.js (no shared module in this repo).
 // GTCR's enum lists "BGS (Beckett)"; we send "BGS". Confirm with GTCR which
@@ -92,6 +96,11 @@ async function latestConsent(db, sellerId) {
   return data || null;
 }
 
+// Consent counts only when the latest event is 'granted' for the current wording.
+function consentIsCurrent(consent) {
+  return consent?.action === 'granted' && consent.consent_copy_version === CURRENT_CONSENT_COPY_VERSION;
+}
+
 async function countActiveRegistrations(db, sellerId) {
   const { count } = await db.from('gtcr_registrations')
     .select('id', { count: 'exact', head: true })
@@ -101,12 +110,13 @@ async function countActiveRegistrations(db, sellerId) {
 
 async function handleStatus(db, user) {
   const consent = await latestConsent(db, user.id);
-  const consented = consent?.action === 'granted';
+  const consented = consentIsCurrent(consent);
   const active = await countActiveRegistrations(db, user.id);
   return json(200, {
     success: true,
     enabled: REGISTRATION_ENABLED(),
     consented,
+    consent_outdated: consent?.action === 'granted' && !consented,
     consented_at: consented ? consent.occurred_at : null,
     consent_copy_version: consented ? consent.consent_copy_version : null,
     registered_count: active,
@@ -132,9 +142,12 @@ async function handleGrant(db, user, event, input) {
   if (!REGISTRATION_ENABLED()) return json(403, { success: false, error: 'registration_disabled' });
   const copyVersion = String(input.consent_copy_version || '').trim();
   if (!copyVersion) return json(400, { success: false, error: 'consent_copy_version required' });
+  if (copyVersion !== CURRENT_CONSENT_COPY_VERSION) {
+    return json(409, { success: false, error: 'consent_copy_outdated' });
+  }
   const current = await latestConsent(db, user.id);
-  if (current?.action === 'granted') {
-    // Already consented. Keep the original moment instead of overwriting it.
+  if (consentIsCurrent(current)) {
+    // Already consented to this wording. Keep the original moment.
     return json(200, { success: true, consented: true, consented_at: current.occurred_at });
   }
   const ev = await recordConsentEvent(db, user, event, 'granted', copyVersion);
@@ -248,7 +261,7 @@ async function registerOne(db, user, card, grader, consent, sellerName) {
 async function reconcile(db, user) {
   const started = Date.now();
   const consent = await latestConsent(db, user.id);
-  const consented = consent?.action === 'granted';
+  const consented = consentIsCurrent(consent);
   const canRegister = consented && REGISTRATION_ENABLED();
 
   const inventory = await loadInventory(db, user.id);

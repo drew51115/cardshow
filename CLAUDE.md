@@ -4116,6 +4116,10 @@ under the seller's email, which recorded the card as belonging to the person who
   Tips: `gtcrClaim` when GTCR returns `seller_linked: false` (create a free GTCR account with the
   same email to see the registrations), otherwise `gtcrRegistered`.
 - **Consent copy** is `2026-09-30-draft2` and describes this model. Still a draft for legal review.
+  Consent only counts for the current wording: `CURRENT_CONSENT_COPY_VERSION` in `gtcr-registry.js`
+  must match `GTCR_CONSENT_COPY_VERSION` in app.html. A `granted` event for an older version is treated
+  as no consent (status returns `consent_outdated: true`, nothing new is registered, existing
+  registrations are removed) until the seller ticks the box again. Bump both when the copy changes.
 - **Grader mapping:** PSA, BGS, CGC, SGC, HGA, TAG, AGS, C3G, DGA; anything else (Arena Club, GMA)
   is sent as `Other`. GTCR lists Beckett as "BGS (Beckett)"; we send `BGS` pending their confirmation.
 - **Endpoints:** `thegtcr.com/functions/*` and `true-safe-card-vault.base44.app/functions/*` answer
