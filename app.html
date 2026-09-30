@@ -12468,6 +12468,7 @@ async function signOut() {
   currentSeller        = null;
   window._currentAdminUid = null;
   _gtcrConsentState = null;
+  _gtcrChecksHydrated = null;
   clearTimeout(_gtcrReconcileTimer);
   _gsDataReady = false;
   _gsLastDone  = null;
@@ -20159,7 +20160,12 @@ async function gtcrResolveFlag(resolution) {
 // Restores each card's latest Trust Check result on login, so tiers and the
 // "Registry clear" marker survive a reload. Reads cert_trust_checks (RLS:
 // seller's own rows). Silent on failure, e.g. before the migration has run.
-async function gtcrHydrateLatestChecks() {
+let _gtcrChecksHydrated = null; // resolves once the latest checks are loaded (awaited before registering)
+function gtcrHydrateLatestChecks() {
+  _gtcrChecksHydrated = _gtcrHydrateLatestChecks();
+  return _gtcrChecksHydrated;
+}
+async function _gtcrHydrateLatestChecks() {
   if (typeof db === 'undefined') return;
   const byId = new Map(getSellerInventory().filter(c => c._dbId).map(c => [c._dbId, c]));
   if (!byId.size) return;
@@ -20173,6 +20179,7 @@ async function gtcrHydrateLatestChecks() {
       const card = byId.get(row.inventory_id);
       if (!card || card._gtcrReport) continue; // rows are newest-first; keep only the latest
       card._gtcrReport = { ...row, success: true };
+      if (!card._gtcrCheckedAt) card._gtcrCheckedAt = Date.parse(row.checked_at) || null;
     }
     if (currentRole === 'seller') renderSellerTable(getSellerInventory());
   } catch (err) {
@@ -20202,6 +20209,22 @@ function gtcrScheduleReconcile(delay = 2500) {
   _gtcrReconcileTimer = setTimeout(() => gtcrReconcile(), delay);
 }
 
+// The server only registers a card after a clean Trust Check from the last
+// 24h (see gtcr-registry.js). Re-check older cards first, so a report filed
+// since the card's last check stops it being registered.
+const GTCR_REGISTER_CHECK_MAX_AGE_MS = 23 * 60 * 60 * 1000; // a little under the server's 24h
+async function _gtcrRefreshChecksForRegistration() {
+  if (!_gtcrConsentState?.consented) return;
+  if (_gtcrChecksHydrated) await _gtcrChecksHydrated;
+  const queue = getSellerInventory().filter(c => _gtcrEligible(c) && c._dbId
+    && c._trustFlag !== 'flagged' && c._trustFlag !== 'disputed'
+    && (!c._gtcrCheckedAt || Date.now() - c._gtcrCheckedAt > GTCR_REGISTER_CHECK_MAX_AGE_MS));
+  const worker = async () => {
+    while (queue.length) { const c = queue.shift(); await gtcrCheckCard(c, c._dbId, 'register'); }
+  };
+  await Promise.all([worker(), worker(), worker()]);
+}
+
 // Calls reconcile until nothing is left or nothing moves (each call works
 // within a time budget). onProgress gets running totals.
 async function gtcrReconcile(onProgress) {
@@ -20209,6 +20232,7 @@ async function gtcrReconcile(onProgress) {
   _gtcrReconciling = true;
   const totals = { registered: 0, removed: 0, failed: 0, unlinked: false, authError: false };
   try {
+    await _gtcrRefreshChecksForRegistration();
     for (let i = 0; i < 100; i++) {
       let data;
       try { data = await _gtcrRegistryCall('reconcile'); } catch (_) { break; }

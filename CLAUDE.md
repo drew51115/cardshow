@@ -4099,6 +4099,12 @@ under the seller's email, which recorded the card as belonging to the person who
   - **Removed, with a reason sent to GTCR:** `seller_consent_revoked`, `card_sold`, `card_deleted`
     (the FK sets `inventory_id` to null), `trust_report`, `card_details_changed` (cert or grader edited).
   - Removals always run. New registrations need `GTCR_REGISTRATION_ENABLED=true` and consent.
+  - A card is only registered after a **clean Trust Check from the last 24h** for its current cert
+    and grader (`cleanRecentlyChecked()`); others are reported as `awaiting_check`. Before calling
+    reconcile, the app re-checks eligible cards whose last check is over 23h old
+    (`_gtcrRefreshChecksForRegistration()`, trigger `'register'`). A failed check leaves the card
+    unregistered (registration fails closed, unlike publishing). Found in testing: a card checked
+    once, before the `card_status` fix, stayed marked clean despite a lost report and got registered.
   - Works within a 6.5s budget and returns `remaining`; the client calls again until it's 0 or
     nothing moved. A 401 from GTCR stops the run and returns `auth_error` (it's our key, not the card).
   - A rejection (400/403/5xx) is stored as a `failed` row and not retried for 6 hours.

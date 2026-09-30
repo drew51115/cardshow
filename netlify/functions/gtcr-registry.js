@@ -28,7 +28,9 @@
 //   GTCR_REGISTRATION_ENABLED is 'true' and the seller's latest consent event
 //   is 'granted'. Works within a time budget and returns what's left; the
 //   client calls again until remaining is 0 or nothing moves.
-//   → { success, registered, removed, failed, remaining, unlinked, auth_error }
+//   A card is only registered after a clean Trust Check from the last 24h for
+//   its current cert and grader; the rest are reported as awaiting_check.
+//   → { success, registered, removed, failed, remaining, unlinked, awaiting_check, auth_error }
 //
 // Env: GTCR_WRITE_API_KEY, GTCR_REGISTRATION_ENABLED ('true' to allow grant +
 // register), GTCR_API_BASE, GTCR_PARTNER_ID, SUPABASE_URL, SUPABASE_SERVICE_KEY.
@@ -40,6 +42,9 @@ const GTCR_PARTNER_ID  = process.env.GTCR_PARTNER_ID || 'cardshow';
 const GTCR_TIMEOUT_MS  = 4000;
 const RECONCILE_BUDGET_MS = 6500; // stay under Netlify's ~10s synchronous ceiling
 const FAILED_RETRY_MS  = 6 * 60 * 60 * 1000; // don't retry a rejected registration for 6h
+// A card is only registered after a clean Trust Check this recent, for the
+// card's current cert and grader. The app re-checks older cards first.
+const TRUST_CHECK_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const DESCRIPTION_MAX  = 300;
 const REGISTRATION_ENABLED = () => process.env.GTCR_REGISTRATION_ENABLED === 'true';
 // The consent wording sellers currently agree to. Must match
@@ -177,6 +182,33 @@ async function loadInventory(db, sellerId) {
   return rows;
 }
 
+// Inventory ids whose latest Trust Check is recent, clean, and for the card's
+// current cert and grader. A card with no such check isn't registered yet.
+async function cleanRecentlyChecked(db, cards) {
+  const ok = new Set();
+  const since = new Date(Date.now() - TRUST_CHECK_MAX_AGE_MS).toISOString();
+  const byId = new Map(cards.map(c => [c.id, c]));
+  const ids = [...byId.keys()];
+  for (let i = 0; i < ids.length; i += 200) {
+    const { data, error } = await db.from('cert_trust_checks')
+      .select('inventory_id, cert_number, grading_company, matched, checked_at')
+      .in('inventory_id', ids.slice(i, i + 200))
+      .gte('checked_at', since)
+      .order('checked_at', { ascending: false });
+    if (error) { console.warn('[gtcr-registry] trust check lookup failed:', error.message); continue; }
+    const seen = new Set();
+    for (const row of data || []) {
+      if (seen.has(row.inventory_id)) continue; // newest first: only the latest counts
+      seen.add(row.inventory_id);
+      const card = byId.get(row.inventory_id);
+      const sameSlab = certKey(row.cert_number, row.grading_company)
+        === certKey(card.cert_number, toGtcrGrader(card.grader));
+      if (!row.matched && sameSlab) ok.add(row.inventory_id);
+    }
+  }
+  return ok;
+}
+
 function describe(card) {
   return String(card.card_title
     || [card.year, card.card_set, card.player, card.parallel].filter(Boolean).join(' ')).slice(0, DESCRIPTION_MAX);
@@ -302,9 +334,17 @@ async function reconcile(db, user) {
       await db.from('gtcr_registrations').update({ inventory_id: want.card.id }).eq('id', r.id);
     }
   }
-  const toRegister = !canRegister ? [] : [...desiredByKey.entries()]
+  let toRegister = !canRegister ? [] : [...desiredByKey.entries()]
     .filter(([k, w]) => !activeKeys.has(k) && !recentFailures.has(`${w.card.id}|${k}`))
     .map(([, w]) => w);
+  // Only register cards with a recent clean Trust Check. The others wait until
+  // the app re-checks them; they are not counted as remaining.
+  let awaitingCheck = 0;
+  if (toRegister.length) {
+    const checked = await cleanRecentlyChecked(db, toRegister.map(w => w.card));
+    awaitingCheck = toRegister.filter(w => !checked.has(w.card.id)).length;
+    toRegister = toRegister.filter(w => checked.has(w.card.id));
+  }
 
   let sellerName = null;
   if (toRegister.length) {
@@ -337,6 +377,7 @@ async function reconcile(db, user) {
   if (authError) console.error('[gtcr-registry] GTCR rejected the write key (401). Check GTCR_WRITE_API_KEY.');
   return {
     registered, removed, failed, unlinked,
+    awaiting_check: awaitingCheck,
     auth_error: authError,
     remaining: Math.max(0, toRemove.length + toRegister.length - done),
   };
