@@ -1,6 +1,18 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script>
+  // Supabase sends password-reset links to the Site URL (this page). Forward the
+  // link, hash and all, to app.html, which shows the set-new-password form.
+  (function () {
+    var h = window.location.hash || '';
+    var q = window.location.search || '';
+    if (/[#&]type=recovery(&|$)/.test(h) || /[#&]error_code=/.test(h) ||
+        /[?&]type=recovery(&|$)/.test(q) || /[?&]error_code=/.test(q)) {
+      window.location.replace('/app.html' + window.location.search + h);
+    }
+  })();
+</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CardShow — The Future of Card Shows</title>

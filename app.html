@@ -11,11 +11,36 @@
 <!-- XLSX library — self-hosted to avoid CDN dependency -->
 <script src="/xlsx.full.min.js" defer></script>
 <script>
+  // Password-reset links. Must run BEFORE createClient(): supabase-js reads the
+  // recovery tokens out of the URL hash and then clears it during init, so this
+  // is the only point where the raw link is still visible. Implicit flow (pinned
+  // below) delivers recovery as #access_token=…&type=recovery, or as
+  // #error=…&error_code=otp_expired&error_description=… for a stale/used link.
+  // Read by initPage(), which skips its sign-out for a recovery link.
+  window._authRedirect = (function () {
+    try {
+      const h = new URLSearchParams((window.location.hash || '').replace(/^#/, ''));
+      const q = new URLSearchParams(window.location.search);
+      if (h.get('error_code') || h.get('error_description') || q.get('error_code')) {
+        return { mode: 'error', message: h.get('error_description') || h.get('error_code') || q.get('error_description') || q.get('error_code') };
+      }
+      if (h.get('type') === 'recovery' && h.get('access_token')) return { mode: 'recovery' };
+      // Custom email templates link straight to the site with ?token_hash=…&type=recovery
+      // instead of going through Supabase's /verify. Exchanged via verifyOtp() later.
+      if (q.get('token_hash') && q.get('type') === 'recovery') return { mode: 'recovery', tokenHash: q.get('token_hash') };
+      if (q.get('type') === 'recovery') return { mode: 'recovery' };
+    } catch (e) {}
+    return null;
+  })();
+
   const { createClient } = supabase;
   const SUPABASE_URL = 'SUPABASE_URL_PLACEHOLDER';
   const db = createClient(
     SUPABASE_URL,
-    'SUPABASE_ANON_KEY_PLACEHOLDER'
+    'SUPABASE_ANON_KEY_PLACEHOLDER',
+    // Pinned to supabase-js v2's own default. PKCE would deliver auth links as
+    // ?code=…, the same param the buyer show-join deep link (initPage) uses.
+    { auth: { flowType: 'implicit' } }
   );
 </script>
 <style>
@@ -1545,6 +1570,13 @@
     font-size: 0.78rem; color: var(--danger);
     margin-bottom: 0.75rem; min-height: 1.1rem;
     font-family: 'DM Mono', monospace;
+  }
+
+  /* Set-new-password view (password-reset link landing) — sits above #authOverlay */
+  #pwResetOverlay { z-index: 950; }
+  .pw-reset-title {
+    font-family: 'Bebas Neue', sans-serif; font-size: 1.5rem;
+    letter-spacing: 0.06em; color: var(--text); margin-bottom: 0.4rem;
   }
 
   /* Nav user badge */
@@ -4382,6 +4414,21 @@
     <div style="margin-top:1.2rem">
       <button class="btn btn-ghost" style="width:100%;justify-content:center" onclick="enterAsBuyer()">Browse as Buyer →</button>
     </div>
+  </div>
+</div>
+
+<!-- ═══════════════ SET NEW PASSWORD (password-reset link) ═══════════════ -->
+<!-- After #authOverlay on purpose: submitAuth() finds its button with
+     querySelector('.auth-box .btn-primary'), which must match the sign-in box first. -->
+<div class="auth-overlay hidden" id="pwResetOverlay">
+  <div class="auth-box">
+    <div class="auth-logo">Card<span>Show</span></div>
+    <div class="pw-reset-title">Set a New Password</div>
+    <div class="auth-hint">Choose a new password for your account. At least 8 characters.</div>
+    <input class="auth-field" id="pwResetNew" type="password" placeholder="New password" autocomplete="new-password" oninput="pwResetValidate()">
+    <input class="auth-field" id="pwResetConfirm" type="password" placeholder="Confirm new password" autocomplete="new-password" oninput="pwResetValidate()" onkeydown="if(event.key==='Enter')submitPasswordReset()">
+    <div class="auth-error" id="pwResetError"></div>
+    <button class="btn btn-primary" id="pwResetSubmit" style="width:100%" onclick="submitPasswordReset()" disabled>Save New Password →</button>
   </div>
 </div>
 
@@ -20646,16 +20693,118 @@ async function upsertCardsToDB(cards) {
   }
 }
 
+// ── PASSWORD RESET (landing from a recovery email link) ──
+// Only the landing side. Resets are sent from the Supabase dashboard; there is
+// no self-service "Forgot password?" in the app yet.
+const PW_RESET_MIN_LENGTH = 8;
+
+function _clearAuthRedirectUrl() {
+  window.history.replaceState({}, '', window.location.pathname);
+  window._authRedirect = null;
+}
+
+async function _startPasswordRecovery() {
+  // getSession() waits for supabase-js to finish reading the link.
+  let session = null;
+  const tokenHash = window._authRedirect && window._authRedirect.tokenHash;
+  try {
+    if (tokenHash) {
+      ({ data: { session } } = await db.auth.verifyOtp({ token_hash: tokenHash, type: 'recovery' }));
+    } else {
+      ({ data: { session } } = await db.auth.getSession());
+    }
+  } catch (e) {}
+  _clearAuthRedirectUrl();
+  if (!session) {
+    await db.auth.signOut().catch(() => {});
+    const errEl = document.getElementById('authError');
+    if (errEl) errEl.textContent = 'That password reset link is invalid or has expired. Ask for a new one.';
+    return;
+  }
+  document.getElementById('pwResetOverlay').classList.remove('hidden');
+  pwResetValidate();
+  const el = document.getElementById('pwResetNew');
+  if (el) el.focus();
+}
+
+// Live check: enables Save only when both fields match and meet the minimum.
+function pwResetValidate() {
+  const pass = document.getElementById('pwResetNew').value || '';
+  const conf = document.getElementById('pwResetConfirm').value || '';
+  const err  = document.getElementById('pwResetError');
+  const btn  = document.getElementById('pwResetSubmit');
+  let msg = '';
+  if (pass && pass.length < PW_RESET_MIN_LENGTH) msg = `Password must be at least ${PW_RESET_MIN_LENGTH} characters.`;
+  else if (conf && pass !== conf) msg = 'Passwords don\'t match.';
+  if (err) err.textContent = msg;
+  const ok = pass.length >= PW_RESET_MIN_LENGTH && pass === conf;
+  if (btn) btn.disabled = !ok;
+  return ok;
+}
+
+async function submitPasswordReset() {
+  if (!pwResetValidate()) return;
+  const btn = document.getElementById('pwResetSubmit');
+  const err = document.getElementById('pwResetError');
+  const pass = document.getElementById('pwResetNew').value;
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    const { data, error } = await db.auth.updateUser({ password: pass });
+    if (error) throw error;
+    // Recovery leaves a valid session — go straight into the app.
+    const uid = data.user.id;
+    const { data: seller } = await db.from('sellers').select('handle').eq('id', uid).maybeSingle();
+    let adminRow = null;
+    if (!seller) ({ data: adminRow } = await db.from('admins').select('id').eq('id', uid).maybeSingle());
+    document.getElementById('pwResetOverlay').classList.add('hidden');
+    document.getElementById('pwResetNew').value = '';
+    document.getElementById('pwResetConfirm').value = '';
+    btn.textContent = 'Save New Password →';
+    if (seller) {
+      loginAsSeller(seller.handle);
+      showToast('✓ Password updated');
+    } else if (adminRow) {
+      window._currentAdminUid = uid;
+      loginAsAdmin();
+      showToast('✓ Password updated');
+    } else {
+      await db.auth.signOut().catch(() => {});
+      const errEl = document.getElementById('authError');
+      if (errEl) { errEl.style.color = '#4ade80'; errEl.textContent = '✓ Password updated — sign in with your new password.'; }
+    }
+  } catch (e) {
+    // Fields are left as typed so the seller can retry without retyping.
+    if (err) err.textContent = (e && e.message) || 'Could not update your password. Please try again.';
+    btn.disabled = false; btn.textContent = 'Save New Password →';
+  }
+}
+
 // Always show the login page on fresh navigation — clear any lingering Supabase session.
 // Deep-link: ?code=XXXX → skip login, enter buyer mode, join show directly.
 // Awaits signOut so the Supabase client is in a clean anon state before querying.
 (async function initPage() {
   window.scrollTo(0, 0); // ensure page starts at top on mobile
+
+  // Password-reset link: supabase-js has already turned it into a short-lived
+  // recovery session. Signing out here would destroy it, so branch off first.
+  if (window._authRedirect && window._authRedirect.mode === 'recovery') {
+    _startPasswordRecovery();
+    return;
+  }
+
   await db.auth.signOut().catch(() => {});
+
+  if (window._authRedirect && window._authRedirect.mode === 'error') {
+    _clearAuthRedirectUrl();
+    const errEl = document.getElementById('authError');
+    if (errEl) errEl.textContent = 'That email link is invalid or has expired. Ask for a new one.';
+    return;
+  }
 
   const params = new URLSearchParams(window.location.search);
   const code = params.get('code');
   if (!code) return; // normal login page — nothing more to do
+  if (params.get('type') === 'recovery') return; // an auth link, not a show access code
 
   window.history.replaceState({}, '', window.location.pathname);
 

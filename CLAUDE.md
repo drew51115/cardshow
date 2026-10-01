@@ -11,7 +11,7 @@ CardShow is a sports card show inventory platform connecting buyers, sellers, an
 
 ## File Structure
 ```
-index.html                        → Landing/marketing page (formerly landing.html)
+index.html                        → Landing/marketing page (formerly landing.html); forwards password-reset link hashes to app.html
 app.html                          → Main platform — seller/admin/buyer views (formerly index.html)
 show.html                         → Public show page (short link show.html?id=<showId>, loads from the DB; old hash-encoded links still open)
 seller-browse.html                → Buyer-facing seller storefront (QR scan destination)
@@ -4256,6 +4256,64 @@ reloaded the live cards from the DB on open, so the card data in the link was on
   page was opened from an old long link.
 - **Unchanged:** old hash links keep working. Table numbers show exactly as before, since the
   old hash carried them too.
+
+## Seller Password Reset — landing side (session 2026-10-01)
+
+Before this, a reset link sent from the Supabase dashboard dropped the seller on the landing
+page with no way to set a new password. There was no recovery handling at all: no
+`updateUser()`, no `onAuthStateChange`, and `initPage()` signed out every session on load.
+
+### Link shape (checked against the live supabase-js v2 bundle, not a test email)
+- `createClient()` had no options, and v2's default `flowType` is `implicit`. It is now pinned
+  explicitly: `{ auth: { flowType: 'implicit' } }`. PKCE would deliver auth links as `?code=…`,
+  the same param the buyer show-join deep link uses.
+- Implicit recovery arrives as `#access_token=…&refresh_token=…&type=recovery`. An expired or
+  used link arrives as `#error=access_denied&error_code=otp_expired&error_description=…`.
+- supabase-js reads the hash during init, saves a recovery session, then **clears the hash**.
+  So the head script captures the raw link into `window._authRedirect` *before*
+  `createClient()` runs (`{mode:'recovery'}` / `{mode:'error', message}` / `null`).
+- Custom email templates can skip `/verify` and link straight to the site as
+  `?token_hash=…&type=recovery`. That shape is also captured (`{mode:'recovery', tokenHash}`),
+  and `_startPasswordRecovery()` exchanges it with `db.auth.verifyOtp({ token_hash, type:
+  'recovery' })`. Errors can also arrive as query params (`?error_code=…`).
+- **Not yet confirmed with a real email.** Click one real reset link and check that the URL
+  matches one of the shapes above.
+
+### Flow
+- **`index.html`** — a reset sent from the dashboard goes to the Site URL, which is the landing
+  page. A tiny `<head>` script forwards any `type=recovery` or `error_code=` link (hash or
+  query string) to `/app.html` with both intact. No dashboard redirect change is required for this path.
+- **`initPage()`**:
+  - Recovery link: calls `_startPasswordRecovery()` and returns **before** `signOut()`.
+  - Error link: signs out as usual, clears the URL, shows "That email link is invalid or has
+    expired" in `#authError`.
+  - `?code=` with `type=recovery` is never treated as a show access code.
+  - Every other load is unchanged.
+- **`_startPasswordRecovery()`** awaits `getSession()`, which waits for supabase-js to finish
+  reading the link. It then clears the URL (`_clearAuthRedirectUrl()`) and opens
+  `#pwResetOverlay`. With no session, it shows the expired message instead.
+- **`#pwResetOverlay`** reuses `.auth-overlay`/`.auth-box`/`.auth-field` and has z-index 950,
+  above `#authOverlay`. It must stay *after* `#authOverlay` in the DOM, because `submitAuth()`
+  finds its button with `querySelector('.auth-box .btn-primary')`.
+  - `pwResetValidate()` enables Save only when the two fields match and are at least
+    `PW_RESET_MIN_LENGTH` (8) characters.
+- **`submitPasswordReset()`** calls `db.auth.updateUser({ password })`. Recovery leaves a valid
+  session, so it then:
+  - looks up `sellers` by uid → `loginAsSeller(handle)`;
+  - otherwise looks up `admins` → `loginAsAdmin()`;
+  - otherwise signs out and asks the user to sign in.
+  On error, the message shows inline and both fields keep their values.
+- **Refresh after a reset:** the URL was already cleaned, so the page loads normally (login
+  page). Nothing re-shows.
+
+### Open
+- **8-character minimum:** sign-up still allows 6. Confirm the rule, and the Supabase
+  project's own minimum.
+- **No self-service "Forgot password?" (Option B).** Resets still start from the Supabase
+  dashboard. Option A would add `resetPasswordForEmail(email, { redirectTo:
+  'https://getcardshow.com/app.html' })` to the sign-in box. That `redirectTo` must be in
+  Authentication → URL Configuration → Redirect URLs, or Supabase falls back to the Site URL.
+  The Site URL fallback still works today, through the `index.html` forward.
 
 ## Show Configuration (Demo Data)
 - **MLP Card Show** — Oct 17-18, 2026 · Grand Hyatt Tampa Bay, FL · Code: MLPTPA (primary demo, shown to buyers without code)
