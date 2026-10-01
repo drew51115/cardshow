@@ -21,10 +21,13 @@
     try {
       const h = new URLSearchParams((window.location.hash || '').replace(/^#/, ''));
       const q = new URLSearchParams(window.location.search);
-      if (h.get('error_code') || h.get('error_description')) {
-        return { mode: 'error', message: h.get('error_description') || h.get('error_code') };
+      if (h.get('error_code') || h.get('error_description') || q.get('error_code')) {
+        return { mode: 'error', message: h.get('error_description') || h.get('error_code') || q.get('error_description') || q.get('error_code') };
       }
       if (h.get('type') === 'recovery' && h.get('access_token')) return { mode: 'recovery' };
+      // Custom email templates link straight to the site with ?token_hash=…&type=recovery
+      // instead of going through Supabase's /verify. Exchanged via verifyOtp() later.
+      if (q.get('token_hash') && q.get('type') === 'recovery') return { mode: 'recovery', tokenHash: q.get('token_hash') };
       if (q.get('type') === 'recovery') return { mode: 'recovery' };
     } catch (e) {}
     return null;
@@ -20703,7 +20706,14 @@ function _clearAuthRedirectUrl() {
 async function _startPasswordRecovery() {
   // getSession() waits for supabase-js to finish reading the link.
   let session = null;
-  try { ({ data: { session } } = await db.auth.getSession()); } catch (e) {}
+  const tokenHash = window._authRedirect && window._authRedirect.tokenHash;
+  try {
+    if (tokenHash) {
+      ({ data: { session } } = await db.auth.verifyOtp({ token_hash: tokenHash, type: 'recovery' }));
+    } else {
+      ({ data: { session } } = await db.auth.getSession());
+    }
+  } catch (e) {}
   _clearAuthRedirectUrl();
   if (!session) {
     await db.auth.signOut().catch(() => {});
