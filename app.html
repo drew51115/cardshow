@@ -2152,6 +2152,7 @@
   }
   .tc-dropdown-skip:hover { text-decoration: underline; }
   .tc-verify-badge { font-family: 'DM Mono', monospace; font-size: 9px; letter-spacing: 0.08em; }
+  .tc-catalog-status { margin: 0.25rem 0 0.6rem; padding: 0.45rem 0.65rem; border: 1px solid var(--border); border-radius: 8px; background: var(--card); }
 
 
   /* ── MANAGE SELLERS INLINE PANEL ── */
@@ -2389,6 +2390,9 @@
 
   /* Photo Scan & Card Fingerprinting — low-confidence field flag + dupe banner */
   .scan-verify { border-color: #f5a623 !important; background: rgba(245,166,35,0.08) !important; }
+  .scan-cert-confirm { display:flex; align-items:center; gap:0.5rem; margin-top:0.35rem; font-size:0.68rem; color:var(--muted); font-family:'DM Sans',sans-serif; }
+  .scan-cert-confirm img { max-width:140px; max-height:56px; border-radius:4px; border:1px solid var(--accent); object-fit:contain; background:#000; cursor:zoom-in; }
+  .scan-cert-confirm img.zoomed { max-width:100%; max-height:none; cursor:zoom-out; }
   .scan-dupe-warning {
     font-size: 12px; color: #f5a623; background: rgba(245,166,35,0.08);
     border: 1px solid rgba(245,166,35,0.3); border-radius: 8px;
@@ -5254,7 +5258,7 @@
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#f5c842" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
             SCAN CARD
           </button>
-          <div style="font-size:0.62rem;color:#5a6585;font-family:'DM Mono',monospace;text-align:center;margin-top:0.3rem">Photo · barcode · PSA · CGC · SGC</div>
+          <div style="font-size:0.62rem;color:#5a6585;font-family:'DM Mono',monospace;text-align:center;margin-top:0.3rem">Photo · raw or graded</div>
           <div style="text-align:center;margin-top:0.5rem">
             <a href="#" onclick="event.preventDefault();closeAddCard();document.getElementById('bulkScanInput').click()"
               style="font-size:0.72rem;color:var(--gold);font-family:'DM Mono',monospace;text-decoration:underline;cursor:pointer">
@@ -5289,6 +5293,7 @@
           <input class="show-input" id="ac_subcategory_other" placeholder="Enter game/franchise name" style="margin:0">
         </div>
 
+        <div id="acCatalogStatus" class="tc-catalog-status" style="display:none"></div>
         <div id="ac_player_row" style="display:grid;grid-template-columns:1fr 1fr;gap:0.55rem">
           <div style="position:relative">
             <div class="section-label" style="margin-bottom:0.3rem">Player</div>
@@ -5963,6 +5968,7 @@
 
         <!-- Duplicate fingerprint warning — non-blocking, injected by posShowReview() -->
         <div id="posDupeWarning" class="scan-dupe-warning" style="display:none"></div>
+        <div id="posCatalogStatus" class="tc-catalog-status" style="display:none"></div>
 
         <!-- Review fields -->
         <div class="pos-fields">
@@ -7721,6 +7727,12 @@ function handleFileUpload(input) {
 // Kept around so the review modal can show the original photo for reference
 // while the seller validates each identified card against it.
 let _bulkScanSourceImage = null;
+// Full-resolution decode of the showcase photo, kept for the slab-label pass
+// (_runSlabLabelPass) to crop each graded slab from. Released (.close()) in
+// closeBulkScanReview() — a 12MP bitmap is ~48MB of memory.
+let _bulkScanOriginalBitmap = null;
+let _bulkScanSnapshots = {};   // card id → scan snapshot for scan_corrections
+const BULK_SCAN_UPLOAD_MAX = 1568;
 
 function _readFileAsDataURL(file) {
   return new Promise((resolve, reject) => {
@@ -7776,7 +7788,7 @@ async function handleBulkScanFile(input) {
   // than blocking it. Non-critical: if it fails, the review modal just
   // won't show a reference image.
   _bulkScanSourceImage = null;
-  _readFileAsDataURL(file).then(dataUrl => { _bulkScanSourceImage = dataUrl; }).catch(() => {});
+  _bulkScanReleaseBitmap();
 
   // Full-screen overlay is the primary "this is working" signal — visible
   // regardless of sidebar/mobile state, unlike a toast (fades in 3s) or a
@@ -7804,8 +7816,32 @@ async function handleBulkScanFile(input) {
       return;
     }
 
+    // Decode once at full resolution (EXIF orientation applied), keep it for
+    // the slab-label pass, and upload a 1568px copy. The API downsizes to
+    // that anyway; doing it here fixes the 5MB server rejection and
+    // guarantees the returned bbox coordinates match our own pixel space.
+    let uploadBlob = file;
+    let uploadName = file.name || 'showcase.jpg';
+    try {
+      const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+      _bulkScanOriginalBitmap = bitmap;
+      const { canvas } = _bulkScanDrawScaled(bitmap, 0, 0, bitmap.width, bitmap.height, BULK_SCAN_UPLOAD_MAX);
+      uploadBlob = await new Promise((resolve, reject) =>
+        canvas.toBlob(b => b ? resolve(b) : reject(new Error('encode failed')), 'image/jpeg', 0.85));
+      uploadName = 'showcase.jpg';
+      _bulkScanSourceImage = canvas.toDataURL('image/jpeg', 0.85);
+    } catch (e) {
+      // Decoder unavailable (very old browser / HEIC) — send the original
+      // file as before; the slab-label pass just won't run.
+      console.warn('[bulkScan] client resize failed, uploading original:', e?.message);
+      _bulkScanReleaseBitmap();
+      uploadBlob = file;
+      _readFileAsDataURL(file).then(dataUrl => { _bulkScanSourceImage = dataUrl; }).catch(() => {});
+    }
+    if (controller.signal.aborted) return;
+
     const formData = new FormData();
-    formData.append('image', file);
+    formData.append('image', uploadBlob, uploadName);
 
     const res = await fetch(`${SUPABASE_URL}/functions/v1/bulk-scan`, {
       method: 'POST',
@@ -7863,10 +7899,25 @@ function renderBulkScanReview(cards) {
     return;
   }
 
+  // Text comes back exactly as printed (McDavid, C.J. Stroud, LeBron) —
+  // never re-case it. A stamped serial (45/99) is folded into the free-text
+  // Parallel field, matching the other scan paths.
+  _bulkScanSnapshots = {};
   bulkScanReviewCards = cards.map(c => {
-    const player   = _titleCase(c.player);
-    const set      = _titleCase(c.set);
-    const parallel = _titleCase(c.parallel);
+    const player   = String(c.player ?? '').trim();
+    const set      = String(c.set ?? '').trim();
+    const serial   = String(c.serialNumber ?? '').trim();
+    const run      = String(c.printRun ?? '').trim();
+    const numbered = serial && run ? `${serial}/${run}` : (run ? `/${run}` : '');
+    const parallel = [String(c.parallel ?? '').trim(), numbered].filter(Boolean).join(' ');
+    _bulkScanSnapshots[c.id] = {
+      values: {
+        player, year: c.year, set, card_number: c.cardNumber, parallel,
+        grader: c.grader, grade: _numericGrade(c.grade), cert: c.certNumber,
+      },
+      confidence: {},
+      flags: [],
+    };
     return {
       ...c,
       player,
@@ -7896,9 +7947,18 @@ function renderBulkScanReview(cards) {
   showTipOnce('bulkReview');
   document.body.style.overflow = 'hidden';
 
-  _autoVerifyPsaCards(bulkScanReviewCards); // fire-and-forget, runs in the background while the seller reviews
-  _runCorrectionPass(bulkScanReviewCards);  // fire-and-forget, raw-card player-name correction via catalog cross-check
-  _runTcapiValidation(bulkScanReviewCards); // fire-and-forget, per-card VERIFIED/UNVERIFIED badge + fingerprint refresh
+  // Fire-and-forget. The re-read pass goes first; the catalog checks wait for
+  // it so they work from the re-read values rather than pass 1's guesses.
+  const reviewCards = bulkScanReviewCards;
+  _runSlabLabelPass(reviewCards)
+    .catch(e => console.warn('[slabPass]', e?.message))
+    .finally(() => {
+      if (bulkScanReviewCards !== reviewCards) return; // modal closed / new scan
+      _bsFlagScanDuplicates();           // same cert / card # on two different cards
+      _autoVerifyPsaCards(reviewCards);  // PSA auto-verify (currently disabled by flag)
+      _runCorrectionPass(reviewCards);   // raw-card player-name correction via catalog cross-check
+      _runTcapiValidation(reviewCards);  // per-card Trading Card API catalog check + badge
+    });
 }
 
 // Shows the original uploaded photo as a small clickable thumbnail in the
@@ -7969,6 +8029,605 @@ async function _autoVerifyPsaCards(cards) {
   }
 }
 
+// ── RE-READ PASS (bulk scan pass 2) ──
+// Pass 1 (bulk-scan Edge Function) sees the whole showcase at 1568px, where
+// each card's text is a few hundred pixels — too small to read cert digits or
+// small names reliably. This pass crops every card it can locate from the
+// ORIGINAL full-res photo using pass 1's bbox and re-reads it through
+// scan-card.js:
+//   - graded slabs → mode 'label' (grader / grade / cert only — small output,
+//     returns well inside Netlify's 10s limit)
+//   - raw cards    → mode 'card' (player / year / set / card # / parallel)
+// Fire-and-forget after the grid renders; never blocks review or save. The
+// catalog checks (correction pass, Trading Card API badge) run after this so
+// they check the re-read values, not pass 1's guesses.
+const SLAB_PASS_CONCURRENCY = 4;
+const SLAB_PASS_TIMEOUT_MS  = 12000; // server gives up at 9.3s; leave room for network/cold start
+const SLAB_PASS_MIN_EDGE    = 300;   // crop smaller than this → too small to read
+const SLAB_PASS_MIN_CONF    = 0.7;
+let _slabPassGen = 0;                // bumped to cancel an in-flight pass
+
+function _bulkScanReleaseBitmap() {
+  if (_bulkScanOriginalBitmap) {
+    try { _bulkScanOriginalBitmap.close(); } catch {}
+    _bulkScanOriginalBitmap = null;
+  }
+}
+
+// Draws a region of `source` into a new canvas, long edge ≤ maxLong. maxUp > 1
+// lets a small region be enlarged (small label text reads better bigger).
+function _bulkScanDrawScaled(source, sx, sy, sw, sh, maxLong, maxUp = 1) {
+  const ratio = Math.min(maxUp, maxLong / Math.max(sw, sh));
+  const w = Math.max(1, Math.round(sw * ratio)), h = Math.max(1, Math.round(sh * ratio));
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  canvas.getContext('2d').drawImage(source, sx, sy, sw, sh, 0, 0, w, h);
+  return { canvas, width: w, height: h };
+}
+
+// bbox (0-1, relative to the uploaded copy — same aspect as the original)
+// → pixel rect in the original bitmap, padded `pad` per side and clamped.
+// Pass 1's boxes come from a 1568px image and are often off by a fair margin,
+// so the default pad is generous; the re-read is told to read only the
+// center card, which keeps neighbors at the edges from counting.
+function _bulkScanBboxRect(bbox, bmp, pad = 0.18) {
+  const W = bmp.width, H = bmp.height;
+  let x = bbox.x * W, y = bbox.y * H, w = bbox.w * W, h = bbox.h * H;
+  x -= w * pad; y -= h * pad; w *= 1 + 2 * pad; h *= 1 + 2 * pad;
+  const x0 = Math.max(0, Math.floor(x)), y0 = Math.max(0, Math.floor(y));
+  const x1 = Math.min(W, Math.ceil(x + w)), y1 = Math.min(H, Math.ceil(y + h));
+  return { x: x0, y: y0, w: Math.max(0, x1 - x0), h: Math.max(0, y1 - y0) };
+}
+
+function _bsAppendNote(block, text) {
+  let notesEl = block.querySelector('.bulkscan-notes');
+  if (!notesEl) {
+    notesEl = document.createElement('div');
+    notesEl.className = 'bulkscan-notes';
+    block.appendChild(notesEl);
+  }
+  if (!notesEl.textContent.includes(text)) {
+    notesEl.innerHTML += (notesEl.innerHTML ? '<br>' : '') + `📝 ${_bsEsc(text)}`;
+  }
+}
+
+function _showSlabPassProgress(done, total, label = 'Re-reading cards') {
+  let wrap = document.getElementById('slabPassProgressWrap');
+  if (!wrap) {
+    wrap = document.createElement('div');
+    wrap.id = 'slabPassProgressWrap';
+    wrap.style.cssText = 'margin:0 0 0.75rem;display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap';
+    wrap.innerHTML = `
+      <span id="slabPassProgressText" style="font-size:0.78rem;color:var(--muted);font-family:'DM Mono',monospace"></span>
+      <button onclick="_slabPassGen++;_hideSlabPassProgress();showToast('Stopped re-reading cards','var(--muted)')"
+        style="font-size:0.72rem;padding:0.2rem 0.55rem;border-radius:5px;border:1px solid var(--border);
+          background:transparent;color:var(--muted);cursor:pointer;font-family:'DM Sans',sans-serif">Cancel</button>`;
+    const body = document.getElementById('bulkScanReviewBody');
+    if (body && body.parentElement) body.parentElement.insertBefore(wrap, body);
+  }
+  const txt = document.getElementById('slabPassProgressText');
+  if (txt) txt.textContent = `${label}… ${done} of ${total}`;
+}
+
+function _hideSlabPassProgress() {
+  document.getElementById('slabPassProgressWrap')?.remove();
+}
+
+// True when the seller has changed this field since pass 1 filled it.
+function _bsFieldEdited(block, field, pass1Value) {
+  const el = block.querySelector(`[data-field="${field}"]`);
+  if (!el) return true;
+  const live = field === 'grader' && el.value === '__OTHER__'
+    ? (block.querySelector('[data-field="graderOther"]')?.value || '')
+    : el.value;
+  return String(live ?? '').trim().toLowerCase() !== String(pass1Value ?? '').trim().toLowerCase();
+}
+
+function _bsSetGrader(block, grader) {
+  const sel = block.querySelector('[data-field="grader"]');
+  if (!sel) return;
+  const known = VALID_GRADERS.find(g => g.toUpperCase() === String(grader).trim().toUpperCase());
+  sel.value = known || '__OTHER__';
+  const other = block.querySelector('[data-field="graderOther"]');
+  if (!known && other) other.value = String(grader).trim();
+  bsToggleGraderRow(sel);
+  sel.classList.add('db-filled');
+  setTimeout(() => sel.classList.remove('db-filled'), 8000);
+}
+
+// Marks the cert input for manual entry (pass-1 value cleared unless the
+// seller already typed one) and shows the label crop beside it.
+function _bsCertNeedsEntry(block, card, labelBase64, flags, certValue, confidence) {
+  const input = block.querySelector('[data-field="certNumber"]');
+  if (!input) return;
+  if (!certValue && !_bsFieldEdited(block, 'certNumber', card.certNumber)) input.value = '';
+  if (certValue) input.value = certValue;
+  _scanShowCertConfirm(input, certValue || '', confidence, flags, labelBase64);
+}
+
+async function _runSlabLabelPass(cards) {
+  const gen = ++_slabPassGen;
+  const bmp = _bulkScanOriginalBitmap;
+  const isGraded = c => !!String(c.grader || '').trim();
+
+  if (!bmp) {
+    // No full-res source (client decode failed) — never trust a pass-1 cert
+    // read from the downsized whole-showcase photo without the seller's eye.
+    cards.filter(isGraded).forEach(c => {
+      const block = document.querySelector(`.bulkscan-card-block[data-card-id="${CSS.escape(c.id)}"]`);
+      if (block && c.certNumber) _bsCertNeedsEntry(block, c, null, [], c.certNumber, 0);
+    });
+    return;
+  }
+
+  // Graded slabs first — cert numbers are what the seller can't fix by eye.
+  const targets = [...cards.filter(isGraded), ...cards.filter(c => !isGraded(c) && c.bbox)];
+  if (!targets.length) return;
+  const pool = async (items, fn, onDone) => {
+    const queue = items.slice();
+    const worker = async () => {
+      while (queue.length) {
+        if (gen !== _slabPassGen) return;
+        const c = queue.shift();
+        try { await fn(c); } catch (e) { console.warn('[slabPass]', c.id, e?.message); }
+        onDone();
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(SLAB_PASS_CONCURRENCY, items.length) }, worker));
+  };
+
+  // 1. Locate each card in a wide region around pass 1's rough box. Pass 1's
+  //    boxes come from the whole showcase at 1568px and are often off by most
+  //    of a card; finding one described card among a few neighbors is far
+  //    more accurate.
+  let done = 0;
+  const withBox = targets.filter(c => c.bbox);
+  if (withBox.length) {
+    _showSlabPassProgress(0, withBox.length, 'Finding cards');
+    await pool(withBox, async c => { c._loc = await _bulkLocate(c, bmp); },
+      () => { done++; if (gen === _slabPassGen) _showSlabPassProgress(done, withBox.length, 'Finding cards'); });
+    if (gen !== _slabPassGen) return;
+  }
+
+  // 2. Two entries that land on the same physical card are one card listed
+  //    twice: keep the more confident, uncheck the other.
+  const dupes = _bsDedupeLocated(targets);
+
+  // 3. Read each card from a tight full-res crop (+ a label close-up for slabs).
+  const toRead = targets.filter(c => !dupes.has(c.id));
+  done = 0;
+  _showSlabPassProgress(0, toRead.length);
+  await pool(toRead, async c => {
+    const loc = c._loc;
+    const slabSeen = loc?.found ? loc.isSlab : null;   // null = unknown
+    if (isGraded(c) && slabSeen === false && (loc.confidence ?? 0) >= 0.6) {
+      const block = document.querySelector(`.bulkscan-card-block[data-card-id="${CSS.escape(c.id)}"]`);
+      if (block) _bsMarkRaw(block, c);
+      await _rawPassOne(c, bmp, gen, false);
+    } else if (isGraded(c)) {
+      await _slabPassOne(c, bmp, gen);
+    } else {
+      await _rawPassOne(c, bmp, gen, slabSeen === true);
+    }
+  }, () => { done++; if (gen === _slabPassGen) _showSlabPassProgress(done, toRead.length); });
+  if (gen === _slabPassGen) _hideSlabPassProgress();
+}
+
+// Rect (pixels in the original bitmap) from a 0-1 box inside `region`,
+// padded and clamped. Returns null for a box that can't be a card.
+function _bulkRectFromBox(region, box, bmp, padX, padY) {
+  const ok = box && [box.x, box.y, box.w, box.h].every(v => typeof v === 'number' && isFinite(v))
+    && box.w > 0.03 && box.h > 0.03 && box.w <= 1.05 && box.h <= 1.05;
+  if (!ok) return null;
+  let x = region.x + box.x * region.w, y = region.y + box.y * region.h;
+  let w = box.w * region.w, h = box.h * region.h;
+  x -= w * padX; y -= h * padY; w *= 1 + 2 * padX; h *= 1 + 2 * padY;
+  const x0 = Math.max(0, Math.floor(x)), y0 = Math.max(0, Math.floor(y));
+  const x1 = Math.min(bmp.width, Math.ceil(x + w)), y1 = Math.min(bmp.height, Math.ceil(y + h));
+  if (x1 - x0 < 8 || y1 - y0 < 8) return null;
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}
+
+function _bulkRectB64(bmp, rect, maxLong, maxUp = 1, q = 0.9) {
+  return _bulkScanDrawScaled(bmp, rect.x, rect.y, rect.w, rect.h, maxLong, maxUp).canvas
+    .toDataURL('image/jpeg', q).split(',')[1];
+}
+
+// What pass 1 (or the seller) says the card is, for the locate prompt.
+function _bulkTargetText(c) {
+  const block = document.querySelector(`.bulkscan-card-block[data-card-id="${CSS.escape(c.id)}"]`);
+  const v = f => block?.querySelector(`[data-field="${f}"]`)?.value.trim() || '';
+  const grader = v('grader') === '__OTHER__' ? v('graderOther') : v('grader');
+  return [
+    v('player') || c.player, [v('year') || c.year, v('set') || c.set].filter(Boolean).join(' '),
+    v('cardNumber') ? `card #${v('cardNumber')}` : '', v('parallel'),
+    grader ? `in a ${grader} ${v('grade')} slab` : 'raw card (no grading slab)',
+  ].filter(Boolean).join('; ');
+}
+
+async function _bulkLocate(c, bmp) {
+  // Region: pass 1's box padded by a full card width/height on each side.
+  const region = _bulkScanBboxRect(c.bbox, bmp, 1.0);
+  if (!region || Math.max(region.w, region.h) < SLAB_PASS_MIN_EDGE) return null;
+  const b64 = _bulkRectB64(bmp, region, 1568, 1, 0.85);
+  const result = await _bulkPostScanCard(b64, 'locate', null, c.id, { target: _bulkTargetText(c) });
+  let loc = result?.success ? result.location : null;
+  if (!loc || !loc.found) return { found: false };
+  let cardRect = _bulkRectFromBox(region, loc.card_box, bmp, 0.05, 0.04);
+  if (!cardRect) return { found: false };
+  // A "card" covering most of a region that holds several cards is a bad box.
+  if ((loc.card_count || 1) > 1 && cardRect.w * cardRect.h > region.w * region.h * 0.8) return { found: false };
+
+  // Second, tighter pass around the first answer. In tests on a 10-slab
+  // showcase this took the worst boxes from ~0.3 to ~0.65 overlap and every
+  // label crop then held a readable cert number.
+  let fromRegion = region;
+  const pad = 0.35;
+  const r2 = {
+    x: Math.max(0, Math.floor(cardRect.x - cardRect.w * pad)),
+    y: Math.max(0, Math.floor(cardRect.y - cardRect.h * pad)),
+  };
+  r2.w = Math.min(bmp.width, Math.ceil(cardRect.x + cardRect.w * (1 + pad))) - r2.x;
+  r2.h = Math.min(bmp.height, Math.ceil(cardRect.y + cardRect.h * (1 + pad))) - r2.y;
+  if (r2.w > 0 && r2.h > 0) {
+    const res2 = await _bulkPostScanCard(_bulkRectB64(bmp, r2, 1568, 1, 0.85), 'locate', null, c.id, { target: _bulkTargetText(c) });
+    const loc2 = res2?.success ? res2.location : null;
+    const rect2 = loc2?.found ? _bulkRectFromBox(r2, loc2.card_box, bmp, 0.04, 0.03) : null;
+    if (rect2) { loc = loc2; cardRect = rect2; fromRegion = r2; }
+  }
+  return {
+    found: true, region: fromRegion, cardRect,
+    labelRect: loc.is_slab ? _bulkRectFromBox(fromRegion, loc.label_box, bmp, 0.12, 0.3) : null,
+    isSlab: !!loc.is_slab, confidence: typeof loc.confidence === 'number' ? loc.confidence : 0.5,
+  };
+}
+
+// Same physical card located twice → uncheck the less confident entry.
+function _bsDedupeLocated(cards) {
+  const iou = (a, b) => {
+    const x0 = Math.max(a.x, b.x), y0 = Math.max(a.y, b.y);
+    const x1 = Math.min(a.x + a.w, b.x + b.w), y1 = Math.min(a.y + a.h, b.y + b.h);
+    const inter = Math.max(0, x1 - x0) * Math.max(0, y1 - y0);
+    return inter / (a.w * a.h + b.w * b.h - inter || 1);
+  };
+  const dupes = new Set();
+  const located = cards.filter(c => c._loc?.found);
+  const blocks = [...document.querySelectorAll('.bulkscan-card-block')];
+  const idxOf = c => blocks.findIndex(b => b.dataset.cardId === c.id) + 1;
+  for (let i = 0; i < located.length; i++) {
+    for (let j = i + 1; j < located.length; j++) {
+      const a = located[i], b = located[j];
+      if (dupes.has(a.id) || dupes.has(b.id)) continue;
+      if (iou(a._loc.cardRect, b._loc.cardRect) < 0.5) continue;
+      const [keep, drop] = (b._loc.confidence > a._loc.confidence) ? [b, a] : [a, b];
+      dupes.add(drop.id);
+      const block = document.querySelector(`.bulkscan-card-block[data-card-id="${CSS.escape(drop.id)}"]`);
+      const cb = block?.querySelector('[data-field="included"]');
+      if (cb && cb.checked) { cb.checked = false; bsToggleInclude(cb); }
+      if (block) _bsAppendNote(block, `Looks like the same card as card ${idxOf(keep)} in the photo — unchecked. Tick it again if it's a different card.`);
+    }
+  }
+  return dupes;
+}
+
+// Posts one image (plus an optional label close-up) to scan-card.
+async function _bulkPostScanCard(imageB64, mode, labelB64, cardId, extra = {}, attempt = 1) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), SLAB_PASS_TIMEOUT_MS);
+  let result = null;
+  const t0 = performance.now();
+  try {
+    const res = await fetch('/.netlify/functions/scan-card', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image_base64: imageB64, media_type: 'image/jpeg', mode,
+        label_image_base64: labelB64 || undefined, from_showcase: true, ...extra }),
+      signal: ctrl.signal,
+    });
+    result = res.ok ? await res.json() : { success: false, error: `http_${res.status}` };
+  } catch (e) {
+    result = { success: false, error: e?.name === 'AbortError' ? 'client_timeout' : 'network_error' };
+  } finally { clearTimeout(timer); }
+  if (!result?.success) {
+    console.warn('[slabPass] re-read failed', { card: cardId, mode, attempt, label: !!labelB64, error: result?.error,
+      server_ms: result?.elapsed_ms, client_ms: Math.round(performance.now() - t0) });
+    // One retry: timeouts, rate limits and cold starts are usually transient.
+    if (attempt === 1 && result?.error !== 'parse_error') {
+      await new Promise(r => setTimeout(r, result?.error === 'rate_limited' ? 3000 : 1200));
+      return _bulkPostScanCard(imageB64, mode, labelB64, cardId, extra, 2);
+    }
+  } else if (window.CARDSHOW_DEBUG) {
+    console.log('[slabPass]', cardId, mode, labelB64 ? '+label' : '', 'server', result.elapsed_ms, 'ms, client', Math.round(performance.now() - t0), 'ms', result.card);
+  }
+  return result;
+}
+
+// Two cards in one scan can't share a cert #, and two different players
+// can't share a card # from the same set — one of each pair was read off the
+// wrong card. Flags both and says which card it collides with.
+function _bsFlagScanDuplicates() {
+  const blocks = [...document.querySelectorAll('.bulkscan-card-block')];
+  const val = (b, f) => b.querySelector(`[data-field="${f}"]`)?.value.trim() || '';
+  const idx = b => blocks.indexOf(b) + 1;
+  const norm = s => s.toLowerCase().replace(/[\s#-]/g, '');
+  const flag = (b, f, note) => {
+    const el = b.querySelector(`[data-field="${f}"]`);
+    if (el) { el.classList.add('scan-verify'); el.title = note; }
+    _bsAppendNote(b, note);
+  };
+  const byCert = new Map(), byNum = new Map();
+  blocks.forEach(b => {
+    const cert = norm(val(b, 'certNumber'));
+    if (cert && val(b, 'grader')) (byCert.get(cert) || byCert.set(cert, []).get(cert)).push(b);
+    const num = norm(val(b, 'cardNumber'));
+    if (num && num.length >= 3 && /[a-z]/.test(num)) (byNum.get(num) || byNum.set(num, []).get(num)).push(b);
+  });
+  byCert.forEach(list => {
+    if (list.length < 2) return;
+    list.forEach(b => flag(b, 'certNumber',
+      `Same cert # as card ${list.filter(o => o !== b).map(idx).join(', ')} — it belongs to only one of them`));
+  });
+  // Card # duplicates only count between different players (two copies of
+  // the same card are normal); letter codes like CPAJP are player-specific.
+  byNum.forEach(list => {
+    list.forEach(b => {
+      const others = list.filter(o => o !== b && !_bsSameName(val(o, 'player'), val(b, 'player')));
+      if (others.length) flag(b, 'cardNumber',
+        `Card # ${val(b, 'cardNumber')} is also on card ${others.map(idx).join(', ')} (${val(others[0], 'player')}) — check which card it belongs to`);
+    });
+  });
+}
+
+// Crops one card from the original bitmap and posts it to scan-card.
+// Returns { result, cropB64, rect } ({ tooSmall } when the card can't be cropped).
+async function _bulkReRead(c, bmp, mode, withLabel = mode === 'label') {
+  const loc = c._loc?.found ? c._loc : null;
+  const rect = loc ? loc.cardRect : (c.bbox ? _bulkScanBboxRect(c.bbox, bmp) : null);
+  if (!rect || Math.max(rect.w, rect.h) < SLAB_PASS_MIN_EDGE) return { tooSmall: !!rect, result: null };
+  // A located card is tightly cropped, so allow enlarging a small one.
+  const cropB64 = _bulkRectB64(bmp, rect, 1568, loc ? 2 : 1);
+  const labelB64 = withLabel && loc?.labelRect ? _bulkRectB64(bmp, loc.labelRect, 1400, 3) : null;
+  const result = await _bulkPostScanCard(cropB64, mode, labelB64, c.id);
+  return { result, cropB64, rect, labelB64, located: !!loc };
+}
+
+// Label close-up from the original bitmap. label_box is relative to the crop
+// the model saw (rect); padded 12%, enlarged up to 3x so small cert digits
+// are bigger. Falls back to the top 35% of the crop.
+function _bulkLabelCrop(bmp, rect, box) {
+  let lx, ly, lw, lh;
+  const ok = box && [box.x, box.y, box.w, box.h].every(v => typeof v === 'number' && isFinite(v))
+    && box.w > 0.05 && box.h > 0.02 && box.w <= 1.05 && box.h <= 1.05;
+  if (ok) {
+    lx = rect.x + box.x * rect.w; ly = rect.y + box.y * rect.h;
+    lw = box.w * rect.w; lh = box.h * rect.h;
+    const px = lw * 0.12, py = lh * 0.25;
+    lx -= px; ly -= py; lw += 2 * px; lh += 2 * py;
+  } else {
+    lx = rect.x; ly = rect.y; lw = rect.w; lh = rect.h * 0.35;
+  }
+  const x0 = Math.max(0, Math.floor(lx)), y0 = Math.max(0, Math.floor(ly));
+  const x1 = Math.min(bmp.width, Math.ceil(lx + lw)), y1 = Math.min(bmp.height, Math.ceil(ly + lh));
+  if (x1 - x0 < 8 || y1 - y0 < 8) return null;
+  return _bulkScanDrawScaled(bmp, x0, y0, x1 - x0, y1 - y0, 1400, 3).canvas.toDataURL('image/jpeg', 0.9).split(',')[1];
+}
+
+// Same person? Accent/case-insensitive; matches on last name so "CJ Abrams"
+// vs "C.J. Abrams" agree, but "Jared Dickey" vs "Jose Perdomo" don't.
+function _bsSameName(a, b) {
+  const n = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+    .replace(/[^a-z ]+/g, ' ').replace(/\s+(jr|sr|ii|iii|iv)$/, '').trim().split(/\s+/).filter(Boolean);
+  const x = n(a), y = n(b);
+  if (!x.length || !y.length) return true; // nothing to compare against
+  return x[x.length - 1] === y[y.length - 1] || x.join(' ').includes(y[y.length - 1]) || y.join(' ').includes(x[x.length - 1]);
+}
+
+// The re-read found no grading label on this card: it's raw. Clears pass 1's
+// grader/grade/cert (unless the seller changed them) and says why.
+function _bsMarkRaw(block, c) {
+  const snap = _bulkScanSnapshots[c.id];
+  const sel = block.querySelector('[data-field="grader"]');
+  if (sel && !_bsFieldEdited(block, 'grader', c.grader)) {
+    sel.value = '';
+    bsToggleGraderRow(sel);
+    sel.classList.add('db-filled');
+    setTimeout(() => sel.classList.remove('db-filled'), 8000);
+  }
+  const g = block.querySelector('[data-field="grade"]');
+  if (g && !_bsFieldEdited(block, 'grade', _numericGrade(c.grade))) g.value = '';
+  const cert = block.querySelector('[data-field="certNumber"]');
+  if (cert && !_bsFieldEdited(block, 'certNumber', c.certNumber)) cert.value = '';
+  _scanClearCertConfirm(block);
+  if (snap) { snap.values.grader = null; snap.values.grade = null; snap.values.cert = null; }
+  c.grader = ''; c.grade = ''; c.certNumber = '';
+  _bsAppendNote(block, 'No grading label found on this card — marked Raw. Set the grader if it is graded.');
+}
+
+async function _slabPassOne(c, bmp, gen) {
+  const findBlock = () => document.querySelector(`.bulkscan-card-block[data-card-id="${CSS.escape(c.id)}"]`);
+  if (!findBlock()) return;
+
+  const r = await _bulkReRead(c, bmp, 'label');
+  if (gen !== _slabPassGen) return;
+  let block = findBlock();      // re-check: seller may have closed/removed it
+  if (!block) return;
+
+  if (!r.cropB64) {
+    _bsCertNeedsEntry(block, c, null, [], '', 0);
+    _bsAppendNote(block, r.tooSmall
+      ? 'Slab too small in photo — shoot closer for cert numbers'
+      : 'Could not locate this slab in the photo — enter the cert # from the label');
+    return;
+  }
+
+  let sc = r.result?.success ? r.result.card : null;
+  let flags = (r.result?.flags || sc?.flags || []);
+
+  // Pass 1 called it graded, but the card in the middle of the crop has no
+  // grading label (raw card in a top loader next to a slab, etc.).
+  if (sc && sc.center_is_slab === false && !sc.cert_number && !sc.grading_company) {
+    _bsMarkRaw(block, c);
+    return;
+  }
+
+  // The label read belongs to a different card (a neighbor at the edge of a
+  // loose crop, or pass 1 mixed two cards up). Don't copy anything over.
+  const playerNow = block.querySelector('[data-field="player"]')?.value || '';
+  const labelThumb0 = r.labelB64 || _bulkLabelCrop(bmp, r.rect, sc?.label_box);
+  if (sc?.label_player && playerNow && !_bsSameName(sc.label_player, playerNow)) {
+    ['grader', 'grade'].forEach(f => _scanFlagConfidence(block.querySelector(`[data-field="${f}"]`), 0));
+    _bsCertNeedsEntry(block, c, labelThumb0, [], '', 0);
+    _bsAppendNote(block, `The nearest grading label reads "${sc.label_player}", not ${playerNow} — check this card's player, grader, grade and cert # against the photo`);
+    return;
+  }
+
+  // Cert not confidently read from the whole-slab crop → read again with a
+  // close-up of the label cut from the full-res photo.
+  const certConfident = s => s && s.cert_number && (s.confidence?.cert_number ?? 0) >= SLAB_PASS_MIN_CONF;
+  let labelB64 = labelThumb0;
+  if (sc && !certConfident(sc) && !_bsFieldEdited(block, 'certNumber', c.certNumber) && labelB64 && !r.labelB64) {
+    const r2 = await _bulkPostScanCard(r.cropB64, 'label', labelB64, c.id);
+    if (gen !== _slabPassGen) return;
+    block = findBlock();
+    if (!block) return;
+    const sc2 = r2?.success ? r2.card : null;
+    if (sc2 && sc2.center_is_slab !== false
+        && (!sc2.label_player || !playerNow || _bsSameName(sc2.label_player, playerNow))) {
+      // Keep whichever read is more sure of each field.
+      const pick = k => ((sc2.confidence?.[k] ?? 0) > (sc.confidence?.[k] ?? 0));
+      sc = { ...sc, confidence: { ...sc.confidence } };
+      if (pick('cert_number')) {
+        sc.cert_number = sc2.cert_number; sc.confidence.cert_number = sc2.confidence.cert_number;
+        flags = r2.flags || sc2.flags || [];
+      }
+      if (pick('grade')) {
+        sc.grade = sc2.grade; sc.grading_company = sc2.grading_company || sc.grading_company;
+        sc.confidence.grade = sc2.confidence.grade;
+      }
+    }
+  }
+
+  const conf = sc?.confidence || {};
+  const certFlags = flags.filter(f => /^cert_/.test(f));
+  const snap = _bulkScanSnapshots[c.id];
+
+  let graderSet = false, gradeSet = false;
+  if (sc) {
+    if (sc.grading_company && (conf.grade ?? 0) >= SLAB_PASS_MIN_CONF && !_bsFieldEdited(block, 'grader', c.grader)) {
+      _bsSetGrader(block, sc.grading_company);
+      graderSet = true;
+      if (snap) { snap.values.grader = sc.grading_company; snap.confidence.grader = conf.grade; }
+    }
+    const g = _numericGrade(sc.grade);
+    if (g && (conf.grade ?? 0) >= SLAB_PASS_MIN_CONF && !_bsFieldEdited(block, 'grade', _numericGrade(c.grade))) {
+      _bsApplyValidatedField(block, 'grade', g);
+      gradeSet = true;
+      if (snap) { snap.values.grade = g; snap.confidence.grade = conf.grade; }
+    }
+  }
+  if (!sc || !graderSet || !gradeSet) {
+    // The label couldn't be re-read: pass 1's grader/grade came from the
+    // downsized showcase photo, so ask the seller to check them.
+    ['grader', 'grade'].forEach(f => {
+      const el = block.querySelector(`[data-field="${f}"]`);
+      if (el && !_bsFieldEdited(block, f, f === 'grade' ? _numericGrade(c.grade) : c.grader) && !(f === 'grader' ? graderSet : gradeSet)) {
+        _scanFlagConfidence(el, 0);
+      }
+    });
+    if (!sc) _bsAppendNote(block, "Couldn't re-read this slab's label — check the grader, grade and cert # against the photo");
+  }
+
+  if (_bsFieldEdited(block, 'certNumber', c.certNumber)) return; // seller already typed it
+
+  const certOk = certConfident(sc) && !certFlags.length;
+  if (snap) {
+    snap.values.cert = sc?.cert_number || null;
+    snap.confidence.cert = typeof conf.cert_number === 'number' ? conf.cert_number : null;
+    snap.flags = flags;
+  }
+  if (certOk) {
+    _bsApplyValidatedField(block, 'certNumber', sc.cert_number);
+    // Readable but not certain → still show the label crop to check against
+    _scanShowCertConfirm(block.querySelector('[data-field="certNumber"]'),
+      sc.cert_number, conf.cert_number, flags, labelB64);
+  } else {
+    // Pass 2 failed or wasn't confident — never keep pass 1's guess from
+    // the downsized showcase photo. Clear it and ask for manual entry.
+    _bsCertNeedsEntry(block, c, labelB64, flags, '', conf.cert_number);
+  }
+}
+
+// Raw card: full re-read from the full-res crop. Fills only fields the seller
+// hasn't edited, and only when the re-read is confident.
+async function _rawPassOne(c, bmp, gen, slabSeen = false) {
+  const findBlock = () => document.querySelector(`.bulkscan-card-block[data-card-id="${CSS.escape(c.id)}"]`);
+  if (!findBlock()) return;
+
+  const r = await _bulkReRead(c, bmp, 'card', slabSeen);
+  if (gen !== _slabPassGen) return;
+  const block = findBlock();
+  if (!block || !r.cropB64) return;
+
+  const sc = r.result?.success ? r.result.card : null;
+  if (!sc) return; // pass-1 values stay; the catalog checks still run on them
+  if (sc.category) c.category = sc.category; // lets the catalog check skip TCG / non-sport
+  const conf = sc.confidence || {};
+  const snap = _bulkScanSnapshots[c.id];
+  const pass1 = snap?.values || {};
+  const ok = k => (conf[k] ?? 0) >= SLAB_PASS_MIN_CONF;
+
+  const titleEl = block.querySelector('[data-field="title"]');
+  const titleUntouched = titleEl && titleEl.value === (block.dataset.autoTitle ?? titleEl.value);
+  let changed = false;
+  const apply = (field, value, pass1Value, confKey, snapKey) => {
+    const v = String(value ?? '').trim();
+    if (!v || !ok(confKey)) return;
+    if (_bsFieldEdited(block, field, pass1Value)) return;
+    const el = block.querySelector(`[data-field="${field}"]`);
+    if (!el || el.value.trim() === v) return;
+    _bsApplyValidatedField(block, field, v);
+    if (snap) { snap.values[snapKey] = v; snap.confidence[snapKey] = conf[confKey]; }
+    changed = true;
+  };
+  apply('player',     sc.player_name, pass1.player,      'player_name',   'player');
+  apply('year',       sc.year,        pass1.year,        'year',          'year');
+  apply('set',        sc.set_name,    pass1.set,         'set_name',      'set');
+  apply('cardNumber', sc.card_number, pass1.card_number, 'card_number',   'card_number');
+  apply('parallel',   _scanParallelText(sc), pass1.parallel, 'parallel_name', 'parallel');
+
+  // The re-read spotted a slab pass 1 missed — fill grader/grade too, but
+  // only when it read the same player (a loose crop can catch the label of
+  // the slab next to this card).
+  const playerNow = block.querySelector('[data-field="player"]')?.value || '';
+  if (sc.grading_company && ok('grade') && !_bsFieldEdited(block, 'grader', c.grader)
+      && (slabSeen || (sc.player_name && _bsSameName(sc.player_name, playerNow)))) {
+    _bsSetGrader(block, sc.grading_company);
+    const g = _numericGrade(sc.grade);
+    if (g) _bsApplyValidatedField(block, 'grade', g);
+    if (sc.cert_number && ok('cert_number') && !(sc.flags || []).some(f => /^cert_/.test(f))) {
+      _bsApplyValidatedField(block, 'certNumber', sc.cert_number);
+    }
+    changed = true;
+  }
+
+  // Rebuild the auto-generated title from the corrected fields, unless the
+  // seller has typed their own.
+  if (changed && titleUntouched) {
+    const v = f => block.querySelector(`[data-field="${f}"]`)?.value.trim() || '';
+    const t = buildCardTitle({
+      player: v('player'), year: v('year'), cardSet: v('set'), parallel: v('parallel'),
+      cardNum: v('cardNumber'), sport: sc.category === 'TCG' ? 'TCG' : '', rawTitle: sc.card_title || '',
+    });
+    if (t) {
+      titleEl.value = t;
+      block.dataset.autoTitle = t;
+      titleEl.classList.add('db-filled');
+      setTimeout(() => titleEl.classList.remove('db-filled'), 8000);
+    }
+  }
+  if (changed) _bsUpdateFingerprintPreview(block);
+}
+
 // ── RAW-CARD CORRECTION PASS ──
 // Cross-checks year+set+cardNumber for raw (ungraded) cards against
 // CardSight/PriceCharting catalogs via /.netlify/functions/card-correction,
@@ -8029,24 +8688,24 @@ function _hideCorrectionProgress() {
 function _applyCorrectionToBlock(block, tier, correctedPlayer) {
   const el = block.querySelector('[data-field="player"]');
   if (!el) return;
+  if (!block.dataset.scanPlayer) block.dataset.scanPlayer = el.value;
   el.value = correctedPlayer;
   el.classList.add('db-filled');
   setTimeout(() => el.classList.remove('db-filled'), 8000);
 
-  if (tier === 'medium') {
-    let notesEl = block.querySelector('.bulkscan-notes');
-    if (!notesEl) {
-      notesEl = document.createElement('div');
-      notesEl.className = 'bulkscan-notes';
-      block.appendChild(notesEl);
-    }
-    notesEl.innerHTML = `📝 ${_bsEsc('Player name corrected from a catalog match — please verify before saving')}`;
-  }
+  // Always say what changed — for the high tier too — so a wrong catalog
+  // match is visible and reversible, never a silent overwrite.
+  const original = block.dataset.scanPlayer || '';
+  _bsAppendNote(block, `Player name corrected from catalog, was: ${original || '(blank)'}`
+    + (tier === 'medium' ? ' — please verify before saving' : ''));
 }
 
 async function _runCorrectionPass(cards) {
+  // Live DOM values, not the pass-1 snapshot — the re-read pass may have
+  // filled a card number or found a grader since render.
+  const liveVal = (c, f) => document.querySelector(`.bulkscan-card-block[data-card-id="${CSS.escape(c.id)}"] [data-field="${f}"]`)?.value.trim() || '';
   const targets = cards
-    .filter(c => !(c.grader || '').toString().trim() && (c.cardNumber || '').toString().trim())
+    .filter(c => !liveVal(c, 'grader') && liveVal(c, 'cardNumber'))
     .slice(0, BULK_SCAN_CORRECTION_LIMIT);
 
   if (!targets.length) return;
@@ -8151,12 +8810,11 @@ function _bsSetVerifyBadge(block, state) {
     header.insertBefore(badge, header.querySelector('.bulkscan-card-idx') || null);
   }
   if (state === 'verifying') {
-    badge.innerHTML = `<span style="display:inline-flex;align-items:center;gap:4px;color:var(--muted)"><span style="width:8px;height:8px;border:1.5px solid var(--border);border-top-color:var(--muted);border-radius:50%;display:inline-block;animation:spin 0.7s linear infinite"></span>VERIFYING</span>`;
-  } else if (state === 'verified') {
-    badge.innerHTML = `<span style="color:#1BAF7A">✓ VERIFIED</span>`;
-  } else {
-    badge.innerHTML = `<span style="color:var(--muted)">UNVERIFIED</span>`;
+    badge.innerHTML = `<span style="display:inline-flex;align-items:center;gap:4px;color:var(--muted)"><span style="width:8px;height:8px;border:1.5px solid var(--border);border-top-color:var(--muted);border-radius:50%;display:inline-block;animation:spin 0.7s linear infinite"></span>CHECKING CATALOG</span>`;
+    return;
   }
+  const t = TC_TIER_LABEL[state] || TC_TIER_LABEL.unknown;
+  badge.innerHTML = t.text ? `<span style="color:${t.color}" title="${_bsEsc(t.tip)}">${t.text}</span>` : '';
 }
 
 function _bsApplyValidatedField(block, field, value) {
@@ -8167,125 +8825,103 @@ function _bsApplyValidatedField(block, field, value) {
   setTimeout(() => el.classList.remove('db-filled'), 8000);
 }
 
-// Runs in parallel for every non-low-confidence card via Promise.allSettled —
-// never blocks the review grid, which is already rendered by the time this fires.
+// Catalog check for every card in the review grid, three at a time (each
+// card can take several Trading Card API calls). Low-confidence cards are
+// checked too — a catalog match is exactly what can raise their confidence.
 async function _runTcapiValidation(cards) {
-  const targets = cards.filter(c => (c.confidence || '').toLowerCase() !== 'low');
-  if (!targets.length) return;
-  await Promise.allSettled(targets.map(c => _tcapiValidateOneCard(c)));
+  const queue = cards.slice();
+  const worker = async () => {
+    while (queue.length) {
+      const c = queue.shift();
+      try { await _tcapiValidateOneCard(c); } catch { /* per-card, non-fatal */ }
+    }
+  };
+  await Promise.all([worker(), worker(), worker()]);
 }
+
+const _BS_CATALOG_FIELDS = { player: 'player', year: 'year', set: 'set', cardNumber: 'cardNumber', parallel: 'parallel' };
 
 async function _tcapiValidateOneCard(card) {
   const block = document.querySelector(`.bulkscan-card-block[data-card-id="${CSS.escape(card.id)}"]`);
   if (!block) return; // excluded/removed before this resolved
+  const val = f => block.querySelector(`[data-field="${f}"]`)?.value.trim() || '';
+  if (!val('player')) { _bsSetVerifyBadge(block, 'unknown'); return; }
   _bsSetVerifyBadge(block, 'verifying');
 
-  let validated = false;
+  const parallel = val('parallel');
+  const run = (parallel.match(/\b\d+\s*\/\s*(\d+)\b/) || parallel.match(/(?:^|\s)\/\s*(\d+)\b/) || [])[1] || '';
+  let r = null;
   try {
-    const playerQ = block.querySelector('[data-field="player"]')?.value.trim() || '';
-    if (!playerQ) return;
-
-    const { results: players } = await _tcSearchPlayers(playerQ);
-    if (!players.length) return;
-    validated = true; // tied to player match only, per spec — later steps are best-effort enrichment
-
-    const yearVal = block.querySelector('[data-field="year"]')?.value.trim() || '';
-    const setVal  = block.querySelector('[data-field="set"]')?.value.trim() || '';
-    // A bare set name like "Bowman Chrome" with no year is genuinely ambiguous —
-    // it substring-matches base sets, exhibits, university/draft spin-offs, and
-    // convention one-offs across many years, with no way to tell which one a
-    // seller's card is actually from. A real failure: "Bowman Chrome" with a
-    // blank Year matched "2019 Topps NSCC Bowman Chrome National Convention" —
-    // wrong, and only "won" because it happens to sort first alphabetically.
-    // Require a year to anchor the match; without one, skip enrichment rather
-    // than guess (the player-match VERIFIED badge is unaffected either way).
-    if (!setVal || !yearVal) return;
-
-    // /v1/sets?name= requires an exact full match (confirmed empirically — even
-    // a single whole word like "Bowman" alone returns nothing), so a set name
-    // Claude read off a card is very unlikely to match server-side. Filter the
-    // small (273-set) catalog client-side instead, same as the Add Card picker.
-    const allSets = await _tcGetAllSets();
-    const setLower  = setVal.toLowerCase();
-    const yearLower = yearVal.toLowerCase();
-    const candidates = allSets.filter(s => {
-      const n = (s.attributes?.name || '').toLowerCase();
-      return n.includes(setLower) && n.includes(yearLower);
+    r = await tcCatalogCheck({
+      player: val('player'), year: val('year'), set: val('set'), cardNumber: val('cardNumber'),
+      parallel, printRun: run, auto: /\bauto/i.test(parallel), category: card.category || '',
     });
-    if (!candidates.length) return;
-    // Prefer the shortest matching name when several sets share the year and
-    // substring — the base/mainline product name is virtually always a prefix
-    // of longer exhibit, insert, or regional-variant names, never the reverse.
-    const matchedSet = candidates.reduce((best, s) =>
-      (s.attributes?.name?.length || 0) < (best.attributes?.name?.length || 0) ? s : best
-    );
-
-    // Fetch checklist + parallels BEFORE writing anything to the Set field —
-    // a real failure showed why: "Upper Deck" + "2022" matched only one
-    // candidate, "2022-23 Upper Deck Black Diamond /349" (its name literally
-    // contains "Upper Deck", it's a real year match), but Black Diamond is an
-    // entirely different physical product from the plain Upper Deck set a
-    // "Young Guns" card actually belongs to -- two siblings sharing a brand
-    // name, not the same product. When the matched set DOES have real
-    // catalogued subsets (confirmed: Black Diamond has 40), require the
-    // card's stated parallel to plausibly be one of them before trusting the
-    // match at all. If the catalog has real data here and none of it lines
-    // up, that's a genuine signal the match is wrong, not just an unlucky
-    // substring collision — treat it as no match rather than apply it. A set
-    // with no subset data at all (e.g. 2025 Bowman Chrome, subset_count: 0)
-    // has nothing to cross-check against, so it's given the benefit of the
-    // doubt as before.
-    // v2's format=compact is a documented-but-buggy no-op (confirmed by the
-    // API team) -- v1 honors it, but returns the set as primary `data` with
-    // cards as bare {type,id} refs; include=checklist puts the real
-    // number/name attributes into `included`.
-    const [checklistData, parallelData] = await Promise.all([
-      tcapiGet(_tcBuildChecklistPath(matchedSet.id)),
-      tcapiGet(_tcBuildSetsPath({ parentId: matchedSet.id, perPage: 100 })),
-    ]);
-    const parallels = parallelData?.data || [];
-
-    const parallelVal = block.querySelector('[data-field="parallel"]')?.value.trim() || '';
-    if (parallelVal && parallels.length) {
-      const parallelLower = parallelVal.toLowerCase();
-      const parallelConfirmed = parallels.some(p => {
-        const n = (p.attributes?.name || '').toLowerCase();
-        return n.includes(parallelLower) || parallelLower.includes(n);
-      });
-      if (!parallelConfirmed) return;
-    }
-
-    const canonicalSet = matchedSet.attributes?.name || '';
-    if (canonicalSet && canonicalSet.toLowerCase() !== setVal.toLowerCase()) {
-      _bsApplyValidatedField(block, 'set', canonicalSet.toLowerCase());
-    }
-
-    const cardNumVal = block.querySelector('[data-field="cardNumber"]')?.value.trim() || '';
-    if (!cardNumVal) {
-      const playerLower   = playerQ.toLowerCase();
-      const matchedCard   = (checklistData?.included || [])
-        .find(cc => (cc.attributes?.name || '').toLowerCase().includes(playerLower));
-      if (matchedCard?.attributes?.number) {
-        _bsApplyValidatedField(block, 'cardNumber', matchedCard.attributes.number);
-      }
-    }
-
-    if (parallelVal && parallels.length) {
-      const parallelLower = parallelVal.toLowerCase();
-      const fuzzy = parallels.find(p => {
-        const n = (p.attributes?.name || '').toLowerCase();
-        return n === parallelLower || n.includes(parallelLower) || parallelLower.includes(n);
-      });
-      if (fuzzy && (fuzzy.attributes?.name || '').toLowerCase() !== parallelLower) {
-        _bsApplyValidatedField(block, 'parallel', fuzzy.attributes.name.toLowerCase());
-      }
-    }
   } catch (err) {
-    console.warn('[tcapiValidation] lookup failed for card', card.id, err.message);
-  } finally {
-    _bsSetVerifyBadge(block, validated ? 'verified' : 'unverified');
-    _bsUpdateFingerprintPreview(block);
+    console.warn('[catalog] lookup failed for card', card.id, err?.message);
   }
+  if (!document.body.contains(block)) return;
+  if (!r) { _bsSetVerifyBadge(block, 'unknown'); return; }
+  block._tcCatalog = r;
+
+  if (r.fillCardNumber && !val('cardNumber')) _bsApplyValidatedField(block, 'cardNumber', r.fillCardNumber);
+  // Set is never overwritten — show the catalog's name for it instead.
+  const canonicalSet = r.canonical.variant || r.canonical.set || '';
+  if ((r.tier === 'verified' || r.tier === 'matched') && canonicalSet
+      && _tcStripYear(canonicalSet) !== _tcStripYear(val('set'))) {
+    _bsAppendNote(block, `Catalog set: ${canonicalSet}`);
+  }
+  if (r.rookie) _bsAppendNote(block, 'Catalog: rookie card (RC)');
+  r.notes.forEach(n => _bsAppendNote(block, n));
+  if (r.suggestion) _bsShowCatalogSuggestion(block, r.suggestion);
+
+  // Field confidence from the catalog: a confirmed field loses its
+  // "please verify" border; a contradicted one gains it.
+  const conf = tcCatalogFieldConfidence(r);
+  Object.entries(conf).forEach(([field, c]) => {
+    const el = block.querySelector(`[data-field="${_BS_CATALOG_FIELDS[field] || field}"]`);
+    if (!el || !el.value) return;
+    el.classList.toggle('scan-verify', c < SCAN_CARD_CONFIDENCE_THRESHOLD);
+    el.title = c < SCAN_CARD_CONFIDENCE_THRESHOLD ? 'The catalog disagrees — please check' : '';
+  });
+  // Overall card confidence: a full catalog match makes it high; a
+  // contradiction makes it low.
+  const confEl = block.querySelector('.bulkscan-card-header .mapper-confidence');
+  if (confEl) {
+    const next = r.tier === 'verified' || r.tier === 'matched' ? 'high'
+      : r.tier === 'mismatch' ? 'low' : null;
+    if (next) { confEl.className = `mapper-confidence ${next}`; confEl.textContent = next; }
+  }
+  _bsSetVerifyBadge(block, r.tier);
+  _bsUpdateFingerprintPreview(block);
+}
+
+function _bsShowCatalogSuggestion(block, suggestion) {
+  block.querySelector('[data-catalog-suggestion]')?.remove();
+  const el = document.createElement('div');
+  el.setAttribute('data-catalog-suggestion', '');
+  el.className = 'bulkscan-notes';
+  el.style.color = '#f5a623';
+  el.innerHTML = `⚠ ${_bsEsc(suggestion.reason)} — <a href="#" style="color:var(--accent);text-decoration:underline">Use ${_bsEsc(suggestion.player)}</a>`;
+  el.querySelector('a').addEventListener('click', (e) => {
+    e.preventDefault();
+    const input = block.querySelector('[data-field="player"]');
+    if (!input) return;
+    const before = input.value;
+    input.value = suggestion.player;
+    input.classList.remove('scan-verify');
+    _bsApplyValidatedField(block, 'player', suggestion.player);
+    // Rebuild the title if it is still the auto-generated one.
+    const titleEl = block.querySelector('[data-field="title"]');
+    if (titleEl && before && titleEl.value === block.dataset.autoTitle) {
+      const v = f => block.querySelector(`[data-field="${f}"]`)?.value || '';
+      const t = buildCardTitle({ player: suggestion.player, year: v('year'), cardSet: v('set'),
+        cardNum: v('cardNumber'), parallel: v('parallel'), sport: '', rawTitle: '' });
+      if (t) { titleEl.value = t; block.dataset.autoTitle = t; }
+    }
+    el.remove();
+    _tcapiValidateOneCard({ id: block.dataset.cardId });
+  });
+  block.appendChild(el);
 }
 
 function _renderBulkScanSummary(cards) {
@@ -8328,9 +8964,8 @@ function _numericGrade(g) {
 // Shared between the initial card-block render and bsToggleGraderRow()'s
 // live update, so both stay in sync when the grader gets changed after render.
 function _bsVerifySlotHTML(grader) {
-  if (grader === 'PSA' && !BULK_SCAN_PSA_VERIFY_ENABLED) {
-    return `<div style="width:100%;font-size:0.68rem;color:var(--muted);font-family:'DM Mono',monospace;padding:0.55rem 0;text-align:center">PSA verification paused — pending API access</div>`;
-  }
+  if (!['PSA', 'CGC', 'SGC'].includes(grader)) return ''; // psa-lookup.js doesn't support BGS/others
+  if (grader === 'PSA' && !BULK_SCAN_PSA_VERIFY_ENABLED) return ''; // no button while PSA API access is pending
   return `<button class="btn btn-xs" style="width:100%;justify-content:center;padding:0.55rem;background:#1a1f2e;color:var(--gold);border:1px solid var(--gold)" onclick="bsVerifyGrader(this)">🔍 Verify with ${grader || 'Grader'}</button>`;
 }
 
@@ -8353,14 +8988,15 @@ function bulkScanCardBlockHTML(c, idx) {
   ).join('');
   const condHidden = graderVal ? 'style="display:none"' : '';
   const graderOtherStyle = graderVal === '__OTHER__' ? 'margin-bottom:0.55rem' : 'display:none';
-  const psaLookupSupported = ['PSA', 'CGC', 'SGC'].includes(known || ''); // psa-lookup.js doesn't support BGS
-  const certHidden = psaLookupSupported ? '' : 'style="display:none"';
+  // Cert # is editable for every graded card; only the Verify button is
+  // limited to the graders psa-lookup.js supports (PSA/CGC/SGC — not BGS).
+  const certHidden = graderVal ? '' : 'style="display:none"';
   const notesHtml = c.notes
     ? `<div class="bulkscan-notes">📝 ${_bsEsc(_capFirst(c.notes))} — not saved, review only</div>`
     : '';
 
   return `
-    <div class="bulkscan-card-block" data-card-id="${_bsEsc(c.id)}">
+    <div class="bulkscan-card-block" data-card-id="${_bsEsc(c.id)}" data-auto-title="${_bsEsc(c.title)}">
       <div class="bulkscan-card-header">
         <input type="checkbox" class="bs-include-checkbox" data-field="included" checked onchange="bsToggleInclude(this)">
         <div class="mapper-confidence ${_bsEsc(c.confidence)}">${_bsEsc(c.confidence)}</div>
@@ -8415,7 +9051,7 @@ function bulkScanCardBlockHTML(c, idx) {
           <input class="show-input" data-field="certNumber" value="${_bsEsc(c.certNumber)}" placeholder="e.g. 12345678" style="margin:0">
         </div>
         <div style="display:flex;align-items:flex-end" data-verify-slot>
-          ${_bsVerifySlotHTML(known || '')}
+          ${_bsVerifySlotHTML(known || graderVal)}
         </div>
       </div>
       <div class="bulkscan-field-grid">
@@ -8451,8 +9087,8 @@ function bsToggleGraderRow(selectEl) {
 
   const certRow = block.querySelector('[data-cert-row]');
   if (certRow) {
-    const psaLookupSupported = ['PSA', 'CGC', 'SGC'].includes(grader); // psa-lookup.js doesn't support BGS
-    certRow.style.display = psaLookupSupported ? '' : 'none';
+    certRow.style.display = grader ? '' : 'none'; // every graded card gets an editable Cert #
+    if (!grader) block.querySelectorAll('[data-cert-confirm]').forEach(el => el.remove());
     const slot = certRow.querySelector('[data-verify-slot]');
     if (slot) slot.innerHTML = _bsVerifySlotHTML(grader);
   }
@@ -8547,8 +9183,12 @@ function closeBulkScanReview() {
   document.body.style.overflow = '';
   document.getElementById('bulkScanReviewBody').innerHTML = '';
   bulkScanReviewCards = [];
+  _bulkScanSnapshots = {};
   // Release the (potentially several-MB) base64 photo now that review is done
   _bulkScanSourceImage = null;
+  _bulkScanReleaseBitmap();
+  _slabPassGen++; // stop any in-flight slab-label pass
+  _hideSlabPassProgress();
   const imgWrap = document.getElementById('bulkScanSourceImageWrap');
   if (imgWrap) imgWrap.innerHTML = '';
 }
@@ -8600,6 +9240,7 @@ async function confirmBulkScanReview() {
       Location:           null,
       Seller:             currentSeller,
       item_type:          'card',
+      DetectedConfidence: block._tcCatalog ? { catalog: _tcCatalogAudit(block._tcCatalog) } : null,
     };
   });
 
@@ -8612,6 +9253,14 @@ async function confirmBulkScanReview() {
 
   const dbIds = await bulkScanInsertMany(normalized);
   normalized.forEach((c, i) => { if (dbIds[i]) c._dbId = dbIds[i]; });
+
+  // scan_corrections: diff each card's scan snapshot against what was saved
+  normalized.forEach((c, i) => {
+    const snap = _bulkScanSnapshots[includedBlocks[i]?.dataset.cardId];
+    if (!snap) return;
+    c._scanSnapshot = snap;
+    _logScanCorrections(snap, _scanFinalFromCard(c), 'bulk', dbIds[i]);
+  });
 
   // Auto-publish each successfully inserted card. dbIds[i] maps to
   // normalized[i] in order. Null IDs (insert failed) skipped by guard.
@@ -11397,16 +12046,16 @@ async function _dropNativeShare() {
 
 const SCAN_CARD_CONFIDENCE_THRESHOLD = 0.7;
 
-// Max 1600px long edge, JPEG 85% — larger than POS's old 1024px vision-scan
-// cap since grading-label text (cert numbers) needs more resolution to stay
-// legible at that field's size on the card.
+// Max 1568px long edge (the vision API's native ceiling — anything larger is
+// downscaled server-side anyway), JPEG 85%. Grading-label text (cert numbers)
+// needs this much resolution to stay legible.
 async function _scanCardCompressImage(file) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
     img.onload = () => {
       URL.revokeObjectURL(url);
-      const MAX = 1600;
+      const MAX = 1568;
       let w = img.width, h = img.height;
       if (w > MAX || h > MAX) {
         if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
@@ -11486,6 +12135,186 @@ function _scanFlagConfidence(el, confidenceValue) {
   el.addEventListener('focus', () => { el.classList.remove('scan-verify'); el.title = ''; }, { once: true });
 }
 
+// Cert confirm UI — when the scanned cert number is uncertain
+// (confidence < 0.85) or failed a server-side format check (flags), put the
+// input into scan-verify state and show the label crop next to it so the
+// seller can check the digits against the photo. confidence is the 0-1 score.
+// labelBase64 is a JPEG base64 crop of the label area (optional).
+const SCAN_CERT_CONFIRM_THRESHOLD = 0.85;
+function _scanShowCertConfirm(inputOrId, certValue, confidence, flags, labelBase64) {
+  const input = typeof inputOrId === 'string' ? document.getElementById(inputOrId) : inputOrId;
+  if (!input) return;
+  const wrapId = (input.id || 'scanCert') + '_confirm';
+  // In bulk review the input sits in a half-width grid cell next to the
+  // Verify button — put the confirm row under the whole cert row instead.
+  const anchor = input.closest('[data-cert-row]') || input;
+  let wrap = anchor.parentElement?.querySelector(`[data-cert-confirm="${wrapId}"]`);
+  if (wrap) wrap.remove();
+
+  const certFlags = (flags || []).filter(f => /^cert_/.test(f));
+  const uncertain = typeof confidence !== 'number' || confidence < SCAN_CERT_CONFIRM_THRESHOLD;
+  // Nothing to confirm: no cert read and no slab-label photo to read it from
+  if (!certValue && !labelBase64) return;
+  if (certValue && !uncertain && !certFlags.length) return;
+
+  input.classList.add('scan-verify');
+  input.title = certValue ? 'Check this cert number against the label photo' : 'Enter cert # from the label';
+  if (input.dataset.origPlaceholder == null) input.dataset.origPlaceholder = input.placeholder || '';
+  if (!certValue) input.placeholder = 'Enter cert #';
+  input.addEventListener('input', () => { input.classList.remove('scan-verify'); input.title = ''; }, { once: true });
+
+  wrap = document.createElement('div');
+  wrap.className = 'scan-cert-confirm';
+  wrap.dataset.certConfirm = wrapId;
+  const msg = certFlags.includes('cert_equals_serial') ? 'Looks like the card serial, not the cert — check the label'
+            : certFlags.length ? 'Cert # format looks off — check the label'
+            : certValue ? 'Check cert # against the label' : 'Cert # not readable — enter it from the label';
+  if (labelBase64) {
+    const img = document.createElement('img');
+    img.alt = 'Grading label';
+    img.src = 'data:image/jpeg;base64,' + labelBase64;
+    img.onclick = () => img.classList.toggle('zoomed');
+    wrap.appendChild(img);
+  }
+  const span = document.createElement('span');
+  span.textContent = msg;
+  wrap.appendChild(span);
+  if (anchor !== input) wrap.style.marginBottom = '0.55rem';
+  anchor.insertAdjacentElement('afterend', wrap);
+}
+
+// Removes cert-confirm UI (label thumbnails, verify state, placeholder)
+// inside `root` — called from each scan form's reset.
+function _scanClearCertConfirm(root) {
+  if (!root) return;
+  root.querySelectorAll('[data-cert-confirm]').forEach(el => el.remove());
+  root.querySelectorAll('input[data-orig-placeholder]').forEach(inp => {
+    inp.placeholder = inp.dataset.origPlaceholder;
+    delete inp.dataset.origPlaceholder;
+    inp.classList.remove('scan-verify');
+    inp.title = '';
+  });
+}
+
+// Crops the top `frac` of a base64 JPEG (where a slab label sits) and returns
+// base64 — used for the POS cert-confirm thumbnail. Resolves null on failure.
+function _scanTopCropBase64(base64, frac = 0.28) {
+  return new Promise(resolve => {
+    if (!base64) return resolve(null);
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const h = Math.max(1, Math.round(img.height * frac));
+        resolve(_scanCropToJpeg(img, 0, 0, img.width, h, 800, 0.85).base64);
+      } catch { resolve(null); }
+    };
+    img.onerror = () => resolve(null);
+    img.src = 'data:image/jpeg;base64,' + base64;
+  });
+}
+
+// ── Scan correction logging (scan_corrections table) ─────────────────────
+// Every scan path keeps a snapshot of what the scan filled in. On save the
+// snapshot is diffed against the final values and one row per changed field
+// is written — fire-and-forget, every error swallowed (including the table
+// not existing yet). This is the data that says which fields the scanner
+// gets wrong in practice.
+const SCAN_LOG_FIELDS = ['player', 'year', 'set', 'card_number', 'parallel', 'grader', 'grade', 'cert'];
+let _posScanSnapshot = null;   // Scan-to-Sell POS review
+let _mslScanSnapshot = null;   // Log a Manual Sale photo
+let _acScanSnapshot  = null;   // Add Card cert scanner
+
+// From a scan-card.js card (0-1 confidence)
+function _scanSnapshotFromScanCard(card, flags) {
+  const c = card.confidence || {};
+  return {
+    values: {
+      player: card.player_name, year: card.year, set: card.set_name, card_number: card.card_number,
+      parallel: _scanParallelText(card), grader: card.grading_company, grade: card.grade, cert: card.cert_number,
+    },
+    confidence: {
+      player: c.player_name, year: c.year, set: c.set_name, card_number: c.card_number,
+      parallel: c.parallel_name, grade: c.grade, grader: c.grade, cert: c.cert_number,
+    },
+    flags: flags || [],
+  };
+}
+
+// From a vision-scan.js card (legacy camelCase + confidenceScores)
+function _scanSnapshotFromVision(card, flags) {
+  const c = card.confidenceScores || {};
+  return {
+    values: {
+      player: card.player, year: card.year, set: card.cardSet, card_number: card.cardNumber,
+      parallel: card.parallel, grader: card.grader, grade: card.gradeLabel ?? card.grade, cert: card.certNumber,
+    },
+    confidence: {
+      player: c.player_name, year: c.year, set: c.set_name, card_number: c.card_number,
+      parallel: c.parallel_name, grade: c.grade, grader: c.grade, cert: c.cert_number,
+    },
+    flags: flags || [],
+  };
+}
+
+function _scanNorm(v) { return String(v ?? '').trim().toLowerCase().replace(/\s+/g, ' '); }
+
+// finalValues uses SCAN_LOG_FIELDS keys. scanPath: add_card | pos | manual_sale | bulk
+function _logScanCorrections(snapshot, finalValues, scanPath, inventoryId) {
+  if (!snapshot) return;
+  try { if (!db) return; } catch { return; } // db missing or never initialized
+  const rows = [];
+  SCAN_LOG_FIELDS.forEach(f => {
+    const scanned = snapshot.values?.[f];
+    const final   = finalValues?.[f];
+    if (_scanNorm(scanned) === _scanNorm(final)) return;
+    rows.push({
+      inventory_id: inventoryId || null,
+      scan_path:    scanPath,
+      field:        f,
+      scanned_value: scanned == null || scanned === '' ? null : String(scanned),
+      final_value:   final   == null || final   === '' ? null : String(final),
+      confidence:   typeof snapshot.confidence?.[f] === 'number' ? snapshot.confidence[f] : null,
+      flags:        f === 'cert' && snapshot.flags?.length ? snapshot.flags : null,
+    });
+  });
+  if (!rows.length) return;
+  (async () => {
+    try {
+      const { data } = await db.auth.getSession();
+      const uid = data?.session?.user?.id;
+      if (!uid) return;
+      const { error } = await db.from('scan_corrections').insert(rows.map(r => ({ ...r, seller_id: uid })));
+      if (error && window.CARDSHOW_DEBUG) console.warn('[scan_corrections]', error.message);
+    } catch (e) {
+      if (window.CARDSHOW_DEBUG) console.warn('[scan_corrections]', e?.message);
+    }
+  })();
+}
+
+// Final values from a CardShow-shaped card object, keyed for _logScanCorrections()
+function _scanFinalFromCard(card) {
+  return {
+    player: card.Player, year: card.Year, set: card['Set '], card_number: card.Number,
+    parallel: card['Parallel/Variant'], grader: card.Grader, grade: card.Grade, cert: card['Cert #'],
+  };
+}
+
+// Free-text Parallel value from a scan-card.js result:
+// parallel_name [+ " Auto"] [+ " serial/print_run"], e.g. "Gold Refractor Auto 45/99".
+// (The old version prefixed "/" onto parallel_serial, which already contains
+// the slash, producing "/45/99".)
+function _scanParallelText(card) {
+  const name   = String(card.parallel_name || '').trim();
+  const auto   = card.autograph && !/\bauto/i.test(name) ? 'Auto' : '';
+  const serial = String(card.serial_number || '').trim();
+  const run    = String(card.print_run || '').trim();
+  let numbered = '';
+  if (serial && run) numbered = `${serial}/${run}`;
+  else if (run) numbered = `/${run}`;
+  else if (card.parallel_serial) numbered = String(card.parallel_serial).trim();
+  return [name, auto, numbered].filter(Boolean).join(' ');
+}
+
 // Renders a small, non-blocking "looks like a duplicate" banner into the
 // given container. The seller can always proceed anyway.
 function _scanRenderDupeWarning(containerEl, dupe) {
@@ -11529,6 +12358,12 @@ function posClose() {
 function _posReset() {
   if (_posVisionAbort) { _posVisionAbort.abort(); _posVisionAbort = null; }
   _posLastResult = null;
+  _posCatalogResult = null;
+  _tcFormSeq.pos = (_tcFormSeq.pos || 0) + 1;
+  delete _tcFormCfgs.pos;
+  { const s = document.getElementById('posCatalogStatus'); if (s) { s.style.display = 'none'; s.innerHTML = ''; } }
+  _posScanSnapshot = null;
+  _scanClearCertConfirm(document.getElementById('posReviewPhase'));
 
   document.getElementById('posPhotoPhase').style.display  = 'block';
   document.getElementById('posReviewPhase').style.display = 'none';
@@ -11654,7 +12489,7 @@ async function posHandlePhoto(inputEl) {
       return;
     }
 
-    await posShowReview(card);
+    await posShowReview(card, base64, result.flags);
 
   } catch (err) {
     if (err.name === 'AbortError') return; // user cancelled
@@ -11667,31 +12502,11 @@ async function posHandlePhoto(inputEl) {
   }
 }
 
-async function _posCompressImage(file) {
-  // Max 1024px, JPEG 85% — mirrors scanTakePhoto()'s compression exactly
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      const MAX = 1024;
-      let w = img.width, h = img.height;
-      if (w > MAX || h > MAX) {
-        if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
-        else       { w = Math.round(w * MAX / h); h = MAX; }
-      }
-      const canvas = document.createElement('canvas');
-      canvas.width = w; canvas.height = h;
-      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-      resolve(canvas.toDataURL('image/jpeg', 0.85).split(',')[1]);
-    };
-    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Image load failed')); };
-    img.src = url;
-  });
-}
-
-async function posShowReview(card) {
-  _posLastResult = { card };
+async function posShowReview(card, base64, flags) {
+  _posLastResult = { card, flags: flags || card.flags || [] };
+  _posCatalogResult = null;
+  // Keep the scan snapshot for scan_corrections logging at save time.
+  _posScanSnapshot = _scanSnapshotFromScanCard(card, flags || card.flags);
 
   document.getElementById('posPhotoPhase').style.display  = 'none';
   document.getElementById('posReviewPhase').style.display = 'block';
@@ -11710,11 +12525,7 @@ async function posShowReview(card) {
   // parallel_serial and an Auto flag are folded into the free-text Parallel
   // field, matching how this field already conflates variant info everywhere
   // else in this app (e.g. "Gold Refractor Auto").
-  const parallelText = [
-    card.parallel_name,
-    card.autograph ? 'Auto' : null,
-    card.parallel_serial ? '/' + card.parallel_serial : null,
-  ].filter(Boolean).join(' ');
+  const parallelText = _scanParallelText(card);
 
   fill('posRPlayer',   card.player_name, 'player_name');
   fill('posRYear',     card.year,        'year');
@@ -11723,9 +12534,15 @@ async function posShowReview(card) {
   fill('posRParallel', parallelText);
   fill('posRGrade',    card.grade,       'grade');
   fill('posRCert',     card.cert_number, 'cert_number');
+  if (card.grading_company || card.cert_number) {
+    _scanTopCropBase64(base64).then(label => _scanShowCertConfirm('posRCert', card.cert_number,
+      card.confidence?.cert_number, flags || card.flags, label));
+  }
 
+  // _setGraderFieldValue() matches VALID_GRADERS case-insensitively; an
+  // unknown company keeps its printed name in the "Other…" free-text box.
   _setGraderFieldValue('posRGrader', 'posRGraderOther', 'posRGraderOtherWrap',
-    card.grading_company ? String(card.grading_company).toUpperCase() : '');
+    card.grading_company ? String(card.grading_company).trim() : '');
 
   const badge = document.getElementById('posConfidenceBadge');
   if (badge) {
@@ -11744,6 +12561,8 @@ async function posShowReview(card) {
   const scroll = document.getElementById('posScroll');
   if (scroll) scroll.scrollTop = 0;
 
+  _posRunCatalogCheck(card.category);   // non-blocking
+
   // Duplicate fingerprint check — non-blocking, scoped to this seller's own
   // inventory. Runs after the review fields are already visible so it never
   // delays getting the form in front of the seller.
@@ -11751,6 +12570,35 @@ async function posShowReview(card) {
   _posLastResult.fingerprint = fingerprint;
   const dupe = fingerprint ? await checkDuplicateFingerprint(fingerprint) : null;
   _scanRenderDupeWarning(document.getElementById('posDupeWarning'), dupe);
+}
+
+// ── Catalog check wiring: Scan-to-Sell POS ──
+let _posCatalogResult = null;
+function _posRunCatalogCheck(category) {
+  return tcRunFormCatalogCheck({
+    key: 'pos', statusEl: 'posCatalogStatus',
+    ids: { player: 'posRPlayer', year: 'posRYear', set: 'posRSet', cardNumber: 'posRCardNum', parallel: 'posRParallel' },
+    category: category || _posLastResult?.card?.category || '',
+    onConfidence: (el, c) => _scanFlagConfidence(el, c),
+    onResult: (r) => {
+      _posCatalogResult = r;
+      _scanCatalogBadge('posConfidenceBadge', 'pos-confidence-badge', r);
+    },
+  });
+}
+
+// Raises the scan's overall confidence badge on a catalog match, and drops
+// it on a contradiction. Leaves it alone otherwise.
+function _scanCatalogBadge(badgeId, baseClass, r) {
+  const badge = document.getElementById(badgeId);
+  if (!badge || badge.style.display === 'none' || !r) return;
+  if (r.tier === 'verified' || r.tier === 'matched') {
+    badge.className = `${baseClass} high`;
+    badge.textContent = '✓  High confidence — matches the card catalog';
+  } else if (r.tier === 'mismatch') {
+    badge.className = `${baseClass} low`;
+    badge.textContent = '✗  The card catalog disagrees — check the player';
+  }
 }
 
 function posShowManualPhase() {
@@ -11853,6 +12701,7 @@ async function posInsertAndOpenDrawer() {
     parallel_serial: null, player_name: player || null,
   });
   card.DetectedConfidence = _posLastResult?.card?.confidence || null; // audit trail of the scan, if one was used
+  if (_posCatalogResult) card.DetectedConfidence = { ...(card.DetectedConfidence || {}), catalog: _tcCatalogAudit(_posCatalogResult) };
 
   // buildCardTitle() reads cardSet/cardNum (not set/cardNumber) and never
   // uses grader/grade — matches the exact call shape fillFormFromVision() uses.
@@ -11887,6 +12736,11 @@ async function posInsertAndOpenDrawer() {
       if (activeShowId) _autoPublishCardToShow(card, dbId, activeShowId);
     } else {
       showToast('⚠️ Saved locally — sync to server failed', 'var(--danger)');
+    }
+
+    if (_posScanSnapshot) {
+      card._scanSnapshot = _posScanSnapshot;
+      _logScanCorrections(_posScanSnapshot, _scanFinalFromCard(card), 'pos', dbId);
     }
 
     inventory.push(card);
@@ -15048,6 +15902,9 @@ let _acItemType   = 'card';
 let _acGradeTimer = null;
 
 function openAddCard() {
+  _acScanSnapshot = null;
+  _acResetCatalog();
+  _scanClearCertConfirm(document.getElementById('addCardOverlay'));
   // Clear all fields
   ['ac_title','ac_player','ac_year','ac_year_sealed','ac_set',
    'ac_number','ac_serial','ac_print_run','ac_parallel','ac_grade','ac_cert','ac_price','ac_location','ac_lot_desc',
@@ -15149,6 +16006,9 @@ function _acShow(id, show) {
 
 function closeAddCard() {
   document.getElementById('addCardOverlay').classList.remove('open');
+  _acScanSnapshot = null;
+  _acResetCatalog();
+  _scanClearCertConfirm(document.getElementById('addCardOverlay'));
   const banner = document.getElementById('visionConfirmBanner');
   if (banner) banner.remove();
   _acHideComp();
@@ -15241,9 +16101,9 @@ async function _acEnrichFromCardSight() {
   const number  = (document.getElementById('ac_number')?.value  || '').trim();
   const parallel= (document.getElementById('ac_parallel')?.value|| '').trim();
 
-  // Only enrich if we have player + set but are missing number or parallel
+  // Only enrich if we have player + set but are missing the card number
   if (!player || !cardSet) return;
-  if (number && parallel) return; // already complete
+  if (number) return; // already complete
 
   const query = [player, year, cardSet].filter(Boolean).join(' ');
 
@@ -15258,37 +16118,48 @@ async function _acEnrichFromCardSight() {
     const data = await res.json();
     if (data.stub || !data.results?.length) return;
 
-    // Score each result — prefer exact year match and fewest empty fields
+    // Score on what identifies the card — year and set name — not on how
+    // many fields a result happens to have filled (the old +10 for having a
+    // card number / +5 for having a parallel made the most "complete" wrong
+    // card win over the right one).
+    const setLower = cardSet.toLowerCase();
+    const setWords = setLower.split(/\s+/).filter(w => w.length >= 3);
+    const setMatches = (r) => {
+      const rs = String(r.cardSet || '').toLowerCase();
+      return !!rs && (rs.includes(setLower) || setLower.includes(rs));
+    };
     const scored = data.results.map(r => {
       let score = 0;
-      if (year && r.year === year) score += 20;
-      if (r.cardNumber)            score += 10;
-      if (r.parallel)              score += 5;
+      if (year && String(r.year || '') === year) score += 20;
+      if (setMatches(r)) score += 20;
+      else {
+        const rs = String(r.cardSet || '').toLowerCase();
+        score += Math.min(15, setWords.filter(w => rs.includes(w)).length * 5);
+      }
       return { r, score };
     }).sort((a, b) => b.score - a.score);
 
-    const best = scored[0]?.r;
-    if (!best) return;
+    const top = scored[0];
+    if (!top) return;
+    const best = top.r;
+    const uniqueTop = scored.filter(x => x.score === top.score).length === 1;
 
+    // Card # only from an unambiguous match on both year and set. Parallel
+    // is never filled from the catalog — a base card must stay base.
     let enriched = false;
-    if (!number && best.cardNumber) {
+    if (!number && best.cardNumber && uniqueTop && year && String(best.year || '') === year && setMatches(best)) {
       const el = document.getElementById('ac_number');
       if (el) { el.value = best.cardNumber; el.classList.add('db-filled'); setTimeout(() => el.classList.remove('db-filled'), 8000); }
       enriched = true;
     }
-    if (!parallel && best.parallel) {
-      const el = document.getElementById('ac_parallel');
-      if (el) { el.value = best.parallel; el.classList.add('db-filled'); setTimeout(() => el.classList.remove('db-filled'), 8000); }
-      enriched = true;
-    }
 
-    // Rebuild card title to include newly enriched parallel
+    // Rebuild card title to include the newly enriched card number
     if (enriched && typeof buildCardTitle === 'function') {
       const title = buildCardTitle({
         player:    document.getElementById('ac_player')?.value  || '',
         year:      document.getElementById('ac_year')?.value    || '',
         cardSet:   document.getElementById('ac_set')?.value     || '',
-        cardNumber:document.getElementById('ac_number')?.value  || '',
+        cardNum:   document.getElementById('ac_number')?.value  || '',
         parallel:  document.getElementById('ac_parallel')?.value|| '',
         sport:     '',
       });
@@ -15311,6 +16182,7 @@ async function _acEnrichFromCardSight() {
 let _visionRetryCount    = 0;     // consecutive vision API failures
 let _visionCapturedImage = null;  // base64 image for retry
 let _visionCapturedType  = 'image/jpeg';
+let _visionCapturedLabel = null;  // base64 label-strip crop for retry
 let _visionAbortCtrl     = null;  // AbortController for in-flight vision call
 let _scanStream          = null;  // active MediaStream
 let _scanHistory         = [];    // session-only scan history (last 5)
@@ -15319,6 +16191,7 @@ function openCertScanner() {
   // Reset vision retry state each time the overlay opens
   _visionRetryCount    = 0;
   _visionCapturedImage = null;
+  _visionCapturedLabel = null;
   if (_visionAbortCtrl) { _visionAbortCtrl.abort(); _visionAbortCtrl = null; }
 
   const overlay = document.getElementById('certScannerOverlay');
@@ -15351,7 +16224,9 @@ async function startScannerCamera() {
   stopScannerCamera(); // clean up any prior stream
   try {
     _scanStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+      // Ask for 4K; the device grants whatever it can. More sensor pixels on
+      // the card means legible cert numbers after scanTakePhoto() crops.
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 3840 }, height: { ideal: 2160 } },
     });
     const video = document.getElementById('scannerVideo');
     video.srcObject = _scanStream;
@@ -15410,6 +16285,41 @@ function buildCardTitle(card) {
 
 // ── Sprint 2: Vision AI card identification ───────────────────────────────────
 
+// Maps the on-screen aim guide (55% x 80% of the viewfinder, centered) into
+// video pixel space. The video is object-fit:contain, so the displayed frame
+// may be letterboxed inside the viewfinder box — account for that offset.
+function _scanGuideRectInVideo(video) {
+  const vw = video.videoWidth, vh = video.videoHeight;
+  const box = video.getBoundingClientRect();
+  const bw = box.width || vw, bh = box.height || vh;
+  const scale = Math.min(bw / vw, bh / vh);       // contain
+  const dispW = vw * scale, dispH = vh * scale;
+  const offX = (bw - dispW) / 2, offY = (bh - dispH) / 2;
+  // Guide in viewfinder (display) coordinates
+  const gW = bw * 0.55, gH = bh * 0.80;
+  const gX = (bw - gW) / 2, gY = (bh - gH) / 2;
+  // Display → video pixels, clamped to the actual frame
+  let x = (gX - offX) / scale, y = (gY - offY) / scale;
+  let w = gW / scale, h = gH / scale;
+  // 12% margin per side — slab labels sit above the card outline
+  const mx = w * 0.12, my = h * 0.12;
+  x -= mx; y -= my; w += mx * 2; h += my * 2;
+  const x0 = Math.max(0, Math.round(x)), y0 = Math.max(0, Math.round(y));
+  const x1 = Math.min(vw, Math.round(x + w)), y1 = Math.min(vh, Math.round(y + h));
+  return { x: x0, y: y0, w: Math.max(1, x1 - x0), h: Math.max(1, y1 - y0) };
+}
+
+// Draws (sx,sy,sw,sh) of source into a canvas scaled so the long edge is at
+// most maxLong, returns base64 JPEG.
+function _scanCropToJpeg(source, sx, sy, sw, sh, maxLong, quality) {
+  const ratio = Math.min(1, maxLong / Math.max(sw, sh));
+  const w = Math.max(1, Math.round(sw * ratio)), h = Math.max(1, Math.round(sh * ratio));
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  canvas.getContext('2d').drawImage(source, sx, sy, sw, sh, 0, 0, w, h);
+  return { base64: canvas.toDataURL('image/jpeg', quality).split(',')[1], width: w, height: h };
+}
+
 function scanTakePhoto() {
   const video = document.getElementById('scannerVideo');
   if (!video || !video.videoWidth) {
@@ -15417,43 +16327,39 @@ function scanTakePhoto() {
     return;
   }
 
-  // Detect landscape orientation — cards should be portrait
-  if (video.videoWidth > video.videoHeight * 1.2) {
-    showToast('Rotate card to portrait for best results', 'var(--gold)');
-    // Still allow them to proceed; it's a hint not a block
-  }
+  // Crop to the aim guide (plus margin) so the card, not the room, gets the
+  // pixels. Long edge ≤1568px (the vision API's native ceiling), JPEG 90%.
+  const r = _scanGuideRectInVideo(video);
+  const main = _scanCropToJpeg(video, r.x, r.y, r.w, r.h, 1568, 0.9);
 
-  // Capture frame to canvas — max 1024px on longest side, JPEG 85%
-  const canvas  = document.getElementById('scannerCanvas');
-  const maxDim  = 1024;
-  let w = video.videoWidth;
-  let h = video.videoHeight;
-  if (Math.max(w, h) > maxDim) {
-    const ratio = maxDim / Math.max(w, h);
-    w = Math.round(w * ratio);
-    h = Math.round(h * ratio);
+  // Second crop: the top 28% of the card crop at native resolution — where a
+  // grading label sits. Sent alongside so the model can read cert digits.
+  const labelH = Math.round(r.h * 0.28);
+  const label = _scanCropToJpeg(video, r.x, r.y, r.w, labelH, 1200, 0.9);
+
+  if (window.CARDSHOW_DEBUG) {
+    console.log('[scan] video', video.videoWidth + 'x' + video.videoHeight,
+      'crop', r, 'upload', main.width + 'x' + main.height,
+      'label', label.width + 'x' + label.height,
+      '~KB', Math.round((main.base64.length + label.base64.length) * 0.75 / 1024));
   }
-  canvas.width  = w;
-  canvas.height = h;
-  canvas.getContext('2d').drawImage(video, 0, 0, w, h);
 
   const mediaType = 'image/jpeg';
-  const base64    = canvas.toDataURL(mediaType, 0.85).split(',')[1];
-
-  _visionCapturedImage = base64;
+  _visionCapturedImage = main.base64;
+  _visionCapturedLabel = label.base64;
   _visionCapturedType  = mediaType;
   _visionRetryCount    = 0;
 
-  _callVisionScan(base64, mediaType);
+  _callVisionScan(main.base64, mediaType, label.base64);
 }
 
 function scanVisionRetry() {
   if (_visionCapturedImage) {
-    _callVisionScan(_visionCapturedImage, _visionCapturedType);
+    _callVisionScan(_visionCapturedImage, _visionCapturedType, _visionCapturedLabel);
   }
 }
 
-async function _callVisionScan(base64, mediaType) {
+async function _callVisionScan(base64, mediaType, labelBase64) {
   // Set processing state
   const overlay = document.getElementById('certScannerOverlay');
   if (overlay) overlay.dataset.state = 'processing';
@@ -15473,7 +16379,7 @@ async function _callVisionScan(base64, mediaType) {
       method: 'POST',
       signal: _visionAbortCtrl.signal,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image: base64, mediaType }),
+      body: JSON.stringify({ image: base64, mediaType, labelImage: labelBase64 || undefined }),
     });
     result = await res.json();
   } catch (err) {
@@ -15573,12 +16479,14 @@ function fillFormFromVision(card, result) {
 
   // Field map: visionKey → formId (cardTitle excluded — always synthesized via buildCardTitle)
   const fieldMap = [
-    ['player',     'ac_player'],
-    ['year',       'ac_year'],
-    ['cardSet',    'ac_set'],
-    ['cardNumber', 'ac_number'],
-    ['parallel',   'ac_parallel'],
-    ['certNumber', 'ac_cert'],
+    ['player',       'ac_player'],
+    ['year',         'ac_year'],
+    ['cardSet',      'ac_set'],
+    ['cardNumber',   'ac_number'],
+    ['parallel',     'ac_parallel'],
+    ['serialNumber', 'ac_serial'],
+    ['printRun',     'ac_print_run'],
+    ['certNumber',   'ac_cert'],
   ];
 
   const filledFields = [];
@@ -15590,17 +16498,26 @@ function fillFormFromVision(card, result) {
     el.value = String(val);
 
     // Confidence color — use the matching confidence key or 'medium' default
-    const confKey = ['player','year','cardSet','cardNumber','parallel'].includes(vKey) ? vKey : null;
+    const confKey = ['player','year','cardSet','cardNumber','parallel','certNumber'].includes(vKey) ? vKey : null;
     const level   = confKey ? (conf[confKey] || 'medium') : 'medium';
     _applyVisionConfidence(el, level);
     filledFields.push({ label: vKey, level });
   });
 
-  // Grader (select)
+  // Cert # needs the seller's eye when the read is uncertain or failed a
+  // server-side format check — show the label crop next to it.
+  _acScanSnapshot = _scanSnapshotFromVision(card, result?.flags);
+
+  if (card.grader || card.certNumber) {
+    _scanShowCertConfirm('ac_cert', card.certNumber,
+      card.confidenceScores?.cert_number, result?.flags, _visionCapturedLabel);
+  }
+
+  // Grader (select) — unknown graders (TAG/HGA/CSG/…) land in "Other…"
   if (card.grader) {
     const graderEl = document.getElementById('ac_grader');
     if (graderEl) {
-      graderEl.value = card.grader;
+      _setGraderFieldValue('ac_grader', 'ac_grader_other', 'ac_grader_other_wrap', String(card.grader).trim());
       acToggle();
       _applyVisionConfidence(graderEl, conf.grade || 'medium');
       filledFields.push({ label: 'grader', level: conf.grade || 'medium' });
@@ -15661,10 +16578,67 @@ function fillFormFromVision(card, result) {
   // Fetch inline comp for the just-filled form
   _acFetchComp();
 
-  // CardSight enrichment: fill in missing cardNumber/parallel from catalog
-  // Runs after a short delay so all form fields are fully settled
-  setTimeout(() => _acEnrichFromCardSight(), 400);
+  // Trading Card API catalog check first (it can confirm or fill the card
+  // number), then the CardSight/PriceCharting enrichment for anything still
+  // missing. Short delay so the form fields are settled.
+  _acCatalogCategory = card.category || '';
+  setTimeout(async () => {
+    await _acRunCatalogCheck();
+    _acEnrichFromCardSight();
+  }, 300);
 }
+
+// ── Catalog check wiring: Add Card ──
+let _acCatalogResult   = null;
+let _acCatalogCategory = '';
+const _VISION_LEVEL = c => c >= 0.85 ? 'high' : c >= 0.6 ? 'medium' : 'low';
+function _acRunCatalogCheck() {
+  if (_acItemType !== 'card') return Promise.resolve(null);
+  return tcRunFormCatalogCheck({
+    key: 'ac', statusEl: 'acCatalogStatus',
+    ids: { player: 'ac_player', year: 'ac_year', set: 'ac_set', cardNumber: 'ac_number',
+           parallel: 'ac_parallel', printRun: 'ac_print_run' },
+    category: document.getElementById('ac_category')?.value || _acCatalogCategory,
+    onConfidence: (el, c) => _applyVisionConfidence(el, _VISION_LEVEL(c)),
+    onApply: () => _acRebuildTitleFromFields(),
+    onResult: (r) => {
+      _acCatalogResult = r;
+      if (r.fillCardNumber) _acRebuildTitleFromFields();
+      // Rookie / Auto flags from the catalog's card record.
+      const add = [];
+      if (r.rookie) add.push('RC');
+      if (r.autograph) add.push('Auto');
+      if (add.length && typeof _getCheckedFeatures === 'function') {
+        const cur = _getCheckedFeatures('ac_features_group');
+        const next = [...new Set([...cur, ...add])];
+        if (next.length !== cur.length) _setCheckedFeatures('ac_features_group', next);
+      }
+    },
+  });
+}
+function _acRebuildTitleFromFields() {
+  const v = id => document.getElementById(id)?.value || '';
+  const t = buildCardTitle({ player: v('ac_player'), year: v('ac_year'), cardSet: v('ac_set'),
+    cardNum: v('ac_number'), parallel: v('ac_parallel'), sport: '', rawTitle: '' });
+  const titleEl = document.getElementById('ac_title');
+  if (titleEl && t) titleEl.value = t;
+}
+function _acResetCatalog() {
+  _acCatalogResult = null;
+  _acCatalogCategory = '';
+  _tcFormSeq.ac = (_tcFormSeq.ac || 0) + 1;   // drop any in-flight result
+  delete _tcFormCfgs.ac;
+  const s = document.getElementById('acCatalogStatus');
+  if (s) { s.style.display = 'none'; s.innerHTML = ''; }
+}
+// After a scan, re-check when the seller edits an identifying field.
+let _acCatalogTimer = null;
+document.addEventListener('change', (e) => {
+  if (!['ac_player', 'ac_year', 'ac_set', 'ac_number', 'ac_parallel'].includes(e.target?.id)) return;
+  if (!_tcFormCfgs.ac) return;
+  clearTimeout(_acCatalogTimer);
+  _acCatalogTimer = setTimeout(_acRunCatalogCheck, 600);
+});
 
 function _applyVisionConfidence(el, level) {
   el.classList.remove('vision-high', 'vision-medium', 'vision-low');
@@ -15722,8 +16696,12 @@ function clearVisionData() {
   const banner = document.getElementById('visionConfirmBanner');
   if (banner) banner.remove();
 
+  _acScanSnapshot = null;
+  _acResetCatalog();
+  _scanClearCertConfirm(document.getElementById('addCardOverlay'));
+
   // Clear all vision-filled fields
-  const fieldIds = ['ac_title','ac_player','ac_year','ac_set','ac_number','ac_parallel','ac_cert','ac_grade'];
+  const fieldIds = ['ac_title','ac_player','ac_year','ac_set','ac_number','ac_parallel','ac_serial','ac_print_run','ac_cert','ac_grade'];
   fieldIds.forEach(id => {
     const el = document.getElementById(id);
     if (el) {
@@ -15735,6 +16713,7 @@ function clearVisionData() {
   if (graderEl) {
     graderEl.value = '';
     graderEl.classList.remove('vision-high','vision-medium','vision-low');
+    _setGraderFieldValue('ac_grader', 'ac_grader_other', 'ac_grader_other_wrap', '');
     acToggle();
   }
 }
@@ -15965,6 +16944,394 @@ function _tcGetAllSets() {
   return _tcAllSetsPromise;
 }
 
+// ── CATALOG CHECK (Trading Card API) ──
+// One shared check for every scan path (Add Card, Scan-to-Sell POS, Manual
+// Sale, bulk review). Given what the scan read, it asks the catalog:
+//   1. Is the player name an exact catalog player? (or a close variant)
+//   2. Does that player have a card in a set matching the scanned year+set?
+//      Player cards come from /v1/cards?filter[player_id] (fast since the
+//      API team's fix); sets from the cached root-set catalog plus each
+//      candidate root's child sets (parallels, inserts, autos, variations).
+//   3. Is the scanned card number one of the player's cards in that set?
+//   4. Does the scanned parallel / print run match one of those child sets?
+// When the player has no card in a set the catalog does cover, the scanned
+// card number is looked up in that set to suggest who the card really is
+// (a "Yoan Moncada" read on a Munetaka Murakami card shows up this way).
+// Returns a plain result object; nothing here touches the DOM. Every
+// network failure degrades to "not confirmed", never to a mismatch.
+const _tcPlayerCardsCache = new Map();  // playerId -> Promise<card[]>
+const _tcSetCache         = new Map();  // setId -> Promise<set|null>
+const _tcChildSetsCache   = new Map();  // rootId -> Promise<set[]>
+const _tcSetCardsCache    = new Map();  // setId -> Promise<card[]>
+const TC_MAX_CARD_PAGES   = 8;          // 800 cards — covers all but the most-printed players
+
+function _tcNorm(s) {
+  return String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toLowerCase().replace(/[^a-z0-9/ ]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+// Catalog player rows sometimes carry a suffix in last_name ("Trout MEM").
+function _tcPlayerName(p) {
+  const a = p?.attributes || {};
+  return `${a.first_name || ''} ${a.last_name || ''}`.replace(/\s+(MEM|AU|RC|SP|SSP)$/i, '').trim();
+}
+function _tcNormNumber(n) {
+  let s = String(n ?? '').toLowerCase().replace(/^#/, '').replace(/\s+/g, '').trim();
+  if (/^\d+$/.test(s)) s = String(parseInt(s, 10));
+  return s;
+}
+// "9 Munetaka Murakami - Chicago White Sox RC" -> "Munetaka Murakami"
+function _tcPlayerFromCardName(name, number) {
+  let s = String(name || '');
+  if (number && s.startsWith(String(number) + ' ')) s = s.slice(String(number).length + 1);
+  s = s.split(' - ')[0];
+  s = s.replace(/\s+#\/\d+.*$/, '').replace(/(\s+(RC|AU|SP|SSP|MEM|1\/1))+$/i, '');
+  return s.trim();
+}
+function _tcLevenshtein(a, b) {
+  const m = a.length, n = b.length;
+  if (!m || !n) return m || n;
+  const d = Array.from({ length: m + 1 }, (_, i) => [i]);
+  for (let j = 1; j <= n; j++) d[0][j] = j;
+  for (let i = 1; i <= m; i++) for (let j = 1; j <= n; j++)
+    d[i][j] = Math.min(d[i-1][j] + 1, d[i][j-1] + 1, d[i-1][j-1] + (a[i-1] === b[j-1] ? 0 : 1));
+  return d[m][n];
+}
+
+async function _tcPagedData(pathForPage, maxPages) {
+  const first = await tcapiGet(pathForPage(1));
+  if (!first) return null;
+  let all = first.data || [];
+  const total = Math.min(first.meta?.pagination?.total_pages || 1, maxPages);
+  if (total > 1) {
+    const rest = await Promise.all(Array.from({ length: total - 1 }, (_, i) => tcapiGet(pathForPage(i + 2))));
+    rest.forEach(d => { all = all.concat(d?.data || []); });
+  }
+  return all;
+}
+function _tcCached(map, key, fn) {
+  if (!map.has(key)) map.set(key, fn().catch(() => null));
+  return map.get(key);
+}
+function _tcGetPlayerCards(playerId) {
+  return _tcCached(_tcPlayerCardsCache, playerId, () =>
+    _tcPagedData(page => _tcBuildCardsPath({ playerId, page, perPage: 100 }), TC_MAX_CARD_PAGES));
+}
+function _tcGetSet(setId) {
+  return _tcCached(_tcSetCache, setId, async () => (await tcapiGet(`/v1/sets/${setId}`))?.data || null);
+}
+function _tcGetChildSets(rootId) {
+  return _tcCached(_tcChildSetsCache, rootId, () =>
+    _tcPagedData(page => _tcBuildSetsPath({ parentId: rootId, page, perPage: 100 }), 3));
+}
+function _tcGetSetCards(setId) {
+  return _tcCached(_tcSetCardsCache, setId, () =>
+    _tcPagedData(page => _tcBuildCardsPath({ setId, page, perPage: 100 }), 6));
+}
+
+// Year in a catalog set name: "2026 Bowman" -> [2026]; "2022-23 Upper Deck" -> [2022, 2023]
+function _tcSetYears(name) {
+  const m = String(name || '').match(/^(\d{4})(?:-(\d{2,4}))?\b/);
+  if (!m) return [];
+  const y = [parseInt(m[1], 10)];
+  if (m[2]) y.push(m[2].length === 2 ? Math.floor(y[0] / 100) * 100 + parseInt(m[2], 10) : parseInt(m[2], 10));
+  return y;
+}
+function _tcStripYear(name) {
+  return _tcNorm(String(name || '').replace(/^\d{4}(-\d{2,4})?\s+/, ''));
+}
+
+// Root sets whose year matches and whose name (minus year) is contained in
+// the scanned set name or vice versa. Best (most specific) first.
+async function _tcCandidateRoots(year, setName) {
+  const y = parseInt(year, 10);
+  const scanned = _tcStripYear(setName);
+  if (!y || !scanned) return [];
+  const roots = await _tcGetAllSets();
+  return roots
+    .map(s => ({ s, rest: _tcStripYear(s.attributes?.name), years: _tcSetYears(s.attributes?.name) }))
+    .filter(x => x.rest && x.years.includes(y) && (scanned.includes(x.rest) || x.rest.includes(scanned)))
+    .sort((a, b) => (b.rest === scanned) - (a.rest === scanned) || b.rest.length - a.rest.length)
+    .slice(0, 3)
+    .map(x => x.s);
+}
+
+// Words in the scanned parallel text that describe the variant itself —
+// drops the serial ("45/99"), Auto and RC, which live on other flags.
+function _tcParallelWords(parallel) {
+  return _tcNorm(parallel).replace(/\b\d+\s*\/\s*\d+\b|\/\s*\d+\b/g, ' ')
+    .split(' ').filter(w => w.length >= 3 && !/^(auto|autograph|autographs|rc|rookie|card|parallel|base)$/.test(w));
+}
+
+async function tcCatalogCheck({ player, year, set, cardNumber, parallel, printRun, auto, category } = {}) {
+  const r = {
+    tier: 'unknown', player: 'unchecked', set: 'unchecked', cardNumber: 'unchecked',
+    parallel: 'unchecked', printRun: 'unchecked',
+    canonical: {}, suggestion: null, fillCardNumber: null, rookie: null, autograph: null, notes: [],
+  };
+  const playerQ = String(player || '').trim();
+  if (!playerQ) return r;
+  // The catalog is player-based; TCG and non-sport cards have no "player".
+  if (/^(tcg|non-sport)$/i.test(String(category || ''))) { r.tier = 'skipped'; return r; }
+
+  // ── 1. Player ──
+  const qn = _tcNorm(playerQ);
+  let found = (await _tcSearchPlayers(playerQ)).results || [];
+  let exact = found.filter(p => _tcNorm(_tcPlayerName(p)) === qn);
+  if (!exact.length) {
+    // Same last name, different first name ("Cam Abrams" vs "CJ Abrams"),
+    // or a small misspelling — search by last name for near matches.
+    const last = playerQ.split(/\s+/).pop();
+    if (last && last.length >= 3) {
+      const data = await tcapiGet(_tcBuildPlayersPath({ lastName: last, limit: 25 }));
+      found = found.concat(data?.data || []);
+      exact = found.filter(p => _tcNorm(_tcPlayerName(p)) === qn);
+    }
+  }
+  if (exact.length) {
+    r.player = 'confirmed';
+    r.canonical.player = _tcPlayerName(exact[0]);
+  } else {
+    const close = [...new Set(found.map(_tcPlayerName))]
+      .filter(n => {
+        const nn = _tcNorm(n);
+        return nn.split(' ').pop() === qn.split(' ').pop() || _tcLevenshtein(nn, qn) <= 2;
+      });
+    r.player = close.length ? 'close' : 'not_found';
+    if (close.length) r.closeNames = close.slice(0, 3);
+  }
+
+  // ── 2. Player's cards + candidate sets ──
+  const ids = exact.slice(0, 3).map(p => p.id);
+  const [cardLists, roots] = await Promise.all([
+    Promise.all(ids.map(_tcGetPlayerCards)),
+    _tcCandidateRoots(year, set),
+  ]);
+  const playerCards = cardLists.flatMap(l => l || []);
+  // A list at the page cap may be missing cards — don't call a miss a mismatch.
+  const truncated = cardLists.some(l => (l || []).length >= TC_MAX_CARD_PAGES * 100);
+
+  const numQ = _tcNormNumber(cardNumber);
+  let family = null;         // { root, sets: Map(id -> set), cards: [] }
+  for (const root of roots) {
+    const children = (await _tcGetChildSets(root.id)) || [];
+    const sets = new Map([[root.id, root], ...children.map(c => [c.id, c])]);
+    const cards = playerCards.filter(c => sets.has(c.attributes?.set_id));
+    if (cards.length) { family = { root, sets, cards }; break; }
+    if (!family) family = { root, sets, cards };   // remember the best root even with no player cards
+  }
+
+  if (family) r.canonical.set = family.root.attributes?.name || '';
+  if (family?.cards.length) {
+    r.set = 'confirmed';
+    // ── 3. Card number ──
+    const byNumber = family.cards.filter(c => _tcNormNumber(c.attributes?.number) === numQ);
+    if (numQ) {
+      r.cardNumber = byNumber.length ? 'confirmed' : 'not_found';
+      if (!byNumber.length) {
+        const nums = [...new Set(family.cards.map(c => c.attributes?.number).filter(Boolean))];
+        if (nums.length && nums.length <= 6) r.notes.push(`Catalog numbers for this player in ${r.canonical.set}: ${nums.join(', ')}`);
+      }
+    } else {
+      const baseNums = [...new Set(family.cards.filter(c => c.attributes?.set_id === family.root.id)
+        .map(c => c.attributes?.number).filter(Boolean))];
+      const allNums = [...new Set(family.cards.map(c => c.attributes?.number).filter(Boolean))];
+      // Fill only when the player has exactly one number in this whole set family.
+      if (allNums.length === 1) { r.fillCardNumber = allNums[0]; r.cardNumber = 'filled'; }
+      else if (baseNums.length === 1 && !_tcParallelWords(parallel).length && !auto) {
+        r.fillCardNumber = baseNums[0]; r.cardNumber = 'filled';
+      }
+    }
+    const matchCards = byNumber.length ? byNumber
+      : (r.fillCardNumber ? family.cards.filter(c => c.attributes?.number === r.fillCardNumber) : family.cards);
+
+    // ── 4. Parallel / print run ──
+    const words = _tcParallelWords(parallel);
+    const variantSets = matchCards.map(c => family.sets.get(c.attributes?.set_id))
+      .filter(s => s && s.id !== family.root.id);
+    if (!words.length && byNumber.length) {
+      // No parallel text: name the set the numbered card lives in when it's
+      // a single subset (e.g. CRA-MM -> "2026 Bowman Chrome Rookie Autographs").
+      const own = [...new Set(byNumber.map(c => c.attributes?.set_id))];
+      if (own.length === 1 && own[0] !== family.root.id) r.canonical.variant = family.sets.get(own[0])?.attributes?.name || '';
+    }
+    if (words.length) {
+      const hit = variantSets.find(s => {
+        const label = _tcNorm(s.attributes?.title || s.attributes?.name);
+        return words.every(w => label.includes(w));
+      });
+      if (hit) {
+        r.parallel = 'confirmed';
+        r.canonical.variant = hit.attributes?.name || '';
+        // The player's card in that variant set pins down the number.
+        const hitNums = [...new Set(family.cards.filter(c => c.attributes?.set_id === hit.id)
+          .map(c => c.attributes?.number).filter(Boolean))];
+        if (!numQ && !r.fillCardNumber && hitNums.length === 1) { r.fillCardNumber = hitNums[0]; r.cardNumber = 'filled'; }
+      }
+      else r.parallel = variantSets.length ? 'not_found' : 'unchecked';
+      const run = parseInt(printRun, 10);
+      const serial = parseInt(hit?.attributes?.serial, 10);
+      if (run && serial) r.printRun = run === serial ? 'confirmed' : 'mismatch';
+      if (r.printRun === 'mismatch') r.notes.push(`Catalog print run for ${hit.attributes.name} is /${serial}`);
+    }
+    // RC / Auto flags only when the exact card is known.
+    if (r.fillCardNumber || byNumber.length) {
+      const exactCards = byNumber.length ? byNumber
+        : family.cards.filter(c => c.attributes?.number === r.fillCardNumber);
+      r.rookie    = exactCards.some(c => c.attributes?.is_rookie);
+      r.autograph = exactCards.some(c => c.attributes?.has_autograph);
+    }
+  } else if (family && r.player === 'confirmed' && !truncated) {
+    // The catalog covers this set, but has no card for this player in it —
+    // either the player or the set was misread.
+    r.set = 'player_not_in_set';
+    r.notes.push(`The catalog has no ${r.canonical.player} card in ${r.canonical.set}`);
+  }
+
+  // ── 5. Who is this card number in the set? (misread player names) ──
+  if (family && numQ && r.cardNumber !== 'confirmed') {
+    const rootCards = (await _tcGetSetCards(family.root.id)) || [];
+    const owners = rootCards.filter(c => _tcNormNumber(c.attributes?.number) === numQ);
+    const names = [...new Set(owners.map(c => _tcPlayerFromCardName(c.attributes?.name, c.attributes?.number)).filter(Boolean))];
+    if (names.length === 1 && _tcNorm(names[0]) !== qn) {
+      r.suggestion = { player: names[0], reason: `#${cardNumber} in ${r.canonical.set} is ${names[0]}` };
+    }
+  }
+  if (!r.suggestion && r.player === 'close' && r.closeNames?.length === 1) {
+    r.suggestion = { player: r.closeNames[0], reason: `Catalog spelling: ${r.closeNames[0]}` };
+  }
+
+  // ── Tier ──
+  const playerOk = r.player === 'confirmed';
+  const setOk    = r.set === 'confirmed';
+  const numOk    = r.cardNumber === 'confirmed' || r.cardNumber === 'filled';
+  if (r.suggestion && /^#/.test(r.suggestion.reason)) r.tier = 'mismatch';
+  else if (playerOk && setOk && numOk) r.tier = 'verified';
+  else if (playerOk && setOk) r.tier = 'matched';
+  else if (r.set === 'player_not_in_set') r.tier = 'mismatch';
+  else if (playerOk) r.tier = 'player';
+  else if (r.player === 'close') r.tier = 'close';
+  else r.tier = 'unknown';
+  return r;
+}
+
+// 0-1 confidence the catalog lends each field (null = no opinion). Used to
+// raise a confirmed field's confidence, or lower a contradicted one.
+function tcCatalogFieldConfidence(r) {
+  const c = {};
+  if (!r) return c;
+  if (r.player === 'confirmed') c.player = r.tier === 'mismatch' ? 0.3 : (r.set === 'confirmed' ? 0.98 : 0.9);
+  else if (r.tier === 'mismatch' || r.player === 'close') c.player = 0.3;
+  if (r.set === 'confirmed') { c.year = 0.97; c.set = 0.95; }
+  if (r.cardNumber === 'confirmed') c.cardNumber = 0.98;
+  else if (r.cardNumber === 'not_found') c.cardNumber = 0.4;
+  if (r.parallel === 'confirmed') c.parallel = 0.95;
+  if (r.printRun === 'confirmed') c.printRun = 0.98;
+  else if (r.printRun === 'mismatch') c.printRun = 0.3;
+  return c;
+}
+
+// Compact record of a catalog check, kept in inventory.detected_confidence.
+function _tcCatalogAudit(r) {
+  if (!r) return null;
+  return { tier: r.tier, player: r.player, set: r.set, card_number: r.cardNumber,
+    parallel: r.parallel, print_run: r.printRun, canonical: r.canonical,
+    suggestion: r.suggestion?.player || null, rookie: r.rookie, autograph: r.autograph,
+    field_confidence: tcCatalogFieldConfidence(r), checked_at: new Date().toISOString() };
+}
+
+const TC_TIER_LABEL = {
+  verified: { text: '✓ CATALOG MATCH', color: '#1BAF7A', tip: 'Player, set and card number match the Trading Card API catalog' },
+  matched:  { text: '✓ SET MATCH',     color: '#1BAF7A', tip: 'Player has a card in this set; card number not confirmed' },
+  player:   { text: 'PLAYER FOUND',    color: 'var(--accent)', tip: 'Player is in the catalog; set not confirmed (the catalog may not cover it)' },
+  close:    { text: 'CHECK NAME',      color: '#f5a623', tip: 'No exact catalog player — a similar name exists' },
+  mismatch: { text: '⚠ CHECK PLAYER',  color: '#f5a623', tip: 'The catalog disagrees with the scanned player or set' },
+  unknown:  { text: 'NOT IN CATALOG',  color: 'var(--muted)', tip: 'Not found in the catalog — the catalog is incomplete, so this is not an error' },
+  skipped:  { text: '',                color: 'var(--muted)', tip: '' },
+};
+
+// One-line summary under the form. applyKey names a registered callback
+// for the "Use <name>" button.
+const _tcApplyFns = {};
+function tcCatalogStatusHTML(r, applyKey) {
+  if (!r || r.tier === 'skipped') return '';
+  const t = TC_TIER_LABEL[r.tier] || TC_TIER_LABEL.unknown;
+  const bits = [];
+  if (r.tier === 'verified' || r.tier === 'matched') {
+    bits.push(_escHtml([r.canonical.player, r.canonical.variant || r.canonical.set].filter(Boolean).join(' · ')));
+    if (r.rookie) bits.push('RC');
+    if (r.autograph) bits.push('Auto');
+  }
+  if (r.suggestion) {
+    bits.push(_escHtml(r.suggestion.reason) + (applyKey
+      ? ` <a href="#" onclick="_tcApplySuggestion('${applyKey}');return false" style="color:var(--accent);text-decoration:underline">Use ${_escHtml(r.suggestion.player)}</a>`
+      : ''));
+  }
+  r.notes.forEach(n => bits.push(_escHtml(n)));
+  return `<div style="font-family:'DM Mono',monospace;font-size:0.62rem;letter-spacing:0.06em;color:${t.color}" title="${_escHtml(t.tip)}">${t.text}</div>`
+    + (bits.length ? `<div style="font-size:0.7rem;color:var(--muted);margin-top:2px">${bits.join(' · ')}</div>` : '');
+}
+function _tcApplySuggestion(key) {
+  const fn = _tcApplyFns[key];
+  if (fn) fn();
+}
+
+// Runs the check for a single-card form (Add Card / POS / Manual Sale).
+// cfg: { key, statusEl, ids: {player, year, set, cardNumber, parallel, printRun},
+//        category, onConfidence(fieldId, conf0to1), onResult(r) }
+let _tcFormSeq = {};
+async function tcRunFormCatalogCheck(cfg) {
+  const val = id => (id && document.getElementById(id)?.value || '').trim();
+  const statusEl = typeof cfg.statusEl === 'string' ? document.getElementById(cfg.statusEl) : cfg.statusEl;
+  const seq = (_tcFormSeq[cfg.key] = (_tcFormSeq[cfg.key] || 0) + 1);
+  const input = {
+    player: val(cfg.ids.player), year: val(cfg.ids.year), set: val(cfg.ids.set),
+    cardNumber: val(cfg.ids.cardNumber), parallel: val(cfg.ids.parallel), printRun: val(cfg.ids.printRun),
+    auto: /\bauto/i.test(val(cfg.ids.parallel)), category: cfg.category || '',
+  };
+  if (!input.player) { if (statusEl) statusEl.style.display = 'none'; return null; }
+  if (statusEl) {
+    statusEl.style.display = 'block';
+    statusEl.innerHTML = `<div style="font-family:'DM Mono',monospace;font-size:0.62rem;color:var(--muted)">CHECKING CATALOG…</div>`;
+  }
+  let r = null;
+  try { r = await tcCatalogCheck(input); } catch (err) { console.warn('[catalog] check failed', err?.message); }
+  if (seq !== _tcFormSeq[cfg.key]) return null;   // a newer check started
+  if (!r) { if (statusEl) statusEl.style.display = 'none'; return null; }
+
+  if (r.fillCardNumber && cfg.ids.cardNumber && !val(cfg.ids.cardNumber)) {
+    const el = document.getElementById(cfg.ids.cardNumber);
+    if (el) { el.value = r.fillCardNumber; el.classList.add('db-filled'); setTimeout(() => el.classList.remove('db-filled'), 8000); }
+  }
+  const conf = tcCatalogFieldConfidence(r);
+  Object.entries(conf).forEach(([field, c]) => {
+    const id = cfg.ids[field];
+    const el = id && document.getElementById(id);
+    if (el && el.value && cfg.onConfidence) cfg.onConfidence(el, c);
+  });
+  _tcApplyFns[cfg.key] = () => {
+    const el = document.getElementById(cfg.ids.player);
+    if (el && r.suggestion) {
+      el.value = r.suggestion.player;
+      el.classList.remove('scan-verify', 'vision-low', 'vision-medium');
+      el.classList.add('db-filled');
+      setTimeout(() => el.classList.remove('db-filled'), 8000);
+      cfg.onApply?.(r.suggestion.player);
+      tcRunFormCatalogCheck(cfg);
+    }
+  };
+  if (statusEl) {
+    const html = tcCatalogStatusHTML(r, cfg.key);
+    statusEl.innerHTML = html + (html
+      ? `<a href="#" onclick="tcRecheck('${cfg.key}');return false" style="font-size:0.68rem;color:var(--muted);text-decoration:underline">Re-check</a>` : '');
+    statusEl.style.display = html ? 'block' : 'none';
+  }
+  _tcFormCfgs[cfg.key] = cfg;
+  cfg.onResult?.(r);
+  return r;
+}
+const _tcFormCfgs = {};
+function tcRecheck(key) { if (_tcFormCfgs[key]) tcRunFormCatalogCheck(_tcFormCfgs[key]); }
+
 // -- Step 2: manual set search (see note above — not auto-filtered by player) --
 function tcSetSearch(q) {
   document.getElementById('acSetUUID').value = '';
@@ -16139,7 +17506,14 @@ function saveAddCard() {
   inventory.push(card);
 
   // Persist to Supabase and store the returned UUID on the card
+  const scanSnapshot = _acItemType === 'card' ? _acScanSnapshot : null;
+  if (scanSnapshot) card._scanSnapshot = scanSnapshot;
+  if (_acItemType === 'card' && _acCatalogResult) {
+    card.DetectedConfidence = { ...(card.DetectedConfidence || {}), catalog: _tcCatalogAudit(_acCatalogResult) };
+  }
+
   insertCardToDB(card).then(dbId => {
+    if (scanSnapshot) _logScanCorrections(scanSnapshot, _scanFinalFromCard(card), 'add_card', dbId);
     if (!dbId) return;
     card._dbId = dbId;
     if (activeShowId) _autoPublishCardToShow(card, dbId, activeShowId);
@@ -19549,6 +20923,7 @@ async function hydrateCardShowMembership(sellerHandle) {
 // ════════════════════════════════════════════════════════
 
 function openManualSaleModal() {
+  _mslResetCatalog();
   // Reset every field
   ['mslPlayer','mslYear','mslSet','mslParallel','mslGrade','mslCert','mslNotes','mslGraderOther'].forEach(id => {
     const el = document.getElementById(id);
@@ -19645,6 +21020,8 @@ function mslTriggerLibrary() {
 function _mslResetPhoto() {
   if (_mslVisionAbort) { _mslVisionAbort.abort(); _mslVisionAbort = null; }
   _mslScanConfidence = null;
+  _mslScanSnapshot = null;
+  _scanClearCertConfirm(document.getElementById('manualSaleOverlay'));
   _mslShowPhotoIdle();
   const fi = document.getElementById('mslFileInput');
   if (fi) fi.value = '';
@@ -19739,11 +21116,7 @@ async function _mslApplyVisionResult(card, base64) {
   // scan-card.js field names: player_name, set_name, cert_number. Serial +
   // Auto flag are folded into the free-text Parallel field, matching the
   // existing convention elsewhere in this app.
-  const parallelText = [
-    card.parallel_name,
-    card.autograph ? 'Auto' : null,
-    card.parallel_serial ? '/' + card.parallel_serial : null,
-  ].filter(Boolean).join(' ');
+  const parallelText = _scanParallelText(card);
 
   fill('mslPlayer', card.player_name, 'player_name');
   fill('mslYear',   card.year,        'year');
@@ -19751,16 +21124,30 @@ async function _mslApplyVisionResult(card, base64) {
   fill('mslParallel', parallelText);
   fill('mslGrade',    card.grade,     'grade');
   fill('mslCert',     card.cert_number, 'cert_number');
+  if (card.grading_company || card.cert_number) {
+    _scanTopCropBase64(base64).then(label => _scanShowCertConfirm('mslCert', card.cert_number,
+      card.confidence?.cert_number, card.flags, label));
+  }
+  _mslScanSnapshot = _scanSnapshotFromScanCard(card, card.flags);
 
   const graderEl = document.getElementById('mslGrader');
   if (graderEl && card.grading_company) {
-    _setGraderFieldValue('mslGrader', 'mslGraderOther', 'mslGraderOtherWrap', String(card.grading_company).toUpperCase());
+    _setGraderFieldValue('mslGrader', 'mslGraderOther', 'mslGraderOtherWrap', String(card.grading_company).trim());
     graderEl.classList.add('db-filled');
     graderEl.addEventListener('change', () => graderEl.classList.remove('db-filled'), { once: true });
   }
 
   _mslShowPhotoPreview(base64);
   _mslScanConfidence = card.confidence || null;
+
+  _mslCatalogResult = null;
+  tcRunFormCatalogCheck({
+    key: 'msl', statusEl: 'mslCatalogStatus',
+    ids: { player: 'mslPlayer', year: 'mslYear', set: 'mslSet', parallel: 'mslParallel' },
+    category: card.category || '',
+    onConfidence: (el, c) => _scanFlagConfidence(el, c),
+    onResult: (r) => { _mslCatalogResult = r; },
+  });   // non-blocking
 
   const level = _scanOverallConfidence(card);
   showToast(
@@ -19775,6 +21162,16 @@ async function _mslApplyVisionResult(card, base64) {
   const fingerprint = await computeCardFingerprint(card);
   const dupe = fingerprint ? await checkDuplicateFingerprint(fingerprint) : null;
   _scanRenderDupeWarning(document.getElementById('mslDupeWarning'), dupe);
+}
+
+// ── Catalog check wiring: Log a Manual Sale (no Card # field here) ──
+let _mslCatalogResult = null;
+function _mslResetCatalog() {
+  _mslCatalogResult = null;
+  _tcFormSeq.msl = (_tcFormSeq.msl || 0) + 1;
+  delete _tcFormCfgs.msl;
+  const s = document.getElementById('mslCatalogStatus');
+  if (s) { s.style.display = 'none'; s.innerHTML = ''; }
 }
 
 function mslSelPay(el, method) {
@@ -19879,6 +21276,7 @@ async function confirmManualSale() {
     parallel_serial: null, player_name: player || null,
   });
   card.DetectedConfidence = _mslScanConfidence; // audit trail of the scan, if one was used
+  if (_mslCatalogResult) card.DetectedConfidence = { ...(card.DetectedConfidence || {}), catalog: _tcCatalogAudit(_mslCatalogResult) };
 
   // ── Step 1: Push to inventory[] ───────────────────────
   // Before any network await — Report tab updates feel instant.
@@ -19898,6 +21296,15 @@ async function confirmManualSale() {
     card._dbId = dbId;
   } else {
     showToast('⚠️ Saved locally — server sync failed', '#f59e0b');
+  }
+
+  if (_mslScanSnapshot) {
+    card._scanSnapshot = _mslScanSnapshot;
+    // This modal has no Card # field, so card_number is never a correction.
+    _logScanCorrections(_mslScanSnapshot,
+      { ..._scanFinalFromCard(card), card_number: _mslScanSnapshot.values.card_number },
+      'manual_sale', dbId);
+    _mslScanSnapshot = null;
   }
 
   // ── Step 3: Write sold fields to inventory row ────────
@@ -21305,6 +22712,7 @@ async function submitPasswordReset() {
 
       <!-- Duplicate fingerprint warning — non-blocking, injected by _mslApplyVisionResult() -->
       <div id="mslDupeWarning" class="scan-dupe-warning" style="display:none"></div>
+      <div id="mslCatalogStatus" class="tc-catalog-status" style="display:none"></div>
 
       <!-- Sold price — required -->
       <div>
