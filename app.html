@@ -2152,6 +2152,7 @@
   }
   .tc-dropdown-skip:hover { text-decoration: underline; }
   .tc-verify-badge { font-family: 'DM Mono', monospace; font-size: 9px; letter-spacing: 0.08em; }
+  .tc-catalog-status { margin: 0.25rem 0 0.6rem; padding: 0.45rem 0.65rem; border: 1px solid var(--border); border-radius: 8px; background: var(--card); }
 
 
   /* ── MANAGE SELLERS INLINE PANEL ── */
@@ -5292,6 +5293,7 @@
           <input class="show-input" id="ac_subcategory_other" placeholder="Enter game/franchise name" style="margin:0">
         </div>
 
+        <div id="acCatalogStatus" class="tc-catalog-status" style="display:none"></div>
         <div id="ac_player_row" style="display:grid;grid-template-columns:1fr 1fr;gap:0.55rem">
           <div style="position:relative">
             <div class="section-label" style="margin-bottom:0.3rem">Player</div>
@@ -5966,6 +5968,7 @@
 
         <!-- Duplicate fingerprint warning — non-blocking, injected by posShowReview() -->
         <div id="posDupeWarning" class="scan-dupe-warning" style="display:none"></div>
+        <div id="posCatalogStatus" class="tc-catalog-status" style="display:none"></div>
 
         <!-- Review fields -->
         <div class="pos-fields">
@@ -7953,7 +7956,7 @@ function renderBulkScanReview(cards) {
       if (bulkScanReviewCards !== reviewCards) return; // modal closed / new scan
       _autoVerifyPsaCards(reviewCards);  // PSA auto-verify (currently disabled by flag)
       _runCorrectionPass(reviewCards);   // raw-card player-name correction via catalog cross-check
-      _runTcapiValidation(reviewCards);  // per-card VERIFIED / PLAYER FOUND / UNVERIFIED badge
+      _runTcapiValidation(reviewCards);  // per-card Trading Card API catalog check + badge
     });
 }
 
@@ -8297,6 +8300,7 @@ async function _rawPassOne(c, bmp, gen) {
 
   const sc = r.result?.success ? r.result.card : null;
   if (!sc) return; // pass-1 values stay; the catalog checks still run on them
+  if (sc.category) c.category = sc.category; // lets the catalog check skip TCG / non-sport
   const conf = sc.confidence || {};
   const snap = _bulkScanSnapshots[c.id];
   const pass1 = snap?.values || {};
@@ -8532,14 +8536,11 @@ function _bsSetVerifyBadge(block, state) {
     header.insertBefore(badge, header.querySelector('.bulkscan-card-idx') || null);
   }
   if (state === 'verifying') {
-    badge.innerHTML = `<span style="display:inline-flex;align-items:center;gap:4px;color:var(--muted)"><span style="width:8px;height:8px;border:1.5px solid var(--border);border-top-color:var(--muted);border-radius:50%;display:inline-block;animation:spin 0.7s linear infinite"></span>VERIFYING</span>`;
-  } else if (state === 'verified') {
-    badge.innerHTML = `<span style="color:#1BAF7A" title="Player, set and card number all match the catalog">✓ VERIFIED</span>`;
-  } else if (state === 'player') {
-    badge.innerHTML = `<span style="color:var(--accent)" title="Player is in the catalog; set and card number not confirmed">PLAYER FOUND</span>`;
-  } else {
-    badge.innerHTML = `<span style="color:var(--muted)">UNVERIFIED</span>`;
+    badge.innerHTML = `<span style="display:inline-flex;align-items:center;gap:4px;color:var(--muted)"><span style="width:8px;height:8px;border:1.5px solid var(--border);border-top-color:var(--muted);border-radius:50%;display:inline-block;animation:spin 0.7s linear infinite"></span>CHECKING CATALOG</span>`;
+    return;
   }
+  const t = TC_TIER_LABEL[state] || TC_TIER_LABEL.unknown;
+  badge.innerHTML = t.text ? `<span style="color:${t.color}" title="${_bsEsc(t.tip)}">${t.text}</span>` : '';
 }
 
 function _bsApplyValidatedField(block, field, value) {
@@ -8550,132 +8551,103 @@ function _bsApplyValidatedField(block, field, value) {
   setTimeout(() => el.classList.remove('db-filled'), 8000);
 }
 
-// Runs in parallel for every non-low-confidence card via Promise.allSettled —
-// never blocks the review grid, which is already rendered by the time this fires.
+// Catalog check for every card in the review grid, three at a time (each
+// card can take several Trading Card API calls). Low-confidence cards are
+// checked too — a catalog match is exactly what can raise their confidence.
 async function _runTcapiValidation(cards) {
-  const targets = cards.filter(c => (c.confidence || '').toLowerCase() !== 'low');
-  if (!targets.length) return;
-  await Promise.allSettled(targets.map(c => _tcapiValidateOneCard(c)));
+  const queue = cards.slice();
+  const worker = async () => {
+    while (queue.length) {
+      const c = queue.shift();
+      try { await _tcapiValidateOneCard(c); } catch { /* per-card, non-fatal */ }
+    }
+  };
+  await Promise.all([worker(), worker(), worker()]);
 }
+
+const _BS_CATALOG_FIELDS = { player: 'player', year: 'year', set: 'set', cardNumber: 'cardNumber', parallel: 'parallel' };
 
 async function _tcapiValidateOneCard(card) {
   const block = document.querySelector(`.bulkscan-card-block[data-card-id="${CSS.escape(card.id)}"]`);
   if (!block) return; // excluded/removed before this resolved
+  const val = f => block.querySelector(`[data-field="${f}"]`)?.value.trim() || '';
+  if (!val('player')) { _bsSetVerifyBadge(block, 'unknown'); return; }
   _bsSetVerifyBadge(block, 'verifying');
 
-  let playerMatched = false, setMatched = false, cardMatched = false;
+  const parallel = val('parallel');
+  const run = (parallel.match(/\b\d+\s*\/\s*(\d+)\b/) || parallel.match(/(?:^|\s)\/\s*(\d+)\b/) || [])[1] || '';
+  let r = null;
   try {
-    const playerQ = block.querySelector('[data-field="player"]')?.value.trim() || '';
-    if (!playerQ) return;
-
-    const { results: players } = await _tcSearchPlayers(playerQ);
-    if (!players.length) return;
-    playerMatched = true;
-
-    const yearVal = block.querySelector('[data-field="year"]')?.value.trim() || '';
-    const setVal  = block.querySelector('[data-field="set"]')?.value.trim() || '';
-    // A bare set name like "Bowman Chrome" with no year is genuinely ambiguous —
-    // it substring-matches base sets, exhibits, university/draft spin-offs, and
-    // convention one-offs across many years, with no way to tell which one a
-    // seller's card is actually from. A real failure: "Bowman Chrome" with a
-    // blank Year matched "2019 Topps NSCC Bowman Chrome National Convention" —
-    // wrong, and only "won" because it happens to sort first alphabetically.
-    // Require a year to anchor the match; without one, skip enrichment rather
-    // than guess (the player-match VERIFIED badge is unaffected either way).
-    if (!setVal || !yearVal) return;
-
-    // /v1/sets?name= requires an exact full match (confirmed empirically — even
-    // a single whole word like "Bowman" alone returns nothing), so a set name
-    // Claude read off a card is very unlikely to match server-side. Filter the
-    // small (273-set) catalog client-side instead, same as the Add Card picker.
-    const allSets = await _tcGetAllSets();
-    const setLower  = setVal.toLowerCase();
-    const yearLower = yearVal.toLowerCase();
-    const candidates = allSets.filter(s => {
-      const n = (s.attributes?.name || '').toLowerCase();
-      return n.includes(setLower) && n.includes(yearLower);
+    r = await tcCatalogCheck({
+      player: val('player'), year: val('year'), set: val('set'), cardNumber: val('cardNumber'),
+      parallel, printRun: run, auto: /\bauto/i.test(parallel), category: card.category || '',
     });
-    if (!candidates.length) return;
-    // Prefer the shortest matching name when several sets share the year and
-    // substring — the base/mainline product name is virtually always a prefix
-    // of longer exhibit, insert, or regional-variant names, never the reverse.
-    const matchedSet = candidates.reduce((best, s) =>
-      (s.attributes?.name?.length || 0) < (best.attributes?.name?.length || 0) ? s : best
-    );
-
-    // Fetch checklist + parallels BEFORE writing anything to the Set field —
-    // a real failure showed why: "Upper Deck" + "2022" matched only one
-    // candidate, "2022-23 Upper Deck Black Diamond /349" (its name literally
-    // contains "Upper Deck", it's a real year match), but Black Diamond is an
-    // entirely different physical product from the plain Upper Deck set a
-    // "Young Guns" card actually belongs to -- two siblings sharing a brand
-    // name, not the same product. When the matched set DOES have real
-    // catalogued subsets (confirmed: Black Diamond has 40), require the
-    // card's stated parallel to plausibly be one of them before trusting the
-    // match at all. If the catalog has real data here and none of it lines
-    // up, that's a genuine signal the match is wrong, not just an unlucky
-    // substring collision — treat it as no match rather than apply it. A set
-    // with no subset data at all (e.g. 2025 Bowman Chrome, subset_count: 0)
-    // has nothing to cross-check against, so it's given the benefit of the
-    // doubt as before.
-    // v2's format=compact is a documented-but-buggy no-op (confirmed by the
-    // API team) -- v1 honors it, but returns the set as primary `data` with
-    // cards as bare {type,id} refs; include=checklist puts the real
-    // number/name attributes into `included`.
-    const [checklistData, parallelData] = await Promise.all([
-      tcapiGet(_tcBuildChecklistPath(matchedSet.id)),
-      tcapiGet(_tcBuildSetsPath({ parentId: matchedSet.id, perPage: 100 })),
-    ]);
-    const parallels = parallelData?.data || [];
-
-    const parallelVal = block.querySelector('[data-field="parallel"]')?.value.trim() || '';
-    if (parallelVal && parallels.length) {
-      const parallelLower = parallelVal.toLowerCase();
-      const parallelConfirmed = parallels.some(p => {
-        const n = (p.attributes?.name || '').toLowerCase();
-        return n.includes(parallelLower) || parallelLower.includes(n);
-      });
-      if (!parallelConfirmed) return;
-    }
-
-    setMatched = true;
-
-    // Never overwrite a Set the scan read off the card — a substring+year
-    // catalog match can still be a sibling product. Offer the canonical
-    // name as a note the seller can act on instead.
-    const canonicalSet = matchedSet.attributes?.name || '';
-    const stripYear = (n) => n.toLowerCase().replace(/^\d{4}(-\d{2,4})?\s+/, '').trim();
-    if (canonicalSet && stripYear(canonicalSet) !== stripYear(setVal)) {
-      _bsAppendNote(block, `Catalog set name: ${canonicalSet}`);
-    }
-
-    const playerLower = playerQ.toLowerCase();
-    const playerEntries = (checklistData?.included || [])
-      .filter(cc => (cc.attributes?.name || '').toLowerCase().includes(playerLower));
-    const cardNumVal = block.querySelector('[data-field="cardNumber"]')?.value.trim() || '';
-    if (!cardNumVal) {
-      // Only fill when exactly one checklist entry is this player — a player
-      // with a base card, an insert and an auto in the same set has several,
-      // and picking the first would be a guess.
-      if (playerEntries.length === 1 && playerEntries[0].attributes?.number) {
-        _bsApplyValidatedField(block, 'cardNumber', playerEntries[0].attributes.number);
-        cardMatched = true;
-      }
-    } else {
-      cardMatched = playerEntries.some(cc =>
-        String(cc.attributes?.number || '').trim().toLowerCase() === cardNumVal.toLowerCase());
-    }
-    // Parallel is left as read: the free-text field carries Auto and the
-    // stamped serial, which a catalog parallel name would silently drop.
   } catch (err) {
-    console.warn('[tcapiValidation] lookup failed for card', card.id, err.message);
-  } finally {
-    // VERIFIED only when player, set AND card number all match the catalog.
-    _bsSetVerifyBadge(block,
-      playerMatched && setMatched && cardMatched ? 'verified'
-        : playerMatched ? 'player' : 'unverified');
-    _bsUpdateFingerprintPreview(block);
+    console.warn('[catalog] lookup failed for card', card.id, err?.message);
   }
+  if (!document.body.contains(block)) return;
+  if (!r) { _bsSetVerifyBadge(block, 'unknown'); return; }
+  block._tcCatalog = r;
+
+  if (r.fillCardNumber && !val('cardNumber')) _bsApplyValidatedField(block, 'cardNumber', r.fillCardNumber);
+  // Set is never overwritten — show the catalog's name for it instead.
+  const canonicalSet = r.canonical.variant || r.canonical.set || '';
+  if ((r.tier === 'verified' || r.tier === 'matched') && canonicalSet
+      && _tcStripYear(canonicalSet) !== _tcStripYear(val('set'))) {
+    _bsAppendNote(block, `Catalog set: ${canonicalSet}`);
+  }
+  if (r.rookie) _bsAppendNote(block, 'Catalog: rookie card (RC)');
+  r.notes.forEach(n => _bsAppendNote(block, n));
+  if (r.suggestion) _bsShowCatalogSuggestion(block, r.suggestion);
+
+  // Field confidence from the catalog: a confirmed field loses its
+  // "please verify" border; a contradicted one gains it.
+  const conf = tcCatalogFieldConfidence(r);
+  Object.entries(conf).forEach(([field, c]) => {
+    const el = block.querySelector(`[data-field="${_BS_CATALOG_FIELDS[field] || field}"]`);
+    if (!el || !el.value) return;
+    el.classList.toggle('scan-verify', c < SCAN_CARD_CONFIDENCE_THRESHOLD);
+    el.title = c < SCAN_CARD_CONFIDENCE_THRESHOLD ? 'The catalog disagrees — please check' : '';
+  });
+  // Overall card confidence: a full catalog match makes it high; a
+  // contradiction makes it low.
+  const confEl = block.querySelector('.bulkscan-card-header .mapper-confidence');
+  if (confEl) {
+    const next = r.tier === 'verified' || r.tier === 'matched' ? 'high'
+      : r.tier === 'mismatch' ? 'low' : null;
+    if (next) { confEl.className = `mapper-confidence ${next}`; confEl.textContent = next; }
+  }
+  _bsSetVerifyBadge(block, r.tier);
+  _bsUpdateFingerprintPreview(block);
+}
+
+function _bsShowCatalogSuggestion(block, suggestion) {
+  block.querySelector('[data-catalog-suggestion]')?.remove();
+  const el = document.createElement('div');
+  el.setAttribute('data-catalog-suggestion', '');
+  el.className = 'bulkscan-notes';
+  el.style.color = '#f5a623';
+  el.innerHTML = `⚠ ${_bsEsc(suggestion.reason)} — <a href="#" style="color:var(--accent);text-decoration:underline">Use ${_bsEsc(suggestion.player)}</a>`;
+  el.querySelector('a').addEventListener('click', (e) => {
+    e.preventDefault();
+    const input = block.querySelector('[data-field="player"]');
+    if (!input) return;
+    const before = input.value;
+    input.value = suggestion.player;
+    input.classList.remove('scan-verify');
+    _bsApplyValidatedField(block, 'player', suggestion.player);
+    // Rebuild the title if it is still the auto-generated one.
+    const titleEl = block.querySelector('[data-field="title"]');
+    if (titleEl && before && titleEl.value === block.dataset.autoTitle) {
+      const v = f => block.querySelector(`[data-field="${f}"]`)?.value || '';
+      const t = buildCardTitle({ player: suggestion.player, year: v('year'), cardSet: v('set'),
+        cardNum: v('cardNumber'), parallel: v('parallel'), sport: '', rawTitle: '' });
+      if (t) { titleEl.value = t; block.dataset.autoTitle = t; }
+    }
+    el.remove();
+    _tcapiValidateOneCard({ id: block.dataset.cardId });
+  });
+  block.appendChild(el);
 }
 
 function _renderBulkScanSummary(cards) {
@@ -8996,6 +8968,7 @@ async function confirmBulkScanReview() {
       Location:           null,
       Seller:             currentSeller,
       item_type:          'card',
+      DetectedConfidence: block._tcCatalog ? { catalog: _tcCatalogAudit(block._tcCatalog) } : null,
     };
   });
 
@@ -12113,6 +12086,10 @@ function posClose() {
 function _posReset() {
   if (_posVisionAbort) { _posVisionAbort.abort(); _posVisionAbort = null; }
   _posLastResult = null;
+  _posCatalogResult = null;
+  _tcFormSeq.pos = (_tcFormSeq.pos || 0) + 1;
+  delete _tcFormCfgs.pos;
+  { const s = document.getElementById('posCatalogStatus'); if (s) { s.style.display = 'none'; s.innerHTML = ''; } }
   _posScanSnapshot = null;
   _scanClearCertConfirm(document.getElementById('posReviewPhase'));
 
@@ -12255,6 +12232,7 @@ async function posHandlePhoto(inputEl) {
 
 async function posShowReview(card, base64, flags) {
   _posLastResult = { card, flags: flags || card.flags || [] };
+  _posCatalogResult = null;
   // Keep the scan snapshot for scan_corrections logging at save time.
   _posScanSnapshot = _scanSnapshotFromScanCard(card, flags || card.flags);
 
@@ -12311,6 +12289,8 @@ async function posShowReview(card, base64, flags) {
   const scroll = document.getElementById('posScroll');
   if (scroll) scroll.scrollTop = 0;
 
+  _posRunCatalogCheck(card.category);   // non-blocking
+
   // Duplicate fingerprint check — non-blocking, scoped to this seller's own
   // inventory. Runs after the review fields are already visible so it never
   // delays getting the form in front of the seller.
@@ -12318,6 +12298,35 @@ async function posShowReview(card, base64, flags) {
   _posLastResult.fingerprint = fingerprint;
   const dupe = fingerprint ? await checkDuplicateFingerprint(fingerprint) : null;
   _scanRenderDupeWarning(document.getElementById('posDupeWarning'), dupe);
+}
+
+// ── Catalog check wiring: Scan-to-Sell POS ──
+let _posCatalogResult = null;
+function _posRunCatalogCheck(category) {
+  return tcRunFormCatalogCheck({
+    key: 'pos', statusEl: 'posCatalogStatus',
+    ids: { player: 'posRPlayer', year: 'posRYear', set: 'posRSet', cardNumber: 'posRCardNum', parallel: 'posRParallel' },
+    category: category || _posLastResult?.card?.category || '',
+    onConfidence: (el, c) => _scanFlagConfidence(el, c),
+    onResult: (r) => {
+      _posCatalogResult = r;
+      _scanCatalogBadge('posConfidenceBadge', 'pos-confidence-badge', r);
+    },
+  });
+}
+
+// Raises the scan's overall confidence badge on a catalog match, and drops
+// it on a contradiction. Leaves it alone otherwise.
+function _scanCatalogBadge(badgeId, baseClass, r) {
+  const badge = document.getElementById(badgeId);
+  if (!badge || badge.style.display === 'none' || !r) return;
+  if (r.tier === 'verified' || r.tier === 'matched') {
+    badge.className = `${baseClass} high`;
+    badge.textContent = '✓  High confidence — matches the card catalog';
+  } else if (r.tier === 'mismatch') {
+    badge.className = `${baseClass} low`;
+    badge.textContent = '✗  The card catalog disagrees — check the player';
+  }
 }
 
 function posShowManualPhase() {
@@ -12420,6 +12429,7 @@ async function posInsertAndOpenDrawer() {
     parallel_serial: null, player_name: player || null,
   });
   card.DetectedConfidence = _posLastResult?.card?.confidence || null; // audit trail of the scan, if one was used
+  if (_posCatalogResult) card.DetectedConfidence = { ...(card.DetectedConfidence || {}), catalog: _tcCatalogAudit(_posCatalogResult) };
 
   // buildCardTitle() reads cardSet/cardNum (not set/cardNumber) and never
   // uses grader/grade — matches the exact call shape fillFormFromVision() uses.
@@ -15621,6 +15631,7 @@ let _acGradeTimer = null;
 
 function openAddCard() {
   _acScanSnapshot = null;
+  _acResetCatalog();
   _scanClearCertConfirm(document.getElementById('addCardOverlay'));
   // Clear all fields
   ['ac_title','ac_player','ac_year','ac_year_sealed','ac_set',
@@ -15724,6 +15735,7 @@ function _acShow(id, show) {
 function closeAddCard() {
   document.getElementById('addCardOverlay').classList.remove('open');
   _acScanSnapshot = null;
+  _acResetCatalog();
   _scanClearCertConfirm(document.getElementById('addCardOverlay'));
   const banner = document.getElementById('visionConfirmBanner');
   if (banner) banner.remove();
@@ -16294,10 +16306,67 @@ function fillFormFromVision(card, result) {
   // Fetch inline comp for the just-filled form
   _acFetchComp();
 
-  // CardSight enrichment: fill in missing cardNumber/parallel from catalog
-  // Runs after a short delay so all form fields are fully settled
-  setTimeout(() => _acEnrichFromCardSight(), 400);
+  // Trading Card API catalog check first (it can confirm or fill the card
+  // number), then the CardSight/PriceCharting enrichment for anything still
+  // missing. Short delay so the form fields are settled.
+  _acCatalogCategory = card.category || '';
+  setTimeout(async () => {
+    await _acRunCatalogCheck();
+    _acEnrichFromCardSight();
+  }, 300);
 }
+
+// ── Catalog check wiring: Add Card ──
+let _acCatalogResult   = null;
+let _acCatalogCategory = '';
+const _VISION_LEVEL = c => c >= 0.85 ? 'high' : c >= 0.6 ? 'medium' : 'low';
+function _acRunCatalogCheck() {
+  if (_acItemType !== 'card') return Promise.resolve(null);
+  return tcRunFormCatalogCheck({
+    key: 'ac', statusEl: 'acCatalogStatus',
+    ids: { player: 'ac_player', year: 'ac_year', set: 'ac_set', cardNumber: 'ac_number',
+           parallel: 'ac_parallel', printRun: 'ac_print_run' },
+    category: document.getElementById('ac_category')?.value || _acCatalogCategory,
+    onConfidence: (el, c) => _applyVisionConfidence(el, _VISION_LEVEL(c)),
+    onApply: () => _acRebuildTitleFromFields(),
+    onResult: (r) => {
+      _acCatalogResult = r;
+      if (r.fillCardNumber) _acRebuildTitleFromFields();
+      // Rookie / Auto flags from the catalog's card record.
+      const add = [];
+      if (r.rookie) add.push('RC');
+      if (r.autograph) add.push('Auto');
+      if (add.length && typeof _getCheckedFeatures === 'function') {
+        const cur = _getCheckedFeatures('ac_features_group');
+        const next = [...new Set([...cur, ...add])];
+        if (next.length !== cur.length) _setCheckedFeatures('ac_features_group', next);
+      }
+    },
+  });
+}
+function _acRebuildTitleFromFields() {
+  const v = id => document.getElementById(id)?.value || '';
+  const t = buildCardTitle({ player: v('ac_player'), year: v('ac_year'), cardSet: v('ac_set'),
+    cardNum: v('ac_number'), parallel: v('ac_parallel'), sport: '', rawTitle: '' });
+  const titleEl = document.getElementById('ac_title');
+  if (titleEl && t) titleEl.value = t;
+}
+function _acResetCatalog() {
+  _acCatalogResult = null;
+  _acCatalogCategory = '';
+  _tcFormSeq.ac = (_tcFormSeq.ac || 0) + 1;   // drop any in-flight result
+  delete _tcFormCfgs.ac;
+  const s = document.getElementById('acCatalogStatus');
+  if (s) { s.style.display = 'none'; s.innerHTML = ''; }
+}
+// After a scan, re-check when the seller edits an identifying field.
+let _acCatalogTimer = null;
+document.addEventListener('change', (e) => {
+  if (!['ac_player', 'ac_year', 'ac_set', 'ac_number', 'ac_parallel'].includes(e.target?.id)) return;
+  if (!_tcFormCfgs.ac) return;
+  clearTimeout(_acCatalogTimer);
+  _acCatalogTimer = setTimeout(_acRunCatalogCheck, 600);
+});
 
 function _applyVisionConfidence(el, level) {
   el.classList.remove('vision-high', 'vision-medium', 'vision-low');
@@ -16356,6 +16425,7 @@ function clearVisionData() {
   if (banner) banner.remove();
 
   _acScanSnapshot = null;
+  _acResetCatalog();
   _scanClearCertConfirm(document.getElementById('addCardOverlay'));
 
   // Clear all vision-filled fields
@@ -16602,6 +16672,394 @@ function _tcGetAllSets() {
   return _tcAllSetsPromise;
 }
 
+// ── CATALOG CHECK (Trading Card API) ──
+// One shared check for every scan path (Add Card, Scan-to-Sell POS, Manual
+// Sale, bulk review). Given what the scan read, it asks the catalog:
+//   1. Is the player name an exact catalog player? (or a close variant)
+//   2. Does that player have a card in a set matching the scanned year+set?
+//      Player cards come from /v1/cards?filter[player_id] (fast since the
+//      API team's fix); sets from the cached root-set catalog plus each
+//      candidate root's child sets (parallels, inserts, autos, variations).
+//   3. Is the scanned card number one of the player's cards in that set?
+//   4. Does the scanned parallel / print run match one of those child sets?
+// When the player has no card in a set the catalog does cover, the scanned
+// card number is looked up in that set to suggest who the card really is
+// (a "Yoan Moncada" read on a Munetaka Murakami card shows up this way).
+// Returns a plain result object; nothing here touches the DOM. Every
+// network failure degrades to "not confirmed", never to a mismatch.
+const _tcPlayerCardsCache = new Map();  // playerId -> Promise<card[]>
+const _tcSetCache         = new Map();  // setId -> Promise<set|null>
+const _tcChildSetsCache   = new Map();  // rootId -> Promise<set[]>
+const _tcSetCardsCache    = new Map();  // setId -> Promise<card[]>
+const TC_MAX_CARD_PAGES   = 8;          // 800 cards — covers all but the most-printed players
+
+function _tcNorm(s) {
+  return String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toLowerCase().replace(/[^a-z0-9/ ]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+// Catalog player rows sometimes carry a suffix in last_name ("Trout MEM").
+function _tcPlayerName(p) {
+  const a = p?.attributes || {};
+  return `${a.first_name || ''} ${a.last_name || ''}`.replace(/\s+(MEM|AU|RC|SP|SSP)$/i, '').trim();
+}
+function _tcNormNumber(n) {
+  let s = String(n ?? '').toLowerCase().replace(/^#/, '').replace(/\s+/g, '').trim();
+  if (/^\d+$/.test(s)) s = String(parseInt(s, 10));
+  return s;
+}
+// "9 Munetaka Murakami - Chicago White Sox RC" -> "Munetaka Murakami"
+function _tcPlayerFromCardName(name, number) {
+  let s = String(name || '');
+  if (number && s.startsWith(String(number) + ' ')) s = s.slice(String(number).length + 1);
+  s = s.split(' - ')[0];
+  s = s.replace(/\s+#\/\d+.*$/, '').replace(/(\s+(RC|AU|SP|SSP|MEM|1\/1))+$/i, '');
+  return s.trim();
+}
+function _tcLevenshtein(a, b) {
+  const m = a.length, n = b.length;
+  if (!m || !n) return m || n;
+  const d = Array.from({ length: m + 1 }, (_, i) => [i]);
+  for (let j = 1; j <= n; j++) d[0][j] = j;
+  for (let i = 1; i <= m; i++) for (let j = 1; j <= n; j++)
+    d[i][j] = Math.min(d[i-1][j] + 1, d[i][j-1] + 1, d[i-1][j-1] + (a[i-1] === b[j-1] ? 0 : 1));
+  return d[m][n];
+}
+
+async function _tcPagedData(pathForPage, maxPages) {
+  const first = await tcapiGet(pathForPage(1));
+  if (!first) return null;
+  let all = first.data || [];
+  const total = Math.min(first.meta?.pagination?.total_pages || 1, maxPages);
+  if (total > 1) {
+    const rest = await Promise.all(Array.from({ length: total - 1 }, (_, i) => tcapiGet(pathForPage(i + 2))));
+    rest.forEach(d => { all = all.concat(d?.data || []); });
+  }
+  return all;
+}
+function _tcCached(map, key, fn) {
+  if (!map.has(key)) map.set(key, fn().catch(() => null));
+  return map.get(key);
+}
+function _tcGetPlayerCards(playerId) {
+  return _tcCached(_tcPlayerCardsCache, playerId, () =>
+    _tcPagedData(page => _tcBuildCardsPath({ playerId, page, perPage: 100 }), TC_MAX_CARD_PAGES));
+}
+function _tcGetSet(setId) {
+  return _tcCached(_tcSetCache, setId, async () => (await tcapiGet(`/v1/sets/${setId}`))?.data || null);
+}
+function _tcGetChildSets(rootId) {
+  return _tcCached(_tcChildSetsCache, rootId, () =>
+    _tcPagedData(page => _tcBuildSetsPath({ parentId: rootId, page, perPage: 100 }), 3));
+}
+function _tcGetSetCards(setId) {
+  return _tcCached(_tcSetCardsCache, setId, () =>
+    _tcPagedData(page => _tcBuildCardsPath({ setId, page, perPage: 100 }), 6));
+}
+
+// Year in a catalog set name: "2026 Bowman" -> [2026]; "2022-23 Upper Deck" -> [2022, 2023]
+function _tcSetYears(name) {
+  const m = String(name || '').match(/^(\d{4})(?:-(\d{2,4}))?\b/);
+  if (!m) return [];
+  const y = [parseInt(m[1], 10)];
+  if (m[2]) y.push(m[2].length === 2 ? Math.floor(y[0] / 100) * 100 + parseInt(m[2], 10) : parseInt(m[2], 10));
+  return y;
+}
+function _tcStripYear(name) {
+  return _tcNorm(String(name || '').replace(/^\d{4}(-\d{2,4})?\s+/, ''));
+}
+
+// Root sets whose year matches and whose name (minus year) is contained in
+// the scanned set name or vice versa. Best (most specific) first.
+async function _tcCandidateRoots(year, setName) {
+  const y = parseInt(year, 10);
+  const scanned = _tcStripYear(setName);
+  if (!y || !scanned) return [];
+  const roots = await _tcGetAllSets();
+  return roots
+    .map(s => ({ s, rest: _tcStripYear(s.attributes?.name), years: _tcSetYears(s.attributes?.name) }))
+    .filter(x => x.rest && x.years.includes(y) && (scanned.includes(x.rest) || x.rest.includes(scanned)))
+    .sort((a, b) => (b.rest === scanned) - (a.rest === scanned) || b.rest.length - a.rest.length)
+    .slice(0, 3)
+    .map(x => x.s);
+}
+
+// Words in the scanned parallel text that describe the variant itself —
+// drops the serial ("45/99"), Auto and RC, which live on other flags.
+function _tcParallelWords(parallel) {
+  return _tcNorm(parallel).replace(/\b\d+\s*\/\s*\d+\b|\/\s*\d+\b/g, ' ')
+    .split(' ').filter(w => w.length >= 3 && !/^(auto|autograph|autographs|rc|rookie|card|parallel|base)$/.test(w));
+}
+
+async function tcCatalogCheck({ player, year, set, cardNumber, parallel, printRun, auto, category } = {}) {
+  const r = {
+    tier: 'unknown', player: 'unchecked', set: 'unchecked', cardNumber: 'unchecked',
+    parallel: 'unchecked', printRun: 'unchecked',
+    canonical: {}, suggestion: null, fillCardNumber: null, rookie: null, autograph: null, notes: [],
+  };
+  const playerQ = String(player || '').trim();
+  if (!playerQ) return r;
+  // The catalog is player-based; TCG and non-sport cards have no "player".
+  if (/^(tcg|non-sport)$/i.test(String(category || ''))) { r.tier = 'skipped'; return r; }
+
+  // ── 1. Player ──
+  const qn = _tcNorm(playerQ);
+  let found = (await _tcSearchPlayers(playerQ)).results || [];
+  let exact = found.filter(p => _tcNorm(_tcPlayerName(p)) === qn);
+  if (!exact.length) {
+    // Same last name, different first name ("Cam Abrams" vs "CJ Abrams"),
+    // or a small misspelling — search by last name for near matches.
+    const last = playerQ.split(/\s+/).pop();
+    if (last && last.length >= 3) {
+      const data = await tcapiGet(_tcBuildPlayersPath({ lastName: last, limit: 25 }));
+      found = found.concat(data?.data || []);
+      exact = found.filter(p => _tcNorm(_tcPlayerName(p)) === qn);
+    }
+  }
+  if (exact.length) {
+    r.player = 'confirmed';
+    r.canonical.player = _tcPlayerName(exact[0]);
+  } else {
+    const close = [...new Set(found.map(_tcPlayerName))]
+      .filter(n => {
+        const nn = _tcNorm(n);
+        return nn.split(' ').pop() === qn.split(' ').pop() || _tcLevenshtein(nn, qn) <= 2;
+      });
+    r.player = close.length ? 'close' : 'not_found';
+    if (close.length) r.closeNames = close.slice(0, 3);
+  }
+
+  // ── 2. Player's cards + candidate sets ──
+  const ids = exact.slice(0, 3).map(p => p.id);
+  const [cardLists, roots] = await Promise.all([
+    Promise.all(ids.map(_tcGetPlayerCards)),
+    _tcCandidateRoots(year, set),
+  ]);
+  const playerCards = cardLists.flatMap(l => l || []);
+  // A list at the page cap may be missing cards — don't call a miss a mismatch.
+  const truncated = cardLists.some(l => (l || []).length >= TC_MAX_CARD_PAGES * 100);
+
+  const numQ = _tcNormNumber(cardNumber);
+  let family = null;         // { root, sets: Map(id -> set), cards: [] }
+  for (const root of roots) {
+    const children = (await _tcGetChildSets(root.id)) || [];
+    const sets = new Map([[root.id, root], ...children.map(c => [c.id, c])]);
+    const cards = playerCards.filter(c => sets.has(c.attributes?.set_id));
+    if (cards.length) { family = { root, sets, cards }; break; }
+    if (!family) family = { root, sets, cards };   // remember the best root even with no player cards
+  }
+
+  if (family) r.canonical.set = family.root.attributes?.name || '';
+  if (family?.cards.length) {
+    r.set = 'confirmed';
+    // ── 3. Card number ──
+    const byNumber = family.cards.filter(c => _tcNormNumber(c.attributes?.number) === numQ);
+    if (numQ) {
+      r.cardNumber = byNumber.length ? 'confirmed' : 'not_found';
+      if (!byNumber.length) {
+        const nums = [...new Set(family.cards.map(c => c.attributes?.number).filter(Boolean))];
+        if (nums.length && nums.length <= 6) r.notes.push(`Catalog numbers for this player in ${r.canonical.set}: ${nums.join(', ')}`);
+      }
+    } else {
+      const baseNums = [...new Set(family.cards.filter(c => c.attributes?.set_id === family.root.id)
+        .map(c => c.attributes?.number).filter(Boolean))];
+      const allNums = [...new Set(family.cards.map(c => c.attributes?.number).filter(Boolean))];
+      // Fill only when the player has exactly one number in this whole set family.
+      if (allNums.length === 1) { r.fillCardNumber = allNums[0]; r.cardNumber = 'filled'; }
+      else if (baseNums.length === 1 && !_tcParallelWords(parallel).length && !auto) {
+        r.fillCardNumber = baseNums[0]; r.cardNumber = 'filled';
+      }
+    }
+    const matchCards = byNumber.length ? byNumber
+      : (r.fillCardNumber ? family.cards.filter(c => c.attributes?.number === r.fillCardNumber) : family.cards);
+
+    // ── 4. Parallel / print run ──
+    const words = _tcParallelWords(parallel);
+    const variantSets = matchCards.map(c => family.sets.get(c.attributes?.set_id))
+      .filter(s => s && s.id !== family.root.id);
+    if (!words.length && byNumber.length) {
+      // No parallel text: name the set the numbered card lives in when it's
+      // a single subset (e.g. CRA-MM -> "2026 Bowman Chrome Rookie Autographs").
+      const own = [...new Set(byNumber.map(c => c.attributes?.set_id))];
+      if (own.length === 1 && own[0] !== family.root.id) r.canonical.variant = family.sets.get(own[0])?.attributes?.name || '';
+    }
+    if (words.length) {
+      const hit = variantSets.find(s => {
+        const label = _tcNorm(s.attributes?.title || s.attributes?.name);
+        return words.every(w => label.includes(w));
+      });
+      if (hit) {
+        r.parallel = 'confirmed';
+        r.canonical.variant = hit.attributes?.name || '';
+        // The player's card in that variant set pins down the number.
+        const hitNums = [...new Set(family.cards.filter(c => c.attributes?.set_id === hit.id)
+          .map(c => c.attributes?.number).filter(Boolean))];
+        if (!numQ && !r.fillCardNumber && hitNums.length === 1) { r.fillCardNumber = hitNums[0]; r.cardNumber = 'filled'; }
+      }
+      else r.parallel = variantSets.length ? 'not_found' : 'unchecked';
+      const run = parseInt(printRun, 10);
+      const serial = parseInt(hit?.attributes?.serial, 10);
+      if (run && serial) r.printRun = run === serial ? 'confirmed' : 'mismatch';
+      if (r.printRun === 'mismatch') r.notes.push(`Catalog print run for ${hit.attributes.name} is /${serial}`);
+    }
+    // RC / Auto flags only when the exact card is known.
+    if (r.fillCardNumber || byNumber.length) {
+      const exactCards = byNumber.length ? byNumber
+        : family.cards.filter(c => c.attributes?.number === r.fillCardNumber);
+      r.rookie    = exactCards.some(c => c.attributes?.is_rookie);
+      r.autograph = exactCards.some(c => c.attributes?.has_autograph);
+    }
+  } else if (family && r.player === 'confirmed' && !truncated) {
+    // The catalog covers this set, but has no card for this player in it —
+    // either the player or the set was misread.
+    r.set = 'player_not_in_set';
+    r.notes.push(`The catalog has no ${r.canonical.player} card in ${r.canonical.set}`);
+  }
+
+  // ── 5. Who is this card number in the set? (misread player names) ──
+  if (family && numQ && r.cardNumber !== 'confirmed') {
+    const rootCards = (await _tcGetSetCards(family.root.id)) || [];
+    const owners = rootCards.filter(c => _tcNormNumber(c.attributes?.number) === numQ);
+    const names = [...new Set(owners.map(c => _tcPlayerFromCardName(c.attributes?.name, c.attributes?.number)).filter(Boolean))];
+    if (names.length === 1 && _tcNorm(names[0]) !== qn) {
+      r.suggestion = { player: names[0], reason: `#${cardNumber} in ${r.canonical.set} is ${names[0]}` };
+    }
+  }
+  if (!r.suggestion && r.player === 'close' && r.closeNames?.length === 1) {
+    r.suggestion = { player: r.closeNames[0], reason: `Catalog spelling: ${r.closeNames[0]}` };
+  }
+
+  // ── Tier ──
+  const playerOk = r.player === 'confirmed';
+  const setOk    = r.set === 'confirmed';
+  const numOk    = r.cardNumber === 'confirmed' || r.cardNumber === 'filled';
+  if (r.suggestion && /^#/.test(r.suggestion.reason)) r.tier = 'mismatch';
+  else if (playerOk && setOk && numOk) r.tier = 'verified';
+  else if (playerOk && setOk) r.tier = 'matched';
+  else if (r.set === 'player_not_in_set') r.tier = 'mismatch';
+  else if (playerOk) r.tier = 'player';
+  else if (r.player === 'close') r.tier = 'close';
+  else r.tier = 'unknown';
+  return r;
+}
+
+// 0-1 confidence the catalog lends each field (null = no opinion). Used to
+// raise a confirmed field's confidence, or lower a contradicted one.
+function tcCatalogFieldConfidence(r) {
+  const c = {};
+  if (!r) return c;
+  if (r.player === 'confirmed') c.player = r.tier === 'mismatch' ? 0.3 : (r.set === 'confirmed' ? 0.98 : 0.9);
+  else if (r.tier === 'mismatch' || r.player === 'close') c.player = 0.3;
+  if (r.set === 'confirmed') { c.year = 0.97; c.set = 0.95; }
+  if (r.cardNumber === 'confirmed') c.cardNumber = 0.98;
+  else if (r.cardNumber === 'not_found') c.cardNumber = 0.4;
+  if (r.parallel === 'confirmed') c.parallel = 0.95;
+  if (r.printRun === 'confirmed') c.printRun = 0.98;
+  else if (r.printRun === 'mismatch') c.printRun = 0.3;
+  return c;
+}
+
+// Compact record of a catalog check, kept in inventory.detected_confidence.
+function _tcCatalogAudit(r) {
+  if (!r) return null;
+  return { tier: r.tier, player: r.player, set: r.set, card_number: r.cardNumber,
+    parallel: r.parallel, print_run: r.printRun, canonical: r.canonical,
+    suggestion: r.suggestion?.player || null, rookie: r.rookie, autograph: r.autograph,
+    field_confidence: tcCatalogFieldConfidence(r), checked_at: new Date().toISOString() };
+}
+
+const TC_TIER_LABEL = {
+  verified: { text: '✓ CATALOG MATCH', color: '#1BAF7A', tip: 'Player, set and card number match the Trading Card API catalog' },
+  matched:  { text: '✓ SET MATCH',     color: '#1BAF7A', tip: 'Player has a card in this set; card number not confirmed' },
+  player:   { text: 'PLAYER FOUND',    color: 'var(--accent)', tip: 'Player is in the catalog; set not confirmed (the catalog may not cover it)' },
+  close:    { text: 'CHECK NAME',      color: '#f5a623', tip: 'No exact catalog player — a similar name exists' },
+  mismatch: { text: '⚠ CHECK PLAYER',  color: '#f5a623', tip: 'The catalog disagrees with the scanned player or set' },
+  unknown:  { text: 'NOT IN CATALOG',  color: 'var(--muted)', tip: 'Not found in the catalog — the catalog is incomplete, so this is not an error' },
+  skipped:  { text: '',                color: 'var(--muted)', tip: '' },
+};
+
+// One-line summary under the form. applyKey names a registered callback
+// for the "Use <name>" button.
+const _tcApplyFns = {};
+function tcCatalogStatusHTML(r, applyKey) {
+  if (!r || r.tier === 'skipped') return '';
+  const t = TC_TIER_LABEL[r.tier] || TC_TIER_LABEL.unknown;
+  const bits = [];
+  if (r.tier === 'verified' || r.tier === 'matched') {
+    bits.push(_escHtml([r.canonical.player, r.canonical.variant || r.canonical.set].filter(Boolean).join(' · ')));
+    if (r.rookie) bits.push('RC');
+    if (r.autograph) bits.push('Auto');
+  }
+  if (r.suggestion) {
+    bits.push(_escHtml(r.suggestion.reason) + (applyKey
+      ? ` <a href="#" onclick="_tcApplySuggestion('${applyKey}');return false" style="color:var(--accent);text-decoration:underline">Use ${_escHtml(r.suggestion.player)}</a>`
+      : ''));
+  }
+  r.notes.forEach(n => bits.push(_escHtml(n)));
+  return `<div style="font-family:'DM Mono',monospace;font-size:0.62rem;letter-spacing:0.06em;color:${t.color}" title="${_escHtml(t.tip)}">${t.text}</div>`
+    + (bits.length ? `<div style="font-size:0.7rem;color:var(--muted);margin-top:2px">${bits.join(' · ')}</div>` : '');
+}
+function _tcApplySuggestion(key) {
+  const fn = _tcApplyFns[key];
+  if (fn) fn();
+}
+
+// Runs the check for a single-card form (Add Card / POS / Manual Sale).
+// cfg: { key, statusEl, ids: {player, year, set, cardNumber, parallel, printRun},
+//        category, onConfidence(fieldId, conf0to1), onResult(r) }
+let _tcFormSeq = {};
+async function tcRunFormCatalogCheck(cfg) {
+  const val = id => (id && document.getElementById(id)?.value || '').trim();
+  const statusEl = typeof cfg.statusEl === 'string' ? document.getElementById(cfg.statusEl) : cfg.statusEl;
+  const seq = (_tcFormSeq[cfg.key] = (_tcFormSeq[cfg.key] || 0) + 1);
+  const input = {
+    player: val(cfg.ids.player), year: val(cfg.ids.year), set: val(cfg.ids.set),
+    cardNumber: val(cfg.ids.cardNumber), parallel: val(cfg.ids.parallel), printRun: val(cfg.ids.printRun),
+    auto: /\bauto/i.test(val(cfg.ids.parallel)), category: cfg.category || '',
+  };
+  if (!input.player) { if (statusEl) statusEl.style.display = 'none'; return null; }
+  if (statusEl) {
+    statusEl.style.display = 'block';
+    statusEl.innerHTML = `<div style="font-family:'DM Mono',monospace;font-size:0.62rem;color:var(--muted)">CHECKING CATALOG…</div>`;
+  }
+  let r = null;
+  try { r = await tcCatalogCheck(input); } catch (err) { console.warn('[catalog] check failed', err?.message); }
+  if (seq !== _tcFormSeq[cfg.key]) return null;   // a newer check started
+  if (!r) { if (statusEl) statusEl.style.display = 'none'; return null; }
+
+  if (r.fillCardNumber && cfg.ids.cardNumber && !val(cfg.ids.cardNumber)) {
+    const el = document.getElementById(cfg.ids.cardNumber);
+    if (el) { el.value = r.fillCardNumber; el.classList.add('db-filled'); setTimeout(() => el.classList.remove('db-filled'), 8000); }
+  }
+  const conf = tcCatalogFieldConfidence(r);
+  Object.entries(conf).forEach(([field, c]) => {
+    const id = cfg.ids[field];
+    const el = id && document.getElementById(id);
+    if (el && el.value && cfg.onConfidence) cfg.onConfidence(el, c);
+  });
+  _tcApplyFns[cfg.key] = () => {
+    const el = document.getElementById(cfg.ids.player);
+    if (el && r.suggestion) {
+      el.value = r.suggestion.player;
+      el.classList.remove('scan-verify', 'vision-low', 'vision-medium');
+      el.classList.add('db-filled');
+      setTimeout(() => el.classList.remove('db-filled'), 8000);
+      cfg.onApply?.(r.suggestion.player);
+      tcRunFormCatalogCheck(cfg);
+    }
+  };
+  if (statusEl) {
+    const html = tcCatalogStatusHTML(r, cfg.key);
+    statusEl.innerHTML = html + (html
+      ? `<a href="#" onclick="tcRecheck('${cfg.key}');return false" style="font-size:0.68rem;color:var(--muted);text-decoration:underline">Re-check</a>` : '');
+    statusEl.style.display = html ? 'block' : 'none';
+  }
+  _tcFormCfgs[cfg.key] = cfg;
+  cfg.onResult?.(r);
+  return r;
+}
+const _tcFormCfgs = {};
+function tcRecheck(key) { if (_tcFormCfgs[key]) tcRunFormCatalogCheck(_tcFormCfgs[key]); }
+
 // -- Step 2: manual set search (see note above — not auto-filtered by player) --
 function tcSetSearch(q) {
   document.getElementById('acSetUUID').value = '';
@@ -16778,6 +17236,9 @@ function saveAddCard() {
   // Persist to Supabase and store the returned UUID on the card
   const scanSnapshot = _acItemType === 'card' ? _acScanSnapshot : null;
   if (scanSnapshot) card._scanSnapshot = scanSnapshot;
+  if (_acItemType === 'card' && _acCatalogResult) {
+    card.DetectedConfidence = { ...(card.DetectedConfidence || {}), catalog: _tcCatalogAudit(_acCatalogResult) };
+  }
 
   insertCardToDB(card).then(dbId => {
     if (scanSnapshot) _logScanCorrections(scanSnapshot, _scanFinalFromCard(card), 'add_card', dbId);
@@ -20190,6 +20651,7 @@ async function hydrateCardShowMembership(sellerHandle) {
 // ════════════════════════════════════════════════════════
 
 function openManualSaleModal() {
+  _mslResetCatalog();
   // Reset every field
   ['mslPlayer','mslYear','mslSet','mslParallel','mslGrade','mslCert','mslNotes','mslGraderOther'].forEach(id => {
     const el = document.getElementById(id);
@@ -20406,6 +20868,15 @@ async function _mslApplyVisionResult(card, base64) {
   _mslShowPhotoPreview(base64);
   _mslScanConfidence = card.confidence || null;
 
+  _mslCatalogResult = null;
+  tcRunFormCatalogCheck({
+    key: 'msl', statusEl: 'mslCatalogStatus',
+    ids: { player: 'mslPlayer', year: 'mslYear', set: 'mslSet', parallel: 'mslParallel' },
+    category: card.category || '',
+    onConfidence: (el, c) => _scanFlagConfidence(el, c),
+    onResult: (r) => { _mslCatalogResult = r; },
+  });   // non-blocking
+
   const level = _scanOverallConfidence(card);
   showToast(
     level === 'low'
@@ -20419,6 +20890,16 @@ async function _mslApplyVisionResult(card, base64) {
   const fingerprint = await computeCardFingerprint(card);
   const dupe = fingerprint ? await checkDuplicateFingerprint(fingerprint) : null;
   _scanRenderDupeWarning(document.getElementById('mslDupeWarning'), dupe);
+}
+
+// ── Catalog check wiring: Log a Manual Sale (no Card # field here) ──
+let _mslCatalogResult = null;
+function _mslResetCatalog() {
+  _mslCatalogResult = null;
+  _tcFormSeq.msl = (_tcFormSeq.msl || 0) + 1;
+  delete _tcFormCfgs.msl;
+  const s = document.getElementById('mslCatalogStatus');
+  if (s) { s.style.display = 'none'; s.innerHTML = ''; }
 }
 
 function mslSelPay(el, method) {
@@ -20523,6 +21004,7 @@ async function confirmManualSale() {
     parallel_serial: null, player_name: player || null,
   });
   card.DetectedConfidence = _mslScanConfidence; // audit trail of the scan, if one was used
+  if (_mslCatalogResult) card.DetectedConfidence = { ...(card.DetectedConfidence || {}), catalog: _tcCatalogAudit(_mslCatalogResult) };
 
   // ── Step 1: Push to inventory[] ───────────────────────
   // Before any network await — Report tab updates feel instant.
@@ -21958,6 +22440,7 @@ async function submitPasswordReset() {
 
       <!-- Duplicate fingerprint warning — non-blocking, injected by _mslApplyVisionResult() -->
       <div id="mslDupeWarning" class="scan-dupe-warning" style="display:none"></div>
+      <div id="mslCatalogStatus" class="tc-catalog-status" style="display:none"></div>
 
       <!-- Sold price — required -->
       <div>

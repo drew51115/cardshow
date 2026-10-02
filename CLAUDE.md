@@ -1373,6 +1373,9 @@ Hidden fields `acPlayerUUID` / `acSetUUID` / `acCardUUID` / `acParallelSetUUID` 
 `scanFallbackToSearch()` (cert scanner's "Search by name" fallback) now focuses `#ac_player` instead of the removed `#ac_search`.
 
 ### Bulk Scan Validation Layer
+**Superseded (session 2026-10-02):** the logic below was replaced by the shared catalog check —
+see "Catalog check (Trading Card API)" under "Scan Accuracy".
+
 `renderBulkScanReview(cards)` already rendered a full review grid before this change (confidence badges, source-photo thumbnail, PSA verify, raw-card correction pass, etc.) — it was never the stub the original task spec described, and `CardShow_BulkScan_POC.html` still doesn't exist in this repo (see the note earlier in this file). This feature adds a validation pass *on top of* the existing grid, not a replacement.
 
 `_runTcapiValidation(cards)` fires fire-and-forget from `renderBulkScanReview()`, alongside the existing `_autoVerifyPsaCards()` and `_runCorrectionPass()` calls. For every card with `confidence !== 'low'`, `_tcapiValidateOneCard()` runs via `Promise.allSettled` (never blocks the already-rendered grid):
@@ -4509,11 +4512,9 @@ items are dropped; an invalid bbox becomes `null` (card kept).
 ### Post-scan fixes (Phase 4)
 - Bulk review shows an editable Cert # for **every** graded card; only the Verify button stays
   PSA/CGC/SGC (`_bsVerifySlotHTML()` returns '' otherwise).
-- `_tcapiValidateOneCard()` badge: "✓ VERIFIED" only when player **and** set **and** card number
-  match the catalog; "PLAYER FOUND" when only the player does; else "UNVERIFIED". Card # is filled
-  from the checklist only when exactly one entry is that player. Set is never overwritten — a
-  differing canonical name (ignoring a leading year) is shown as a note. The old fuzzy Parallel
-  overwrite was removed (it dropped "Auto" and the serial).
+- `_tcapiValidateOneCard()` badge — replaced by the shared catalog check, see "Catalog check
+  (Trading Card API)" below. Set is still never overwritten (a differing canonical name is shown
+  as a note) and Parallel is never overwritten.
 - `_acEnrichFromCardSight()` scores on year + set-name match only (removed +10 for having a card
   number, +5 for having a parallel), never fills Parallel, fills Card # only when the single top
   result matches both year and set. (Also fixed its title rebuild passing `cardNumber` instead of
@@ -4534,6 +4535,51 @@ items are dropped; an invalid bbox becomes `null` (card kept).
   whitespace-insensitive) and inserts one `scan_corrections` row per changed field with
   `seller_id = auth.uid()`. Fire-and-forget; every error swallowed. Manual Sale has no Card #
   field, so card_number is never logged there.
+
+### Catalog check (Trading Card API) — every scan path (session 2026-10-02)
+`tcCatalogCheck({player, year, set, cardNumber, parallel, printRun, auto, category})` in app.html
+(next to `_tcGetAllSets()`) — no DOM access, all failures degrade to "not confirmed":
+1. **Player:** `filter[full_name]=like:` then `filter[last_name]=like:`; exact normalized
+   (accent-insensitive, "MEM"/"AU" suffix stripped) = confirmed; same last name or edit distance
+   ≤2 = close.
+2. **Player's cards:** `/v1/cards?filter[player_id]` (all pages in parallel, cap 8 pages; cached
+   per session). Fast now (~0.5s; ~3.6s/page-set for a 670-card player like Trout).
+3. **Set:** root sets from `_tcGetAllSets()` whose year (incl. "2022-23") matches and whose name
+   minus year is contained in the scanned set or vice versa; then each root's child sets
+   (`parent_id` — parallels, inserts, autos, variations; `/v1/sets` lists root sets only). Set is
+   confirmed when the player has a card in that family. Cards carry `number`, `set_id`,
+   `is_rookie`, `has_autograph`; child sets carry `title` and `serial` (print run).
+4. **Card #** confirmed when one of those cards has it; filled (only when empty) when the player
+   has a single number in the family, or in the confirmed parallel's set.
+5. **Parallel / print run:** scanned parallel words (minus serial/Auto/RC) all in a child set's
+   title; print run vs that set's `serial`.
+6. **Misread player:** if the player has no card in a set the catalog covers
+   (`set: 'player_not_in_set'`) or the number isn't theirs, the root set's cards are searched for
+   the scanned card number → `suggestion` ("#9 in 2026 Bowman is Munetaka Murakami"). Not raised
+   when the player's card list hit the page cap.
+Tiers (`TC_TIER_LABEL`): verified "✓ CATALOG MATCH" (player+set+#), matched "✓ SET MATCH",
+player "PLAYER FOUND", close "CHECK NAME", mismatch "⚠ CHECK PLAYER", unknown "NOT IN CATALOG"
+(catalog is incomplete — not an error), skipped (category TCG / Non-Sport; nothing shown).
+`tcCatalogFieldConfidence(r)` → 0-1 per field (confirmed ~0.95-0.98; contradicted 0.3-0.4).
+
+Wiring:
+- **Bulk review** (`_runTcapiValidation`, 3 at a time, after the re-read pass; low-confidence
+  cards included): badge, card # fill, catalog set / RC notes, "Use <name>" suggestion button
+  (rebuilds an auto title, re-checks), `scan-verify` cleared on confirmed fields / added on
+  contradicted ones, header confidence → high on a match, low on a mismatch. `_rawPassOne()` now
+  keeps `c.category` so TCG cards are skipped.
+- **Add Card** (`_acRunCatalogCheck`, runs after a vision fill, before `_acEnrichFromCardSight`):
+  `#acCatalogStatus` line with Use/Re-check, vision-high/medium/low borders from catalog
+  confidence, checks RC/Auto Features from the catalog card, re-runs on change of
+  player/year/set/#/parallel after a scan.
+- **POS** (`_posRunCatalogCheck`, `#posCatalogStatus`) and **Manual Sale** (`#mslCatalogStatus`,
+  no card # field): status line, `scan-verify` from catalog confidence; POS's overall badge →
+  "High confidence — matches the card catalog" or "catalog disagrees".
+- Saved cards get `DetectedConfidence.catalog` (`_tcCatalogAudit()`: tier, per-field states,
+  canonical names, suggestion, field_confidence, checked_at) on all four paths.
+Verified headless against the live catalog: Moncada-on-#9 → CHECK PLAYER + Murakami suggestion →
+Use → CATALOG MATCH; CRA-MM → "2026 Bowman Chrome Rookie Autographs"; "Red RC Variation" with no
+number → fills #9; Delphox → NOT IN CATALOG.
 
 ### Not built (per spec)
 Model upgrade (run the eval first; confirm the newer model accepts `temperature` and forced tool
