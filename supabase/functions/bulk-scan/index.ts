@@ -9,7 +9,10 @@
 // The client downsizes the photo to 1568px on the long edge before upload,
 // so bbox coordinates line up with the client's own pixel space.
 
-import { createClient } from "@supabase/supabase-js";
+// Explicit npm: specifier (not the bare "@supabase/supabase-js" + deno.json import map)
+// so the file deploys the same from the Supabase dashboard editor, which uploads
+// index.ts alone, as from the CLI.
+import { createClient } from "npm:@supabase/supabase-js@2";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MODEL = "claude-sonnet-4-6";
