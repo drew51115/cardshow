@@ -2358,6 +2358,11 @@ migration, no new external library.
   consent-gated register-on-sale + deregister-on-revoke. Registration is built but **dark**
   (`GTCR_CONSENT_UI_LAUNCHED=false` client-side, `?gtcr_consent=1` test switch, `GTCR_REGISTRATION_ENABLED` server-side) until
   pricing is decided. Transfer-on-resale (Phase 5) not built — open decision. See "Trust Check via GTCR".
+- **XLSX import grade-column fix (session 2026-10-02)** — columns blank in the first data row
+  (Grade/Grader/Cert # on a raw card) were dropped for the whole XLSX file, so graded cards
+  imported as Raw. `readXLSX()`/`openMapper()` now keep every column; a re-upload repairs the
+  raw cards in place via a raw-twin match in `loadInventory()`. See "XLSX Import Dropped Grade
+  Columns".
 
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`
@@ -4330,6 +4335,61 @@ page with no way to set a new password. There was no recovery handling at all: n
   Redirect URLs. Without it Supabase sends the link to the Site URL instead, and the
   `index.html` forward still gets it to the form (one extra redirect).
 - Sign-up still allows 6-character passwords while a reset requires 8 (open decision above).
+
+## XLSX Import Dropped Grade Columns (session 2026-10-02)
+
+Real seller report: graded cards imported from an XLSX came in as Raw.
+
+### Root cause
+`readXLSX()` called `sheet_to_json(ws, { range: headerRowIdx })` without `defval`, so SheetJS
+left out the key for every empty cell. `openMapper()` then built its column list from
+`Object.keys(rawRows[0])`, the first data row only. Any column blank in that row never reached
+the mapper and was dropped for the whole file. The seller's first row was a raw card, so Grade,
+Grader and Cert # were lost, and `validateAndNormalizeCard()` saved every card as Raw.
+CSV was not affected (`parseCSV()` gives every row every header). The stock template was:
+its first example row has no Condition, so Condition, Seller, Image URL and Notes were dropped on
+every XLSX upload.
+
+### Fix 1: import (`readXLSX()`, `openMapper()`)
+- `readXLSX()` parses with `defval: ''`, so every row has every header.
+- It then drops unnamed `__EMPTY` / `__EMPTY_N` columns that are empty in every row. Both
+  templates declare a range out to column W, so `defval` alone added 7 / 2 blank unnamed columns
+  to the mapper. An unnamed column with data in any row is kept.
+- `openMapper()` builds `mapperHeaders` from the union of keys across all rows, in first-seen
+  order, and shows the first non-empty value in each column as the sample.
+
+### Fix 2: repair on re-upload (`loadInventory()`)
+Re-uploading the same file repairs the raw cards in place instead of adding a graded duplicate.
+Used only when the exact `cardFingerprint()` match finds nothing. An existing card is the
+incoming card's **raw twin** when:
+- the incoming card has a numeric Grade;
+- it matches on seller, Card Title, Year, Set, Number and Parallel/Variant (the fingerprint with
+  Grader blank);
+- the existing card has no Grade, no Grader, and a `_dbId`;
+- no other incoming row in this upload has claimed it. Exact matches claim their card first.
+
+On a twin match:
+- Grade, Grader and Cert # are copied onto the existing card. Price and Condition are copied
+  only when the file has a value. Status is never changed, so a Sold twin stays Sold.
+- The incoming row is not added and is left out of `upsertCardsToDB()`. The existing row is saved
+  by id with `updateCardInDB()` (same row, no insert).
+- It counts as "updated" in the toast.
+- Repaired cards go to `_gtcrQueueChecks()`, which checks the non-sold ones with a cert #.
+
+Also fixed in `loadInventory()`'s exact-match branch: blank and 0 prices now compare equal.
+Before, a raw row with no price counted as "updated" on every re-upload (`NaN !== 0`).
+
+### Known gaps (not fixed)
+- **Parallel blank in the first row:** if the broken import also dropped Parallel/Variant, the
+  saved raw card has no parallel and won't match its twin. A re-upload then adds the graded card
+  as new, next to the raw one. The seller deletes the raw copy by hand.
+- **Cert # is not in the dedupe key.** Two copies of the same graded card with different cert
+  numbers collapse into one on import.
+- **Sold-status reset on re-upload.** `upsertCardsToDB()`'s update path writes the full row,
+  `status` included, from the file. Re-uploading a file containing a Sold card sets it back to
+  Available in the DB. A repaired Sold twin stays Sold after the first re-upload, but a second
+  re-upload resets it like any other Sold card.
+- No grade parsing from Card Title, and no SQL backfill. Repair only happens through a re-upload.
 
 ## Show Configuration (Demo Data)
 - **MLP Card Show** — Oct 17-18, 2026 · Grand Hyatt Tampa Bay, FL · Code: MLPTPA (primary demo, shown to buyers without code)

@@ -9732,11 +9732,58 @@ function loadInventory(rows) {
   // Cards already in inventory but NOT in this upload are kept as-is (append mode)
   let added = 0, updated = 0;
 
+  // ── Raw-twin repair (re-upload after the XLSX grade-column bug) ──
+  // An XLSX import used to drop Grade/Grader/Cert # whenever those columns
+  // were blank in the file's first data row, saving graded cards as Raw.
+  // Re-uploading the same file should repair those cards in place, not add
+  // a graded duplicate next to each one. cardFingerprint() includes Grader,
+  // so a graded incoming card never exact-matches its raw twin — this is a
+  // fallback, used only when the exact match finds nothing.
+  //
+  // Exact matches are claimed first, so a twin is never an existing card
+  // that another incoming row in this same upload already matched exactly.
+  const claimed = new Set();
+  deduped.forEach(r => {
+    const ex = existingMap[cardFingerprint(r)];
+    if (ex) claimed.add(ex);
+  });
+  const twinKey = r => cardFingerprint({ ...r, Grader: '' });
+  const rawTwins = {}; // twinKey → existing raw cards with a DB row
+  inventory.forEach(card => {
+    const noGrade  = card.Grade === null || card.Grade === undefined || String(card.Grade).trim() === '';
+    const noGrader = !String(card.Grader || '').trim();
+    if (!noGrade || !noGrader || !card._dbId) return;
+    const k = twinKey(card);
+    (rawTwins[k] = rawTwins[k] || []).push(card);
+  });
+  const repaired = [];             // existing cards repaired in place
+  const absorbed = new Set();      // incoming rows consumed by a repair
+
   deduped.forEach(incoming => {
     const fp = cardFingerprint(incoming);
     const existing = existingMap[fp];
+    const incomingGraded = incoming.Grade !== null && incoming.Grade !== undefined
+      && String(incoming.Grade).trim() !== '' && !isNaN(Number(incoming.Grade));
+    const twin = (!existing && incomingGraded)
+      ? (rawTwins[twinKey(incoming)] || []).find(c => !claimed.has(c))
+      : null;
+    if (twin) {
+      claimed.add(twin);
+      twin.Grade    = incoming.Grade;
+      twin.Grader   = incoming.Grader;
+      twin['Cert #'] = incoming['Cert #'] || twin['Cert #'] || null;
+      if (incoming.Price !== undefined && incoming.Price !== null && String(incoming.Price).trim() !== '') twin.Price = incoming.Price;
+      if (incoming.Condition && String(incoming.Condition).trim()) twin.Condition = incoming.Condition;
+      // Status deliberately untouched — a Sold twin stays Sold.
+      repaired.push(twin);
+      absorbed.add(incoming);
+      updated++;
+      return;
+    }
     if (existing) {
-      const priceChanged = Number(existing.Price) !== Number(incoming.Price);
+      // Blank and 0 compare equal: a raw row with no price in the file would
+      // otherwise count as "updated" (NaN !== 0) on every re-upload.
+      const priceChanged = (Number(existing.Price) || 0) !== (Number(incoming.Price) || 0);
       const gradeChanged = String(existing.Grade) !== String(incoming.Grade);
       existing.Price         = incoming.Price;
       existing.Grade         = incoming.Grade;
@@ -9764,9 +9811,15 @@ function loadInventory(rows) {
     if (badge) badge.textContent = `${showInventory.filter(r => r.Status !== 'Sold').length} cards live`;
   }
 
-  // Persist to Supabase — only for logged-in sellers, not sample/demo data
+  // Persist to Supabase — only for logged-in sellers, not sample/demo data.
+  // Repaired raw twins are updated in place by id (same row, no insert) and
+  // left out of the upsert batch, whose own grade+grader match would miss
+  // them and insert a duplicate.
   if (currentRole === 'seller' && currentSeller) {
-    upsertCardsToDB(deduped);
+    upsertCardsToDB(deduped.filter(r => !absorbed.has(r)));
+    repaired.forEach(card => updateCardInDB(card));
+    // They now carry a cert # and have never been trust-checked.
+    if (repaired.length) _gtcrQueueChecks(repaired);
   }
 
   // Summary toast
