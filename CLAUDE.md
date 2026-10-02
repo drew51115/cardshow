@@ -4435,7 +4435,12 @@ numbers from the runner are pass 1 only (pass 2 runs in the browser).
 - One prompt for sports, TCG and non-sport; the old second TCG call is gone. Text is returned
   as printed (never lowercased). Cert must be null unless every digit is legible.
 - Optional second image: a label crop (`labelImageBase64`), labeled in the prompt.
-- 8s timeout so it fires before Netlify's ~10s limit.
+- 9.3s timeout (was 8s — a full-card read of a ~1568px crop measured 7.1–8.6s on the deploy
+  preview, so 8s timed out on real photos). Responses carry `elapsed_ms`.
+- `mode: 'label'` (bulk pass 2 on a slab): `record_label` tool — label text, grader, grade, cert,
+  2 confidences. Much smaller output: measured 4.1–4.7s vs 7.1–8.6s for a full read.
+- Prompt rule: read names from print only, never infer a player from team/uniform/photo (a
+  Murakami card was read as Yoan Moncada — same team).
 - `validateCard()` strips spaces/dashes from the cert, then checks: digits-only for
   PSA/BGS/SGC/CGC, length from `CERT_LENGTHS` (PSA 7-9, SGC 7-8, BGS 7-10, CGC 10, other 5-16 —
   **starting values, verify against the slab fixtures**), cert ≠ card number / serial /
@@ -4481,13 +4486,24 @@ items are dropped; an invalid bbox becomes `null` (card kept).
   the slab pass is skipped (any pass-1 cert is marked for checking).
 - `renderBulkScanReview()` no longer title-cases player/set/parallel. A stamped serial is folded
   into Parallel ("Silver 45/99").
-- `_runSlabLabelPass(cards)` (fire-and-forget after render): for each card with a grader, crops
-  bbox + 10% padding from the original bitmap (long edge ≤1568) plus a top-28% label crop, POSTs
-  to `scan-card` — concurrency 3, 10s timeout each. Merges grader/grade/cert only into fields the
-  seller hasn't edited, and only at confidence ≥0.7 (cert also needs no `cert_*` flags). If pass 2
-  fails or isn't confident, the pass-1 cert is **cleared** and the field asks for manual entry with
-  the label crop beside it. Crops <300px → "Slab too small in photo — shoot closer for cert
-  numbers". Progress line "Reading slab labels… N of M" with Cancel (`_slabPassGen` cancels).
+- `_runSlabLabelPass(cards)` (fire-and-forget after render) re-reads **every card it can locate**:
+  crops bbox + 10% padding from the original bitmap (long edge ≤1568) and POSTs only that crop to
+  `scan-card` — concurrency 4, 12s client timeout, graded slabs first. Failures log
+  `[slabPass] re-read failed` with the error and timings.
+  - Graded → `_slabPassOne()`, mode `label`. Merges grader/grade/cert only into fields the seller
+    hasn't edited, at confidence ≥0.7 (cert also needs no `cert_*` flags). If the cert isn't
+    confidently re-read, the pass-1 cert is **cleared** and the field asks for manual entry with
+    the top-35% label crop beside it (thumbnail only, not sent). If the label can't be re-read at
+    all, grader and grade are flagged `scan-verify` too, with a note.
+  - Raw → `_rawPassOne()`, mode `card`. Fills player/year/set/card #/parallel into unedited fields
+    at confidence ≥0.7, fills grader/grade/cert if it finds a slab pass 1 missed, and rebuilds the
+    title if it's still the auto-generated one (`data-auto-title`).
+  - Crops <300px → "Slab too small in photo — shoot closer for cert numbers". Progress line
+    "Re-reading cards… N of M" with Cancel (`_slabPassGen` cancels).
+  - `_autoVerifyPsaCards()`, `_runCorrectionPass()` and `_runTcapiValidation()` now run **after**
+    this pass finishes, on the re-read values (the correction pass reads its targets from the live
+    DOM). First real test (2026-10-02, before this change): every slab re-read timed out at 8s,
+    so all certs were cleared and a PSA slab kept pass 1's "CGC".
 - `closeBulkScanReview()` `.close()`s the bitmap and cancels the pass.
 
 ### Post-scan fixes (Phase 4)
@@ -4530,7 +4546,10 @@ Trading Card API candidate re-ranking · PSA verification (still behind
 - Bulk review has no Serial Number / Print Run inputs; the serial rides in Parallel.
 - `eval/` is inside Netlify's publish directory (`publish = "."`), so committed fixture photos
   would be publicly downloadable.
-- Pass 2 runs once per graded card in a showcase — one extra Anthropic call each.
+- Pass 2 runs once per located card in a showcase — one extra Anthropic call each.
+- Raw-card re-reads (full `card` mode, 7–8.6s measured) are close to the 9.3s server limit; a
+  slow one times out and the card keeps its pass-1 values. Netlify's sync limit is 10s, so the
+  fix would be moving pass 2 into a Supabase Edge Function (150s limit), not a longer timeout.
 
 ## Show Configuration (Demo Data)
 - **MLP Card Show** — Oct 17-18, 2026 · Grand Hyatt Tampa Bay, FL · Code: MLPTPA (primary demo, shown to buyers without code)
