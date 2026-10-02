@@ -4113,8 +4113,10 @@ under the seller's email, which recorded the card as belonging to the person who
   - Stores GTCR's `registration_id`, `gtcr_registration_number` and `seller_linked`.
 - **App triggers** (`gtcrScheduleReconcile()`, debounced 2.5s): `insertCardToDB()`, `updateCardInDB()`
   (covers sales, edits and every other card update), `deleteCardFromDB()`, CSV/XLSX import, a trust
-  flag changing, and login (`gtcrLoadConsentState()`). Only runs when the consent UI is enabled and
-  the seller has consent or still has registrations to remove. `sdConfirm()` no longer registers anything.
+  flag changing, and login (`gtcrLoadConsentState()`). Runs when the seller has consent or still has
+  registrations to remove, **whether or not the consent UI is switched on in that browser**, so a sale
+  or delete on any device deregisters the card. If the tab closes inside the 2.5s debounce, the next
+  login catches it. `sdConfirm()` no longer registers anything.
 - **Opting in / out** (`gtcrConsentToggleChanged()`): runs `gtcrReconcile()` straight away with
   progress toasts ("Registering… 12 done, 30 to go") and a final count.
 - **Seller UI:** "✓ Registered with GTCR" under the cert # (`card._gtcrRegistered`, set by

@@ -12251,7 +12251,7 @@ function loginAsSeller(handle) {
   const soHandle = document.getElementById('profileSignOutHandle');
   if (soHandle) soHandle.textContent = '@' + handle;
   _gtcrConsentState = null;
-  gtcrLoadConsentState(); // no-op while GTCR_CONSENT_UI_ENABLED is false
+  gtcrLoadConsentState(); // also resumes any pending GTCR removals, even with the consent UI off
 
   // Hide partnership link — replaced by Profile button for sellers
   const partnerLink = document.getElementById('partnershipLink');
@@ -20197,9 +20197,11 @@ let _gtcrReconcileTimer = null;
 let _gtcrReconciling = false;
 let _gtcrReconcileAgain = false;
 
+// Removals don't depend on the consent UI being switched on: a seller who sells
+// or deletes a registered card on a device without it still deregisters it.
 function _gtcrNeedsReconcile() {
   const st = _gtcrConsentState;
-  if (!GTCR_CONSENT_UI_ENABLED || !st || currentRole !== 'seller') return false;
+  if (!st || currentRole !== 'seller') return false;
   return st.consented || st.registered_count > 0;
 }
 
@@ -20292,7 +20294,7 @@ async function _gtcrRegistryCall(action, extra) {
 }
 
 async function gtcrLoadConsentState() {
-  if (!GTCR_CONSENT_UI_ENABLED || typeof db === 'undefined') return null;
+  if (typeof db === 'undefined') return null; // runs even with the consent UI off, so removals still happen
   try {
     const data = await _gtcrRegistryCall('status');
     if (!data.success) return null;
