@@ -4501,6 +4501,23 @@ items are dropped; an invalid bbox becomes `null` (card kept).
   - Raw → `_rawPassOne()`, mode `card`. Fills player/year/set/card #/parallel into unedited fields
     at confidence ≥0.7, fills grader/grade/cert if it finds a slab pass 1 missed, and rebuilds the
     title if it's still the auto-generated one (`data-auto-title`).
+  - **Identity checks (session 2026-10-02, after a real scan put a neighbor's PSA 9 + cert on a raw
+    Jared Dickey card):** crops are padded 18% (pass-1 boxes are rough) and sent with
+    `from_showcase: true`, which tells the model to read only the center card. Label mode also
+    returns `center_is_slab`, `label_player` and `label_box`.
+    - `center_is_slab === false` (no grader/cert read) → `_bsMarkRaw()` clears pass 1's
+      grader/grade/cert and notes "marked Raw".
+    - `label_player` not matching the card's player (`_bsSameName()`, last-name match) →
+      nothing copied, fields flagged, note names the label's player.
+    - Cert not confident → a second label call adds a 3x close-up of the label
+      (`_bulkLabelCrop()` from `label_box`, full-res); the more confident read of each field wins.
+      The close-up is also the cert-check thumbnail (previously the top 35% of a loose crop,
+      which often missed the label).
+    - Raw re-reads add a slab's grader/grade/cert only when the re-read player matches.
+    - `_bsFlagScanDuplicates()` (after the pass, before the catalog checks): same cert # on two
+      cards, or a letter card # (e.g. CPAJP) on two different players → both flagged with a note.
+    - Live check on the preview: raw card → `center_is_slab:false` (3.4s); synthetic PSA slab →
+      player/grade/cert read, `label_box` close to the real label (5.1s).
   - Crops <300px → "Slab too small in photo — shoot closer for cert numbers". Progress line
     "Re-reading cards… N of M" with Cancel (`_slabPassGen` cancels).
   - `_autoVerifyPsaCards()`, `_runCorrectionPass()` and `_runTcapiValidation()` now run **after**
@@ -4511,7 +4528,8 @@ items are dropped; an invalid bbox becomes `null` (card kept).
 
 ### Post-scan fixes (Phase 4)
 - Bulk review shows an editable Cert # for **every** graded card; only the Verify button stays
-  PSA/CGC/SGC (`_bsVerifySlotHTML()` returns '' otherwise).
+  PSA/CGC/SGC (`_bsVerifySlotHTML()` returns '' otherwise, and also for PSA while
+  `BULK_SCAN_PSA_VERIFY_ENABLED` is false — the "PSA verification paused" note was removed).
 - `_tcapiValidateOneCard()` badge — replaced by the shared catalog check, see "Catalog check
   (Trading Card API)" below. Set is still never overwritten (a differing canonical name is shown
   as a note) and Parallel is never overwritten.
