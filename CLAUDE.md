@@ -4263,7 +4263,7 @@ Before this, a reset link sent from the Supabase dashboard dropped the seller on
 page with no way to set a new password. There was no recovery handling at all: no
 `updateUser()`, no `onAuthStateChange`, and `initPage()` signed out every session on load.
 
-### Link shape (checked against the live supabase-js v2 bundle, not a test email)
+### Link shape (from the live supabase-js v2 bundle; confirmed with a real email)
 - `createClient()` had no options, and v2's default `flowType` is `implicit`. It is now pinned
   explicitly: `{ auth: { flowType: 'implicit' } }`. PKCE would deliver auth links as `?code=…`,
   the same param the buyer show-join deep link uses.
@@ -4276,8 +4276,10 @@ page with no way to set a new password. There was no recovery handling at all: n
   `?token_hash=…&type=recovery`. That shape is also captured (`{mode:'recovery', tokenHash}`),
   and `_startPasswordRecovery()` exchanges it with `db.auth.verifyOtp({ token_hash, type:
   'recovery' })`. Errors can also arrive as query params (`?error_code=…`).
-- **Not yet confirmed with a real email.** Click one real reset link and check that the URL
-  matches one of the shapes above.
+- **Tested and validated with a real email (2026-10-02).** After PR #66 merged, a reset sent
+  from the Supabase dashboard (Authentication → Users → Send password recovery) was clicked on
+  production: it landed on the set-new-password form, the new password saved, and the seller
+  was signed in.
 
 ### Flow
 - **`index.html`** — a reset sent from the dashboard goes to the Site URL, which is the landing
