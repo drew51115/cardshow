@@ -8683,8 +8683,12 @@ function readXLSX(file) {
         if (KNOWN_COLS.some(col => cells.includes(col))) { headerRowIdx = i; break; }
       }
 
-      // Parse with the real header row as the starting point
-      const rows = XLSX.utils.sheet_to_json(ws, { range: headerRowIdx });
+      // Parse with the real header row as the starting point.
+      // defval: '' gives every row every header. Without it SheetJS omits keys
+      // for empty cells, and openMapper() used to build its column list from
+      // the first data row alone — so a column blank in that row (e.g. Grade on
+      // a raw card) was dropped for the whole file.
+      const rows = XLSX.utils.sheet_to_json(ws, { range: headerRowIdx, defval: '' });
 
       // Skip any description/hint row immediately after the headers.
       // These rows have a non-numeric Year value (e.g. "4-digit year e.g. 2024").
@@ -8693,6 +8697,18 @@ function readXLSX(file) {
         if (year && !/^\d{4}(-\d{2})?$/.test(year) && isNaN(Number(year))) return false;
         return true;
       });
+
+      // defval also fills unnamed columns inside the sheet's declared range
+      // (both templates declare columns out to W). Drop an unnamed __EMPTY
+      // column only when it is empty in every row — keep it if it has data.
+      const emptyUnnamed = new Set();
+      filtered.forEach(row => Object.keys(row).forEach(k => {
+        if (/^__EMPTY(_\d+)?$/.test(k)) emptyUnnamed.add(k);
+      }));
+      filtered.forEach(row => Object.keys(row).forEach(k => {
+        if (emptyUnnamed.has(k) && String(row[k] ?? '').trim() !== '') emptyUnnamed.delete(k);
+      }));
+      if (emptyUnnamed.size) filtered.forEach(row => emptyUnnamed.forEach(k => { delete row[k]; }));
 
       if (!filtered.length) { showToast('No data rows found in this file', 'var(--danger)'); return; }
       openMapper(filtered);
@@ -9716,11 +9732,58 @@ function loadInventory(rows) {
   // Cards already in inventory but NOT in this upload are kept as-is (append mode)
   let added = 0, updated = 0;
 
+  // ── Raw-twin repair (re-upload after the XLSX grade-column bug) ──
+  // An XLSX import used to drop Grade/Grader/Cert # whenever those columns
+  // were blank in the file's first data row, saving graded cards as Raw.
+  // Re-uploading the same file should repair those cards in place, not add
+  // a graded duplicate next to each one. cardFingerprint() includes Grader,
+  // so a graded incoming card never exact-matches its raw twin — this is a
+  // fallback, used only when the exact match finds nothing.
+  //
+  // Exact matches are claimed first, so a twin is never an existing card
+  // that another incoming row in this same upload already matched exactly.
+  const claimed = new Set();
+  deduped.forEach(r => {
+    const ex = existingMap[cardFingerprint(r)];
+    if (ex) claimed.add(ex);
+  });
+  const twinKey = r => cardFingerprint({ ...r, Grader: '' });
+  const rawTwins = {}; // twinKey → existing raw cards with a DB row
+  inventory.forEach(card => {
+    const noGrade  = card.Grade === null || card.Grade === undefined || String(card.Grade).trim() === '';
+    const noGrader = !String(card.Grader || '').trim();
+    if (!noGrade || !noGrader || !card._dbId) return;
+    const k = twinKey(card);
+    (rawTwins[k] = rawTwins[k] || []).push(card);
+  });
+  const repaired = [];             // existing cards repaired in place
+  const absorbed = new Set();      // incoming rows consumed by a repair
+
   deduped.forEach(incoming => {
     const fp = cardFingerprint(incoming);
     const existing = existingMap[fp];
+    const incomingGraded = incoming.Grade !== null && incoming.Grade !== undefined
+      && String(incoming.Grade).trim() !== '' && !isNaN(Number(incoming.Grade));
+    const twin = (!existing && incomingGraded)
+      ? (rawTwins[twinKey(incoming)] || []).find(c => !claimed.has(c))
+      : null;
+    if (twin) {
+      claimed.add(twin);
+      twin.Grade    = incoming.Grade;
+      twin.Grader   = incoming.Grader;
+      twin['Cert #'] = incoming['Cert #'] || twin['Cert #'] || null;
+      if (incoming.Price !== undefined && incoming.Price !== null && String(incoming.Price).trim() !== '') twin.Price = incoming.Price;
+      if (incoming.Condition && String(incoming.Condition).trim()) twin.Condition = incoming.Condition;
+      // Status deliberately untouched — a Sold twin stays Sold.
+      repaired.push(twin);
+      absorbed.add(incoming);
+      updated++;
+      return;
+    }
     if (existing) {
-      const priceChanged = Number(existing.Price) !== Number(incoming.Price);
+      // Blank and 0 compare equal: a raw row with no price in the file would
+      // otherwise count as "updated" (NaN !== 0) on every re-upload.
+      const priceChanged = (Number(existing.Price) || 0) !== (Number(incoming.Price) || 0);
       const gradeChanged = String(existing.Grade) !== String(incoming.Grade);
       existing.Price         = incoming.Price;
       existing.Grade         = incoming.Grade;
@@ -9748,9 +9811,15 @@ function loadInventory(rows) {
     if (badge) badge.textContent = `${showInventory.filter(r => r.Status !== 'Sold').length} cards live`;
   }
 
-  // Persist to Supabase — only for logged-in sellers, not sample/demo data
+  // Persist to Supabase — only for logged-in sellers, not sample/demo data.
+  // Repaired raw twins are updated in place by id (same row, no insert) and
+  // left out of the upsert batch, whose own grade+grader match would miss
+  // them and insert a duplicate.
   if (currentRole === 'seller' && currentSeller) {
-    upsertCardsToDB(deduped);
+    upsertCardsToDB(deduped.filter(r => !absorbed.has(r)));
+    repaired.forEach(card => updateCardInDB(card));
+    // They now carry a cert # and have never been trust-checked.
+    if (repaired.length) _gtcrQueueChecks(repaired);
   }
 
   // Summary toast
@@ -14749,7 +14818,11 @@ let mapperMappings  = {};   // { sourceHeader: csKey }
 
 function openMapper(rawRows) {
   mapperRawRows  = rawRows;
-  mapperHeaders  = Object.keys(rawRows[0] || {});
+  // Union of keys across ALL rows, in first-seen order — not just rawRows[0],
+  // whose keys can be missing any column that row happens to leave blank.
+  const headerSet = new Set();
+  rawRows.forEach(row => Object.keys(row || {}).forEach(k => headerSet.add(k)));
+  mapperHeaders  = [...headerSet];
   mapperMappings = {};
 
   const source   = detectSource(mapperHeaders);
@@ -14770,12 +14843,17 @@ function openMapper(rawRows) {
 
   // Build mapping rows
   const container = document.getElementById('mapperRows');
-  const sampleRow = rawRows[0] || {};
+  // Sample = first non-empty value in each column, not the first row's value
+  // (which is blank for any column that row leaves empty).
+  const firstNonEmpty = header => {
+    const row = rawRows.find(r => r && r[header] !== undefined && r[header] !== null && String(r[header]).trim() !== '');
+    return row ? row[header] : '';
+  };
 
   container.innerHTML = mapperHeaders.map(header => {
     const { csKey, confidence } = autoMatch(header);
     mapperMappings[header] = csKey;
-    const sample = String(sampleRow[header] || '').slice(0, 30);
+    const sample = String(firstNonEmpty(header)).slice(0, 30);
     const confLabel = csKey === '__SKIP__' ? 'skip' : confidence;
     const confText  = csKey === '__SKIP__' ? '—' : confidence === 'high' ? '✓ Auto' : confidence === 'medium' ? '~ Maybe' : '? Low';
     const selectClass = csKey === '__SKIP__' ? '' : confidence === 'high' ? 'auto-matched' : confidence === 'medium' ? '' : 'unmatched';
