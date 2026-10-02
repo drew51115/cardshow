@@ -4,7 +4,7 @@
 // CLAUDE.md). Uses the READ-ONLY key only (GTCR_READ_API_KEY). The partner write
 // key lives exclusively in gtcr-registry.js; do not use it here.
 //
-// POST { action: 'check', cert_number, grading_company?, inventory_id?, trigger? }
+// POST { action: 'check', cert_number, grading_company?, inventory_id?, trigger? ('insert' | 'publish' | 'register') }
 //   → { success, matched, active_count, has_stolen_report, has_lost_report,
 //       has_dispute_report, trust_flag }
 //   Calls trustCheckApi with partner_id. When a match is found, GTCR logs a
@@ -176,7 +176,7 @@ async function handleCheck(db, event, input) {
           cert_number: certNumber,
           grading_company: gradingCompany,
           source: 'gtcr',
-          trigger: input.trigger === 'publish' ? 'publish' : 'insert',
+          trigger: ['publish', 'register'].includes(input.trigger) ? input.trigger : 'insert',
           matched: result.matched,
           active_count: result.active_count,
           has_stolen_report: result.has_stolen_report,

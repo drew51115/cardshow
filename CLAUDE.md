@@ -24,7 +24,8 @@ netlify/functions/trading-card-lookup.js → Serverless: POST {query, sport?} �
 netlify/functions/invalidate-search-cache.js → Serverless: POST {query} → deletes matching rows from card_search_cache; protected by x-invalidate-secret header
 netlify/functions/trade-og.js            → Serverless: GET /trade/:id → OG-tagged HTML for social crawlers, redirects humans into trade-zone.html (Trade Zone Phase 5)
 netlify/functions/gtcr-trust-check.js    → Serverless: GTCR Trust Check (READ key) — POST {action:'check'|'resolve'} → stolen/lost cert lookup, sets inventory.trust_flag, logs cert_trust_checks (see "Trust Check via GTCR")
-netlify/functions/gtcr-registry.js       → Serverless: GTCR consent + registration (WRITE key) — POST {action:'status'|'grant'|'revoke'|'drain_removals'|'register'}
+netlify/functions/gtcr-registry.js       → Serverless: GTCR consent + registration (WRITE key) — POST {action:'status'|'grant'|'revoke'|'reconcile'}
+scripts/gtcr-write-roundtrip.js          → Local test of GTCR's register/remove endpoints with a fake cert (needs GTCR_WRITE_API_KEY in the shell)
 supabase/migrations/20260925120000_gtcr_trust_check.sql → inventory.trust_flag + cert_trust_checks / gtcr_consent_events / gtcr_registrations (RLS: read-own, no client writes)
 netlify/functions/expire-trade-posts.js  → Scheduled (hourly, see netlify.toml): calls expire_stale_trade_posts() RPC to hide stale trade_posts from the live board
 .env.example                             → Placeholder env vars for all keys
@@ -226,6 +227,11 @@ Required for the Getting started checklist and first-use tips to sync across a s
 `ALTER TABLE sellers ADD COLUMN IF NOT EXISTS onboarding_state jsonb;`. Until it runs,
 `loadOnboardingState()` gets a column error, logs it, and leaves syncing off. The checklist and
 tips then work exactly as before, saved per device in localStorage.
+
+Required for GTCR registration (Phase 4, see "Trust Check via GTCR" below):
+`supabase/migrations/20260930120000_gtcr_registration_lifecycle.sql` — adds `owner_email`, GTCR's
+registration ids, `seller_linked`, and a `failed` status to `gtcr_registrations`. Run it after the
+Trust Check migration below.
 
 Required for Trust Check via GTCR (see that section below):
 `supabase/migrations/20260925120000_gtcr_trust_check.sql`. It adds `inventory.trust_flag` and three
@@ -2355,7 +2361,8 @@ migration, no new external library.
 
 - **Trust Check via GTCR — Phases 1, 3, 4 (session 2026-09-25)** — stolen/lost cert lookup on
   insert + re-check on publish (fails open), flag/dispute UI, consent-evidence log, and
-  consent-gated register-on-sale + deregister-on-revoke. Registration is built but **dark**
+  consent-gated registration (reworked 2026-09-30 to register while the seller owns the card; see
+  Phase 4) + deregister on sale/delete/revoke. Registration is built but **dark**
   (`GTCR_CONSENT_UI_LAUNCHED=false` client-side, `?gtcr_consent=1` test switch, `GTCR_REGISTRATION_ENABLED` server-side) until
   pricing is decided. Transfer-on-resale (Phase 5) not built — open decision. See "Trust Check via GTCR".
 - **XLSX import grade-column fix (session 2026-10-02)** — columns blank in the first data row
@@ -4083,27 +4090,69 @@ the response has no `card_status` at all.
   row is the current state. Re-granting while already granted keeps the original timestamp.
 - `grant` is refused unless `GTCR_REGISTRATION_ENABLED=true`. `revoke` is always allowed.
 
-### Phase 4 — Register on sale + deregister on revoke (built, dark)
-- **Register:** `sdConfirm()` (Sell Drawer, which also covers the POS hand-off) calls
-  `gtcrRegisterOnSale(card)` after `updateCardInDB()` resolves.
-  - **Manual sales are deliberately not registered.** They record off-platform sales, which fall
-    outside "cards I sell through CardShow". Revisit if that's wrong.
-  - The server loads the card itself and requires four things: the caller owns it, `status='Sold'`,
-    a cert # plus grader, and a latest consent event of `'granted'`. The client sends only `inventory_id`.
-  - `seller_email` is the verified Supabase Auth email. `consent_timestamp` is the consent event's
-    `occurred_at`, not the time of the call.
-  - Grader values map to GTCR's enum; anything unknown maps to `Other`.
-  - Results are logged to `gtcr_registrations`. `already_registered` is treated as success.
-- **Revoke:** appends a `'revoked'` event, then drains the seller's `status='registered'` rows through
-  `removeRegistrationApi` within a 7s budget. The client repeats `drain_removals` until `remaining` is 0.
-  A GTCR 404 counts as removed. An interrupted drain resumes when the seller next logs in
-  (`gtcrLoadConsentState()`).
-- **Launch checklist:** get the write key, confirm `partner_id`, finish legal review of the copy, decide
-  pricing, then flip `GTCR_REGISTRATION_ENABLED=true` and `GTCR_CONSENT_UI_LAUNCHED=true` together.
+### Phase 4 — Registration lifecycle, Option A (built, dark, session 2026-09-30)
+Registration means "this person owns this card": GTCR ties each registration to an owner email and
+links it to that person's GTCR account. So a graded card is registered **while the seller owns it**
+and deregistered when that stops being true. (The first build registered cards at the moment of sale
+under the seller's email, which recorded the card as belonging to the person who had just sold it.)
+
+- **One server action, `reconcile`** (`gtcr-registry.js`; `drain_removals` and `register` are
+  aliases). It compares the seller's inventory with their active `gtcr_registrations` rows:
+  - **Should be registered:** consent granted, the card is not Sold, has a cert # and grader, has no
+    `trust_flag` of `flagged` or `disputed`, and has a description. Keyed by slab (cert + grader), so
+    the same slab entered twice is registered once.
+  - **Removed, with a reason sent to GTCR:** `seller_consent_revoked`, `card_sold`, `card_deleted`
+    (the FK sets `inventory_id` to null), `trust_report`, `card_details_changed` (cert or grader edited).
+  - Removals always run. New registrations need `GTCR_REGISTRATION_ENABLED=true` and consent.
+  - A card is only registered after a **clean Trust Check from the last 24h** for its current cert
+    and grader (`cleanRecentlyChecked()`); others are reported as `awaiting_check`. Before calling
+    reconcile, the app re-checks eligible cards whose last check is over 23h old
+    (`_gtcrRefreshChecksForRegistration()`, trigger `'register'`). A failed check leaves the card
+    unregistered (registration fails closed, unlike publishing). Found in testing: a card checked
+    once, before the `card_status` fix, stayed marked clean despite a lost report and got registered.
+  - Works within a 6.5s budget and returns `remaining`; the client calls again until it's 0 or
+    nothing moved. A 401 from GTCR stops the run and returns `auth_error` (it's our key, not the card).
+  - A rejection (400/403/5xx) is stored as a `failed` row and not retried for 6 hours.
+  - Removal sends the stored `owner_email` (the email used at registration), because GTCR only
+    removes a registration for that email. A seller who changes their login email can still deregister.
+  - Stores GTCR's `registration_id`, `gtcr_registration_number` and `seller_linked`.
+- **App triggers** (`gtcrScheduleReconcile()`, debounced 2.5s): `insertCardToDB()`, `updateCardInDB()`
+  (covers sales, edits and every other card update), `deleteCardFromDB()`, CSV/XLSX import, a trust
+  flag changing, and login (`gtcrLoadConsentState()`). Runs when the seller has consent or still has
+  registrations to remove, **whether or not the consent UI is switched on in that browser**, so a sale
+  or delete on any device deregisters the card. If the tab closes inside the 2.5s debounce, the next
+  login catches it. `sdConfirm()` no longer registers anything.
+- **Opting in / out** (`gtcrConsentToggleChanged()`): runs `gtcrReconcile()` straight away with
+  progress toasts ("Registering… 12 done, 30 to go") and a final count.
+- **Seller UI:** "✓ Registered with GTCR" under the cert # (`card._gtcrRegistered`, set by
+  `gtcrHydrateRegistrations()` from `gtcr_registrations`). The Profile status line shows the count.
+  Tips: `gtcrClaim` when GTCR returns `seller_linked: false` (create a free GTCR account with the
+  same email to see the registrations), otherwise `gtcrRegistered`.
+- **Consent copy** is `2026-09-30-draft2` and describes this model. Still a draft for legal review.
+  Consent only counts for the current wording: `CURRENT_CONSENT_COPY_VERSION` in `gtcr-registry.js`
+  must match `GTCR_CONSENT_COPY_VERSION` in app.html. A `granted` event for an older version is treated
+  as no consent (status returns `consent_outdated: true`, nothing new is registered, existing
+  registrations are removed) until the seller ticks the box again. Bump both when the copy changes.
+- **Grader mapping:** PSA, BGS, CGC, SGC, HGA, TAG, AGS, C3G, DGA; anything else (Arena Club, GMA)
+  is sent as `Other`. GTCR lists Beckett as "BGS (Beckett)"; we send `BGS` pending their confirmation.
+- **Endpoints:** `thegtcr.com/functions/*` and `true-safe-card-vault.base44.app/functions/*` answer
+  identically (checked 2026-09-30). `GTCR_API_BASE` defaults to the first.
+- **Testing the real endpoints:** `GTCR_WRITE_API_KEY=... node scripts/gtcr-write-roundtrip.js`
+  registers a `TEST-CARDSHOW-<timestamp>` cert, checks `already_registered`, checks that another
+  email can't remove it, removes it, checks the 404 on a second remove, and checks the 403 without
+  consent. GTCR has no sandbox; test records are soft-deleted and stay in their log as Removed.
+  Set `GTCR_TEST_GRADER=BGS` to check the Beckett value.
+- **Requires** `supabase/migrations/20260930120000_gtcr_registration_lifecycle.sql` (owner email,
+  GTCR ids, `failed` status).
+- **Launch checklist:** add `GTCR_WRITE_API_KEY` in Netlify (deploy previews first), run the round-trip
+  script, test on a preview with `?gtcr_consent=1` and `GTCR_REGISTRATION_ENABLED=true`, finish legal
+  review of the copy, decide pricing, then turn on `GTCR_REGISTRATION_ENABLED=true` in production and
+  `GTCR_CONSENT_UI_LAUNCHED=true` together.
 
 ### Still open (not built)
-- **Decision A — Phase 5 transfer-on-resale** (`transferOnSaleApi`): not built, per the spec. Without it,
-  a registered card that resells through CardShow keeps the old seller's GTCR registration.
+- **Decision A — Phase 5 transfer-on-resale** (`transferOnSaleApi`): not built. Today a sold card's
+  registration is removed, so the card is left unregistered rather than registered to the wrong person.
+  Transferring it to the buyer would need the buyer's email, which CardShow doesn't capture at sale.
 - **Decision B — pricing/packaging** blocks turning consent on for real sellers.
 - **Integrity caveat:** `inventory` still has permissive RLS, so a seller could in principle clear their
   own `trust_flag` by writing to the table directly. The audit tables themselves are protected. This
@@ -4185,6 +4234,7 @@ open, and are skipped (not marked seen) while the onboarding tour is open.
 | `report` | first `switchSellerTab('report')` |
 | `firstSale` | `sdConfirm()` / `confirmManualSale()` |
 | `live` | `sellerPublishToShow()` when at least one card is added |
+| `gtcrClaim` / `gtcrRegistered` | after a GTCR reconcile registers cards (claim tip when GTCR says the email has no GTCR account) |
 
 ? → Show tips again clears both keys. `signOut()` hides any open tip and resets `_gsDataReady`.
 Add a tip by adding a `TIPS` entry and calling `showTipOnce(key)` where the feature opens.
