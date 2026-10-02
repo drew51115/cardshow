@@ -197,28 +197,65 @@ const LABEL_PROMPT = `You read the grading label on one graded trading card slab
 - label_box locates the center slab's label so it can be re-photographed closer.
 - confidence: 0 to 1 for grade and cert_number. Use 0 for a null field.`;
 
+// Locate mode (bulk scan): find ONE described card inside a region cut from a
+// showcase photo and return where it is, so the caller can re-crop it tightly
+// at full resolution before reading it. Tiny output — returns in a few seconds.
+const BOX = {
+  type: ['object', 'null'],
+  properties: { x: { type: 'number' }, y: { type: 'number' }, w: { type: 'number' }, h: { type: 'number' } },
+  required: ['x', 'y', 'w', 'h'],
+};
+const RECORD_LOCATION_TOOL = {
+  name: 'record_location',
+  description: 'Record where the target card is in the image.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      found:      { type: 'boolean', description: 'True if the target card is in the image.' },
+      card_box:   { ...BOX, description: 'The whole target card (or whole slab, label included), as fractions 0-1 of image width/height; x,y = top-left corner. Null if not found.' },
+      is_slab:    { type: 'boolean', description: 'True if the target card is inside a grading slab with a printed label.' },
+      label_box:  { ...BOX, description: "The target slab's grading label, same units. Null if not a slab." },
+      card_count: { type: 'integer', description: 'How many cards or slabs are fully or partly visible in the image.' },
+      confidence: { type: 'number', minimum: 0, maximum: 1, description: 'How sure you are that card_box is the target card.' },
+    },
+    required: ['found', 'card_box', 'is_slab', 'label_box', 'card_count', 'confidence'],
+  },
+};
+const LOCATE_PROMPT = `You locate one trading card in a photo of several cards and record it with the record_location tool.
+- The user describes the target card. The description comes from a quick first look and may contain mistakes; use it with the card's position to pick the right card.
+- The target is usually the card closest to the center of the image. Cards at the edges are usually neighbors.
+- card_box must tightly enclose the whole target card, or the whole slab including its grading label. Coordinates are fractions of the image width and height, x,y the top-left corner.
+- label_box encloses only the grading label (the printed strip at the top of a slab with the grade, name and cert number). Null if the card is not in a grading slab.
+- A card in a top loader, penny sleeve or magnetic holder is not a slab.
+- If none of the cards matches the description, choose the card closest to the center and lower confidence.`;
+
 const SHOWCASE_CROP_NOTE = 'This image was cropped from a photo of many cards laid out together. Parts of neighboring cards or slabs may show at the edges. Describe ONLY the card at the center of the image and ignore everything at the edges.';
 
-async function scanCard({ imageBase64, mediaType = 'image/jpeg', labelImageBase64 = null, mode = 'card', fromShowcase = false, apiKey = process.env.ANTHROPIC_API_KEY }) {
-  const labelMode = mode === 'label';
-  const tool   = labelMode ? RECORD_LABEL_TOOL : RECORD_CARD_TOOL;
-  const system = labelMode ? LABEL_PROMPT : SYSTEM_PROMPT;
+async function scanCard({ imageBase64, mediaType = 'image/jpeg', labelImageBase64 = null, mode = 'card', fromShowcase = false, target = '', apiKey = process.env.ANTHROPIC_API_KEY }) {
+  const labelMode  = mode === 'label';
+  const locateMode = mode === 'locate';
+  const tool   = locateMode ? RECORD_LOCATION_TOOL : labelMode ? RECORD_LABEL_TOOL : RECORD_CARD_TOOL;
+  const system = locateMode ? LOCATE_PROMPT : labelMode ? LABEL_PROMPT : SYSTEM_PROMPT;
   const t0 = Date.now();
   if (!apiKey) return { success: false, error: 'api_error', message: 'ANTHROPIC_API_KEY not configured' };
   if (!imageBase64) return { success: false, error: 'parse_error', message: 'image required' };
 
-  const content = [
+  const content = locateMode ? [
+    { type: 'text', text: `Target card: ${String(target || 'unknown').slice(0, 300)}` },
+  ] : [
     ...(fromShowcase ? [{ type: 'text', text: SHOWCASE_CROP_NOTE }] : []),
     { type: 'text', text: 'Image 1: the full card.' },
     { type: 'image', source: { type: 'base64', media_type: mediaType, data: imageBase64 } },
   ];
-  if (labelImageBase64) {
+  if (locateMode) content.push({ type: 'image', source: { type: 'base64', media_type: mediaType, data: imageBase64 } });
+  if (labelImageBase64 && !locateMode) {
     content.push(
       { type: 'text', text: 'Image 2: a close-up crop of the top of the same card, where a grading label would be. Use it to read the label text, grade and cert number.' },
       { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: labelImageBase64 } },
     );
   }
-  content.push({ type: 'text', text: labelMode ? 'Record this label with the record_label tool.' : 'Record this card with the record_card tool.' });
+  content.push({ type: 'text', text: locateMode ? 'Locate the target card with the record_location tool.'
+    : labelMode ? 'Record this label with the record_label tool.' : 'Record this card with the record_card tool.' });
 
   const controller = new AbortController();
   const timeoutId  = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -247,7 +284,7 @@ async function scanCard({ imageBase64, mediaType = 'image/jpeg', labelImageBase6
     if (!res.ok) {
       const detail = await res.text().catch(() => '');
       console.error('[scan-core] Anthropic API error', res.status, detail.slice(0, 500));
-      return { success: false, error: 'api_error', message: `Anthropic API error ${res.status}` };
+      return { success: false, error: res.status === 429 ? 'rate_limited' : 'api_error', status: res.status, message: `Anthropic API error ${res.status}` };
     }
     data = await res.json();
   } catch (err) {
@@ -266,6 +303,7 @@ async function scanCard({ imageBase64, mediaType = 'image/jpeg', labelImageBase6
     return { success: false, error: 'parse_error', message: 'Scan returned no card record' };
   }
 
+  if (locateMode) return { success: true, location: toolBlock.input, elapsed_ms, mode: 'locate' };
   const { card, flags } = validateCard(toolBlock.input);
   return { success: true, card, flags, elapsed_ms, mode: labelMode ? 'label' : 'card' };
 }

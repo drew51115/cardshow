@@ -1,6 +1,8 @@
 // Netlify Function: scan-card
 // POST { image_base64: "<base64>", media_type: "image/jpeg", label_image_base64?: "<base64>",
-//        mode?: 'card' | 'label', from_showcase?: bool }
+//        mode?: 'card' | 'label' | 'locate', from_showcase?: bool, target?: string }
+//   'locate' = find the described target card in a showcase region → { location: { found,
+//   card_box, is_slab, label_box, card_count, confidence } } (boxes are 0-1 fractions).
 //   'label' = read only the slab label: grader/grade/cert, whether the center card is in a slab,
 //   the name on the label, and where the label is. from_showcase = the image is a crop from a
 //   multi-card photo; only the center card counts.
@@ -64,7 +66,7 @@ exports.handler = async (event) => {
     return { statusCode: 400, body: JSON.stringify({ success: false, error: 'parse_error', message: 'Invalid JSON body' }) };
   }
 
-  const { image_base64, media_type, label_image_base64, mode, from_showcase } = body;
+  const { image_base64, media_type, label_image_base64, mode, from_showcase, target } = body;
   if (!image_base64) {
     return { statusCode: 400, body: JSON.stringify({ success: false, error: 'parse_error', message: 'image_base64 required' }) };
   }
@@ -73,11 +75,16 @@ exports.handler = async (event) => {
     imageBase64:      image_base64,
     mediaType:        media_type || 'image/jpeg',
     labelImageBase64: label_image_base64 || null,
-    mode:             mode === 'label' ? 'label' : 'card',
+    mode:             ['label', 'locate'].includes(mode) ? mode : 'card',
     fromShowcase:     !!from_showcase,
+    target:           typeof target === 'string' ? target : '',
   });
 
   if (!result.success) return { statusCode: 200, body: JSON.stringify(result) };
+  if (result.mode === 'locate') {
+    return { statusCode: 200, headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ success: true, location: result.location, mode: 'locate', elapsed_ms: result.elapsed_ms }) };
+  }
 
   return {
     statusCode: 200,
