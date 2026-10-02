@@ -1,17 +1,19 @@
 // Supabase Edge Function: bulk-scan
 // POST multipart/form-data { image: File } (Authorization: Bearer <supabase JWT>)
-// Returns { cards: [...], count: N } — cards identified by Claude vision,
-// pre-mapped to the CardShow 7-field fingerprint schema
-// (player|year|set|cardNumber|parallel|grade|grader, all lowercase).
+// Returns { cards: [...], count: N } — every card Claude vision finds in a
+// showcase photo. Text comes back as printed (not lowercased). Each card has
+// a normalized bbox so the client can crop graded slabs from the original
+// full-resolution photo and read their labels in a second pass
+// (_runSlabLabelPass() in app.html → scan-card.js).
 //
-// Phase 1 of the bulk showcase scan feature. renderBulkScanReview(cards) in
-// app.html is the Phase 2 integration point (review UI + inventory write path).
+// The client downsizes the photo to 1568px on the long edge before upload,
+// so bbox coordinates line up with the client's own pixel space.
 
 import { createClient } from "@supabase/supabase-js";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MODEL = "claude-sonnet-4-6";
-const MAX_TOKENS = 4000;
+const MAX_TOKENS = 8000;
 const ANTHROPIC_TIMEOUT_MS = 45000; // showcase photos with many cards take longer than a single-card scan
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10MB — raw upload size
@@ -19,25 +21,31 @@ const MAX_BASE64_CHARS = 5 * 1024 * 1024 * (4 / 3); // ~6.7M chars, roughly 5MB 
 
 const SUPPORTED_MEDIA_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
-const SYSTEM_PROMPT = `You are a sports card identification expert. Analyze the image and
-identify every individual trading card visible. Return ONLY a valid
+const SYSTEM_PROMPT = `You are a trading card identification expert covering sports cards, TCG cards
+(Pokemon, Magic: The Gathering, Yu-Gi-Oh!, One Piece, Lorcana, etc.) and non-sport cards.
+Analyze the image and identify every individual trading card visible. Return ONLY a valid
 JSON array — no markdown, no explanation, no preamble.
 
-For each card include these fields (all string values, all lowercase):
-- player: full player name
+For each card include these fields (string values unless noted):
+- player: full player or character name, exactly as printed
 - year: 4-digit year
-- set: set name (e.g. 'topps chrome', 'bowman chrome', 'prizm')
-- cardNumber: card number if visible, else empty string
-- parallel: parallel or variation, including any visible serial number or print run (e.g. 'base', 'refractor', 'gold refractor auto /50', 'green refractor auto #'d/99')
-- grade: numeric grade ONLY if graded slab (e.g. '9', '9.5', '10') — never include label text like 'mint' or 'gem mt', just the number itself; else empty string
-- grader: grading company if graded (psa/bgs/sgc/cgc), else empty string
-- certNumber: the cert/serial number printed on a graded slab's label (usually a 7-10 digit number, sometimes with a barcode above it), else empty string
+- set: set name exactly as printed (e.g. 'Topps Chrome', 'Bowman Chrome', 'Prizm')
+- cardNumber: the card's number within its set if visible, else empty string
+- parallel: parallel or variation only (e.g. 'Refractor', 'Gold Refractor Auto'), else empty string. Do NOT put the serial number or print run here.
+- serialNumber: the copy number from a stamped serial like '45/99' (here '45'), else empty string
+- printRun: the total from that stamped serial (here '99'), else empty string
+- grade: the card grade as printed on a graded slab's label (e.g. '9', '9.5', '10'), else empty string
+- grader: the grading company name on the label (PSA, BGS, SGC, CGC, TAG, HGA, CSG or any other), else empty string
+- certNumber: the cert number printed on a graded slab's label, else empty string
+- bbox: object { x, y, w, h } — the box around the whole card or slab including its label, as fractions 0 to 1 of the image width and height, with x, y the top-left corner
 - confidence: 'high', 'medium', or 'low'
 - notes: brief note on anything the seller should verify, else empty string
 
 Rules:
-- PARALLELS AND SERIAL NUMBERS: colored borders, foil patterns (refractor, prizm, holo), and print runs are all parallel indicators. If a serial number or print run is visible anywhere on the card (e.g. '/50', '/99', '#'d/25'), always append it to the parallel field exactly as printed — e.g. 'gold refractor auto /50', not just 'gold refractor auto'.
-- GRADED SLABS: if the card is in a graded slab (PSA, BGS, CGC, or SGC label visible), always read the grade number directly off the label and populate both grade and grader — never leave grade empty for a visibly graded slab. Also read the cert number printed on the label into certNumber — this is critical for verifying the card against the grading company's database, so read it carefully digit by digit.
+- Return text exactly as printed, with its original capitalization. Do not lowercase.
+- GRADED SLABS: if a grading label is visible, fill grader. Fill grade only if the grade is legible; if it is not, leave grade empty.
+- CERT NUMBERS: leave certNumber empty unless every digit is clearly legible. A partial or guessed cert number is worse than none. The cert number is never the '45/99' serial and never the card number.
+- PARALLELS: colored borders and foil patterns (refractor, prizm, holo) indicate a parallel. If the card is signed or has an AUTO stamp, include 'Auto' in parallel.
 - If a field is not clearly visible or identifiable, return an empty string — do not guess.
 
 If no cards are visible, return an empty array: []`;
@@ -180,6 +188,7 @@ async function handleScan(req: Request, origin: string | null): Promise<Response
       body: JSON.stringify({
         model: MODEL,
         max_tokens: MAX_TOKENS,
+        temperature: 0,
         system: SYSTEM_PROMPT,
         messages: [
           {
@@ -202,6 +211,13 @@ async function handleScan(req: Request, origin: string | null): Promise<Response
     }
 
     const data = await anthropicRes.json();
+    if (data?.stop_reason === "max_tokens") {
+      return json(
+        { error: "too_many_cards", message: "Too many cards in one photo — split the showcase into two shots" },
+        422,
+        origin,
+      );
+    }
     rawText = (data?.content ?? [])
       .filter((block: { type: string }) => block.type === "text")
       .map((block: { text: string }) => block.text)
@@ -239,7 +255,21 @@ async function handleScan(req: Request, origin: string | null): Promise<Response
     );
   }
 
-  const cards = parsed.map((card) => ({ id: crypto.randomUUID(), ...card }));
+  // Drop anything that isn't a card object. A card without a usable bbox is
+  // kept — it just can't take part in the client's slab-label pass.
+  const cards = parsed
+    .filter((card): card is Record<string, unknown> => !!card && typeof card === "object" && !Array.isArray(card))
+    .map((card) => ({ id: crypto.randomUUID(), ...card, bbox: cleanBbox(card.bbox) }));
 
   return json({ cards, count: cards.length }, 200, origin);
+}
+
+function cleanBbox(b: unknown): { x: number; y: number; w: number; h: number } | null {
+  if (!b || typeof b !== "object") return null;
+  const { x, y, w, h } = b as Record<string, unknown>;
+  const nums = [x, y, w, h].map((v) => typeof v === "number" ? v : parseFloat(String(v)));
+  if (nums.some((n) => !Number.isFinite(n))) return null;
+  const [nx, ny, nw, nh] = nums;
+  if (nw <= 0 || nh <= 0 || nx < -0.05 || ny < -0.05 || nx + nw > 1.05 || ny + nh > 1.05) return null;
+  return { x: nx, y: ny, w: nw, h: nh };
 }

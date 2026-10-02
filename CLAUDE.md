@@ -18,8 +18,11 @@ seller-browse.html                → Buyer-facing seller storefront (QR scan de
 _redirects                        → Netlify routing rules
 netlify.toml                      → Disables pretty URLs (critical for show.html hash routing); functions = "netlify/functions"
 netlify/functions/psa-lookup.js   → Serverless: POST {cert, grader} → normalized card object (PSA + CGC APIs)
-netlify/functions/vision-scan.js         → Serverless: POST {image, mediaType} → normalized card object via Claude vision (Sprint 2)
-netlify/functions/scan-card.js           → Serverless: POST {image_base64, media_type} → structured card object + per-field 0-1 confidence, used by Photo Scan & Card Fingerprinting (Scan-to-Sell POS + Manual Sale modal); separate from vision-scan.js because this prompt distinguishes a slab's cert number from the card's own printed serial number
+netlify/functions/vision-scan.js         → Serverless: POST {image, mediaType, labelImage?} → Add Card scanner's legacy camelCase card shape (high/medium/low confidence); thin adapter over _shared/scan-core.js
+netlify/functions/scan-card.js           → Serverless: POST {image_base64, media_type, label_image_base64?} → snake_case card + per-field 0-1 confidence + flags (POS, Manual Sale, bulk slab-label pass); thin adapter over _shared/scan-core.js
+netlify/functions/_shared/scan-core.js   → Shared single-card scan: one prompt, forced record_card tool use, temperature 0, server-side cert validation (see "Scan Accuracy")
+eval/run.mjs + eval/README.md + eval/BASELINE.md → Scan accuracy eval: per-field exact-match rates over eval/fixtures/ photos (see "Scan Accuracy")
+supabase/migrations/20261002120000_scan_corrections.sql → scan_corrections table (one row per field a seller changed after a scan)
 netlify/functions/trading-card-lookup.js → Serverless: POST {query, sport?} → card search results from Trading Card API (Sprint 3); write-through cache via card_search_cache table (7-day TTL)
 netlify/functions/invalidate-search-cache.js → Serverless: POST {query} → deletes matching rows from card_search_cache; protected by x-invalidate-secret header
 netlify/functions/trade-og.js            → Serverless: GET /trade/:id → OG-tagged HTML for social crawlers, redirects humans into trade-zone.html (Trade Zone Phase 5)
@@ -226,6 +229,11 @@ Required for the Getting started checklist and first-use tips to sync across a s
 `ALTER TABLE sellers ADD COLUMN IF NOT EXISTS onboarding_state jsonb;`. Until it runs,
 `loadOnboardingState()` gets a column error, logs it, and leaves syncing off. The checklist and
 tips then work exactly as before, saved per device in localStorage.
+
+Required for scan correction logging (see "Scan Accuracy" below):
+`supabase/migrations/20261002120000_scan_corrections.sql` — creates `scan_corrections` (seller_id,
+inventory_id, scan_path, field, scanned_value, final_value, confidence, flags) with an insert-own RLS
+policy. Until it runs, `_logScanCorrections()`'s insert fails silently and nothing else changes.
 
 Required for Trust Check via GTCR (see that section below):
 `supabase/migrations/20260925120000_gtcr_trust_check.sql`. It adds `inventory.trust_flag` and three
@@ -666,9 +674,12 @@ Seller taps "📷 Take Photo"
 ```
 
 ### Sprint 2 Vision Function (vision-scan.js)
+**Superseded (session 2026-10-02):** vision-scan.js is now a thin adapter over
+`_shared/scan-core.js` — one call for every card type, forced tool use, temperature 0. The
+two-prompt notes below describe the old design. See "Scan Accuracy".
 - **Model:** claude-sonnet-4-6
-- **Timeout:** 10 seconds (AbortController)
-- **Two-prompt strategy:** sports prompt first; if sport is Pokemon/TCG, re-calls with TCG-specific prompt
+- **Timeout:** 8 seconds (AbortController, in scan-core.js)
+- **Two-prompt strategy (removed):** sports prompt first; if sport is Pokemon/TCG, re-calls with TCG-specific prompt
 - **Prompt A (sports):** extracts player, year, set, cardNumber, parallel, grader, grade, certNumber, sport, itemType, productType + confidence per field
 - **Prompt B (TCG/Pokemon):** additionally extracts hp, rarity; finer-grained set/expansion detection
 - **Confidence levels:** `high` (text clearly readable) / `medium` (inferred) / `low` (uncertain)
@@ -2364,6 +2375,12 @@ migration, no new external library.
   raw cards in place via a raw-twin match in `loadInventory()`. See "XLSX Import Dropped Grade
   Columns".
 
+- **Scan accuracy build (session 2026-10-02)** — shared scan core (one prompt, forced tool use,
+  temperature 0, cert validation), Add Card capture cropped to the aim guide plus a label crop,
+  bulk scan two-pass (1568px upload + full-res slab-label crops), stricter catalog/badge logic,
+  cert confirm UI, `scan_corrections` logging, and an eval harness. See "Scan Accuracy".
+  **Requires** the `scan_corrections` migration for logging; the eval baseline is not yet captured.
+
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`
 - ~~**eBay comp lookup at card entry**~~ — replaced by PriceCharting + TCG API comp check (see Comp Pricing section)
@@ -2496,7 +2513,8 @@ Sell / Add menu → "Sell a card" → "It's not in my inventory" → posOpenPhot
        │    Both inputs share the same onchange="posHandlePhoto(this)" handler — it
        │    only reads inputEl.files[0], so it doesn't care which source produced it
        │         └─ posHandlePhoto(inputEl)
-       │         ├─ _posCompressImage(file) — canvas resize, max 1024px, JPEG 85%
+       │         ├─ _scanCardCompressImage(file) — canvas resize, max 1568px, JPEG 85%
+       │         │    (_posCompressImage was removed, unused, session 2026-10-02)
        │         │    (same compression convention as scanTakePhoto())
        │         └─ POST /.netlify/functions/vision-scan { image, mediaType }
        │              directly via fetch() — NOT through _callVisionScan(), which
@@ -2797,7 +2815,7 @@ the same reason — both were repointed at `scan-card.js` (see below) rather tha
 ```
 Tap "Take Photo" / "Choose from Library" (existing buttons — capture="environment" vs. not)
   ↓
-_scanCardCompressImage(file) — canvas resize, max 1600px long edge, JPEG q=0.85
+_scanCardCompressImage(file) — canvas resize, max 1568px long edge, JPEG q=0.85
   (larger than the Add Card scanner's/POS's old 1024px cap — grading-label cert-number
   text needs more resolution to stay legible at that field's size on the card)
   ↓
@@ -4390,6 +4408,129 @@ Before, a raw row with no price counted as "updated" on every re-upload (`NaN !=
   Available in the DB. A repaired Sold twin stays Sold after the first re-upload, but a second
   re-upload resets it like any other Sold card.
 - No grade parsing from Card Title, and no SQL backfill. Repair only happens through a re-upload.
+
+## Scan Accuracy (session 2026-10-02)
+
+Built from "Scan Accuracy — Build Spec v1". Covers single-card scan (Add Card), Scan-to-Sell
+POS, Manual Sale photo, and Bulk Scan. No new third-party APIs; model unchanged
+(`claude-sonnet-4-6` — a model upgrade is gated on the eval, see below).
+
+### Eval (Phase 0) — `eval/`
+`node eval/run.mjs` posts every `eval/fixtures/<name>.jpg` to `scan-card` (or `--path
+vision-scan`) and bulk fixtures to `bulk-scan`, then prints per-field exact-match rates and a cert
+breakdown (correct / wrong / null, plus certs invented on raw cards). Fixture format and the
+target photo set are in `eval/README.md`. **No fixtures and no baseline numbers exist yet** —
+there were no photos or API key where this was built. `eval/BASELINE.md` explains how to
+capture the before/after numbers; do that before relying on any accuracy claim below. Bulk
+numbers from the runner are pass 1 only (pass 2 runs in the browser).
+
+### Shared scan core (Phase 1) — `netlify/functions/_shared/scan-core.js`
+`scanCard({ imageBase64, mediaType, labelImageBase64 })`:
+- `temperature: 0`, `max_tokens: 1024`, forced `tool_choice: { type: "tool", name: "record_card" }`
+  — the result is read from the `tool_use` block; no free-text JSON parsing.
+- Schema has types only, no example values. `label_text` (verbatim label transcription) is
+  listed first so the model reads before it interprets. Separate `serial_number`/`print_run`
+  (no print run in `parallel_name`), open `grading_company`, `grade` as printed plus
+  `grade_numeric`, `category`/`subcategory`, 0-1 confidence for seven fields.
+- One prompt for sports, TCG and non-sport; the old second TCG call is gone. Text is returned
+  as printed (never lowercased). Cert must be null unless every digit is legible.
+- Optional second image: a label crop (`labelImageBase64`), labeled in the prompt.
+- 8s timeout so it fires before Netlify's ~10s limit.
+- `validateCard()` strips spaces/dashes from the cert, then checks: digits-only for
+  PSA/BGS/SGC/CGC, length from `CERT_LENGTHS` (PSA 7-9, SGC 7-8, BGS 7-10, CGC 10, other 5-16 —
+  **starting values, verify against the slab fixtures**), cert ≠ card number / serial /
+  "serial/print_run", cert without a grader. Any failure keeps the value, sets
+  `confidence.cert_number = 0` and adds a flag (`cert_length`, `cert_format`,
+  `cert_equals_serial`, `cert_without_grader`).
+
+Adapters keep their legacy shapes and add fields:
+- `scan-card.js` → `{ success, card, flags }`; card adds `serial_number`, `print_run`,
+  `grade_numeric`, `label_text`, `category`, `subcategory`, `flags`; `parallel_serial` is still
+  filled ("45/99").
+- `vision-scan.js` → `{ success, card, flags, isTCG, promptVariant: 'unified' }`; card adds
+  `serialNumber`, `printRun`, `gradeLabel`, `confidence.certNumber`, `confidenceScores` (raw 0-1).
+  Confidence mapping: ≥0.85 high, ≥0.6 medium, else low. `parallel` still includes "Auto".
+  The all-low guard excludes cert. `sport` is `'TCG'` for any TCG card (drives `buildCardTitle()`).
+
+### Single-card capture (Phase 2) — `app.html`
+- `startScannerCamera()` asks for 3840×2160 (`ideal`).
+- `scanTakePhoto()` maps the 55%×80% aim guide into video pixels (`_scanGuideRectInVideo()`,
+  accounts for `object-fit: contain` letterboxing), crops guide + 12% margin, long edge ≤1568px,
+  JPEG 0.9 (`_scanCropToJpeg()`), plus a label crop: the top 28% of that crop, long edge ≤1200.
+  Both go to `vision-scan` (`labelImage`). `window.CARDSHOW_DEBUG` logs video/crop/upload sizes.
+- `_scanCardCompressImage()` (POS / Manual Sale) cap is 1568px. `_posCompressImage()` deleted.
+- `fillFormFromVision()` fills `ac_serial`/`ac_print_run`, colors `ac_cert` by
+  `confidence.certNumber`, and sets the grader via `_setGraderFieldValue()` so TAG/HGA/CSG land in
+  "Other…".
+- `_scanParallelText(card)` builds POS / Manual Sale Parallel as `parallel_name [Auto] [45/99]` —
+  fixes the old "/45/99" double slash. Grader values are no longer uppercased before
+  `_setGraderFieldValue()` (it matches case-insensitively; unknown names keep their casing).
+- Scan button caption: "Photo · raw or graded".
+
+### Bulk scan two-pass (Phase 3)
+`bulk-scan/index.ts`: prompt returns text as printed, a normalized `bbox {x,y,w,h}` per card,
+`serialNumber`/`printRun`, any grader, grade empty when not legible, cert empty unless every digit
+is legible, covers TCG/non-sport. `temperature: 0`, `max_tokens: 8000`; `stop_reason ===
+"max_tokens"` → 422 "Too many cards in one photo — split the showcase into two shots". Non-object
+items are dropped; an invalid bbox becomes `null` (card kept).
+
+`app.html`:
+- `handleBulkScanFile()` decodes once with `createImageBitmap(file, {imageOrientation:
+  'from-image'})`, keeps it as `_bulkScanOriginalBitmap`, and uploads a 1568px JPEG 0.85 copy (no
+  more 413 on big photos; bbox coords match). If decoding fails it uploads the original file and
+  the slab pass is skipped (any pass-1 cert is marked for checking).
+- `renderBulkScanReview()` no longer title-cases player/set/parallel. A stamped serial is folded
+  into Parallel ("Silver 45/99").
+- `_runSlabLabelPass(cards)` (fire-and-forget after render): for each card with a grader, crops
+  bbox + 10% padding from the original bitmap (long edge ≤1568) plus a top-28% label crop, POSTs
+  to `scan-card` — concurrency 3, 10s timeout each. Merges grader/grade/cert only into fields the
+  seller hasn't edited, and only at confidence ≥0.7 (cert also needs no `cert_*` flags). If pass 2
+  fails or isn't confident, the pass-1 cert is **cleared** and the field asks for manual entry with
+  the label crop beside it. Crops <300px → "Slab too small in photo — shoot closer for cert
+  numbers". Progress line "Reading slab labels… N of M" with Cancel (`_slabPassGen` cancels).
+- `closeBulkScanReview()` `.close()`s the bitmap and cancels the pass.
+
+### Post-scan fixes (Phase 4)
+- Bulk review shows an editable Cert # for **every** graded card; only the Verify button stays
+  PSA/CGC/SGC (`_bsVerifySlotHTML()` returns '' otherwise).
+- `_tcapiValidateOneCard()` badge: "✓ VERIFIED" only when player **and** set **and** card number
+  match the catalog; "PLAYER FOUND" when only the player does; else "UNVERIFIED". Card # is filled
+  from the checklist only when exactly one entry is that player. Set is never overwritten — a
+  differing canonical name (ignoring a leading year) is shown as a note. The old fuzzy Parallel
+  overwrite was removed (it dropped "Auto" and the serial).
+- `_acEnrichFromCardSight()` scores on year + set-name match only (removed +10 for having a card
+  number, +5 for having a parallel), never fills Parallel, fills Card # only when the single top
+  result matches both year and set. (Also fixed its title rebuild passing `cardNumber` instead of
+  `cardNum`.)
+- `_applyCorrectionToBlock()` always notes "Player name corrected from catalog, was: <original>",
+  high tier included.
+
+### Cert confirm + correction logging (Phase 5)
+- `_scanShowCertConfirm(input, cert, confidence0to1, flags, labelBase64)` — when cert confidence
+  < 0.85 or a `cert_*` flag is set (or a graded slab has no cert), puts the input in `scan-verify`
+  and shows the label crop (tap to zoom) with a reason. Used in Add Card (`_visionCapturedLabel`),
+  POS / Manual Sale (`_scanTopCropBase64()` crops the top 28% of the uploaded photo) and bulk
+  review (below the cert row). `_scanClearCertConfirm(root)` resets it.
+- Snapshots: `_acScanSnapshot` / `_posScanSnapshot` / `_mslScanSnapshot` / `_bulkScanSnapshots[id]`
+  (pass 2 updates the slab fields), stored on the saved card as `card._scanSnapshot`. On save
+  (`saveAddCard`, `posInsertAndOpenDrawer`, `confirmManualSale`, `confirmBulkScanReview`)
+  `_logScanCorrections()` diffs player/year/set/card #/parallel/grader/grade/cert (case- and
+  whitespace-insensitive) and inserts one `scan_corrections` row per changed field with
+  `seller_id = auth.uid()`. Fire-and-forget; every error swallowed. Manual Sale has no Card #
+  field, so card_number is never logged there.
+
+### Not built (per spec)
+Model upgrade (run the eval first; confirm the newer model accepts `temperature` and forced tool
+use) · client-side BarcodeDetector cert read · non-numeric grades ("Authentic" still strips the
+grader in `validateAndNormalizeCard()` — needs a `grade_label` column and a product decision) ·
+Trading Card API candidate re-ranking · PSA verification (still behind
+`BULK_SCAN_PSA_VERIFY_ENABLED`).
+
+### Known gaps
+- Bulk review has no Serial Number / Print Run inputs; the serial rides in Parallel.
+- `eval/` is inside Netlify's publish directory (`publish = "."`), so committed fixture photos
+  would be publicly downloadable.
+- Pass 2 runs once per graded card in a showcase — one extra Anthropic call each.
 
 ## Show Configuration (Demo Data)
 - **MLP Card Show** — Oct 17-18, 2026 · Grand Hyatt Tampa Bay, FL · Code: MLPTPA (primary demo, shown to buyers without code)
