@@ -8683,8 +8683,12 @@ function readXLSX(file) {
         if (KNOWN_COLS.some(col => cells.includes(col))) { headerRowIdx = i; break; }
       }
 
-      // Parse with the real header row as the starting point
-      const rows = XLSX.utils.sheet_to_json(ws, { range: headerRowIdx });
+      // Parse with the real header row as the starting point.
+      // defval: '' gives every row every header. Without it SheetJS omits keys
+      // for empty cells, and openMapper() used to build its column list from
+      // the first data row alone — so a column blank in that row (e.g. Grade on
+      // a raw card) was dropped for the whole file.
+      const rows = XLSX.utils.sheet_to_json(ws, { range: headerRowIdx, defval: '' });
 
       // Skip any description/hint row immediately after the headers.
       // These rows have a non-numeric Year value (e.g. "4-digit year e.g. 2024").
@@ -8693,6 +8697,18 @@ function readXLSX(file) {
         if (year && !/^\d{4}(-\d{2})?$/.test(year) && isNaN(Number(year))) return false;
         return true;
       });
+
+      // defval also fills unnamed columns inside the sheet's declared range
+      // (both templates declare columns out to W). Drop an unnamed __EMPTY
+      // column only when it is empty in every row — keep it if it has data.
+      const emptyUnnamed = new Set();
+      filtered.forEach(row => Object.keys(row).forEach(k => {
+        if (/^__EMPTY(_\d+)?$/.test(k)) emptyUnnamed.add(k);
+      }));
+      filtered.forEach(row => Object.keys(row).forEach(k => {
+        if (emptyUnnamed.has(k) && String(row[k] ?? '').trim() !== '') emptyUnnamed.delete(k);
+      }));
+      if (emptyUnnamed.size) filtered.forEach(row => emptyUnnamed.forEach(k => { delete row[k]; }));
 
       if (!filtered.length) { showToast('No data rows found in this file', 'var(--danger)'); return; }
       openMapper(filtered);
@@ -14749,7 +14765,11 @@ let mapperMappings  = {};   // { sourceHeader: csKey }
 
 function openMapper(rawRows) {
   mapperRawRows  = rawRows;
-  mapperHeaders  = Object.keys(rawRows[0] || {});
+  // Union of keys across ALL rows, in first-seen order — not just rawRows[0],
+  // whose keys can be missing any column that row happens to leave blank.
+  const headerSet = new Set();
+  rawRows.forEach(row => Object.keys(row || {}).forEach(k => headerSet.add(k)));
+  mapperHeaders  = [...headerSet];
   mapperMappings = {};
 
   const source   = detectSource(mapperHeaders);
@@ -14770,12 +14790,17 @@ function openMapper(rawRows) {
 
   // Build mapping rows
   const container = document.getElementById('mapperRows');
-  const sampleRow = rawRows[0] || {};
+  // Sample = first non-empty value in each column, not the first row's value
+  // (which is blank for any column that row leaves empty).
+  const firstNonEmpty = header => {
+    const row = rawRows.find(r => r && r[header] !== undefined && r[header] !== null && String(r[header]).trim() !== '');
+    return row ? row[header] : '';
+  };
 
   container.innerHTML = mapperHeaders.map(header => {
     const { csKey, confidence } = autoMatch(header);
     mapperMappings[header] = csKey;
-    const sample = String(sampleRow[header] || '').slice(0, 30);
+    const sample = String(firstNonEmpty(header)).slice(0, 30);
     const confLabel = csKey === '__SKIP__' ? 'skip' : confidence;
     const confText  = csKey === '__SKIP__' ? '—' : confidence === 'high' ? '✓ Auto' : confidence === 'medium' ? '~ Maybe' : '? Low';
     const selectClass = csKey === '__SKIP__' ? '' : confidence === 'high' ? 'auto-matched' : confidence === 'medium' ? '' : 'unmatched';
