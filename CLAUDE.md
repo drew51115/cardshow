@@ -4518,6 +4518,23 @@ items are dropped; an invalid bbox becomes `null` (card kept).
       cards, or a letter card # (e.g. CPAJP) on two different players → both flagged with a note.
     - Live check on the preview: raw card → `center_is_slab:false` (3.4s); synthetic PSA slab →
       player/grade/cert read, `label_box` close to the real label (5.1s).
+  - **Locate before reading (session 2026-10-02, second real test: certs still blank, duplicates,
+    wrong grader, wrong Pokémon — all from pass-1 boxes landing on background or neighbors):**
+    `_runSlabLabelPass()` now runs in three steps.
+    1. `_bulkLocate()` — scan-card `mode:'locate'` (`record_location` tool: `found`, `card_box`,
+       `is_slab`, `label_box`, `card_count`, `confidence`) on pass 1's box padded 100% per side,
+       with the card's description as `target` (`_bulkTargetText()`). Then a second locate on the
+       first answer padded 35%. Progress "Finding cards… N of M".
+    2. `_bsDedupeLocated()` — two entries whose located boxes overlap (IoU ≥ 0.5) are one card:
+       the less confident is unchecked with a note.
+    3. Read from the located box (≤2x upscale), with a 3x label close-up from `label_box` sent as
+       image 2 in the same call. Locate decides slab vs raw: graded-but-not-slabbed → `_bsMarkRaw()`
+       + raw read; raw-but-slabbed → raw read may take grader/grade/cert.
+    - `_bulkPostScanCard()` retries once (1.2s; 3s on `rate_limited`, now returned for Anthropic 429).
+    - Synthetic test on the preview (10-card 4032×3024 showcase, pass-1 boxes shifted up to 45%):
+      first locate IoU 0.08–0.75; with the second pass 0.34–0.82; all 9 slab certs and graders
+      read correctly, slab/raw right for all 10, two seeds. ~4s per locate, ~5s per read.
+    - Cost: 3 Anthropic calls per card (2 locates + 1 read), plus a retry when one fails.
   - Crops <300px → "Slab too small in photo — shoot closer for cert numbers". Progress line
     "Re-reading cards… N of M" with Cancel (`_slabPassGen` cancels).
   - `_autoVerifyPsaCards()`, `_runCorrectionPass()` and `_runTcapiValidation()` now run **after**
