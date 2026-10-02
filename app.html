@@ -7954,6 +7954,7 @@ function renderBulkScanReview(cards) {
     .catch(e => console.warn('[slabPass]', e?.message))
     .finally(() => {
       if (bulkScanReviewCards !== reviewCards) return; // modal closed / new scan
+      _bsFlagScanDuplicates();           // same cert / card # on two different cards
       _autoVerifyPsaCards(reviewCards);  // PSA auto-verify (currently disabled by flag)
       _runCorrectionPass(reviewCards);   // raw-card player-name correction via catalog cross-check
       _runTcapiValidation(reviewCards);  // per-card Trading Card API catalog check + badge
@@ -8053,9 +8054,10 @@ function _bulkScanReleaseBitmap() {
   }
 }
 
-// Draws a region of `source` into a new canvas, long edge ≤ maxLong.
-function _bulkScanDrawScaled(source, sx, sy, sw, sh, maxLong) {
-  const ratio = Math.min(1, maxLong / Math.max(sw, sh));
+// Draws a region of `source` into a new canvas, long edge ≤ maxLong. maxUp > 1
+// lets a small region be enlarged (small label text reads better bigger).
+function _bulkScanDrawScaled(source, sx, sy, sw, sh, maxLong, maxUp = 1) {
+  const ratio = Math.min(maxUp, maxLong / Math.max(sw, sh));
   const w = Math.max(1, Math.round(sw * ratio)), h = Math.max(1, Math.round(sh * ratio));
   const canvas = document.createElement('canvas');
   canvas.width = w; canvas.height = h;
@@ -8064,11 +8066,14 @@ function _bulkScanDrawScaled(source, sx, sy, sw, sh, maxLong) {
 }
 
 // bbox (0-1, relative to the uploaded copy — same aspect as the original)
-// → pixel rect in the original bitmap, padded 10% per side and clamped.
-function _bulkScanBboxRect(bbox, bmp) {
+// → pixel rect in the original bitmap, padded `pad` per side and clamped.
+// Pass 1's boxes come from a 1568px image and are often off by a fair margin,
+// so the default pad is generous; the re-read is told to read only the
+// center card, which keeps neighbors at the edges from counting.
+function _bulkScanBboxRect(bbox, bmp, pad = 0.18) {
   const W = bmp.width, H = bmp.height;
   let x = bbox.x * W, y = bbox.y * H, w = bbox.w * W, h = bbox.h * H;
-  x -= w * 0.10; y -= h * 0.10; w *= 1.2; h *= 1.2;
+  x -= w * pad; y -= h * pad; w *= 1 + 2 * pad; h *= 1 + 2 * pad;
   const x0 = Math.max(0, Math.floor(x)), y0 = Math.max(0, Math.floor(y));
   const x1 = Math.min(W, Math.ceil(x + w)), y1 = Math.min(H, Math.ceil(y + h));
   return { x: x0, y: y0, w: Math.max(0, x1 - x0), h: Math.max(0, y1 - y0) };
@@ -8177,21 +8182,8 @@ async function _runSlabLabelPass(cards) {
   if (gen === _slabPassGen) _hideSlabPassProgress();
 }
 
-// Crops one card from the original bitmap and posts it to scan-card.
-// Returns { result, cropB64, labelB64 } or null when the card can't be cropped.
-async function _bulkReRead(c, bmp, mode) {
-  const rect = c.bbox ? _bulkScanBboxRect(c.bbox, bmp) : null;
-  if (!rect || Math.max(rect.w, rect.h) < SLAB_PASS_MIN_EDGE) return { tooSmall: !!rect, result: null };
-
-  const main = _bulkScanDrawScaled(bmp, rect.x, rect.y, rect.w, rect.h, 1568);
-  const cropB64 = main.canvas.toDataURL('image/jpeg', 0.9).split(',')[1];
-  // Top of the slab, for the seller's cert-check thumbnail only (not sent —
-  // it's the same pixels as the crop, so it would only add request time).
-  const labelH = Math.max(1, Math.round(rect.h * 0.35));
-  const labelB64 = mode === 'label'
-    ? _bulkScanDrawScaled(bmp, rect.x, rect.y, rect.w, labelH, 800).canvas.toDataURL('image/jpeg', 0.85).split(',')[1]
-    : null;
-
+// Posts one image (plus an optional label close-up) to scan-card.
+async function _bulkPostScanCard(imageB64, mode, labelB64, cardId) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), SLAB_PASS_TIMEOUT_MS);
   let result = null;
@@ -8200,7 +8192,8 @@ async function _bulkReRead(c, bmp, mode) {
     const res = await fetch('/.netlify/functions/scan-card', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image_base64: cropB64, media_type: 'image/jpeg', mode }),
+      body: JSON.stringify({ image_base64: imageB64, media_type: 'image/jpeg', mode,
+        label_image_base64: labelB64 || undefined, from_showcase: true }),
       signal: ctrl.signal,
     });
     result = res.ok ? await res.json() : { success: false, error: `http_${res.status}` };
@@ -8208,12 +8201,111 @@ async function _bulkReRead(c, bmp, mode) {
     result = { success: false, error: e?.name === 'AbortError' ? 'client_timeout' : 'network_error' };
   } finally { clearTimeout(timer); }
   if (!result?.success) {
-    console.warn('[slabPass] re-read failed', { card: c.id, mode, error: result?.error,
+    console.warn('[slabPass] re-read failed', { card: cardId, mode, label: !!labelB64, error: result?.error,
       server_ms: result?.elapsed_ms, client_ms: Math.round(performance.now() - t0) });
   } else if (window.CARDSHOW_DEBUG) {
-    console.log('[slabPass]', c.id, mode, 'server', result.elapsed_ms, 'ms, client', Math.round(performance.now() - t0), 'ms');
+    console.log('[slabPass]', cardId, mode, labelB64 ? '+label' : '', 'server', result.elapsed_ms, 'ms, client', Math.round(performance.now() - t0), 'ms', result.card);
   }
-  return { result, cropB64, labelB64 };
+  return result;
+}
+
+// Two cards in one scan can't share a cert #, and two different players
+// can't share a card # from the same set — one of each pair was read off the
+// wrong card. Flags both and says which card it collides with.
+function _bsFlagScanDuplicates() {
+  const blocks = [...document.querySelectorAll('.bulkscan-card-block')];
+  const val = (b, f) => b.querySelector(`[data-field="${f}"]`)?.value.trim() || '';
+  const idx = b => blocks.indexOf(b) + 1;
+  const norm = s => s.toLowerCase().replace(/[\s#-]/g, '');
+  const flag = (b, f, note) => {
+    const el = b.querySelector(`[data-field="${f}"]`);
+    if (el) { el.classList.add('scan-verify'); el.title = note; }
+    _bsAppendNote(b, note);
+  };
+  const byCert = new Map(), byNum = new Map();
+  blocks.forEach(b => {
+    const cert = norm(val(b, 'certNumber'));
+    if (cert && val(b, 'grader')) (byCert.get(cert) || byCert.set(cert, []).get(cert)).push(b);
+    const num = norm(val(b, 'cardNumber'));
+    if (num && num.length >= 3 && /[a-z]/.test(num)) (byNum.get(num) || byNum.set(num, []).get(num)).push(b);
+  });
+  byCert.forEach(list => {
+    if (list.length < 2) return;
+    list.forEach(b => flag(b, 'certNumber',
+      `Same cert # as card ${list.filter(o => o !== b).map(idx).join(', ')} — it belongs to only one of them`));
+  });
+  // Card # duplicates only count between different players (two copies of
+  // the same card are normal); letter codes like CPAJP are player-specific.
+  byNum.forEach(list => {
+    list.forEach(b => {
+      const others = list.filter(o => o !== b && !_bsSameName(val(o, 'player'), val(b, 'player')));
+      if (others.length) flag(b, 'cardNumber',
+        `Card # ${val(b, 'cardNumber')} is also on card ${others.map(idx).join(', ')} (${val(others[0], 'player')}) — check which card it belongs to`);
+    });
+  });
+}
+
+// Crops one card from the original bitmap and posts it to scan-card.
+// Returns { result, cropB64, rect } ({ tooSmall } when the card can't be cropped).
+async function _bulkReRead(c, bmp, mode) {
+  const rect = c.bbox ? _bulkScanBboxRect(c.bbox, bmp) : null;
+  if (!rect || Math.max(rect.w, rect.h) < SLAB_PASS_MIN_EDGE) return { tooSmall: !!rect, result: null };
+  const main = _bulkScanDrawScaled(bmp, rect.x, rect.y, rect.w, rect.h, 1568);
+  const cropB64 = main.canvas.toDataURL('image/jpeg', 0.9).split(',')[1];
+  const result = await _bulkPostScanCard(cropB64, mode, null, c.id);
+  return { result, cropB64, rect };
+}
+
+// Label close-up from the original bitmap. label_box is relative to the crop
+// the model saw (rect); padded 12%, enlarged up to 3x so small cert digits
+// are bigger. Falls back to the top 35% of the crop.
+function _bulkLabelCrop(bmp, rect, box) {
+  let lx, ly, lw, lh;
+  const ok = box && [box.x, box.y, box.w, box.h].every(v => typeof v === 'number' && isFinite(v))
+    && box.w > 0.05 && box.h > 0.02 && box.w <= 1.05 && box.h <= 1.05;
+  if (ok) {
+    lx = rect.x + box.x * rect.w; ly = rect.y + box.y * rect.h;
+    lw = box.w * rect.w; lh = box.h * rect.h;
+    const px = lw * 0.12, py = lh * 0.25;
+    lx -= px; ly -= py; lw += 2 * px; lh += 2 * py;
+  } else {
+    lx = rect.x; ly = rect.y; lw = rect.w; lh = rect.h * 0.35;
+  }
+  const x0 = Math.max(0, Math.floor(lx)), y0 = Math.max(0, Math.floor(ly));
+  const x1 = Math.min(bmp.width, Math.ceil(lx + lw)), y1 = Math.min(bmp.height, Math.ceil(ly + lh));
+  if (x1 - x0 < 8 || y1 - y0 < 8) return null;
+  return _bulkScanDrawScaled(bmp, x0, y0, x1 - x0, y1 - y0, 1400, 3).canvas.toDataURL('image/jpeg', 0.9).split(',')[1];
+}
+
+// Same person? Accent/case-insensitive; matches on last name so "CJ Abrams"
+// vs "C.J. Abrams" agree, but "Jared Dickey" vs "Jose Perdomo" don't.
+function _bsSameName(a, b) {
+  const n = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+    .replace(/[^a-z ]+/g, ' ').replace(/\s+(jr|sr|ii|iii|iv)$/, '').trim().split(/\s+/).filter(Boolean);
+  const x = n(a), y = n(b);
+  if (!x.length || !y.length) return true; // nothing to compare against
+  return x[x.length - 1] === y[y.length - 1] || x.join(' ').includes(y[y.length - 1]) || y.join(' ').includes(x[x.length - 1]);
+}
+
+// The re-read found no grading label on this card: it's raw. Clears pass 1's
+// grader/grade/cert (unless the seller changed them) and says why.
+function _bsMarkRaw(block, c) {
+  const snap = _bulkScanSnapshots[c.id];
+  const sel = block.querySelector('[data-field="grader"]');
+  if (sel && !_bsFieldEdited(block, 'grader', c.grader)) {
+    sel.value = '';
+    bsToggleGraderRow(sel);
+    sel.classList.add('db-filled');
+    setTimeout(() => sel.classList.remove('db-filled'), 8000);
+  }
+  const g = block.querySelector('[data-field="grade"]');
+  if (g && !_bsFieldEdited(block, 'grade', _numericGrade(c.grade))) g.value = '';
+  const cert = block.querySelector('[data-field="certNumber"]');
+  if (cert && !_bsFieldEdited(block, 'certNumber', c.certNumber)) cert.value = '';
+  _scanClearCertConfirm(block);
+  if (snap) { snap.values.grader = null; snap.values.grade = null; snap.values.cert = null; }
+  c.grader = ''; c.grade = ''; c.certNumber = '';
+  _bsAppendNote(block, 'No grading label found on this card — marked Raw. Set the grader if it is graded.');
 }
 
 async function _slabPassOne(c, bmp, gen) {
@@ -8222,7 +8314,7 @@ async function _slabPassOne(c, bmp, gen) {
 
   const r = await _bulkReRead(c, bmp, 'label');
   if (gen !== _slabPassGen) return;
-  const block = findBlock();      // re-check: seller may have closed/removed it
+  let block = findBlock();      // re-check: seller may have closed/removed it
   if (!block) return;
 
   if (!r.cropB64) {
@@ -8233,11 +8325,54 @@ async function _slabPassOne(c, bmp, gen) {
     return;
   }
 
-  const result = r.result;
-  const labelB64 = r.labelB64;
-  const sc   = result?.success ? result.card : null;
+  let sc = r.result?.success ? r.result.card : null;
+  let flags = (r.result?.flags || sc?.flags || []);
+
+  // Pass 1 called it graded, but the card in the middle of the crop has no
+  // grading label (raw card in a top loader next to a slab, etc.).
+  if (sc && sc.center_is_slab === false && !sc.cert_number && !sc.grading_company) {
+    _bsMarkRaw(block, c);
+    return;
+  }
+
+  // The label read belongs to a different card (a neighbor at the edge of a
+  // loose crop, or pass 1 mixed two cards up). Don't copy anything over.
+  const playerNow = block.querySelector('[data-field="player"]')?.value || '';
+  const labelThumb0 = _bulkLabelCrop(bmp, r.rect, sc?.label_box);
+  if (sc?.label_player && playerNow && !_bsSameName(sc.label_player, playerNow)) {
+    ['grader', 'grade'].forEach(f => _scanFlagConfidence(block.querySelector(`[data-field="${f}"]`), 0));
+    _bsCertNeedsEntry(block, c, labelThumb0, [], '', 0);
+    _bsAppendNote(block, `The nearest grading label reads "${sc.label_player}", not ${playerNow} — check this card's player, grader, grade and cert # against the photo`);
+    return;
+  }
+
+  // Cert not confidently read from the whole-slab crop → read again with a
+  // close-up of the label cut from the full-res photo.
+  const certConfident = s => s && s.cert_number && (s.confidence?.cert_number ?? 0) >= SLAB_PASS_MIN_CONF;
+  let labelB64 = labelThumb0;
+  if (sc && !certConfident(sc) && !_bsFieldEdited(block, 'certNumber', c.certNumber) && labelB64) {
+    const r2 = await _bulkPostScanCard(r.cropB64, 'label', labelB64, c.id);
+    if (gen !== _slabPassGen) return;
+    block = findBlock();
+    if (!block) return;
+    const sc2 = r2?.success ? r2.card : null;
+    if (sc2 && sc2.center_is_slab !== false
+        && (!sc2.label_player || !playerNow || _bsSameName(sc2.label_player, playerNow))) {
+      // Keep whichever read is more sure of each field.
+      const pick = k => ((sc2.confidence?.[k] ?? 0) > (sc.confidence?.[k] ?? 0));
+      sc = { ...sc, confidence: { ...sc.confidence } };
+      if (pick('cert_number')) {
+        sc.cert_number = sc2.cert_number; sc.confidence.cert_number = sc2.confidence.cert_number;
+        flags = r2.flags || sc2.flags || [];
+      }
+      if (pick('grade')) {
+        sc.grade = sc2.grade; sc.grading_company = sc2.grading_company || sc.grading_company;
+        sc.confidence.grade = sc2.confidence.grade;
+      }
+    }
+  }
+
   const conf = sc?.confidence || {};
-  const flags = (result?.flags || sc?.flags || []);
   const certFlags = flags.filter(f => /^cert_/.test(f));
   const snap = _bulkScanSnapshots[c.id];
 
@@ -8269,7 +8404,7 @@ async function _slabPassOne(c, bmp, gen) {
 
   if (_bsFieldEdited(block, 'certNumber', c.certNumber)) return; // seller already typed it
 
-  const certOk = sc && sc.cert_number && (conf.cert_number ?? 0) >= SLAB_PASS_MIN_CONF && !certFlags.length;
+  const certOk = certConfident(sc) && !certFlags.length;
   if (snap) {
     snap.values.cert = sc?.cert_number || null;
     snap.confidence.cert = typeof conf.cert_number === 'number' ? conf.cert_number : null;
@@ -8325,8 +8460,12 @@ async function _rawPassOne(c, bmp, gen) {
   apply('cardNumber', sc.card_number, pass1.card_number, 'card_number',   'card_number');
   apply('parallel',   _scanParallelText(sc), pass1.parallel, 'parallel_name', 'parallel');
 
-  // The re-read spotted a slab pass 1 missed — fill grader/grade too.
-  if (sc.grading_company && ok('grade') && !_bsFieldEdited(block, 'grader', c.grader)) {
+  // The re-read spotted a slab pass 1 missed — fill grader/grade too, but
+  // only when it read the same player (a loose crop can catch the label of
+  // the slab next to this card).
+  const playerNow = block.querySelector('[data-field="player"]')?.value || '';
+  if (sc.grading_company && ok('grade') && !_bsFieldEdited(block, 'grader', c.grader)
+      && sc.player_name && _bsSameName(sc.player_name, playerNow)) {
     _bsSetGrader(block, sc.grading_company);
     const g = _numericGrade(sc.grade);
     if (g) _bsApplyValidatedField(block, 'grade', g);
@@ -8691,9 +8830,7 @@ function _numericGrade(g) {
 // live update, so both stay in sync when the grader gets changed after render.
 function _bsVerifySlotHTML(grader) {
   if (!['PSA', 'CGC', 'SGC'].includes(grader)) return ''; // psa-lookup.js doesn't support BGS/others
-  if (grader === 'PSA' && !BULK_SCAN_PSA_VERIFY_ENABLED) {
-    return `<div style="width:100%;font-size:0.68rem;color:var(--muted);font-family:'DM Mono',monospace;padding:0.55rem 0;text-align:center">PSA verification paused — pending API access</div>`;
-  }
+  if (grader === 'PSA' && !BULK_SCAN_PSA_VERIFY_ENABLED) return ''; // no button while PSA API access is pending
   return `<button class="btn btn-xs" style="width:100%;justify-content:center;padding:0.55rem;background:#1a1f2e;color:var(--gold);border:1px solid var(--gold)" onclick="bsVerifyGrader(this)">🔍 Verify with ${grader || 'Grader'}</button>`;
 }
 

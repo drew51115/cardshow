@@ -162,7 +162,15 @@ const RECORD_LABEL_TOOL = {
   input_schema: {
     type: 'object',
     properties: {
+      center_is_slab:  { type: 'boolean', description: 'True only if the card at the CENTER of the image is inside a grading slab with a printed grading label.' },
       label_text:      { type: ['string', 'null'], description: 'Verbatim transcription of the grading label, or null if there is no label.' },
+      label_player:    { type: ['string', 'null'], description: 'The player or character name printed on the label, or null.' },
+      label_box: {
+        type: ['object', 'null'],
+        description: 'Where the grading label of the center slab is in the image, as fractions 0-1 of image width/height (x,y = top-left corner). Null if there is no label.',
+        properties: { x: { type: 'number' }, y: { type: 'number' }, w: { type: 'number' }, h: { type: 'number' } },
+        required: ['x', 'y', 'w', 'h'],
+      },
       grading_company: nullableString,
       grade:           nullableString,
       grade_numeric:   { type: ['number', 'null'] },
@@ -173,7 +181,7 @@ const RECORD_LABEL_TOOL = {
         required: LABEL_CONF_FIELDS,
       },
     },
-    required: ['label_text', 'grading_company', 'grade', 'grade_numeric', 'cert_number', 'confidence'],
+    required: ['center_is_slab', 'label_text', 'label_player', 'label_box', 'grading_company', 'grade', 'grade_numeric', 'cert_number', 'confidence'],
   },
 };
 
@@ -183,10 +191,15 @@ const LABEL_PROMPT = `You read the grading label on one graded trading card slab
 - grade is the card grade as printed ("10", "9.5", "Authentic"). On dual-grade labels, the card grade, not the auto grade. grade_numeric is that grade as a number, or null.
 - cert_number is the certification number printed on the label (often next to a barcode). It is never a "45/99" serial and never the card number.
 - If any digit of the cert number is not clearly legible, return cert_number: null. A partial or guessed cert number is worse than none.
-- If there is no slab or label in the photo, return nulls.
+- Only the card at the center of the image counts. Slabs or cards cut off at the edges belong to other cards: never read their labels.
+- center_is_slab is false when the center card is raw (no slab), in a top loader, a penny sleeve, a magnetic one-touch or any holder without a grading label. Then return nulls for every label field.
+- label_player is the name printed on the label, so the caller can confirm the label belongs to the right card.
+- label_box locates the center slab's label so it can be re-photographed closer.
 - confidence: 0 to 1 for grade and cert_number. Use 0 for a null field.`;
 
-async function scanCard({ imageBase64, mediaType = 'image/jpeg', labelImageBase64 = null, mode = 'card', apiKey = process.env.ANTHROPIC_API_KEY }) {
+const SHOWCASE_CROP_NOTE = 'This image was cropped from a photo of many cards laid out together. Parts of neighboring cards or slabs may show at the edges. Describe ONLY the card at the center of the image and ignore everything at the edges.';
+
+async function scanCard({ imageBase64, mediaType = 'image/jpeg', labelImageBase64 = null, mode = 'card', fromShowcase = false, apiKey = process.env.ANTHROPIC_API_KEY }) {
   const labelMode = mode === 'label';
   const tool   = labelMode ? RECORD_LABEL_TOOL : RECORD_CARD_TOOL;
   const system = labelMode ? LABEL_PROMPT : SYSTEM_PROMPT;
@@ -195,6 +208,7 @@ async function scanCard({ imageBase64, mediaType = 'image/jpeg', labelImageBase6
   if (!imageBase64) return { success: false, error: 'parse_error', message: 'image required' };
 
   const content = [
+    ...(fromShowcase ? [{ type: 'text', text: SHOWCASE_CROP_NOTE }] : []),
     { type: 'text', text: 'Image 1: the full card.' },
     { type: 'image', source: { type: 'base64', media_type: mediaType, data: imageBase64 } },
   ];

@@ -1,6 +1,9 @@
 // Netlify Function: scan-card
 // POST { image_base64: "<base64>", media_type: "image/jpeg", label_image_base64?: "<base64>",
-//        mode?: 'card' | 'label' }   ('label' = read only the slab label: grader/grade/cert)
+//        mode?: 'card' | 'label', from_showcase?: bool }
+//   'label' = read only the slab label: grader/grade/cert, whether the center card is in a slab,
+//   the name on the label, and where the label is. from_showcase = the image is a crop from a
+//   multi-card photo; only the center card counts.
 // Returns { success, card, flags } — structured card data + per-field 0-1
 // confidence for Scan-to-Sell POS review, the Manual Sale modal, and the
 // bulk-scan slab-label pass (see CLAUDE.md "Scan Accuracy").
@@ -35,6 +38,9 @@ function toLegacyShape(c, flags) {
     grade_numeric:   c.grade_numeric ?? null,
     cert_number:     c.cert_number ?? null,
     label_text:      c.label_text ?? null,
+    center_is_slab:  typeof c.center_is_slab === 'boolean' ? c.center_is_slab : null,
+    label_player:    c.label_player ?? null,
+    label_box:       c.label_box ?? null,
     item_type:       c.item_type || 'card',
     category:        c.category ?? null,
     subcategory:     c.subcategory ?? null,
@@ -58,7 +64,7 @@ exports.handler = async (event) => {
     return { statusCode: 400, body: JSON.stringify({ success: false, error: 'parse_error', message: 'Invalid JSON body' }) };
   }
 
-  const { image_base64, media_type, label_image_base64, mode } = body;
+  const { image_base64, media_type, label_image_base64, mode, from_showcase } = body;
   if (!image_base64) {
     return { statusCode: 400, body: JSON.stringify({ success: false, error: 'parse_error', message: 'image_base64 required' }) };
   }
@@ -68,6 +74,7 @@ exports.handler = async (event) => {
     mediaType:        media_type || 'image/jpeg',
     labelImageBase64: label_image_base64 || null,
     mode:             mode === 'label' ? 'label' : 'card',
+    fromShowcase:     !!from_showcase,
   });
 
   if (!result.success) return { statusCode: 200, body: JSON.stringify(result) };
