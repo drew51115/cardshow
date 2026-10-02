@@ -1572,6 +1572,14 @@
     font-family: 'DM Mono', monospace;
   }
 
+  .auth-forgot-row { text-align: right; margin: -0.35rem 0 0.6rem; }
+  .auth-link {
+    background: none; border: none; padding: 0; cursor: pointer;
+    color: var(--muted); font-family: 'DM Sans', sans-serif; font-size: 0.8rem;
+    text-decoration: underline; text-underline-offset: 2px;
+  }
+  .auth-link:hover { color: var(--accent); }
+
   /* Set-new-password view (password-reset link landing) — sits above #authOverlay */
   #pwResetOverlay { z-index: 950; }
   .pw-reset-title {
@@ -4381,6 +4389,7 @@
     <div class="auth-logo">Card<span>Show</span></div>
     <div class="auth-tagline">Unified Inventory Platform</div>
 
+    <div id="authMainPanel">
     <div class="auth-role-tabs">
       <button class="auth-role-tab active" onclick="setAuthRole('seller')">Seller</button>
       <button class="auth-role-tab" onclick="setAuthRole('admin')">Show Admin</button>
@@ -4408,11 +4417,28 @@
       <div class="auth-hint">Show organizer access — manage shows, sellers, and publish inventory.</div>
     </div>
 
+    <div class="auth-forgot-row" id="authForgotLinkRow">
+      <button type="button" class="auth-link" onclick="openForgotPassword()">Forgot password?</button>
+    </div>
     <div class="auth-error" id="authError"></div>
     <button class="btn btn-primary" style="width:100%" onclick="submitAuth()">Enter →</button>
 
     <div style="margin-top:1.2rem">
       <button class="btn btn-ghost" style="width:100%;justify-content:center" onclick="enterAsBuyer()">Browse as Buyer →</button>
+    </div>
+    </div>
+
+    <!-- Forgot password. After the Enter button on purpose: submitAuth() finds its
+         button with querySelector('.auth-box .btn-primary'), which must match Enter first. -->
+    <div id="authForgotPanel" style="display:none">
+      <div class="pw-reset-title">Reset Your Password</div>
+      <div class="auth-hint">Enter the email you sign in with. We'll email you a link to set a new password.</div>
+      <input class="auth-field" id="authForgotEmail" type="email" placeholder="Email address" autocomplete="email" onkeydown="if(event.key==='Enter')sendPasswordResetLink()">
+      <div class="auth-error" id="authForgotMsg"></div>
+      <button class="btn btn-primary" id="authForgotSubmit" style="width:100%" onclick="sendPasswordResetLink()">Send Reset Link →</button>
+      <div style="margin-top:1rem">
+        <button type="button" class="auth-link" onclick="closeForgotPassword()">← Back to sign in</button>
+      </div>
     </div>
   </div>
 </div>
@@ -6810,6 +6836,57 @@ function setAuthRole(role) {
   if (sf) sf.style.display = role === 'seller' ? 'block' : 'none';
   if (af) af.style.display = role === 'admin'  ? 'block' : 'none';
   if (er) er.textContent = '';
+  const forgotRow = document.getElementById('authForgotLinkRow');
+  if (forgotRow) forgotRow.style.display = (role === 'seller' && authMode === 'signup') ? 'none' : '';
+}
+
+// ── FORGOT PASSWORD (self-service reset email) ──
+// The emailed link lands on app.html, where _startPasswordRecovery() shows the
+// set-new-password form. If the redirect URL isn't on Supabase's Redirect URLs
+// allow-list, Supabase falls back to the Site URL and index.html forwards it here.
+function openForgotPassword() {
+  const typed = authRoleSelected === 'admin'
+    ? document.getElementById('authAdminEmail').value
+    : document.getElementById('authEmail').value;
+  document.getElementById('authForgotEmail').value = (typed || '').trim();
+  const msg = document.getElementById('authForgotMsg');
+  msg.textContent = ''; msg.style.color = '';
+  const btn = document.getElementById('authForgotSubmit');
+  btn.disabled = false; btn.textContent = 'Send Reset Link →';
+  document.getElementById('authMainPanel').style.display = 'none';
+  document.getElementById('authForgotPanel').style.display = 'block';
+  document.getElementById('authForgotEmail').focus();
+}
+
+function closeForgotPassword() {
+  document.getElementById('authForgotPanel').style.display = 'none';
+  document.getElementById('authMainPanel').style.display = '';
+}
+
+async function sendPasswordResetLink() {
+  const email = (document.getElementById('authForgotEmail').value || '').trim();
+  const msg = document.getElementById('authForgotMsg');
+  const btn = document.getElementById('authForgotSubmit');
+  msg.style.color = '';
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    msg.textContent = 'Enter a valid email address.';
+    return;
+  }
+  btn.disabled = true; btn.textContent = 'Sending…';
+  try {
+    const { error } = await db.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin + '/app.html',
+    });
+    if (error) throw error;
+    // Same message whether or not the account exists, so this can't be used to probe emails.
+    msg.style.color = '#4ade80';
+    msg.textContent = `✓ If an account exists for ${email}, a reset link is on its way. Check your inbox and spam folder.`;
+    btn.textContent = 'Resend Link →';
+  } catch (e) {
+    msg.textContent = (e && e.message) || 'Could not send the reset email. Please try again.';
+    btn.textContent = 'Send Reset Link →';
+  }
+  btn.disabled = false;
 }
 
 function toggleAuthMode() {
@@ -6818,6 +6895,8 @@ function toggleAuthMode() {
   const signUp  = document.getElementById('authSignUpFields');
   const toggle  = document.getElementById('authToggleMode');
   const btn     = document.querySelector('.auth-box .btn-primary');
+  const forgotRow = document.getElementById('authForgotLinkRow');
+  if (forgotRow) forgotRow.style.display = authMode === 'signup' ? 'none' : '';
   if (authMode === 'signup') {
     if (signIn)  signIn.style.display  = 'none';
     if (signUp)  signUp.style.display  = 'block';

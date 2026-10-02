@@ -4263,7 +4263,7 @@ Before this, a reset link sent from the Supabase dashboard dropped the seller on
 page with no way to set a new password. There was no recovery handling at all: no
 `updateUser()`, no `onAuthStateChange`, and `initPage()` signed out every session on load.
 
-### Link shape (checked against the live supabase-js v2 bundle, not a test email)
+### Link shape (from the live supabase-js v2 bundle; confirmed with a real email)
 - `createClient()` had no options, and v2's default `flowType` is `implicit`. It is now pinned
   explicitly: `{ auth: { flowType: 'implicit' } }`. PKCE would deliver auth links as `?code=…`,
   the same param the buyer show-join deep link uses.
@@ -4276,8 +4276,10 @@ page with no way to set a new password. There was no recovery handling at all: n
   `?token_hash=…&type=recovery`. That shape is also captured (`{mode:'recovery', tokenHash}`),
   and `_startPasswordRecovery()` exchanges it with `db.auth.verifyOtp({ token_hash, type:
   'recovery' })`. Errors can also arrive as query params (`?error_code=…`).
-- **Not yet confirmed with a real email.** Click one real reset link and check that the URL
-  matches one of the shapes above.
+- **Tested and validated with a real email (2026-10-02).** After PR #66 merged, a reset sent
+  from the Supabase dashboard (Authentication → Users → Send password recovery) was clicked on
+  production: it landed on the set-new-password form, the new password saved, and the seller
+  was signed in.
 
 ### Flow
 - **`index.html`** — a reset sent from the dashboard goes to the Site URL, which is the landing
@@ -4309,11 +4311,25 @@ page with no way to set a new password. There was no recovery handling at all: n
 ### Open
 - **8-character minimum:** sign-up still allows 6. Confirm the rule, and the Supabase
   project's own minimum.
-- **No self-service "Forgot password?" (Option B).** Resets still start from the Supabase
-  dashboard. Option A would add `resetPasswordForEmail(email, { redirectTo:
-  'https://getcardshow.com/app.html' })` to the sign-in box. That `redirectTo` must be in
-  Authentication → URL Configuration → Redirect URLs, or Supabase falls back to the Site URL.
-  The Site URL fallback still works today, through the `index.html` forward.
+
+### Self-service "Forgot password?" (session 2026-10-02)
+- A **Forgot password?** link sits under the password field in the sign-in box (seller sign-in
+  and Show Admin; hidden in seller sign-up mode via `toggleAuthMode()`/`setAuthRole()`).
+- `openForgotPassword()` hides `#authMainPanel` (role tabs, fields, Enter, Browse as Buyer) and
+  shows `#authForgotPanel`, prefilled with whatever email was already typed.
+  `closeForgotPassword()` goes back.
+- `sendPasswordResetLink()` checks the email format, then calls
+  `db.auth.resetPasswordForEmail(email, { redirectTo: location.origin + '/app.html' })`.
+  - On success it always shows the same message ("If an account exists for …"), so the form
+    can't be used to find out which emails have accounts.
+  - Supabase errors (e.g. the "only request this after N seconds" rate limit) show inline.
+- `#authForgotPanel` sits after the Enter button in the DOM, for the same `submitAuth()`
+  `querySelector('.auth-box .btn-primary')` reason as `#pwResetOverlay`.
+- The emailed link lands on the existing set-new-password flow above. **Recommended Supabase
+  setting:** add `https://getcardshow.com/app.html` under Authentication → URL Configuration →
+  Redirect URLs. Without it Supabase sends the link to the Site URL instead, and the
+  `index.html` forward still gets it to the form (one extra redirect).
+- Sign-up still allows 6-character passwords while a reset requires 8 (open decision above).
 
 ## Show Configuration (Demo Data)
 - **MLP Card Show** — Oct 17-18, 2026 · Grand Hyatt Tampa Bay, FL · Code: MLPTPA (primary demo, shown to buyers without code)
