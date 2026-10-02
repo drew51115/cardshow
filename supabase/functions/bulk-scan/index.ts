@@ -46,6 +46,8 @@ For each card include these fields (string values unless noted):
 
 Rules:
 - Return text exactly as printed, with its original capitalization. Do not lowercase.
+- Read each player or character name from the text printed on that card or its label. Never infer it from the team, uniform, logo or photo — two players on the same team are easy to confuse. If the printed name is not legible, return an empty string.
+- TCG cards: player is the card or character name, set is the expansion name, and cardNumber is the number in a bottom corner (e.g. '025/198').
 - GRADED SLABS: if a grading label is visible, fill grader. Fill grade only if the grade is legible; if it is not, leave grade empty.
 - CERT NUMBERS: leave certNumber empty unless every digit is clearly legible. A partial or guessed cert number is worse than none. The cert number is never the '45/99' serial and never the card number.
 - PARALLELS: colored borders and foil patterns (refractor, prizm, holo) indicate a parallel. If the card is signed or has an AUTO stamp, include 'Auto' in parallel.

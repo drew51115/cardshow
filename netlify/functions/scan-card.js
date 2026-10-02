@@ -1,5 +1,6 @@
 // Netlify Function: scan-card
-// POST { image_base64: "<base64>", media_type: "image/jpeg", label_image_base64?: "<base64>" }
+// POST { image_base64: "<base64>", media_type: "image/jpeg", label_image_base64?: "<base64>",
+//        mode?: 'card' | 'label' }   ('label' = read only the slab label: grader/grade/cert)
 // Returns { success, card, flags } — structured card data + per-field 0-1
 // confidence for Scan-to-Sell POS review, the Manual Sale modal, and the
 // bulk-scan slab-label pass (see CLAUDE.md "Scan Accuracy").
@@ -57,7 +58,7 @@ exports.handler = async (event) => {
     return { statusCode: 400, body: JSON.stringify({ success: false, error: 'parse_error', message: 'Invalid JSON body' }) };
   }
 
-  const { image_base64, media_type, label_image_base64 } = body;
+  const { image_base64, media_type, label_image_base64, mode } = body;
   if (!image_base64) {
     return { statusCode: 400, body: JSON.stringify({ success: false, error: 'parse_error', message: 'image_base64 required' }) };
   }
@@ -66,12 +67,13 @@ exports.handler = async (event) => {
     imageBase64:      image_base64,
     mediaType:        media_type || 'image/jpeg',
     labelImageBase64: label_image_base64 || null,
+    mode:             mode === 'label' ? 'label' : 'card',
   });
 
   if (!result.success) return { statusCode: 200, body: JSON.stringify(result) };
 
   return {
     statusCode: 200,
-    body: JSON.stringify({ success: true, card: toLegacyShape(result.card, result.flags), flags: result.flags }),
+    body: JSON.stringify({ success: true, card: toLegacyShape(result.card, result.flags), flags: result.flags, mode: result.mode, elapsed_ms: result.elapsed_ms }),
   };
 };

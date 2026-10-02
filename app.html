@@ -7944,10 +7944,17 @@ function renderBulkScanReview(cards) {
   showTipOnce('bulkReview');
   document.body.style.overflow = 'hidden';
 
-  _runSlabLabelPass(bulkScanReviewCards);   // fire-and-forget, re-reads each graded slab's label from a full-res crop
-  _autoVerifyPsaCards(bulkScanReviewCards); // fire-and-forget, runs in the background while the seller reviews
-  _runCorrectionPass(bulkScanReviewCards);  // fire-and-forget, raw-card player-name correction via catalog cross-check
-  _runTcapiValidation(bulkScanReviewCards); // fire-and-forget, per-card VERIFIED/UNVERIFIED badge + fingerprint refresh
+  // Fire-and-forget. The re-read pass goes first; the catalog checks wait for
+  // it so they work from the re-read values rather than pass 1's guesses.
+  const reviewCards = bulkScanReviewCards;
+  _runSlabLabelPass(reviewCards)
+    .catch(e => console.warn('[slabPass]', e?.message))
+    .finally(() => {
+      if (bulkScanReviewCards !== reviewCards) return; // modal closed / new scan
+      _autoVerifyPsaCards(reviewCards);  // PSA auto-verify (currently disabled by flag)
+      _runCorrectionPass(reviewCards);   // raw-card player-name correction via catalog cross-check
+      _runTcapiValidation(reviewCards);  // per-card VERIFIED / PLAYER FOUND / UNVERIFIED badge
+    });
 }
 
 // Shows the original uploaded photo as a small clickable thumbnail in the
@@ -8018,15 +8025,20 @@ async function _autoVerifyPsaCards(cards) {
   }
 }
 
-// ── SLAB-LABEL PASS (bulk scan pass 2) ──
+// ── RE-READ PASS (bulk scan pass 2) ──
 // Pass 1 (bulk-scan Edge Function) sees the whole showcase at 1568px, where
-// each slab label is a few hundred pixels — too small to read cert digits
-// reliably. This pass crops each graded slab from the ORIGINAL full-res
-// photo using pass 1's bbox and sends it through scan-card.js (the same
-// single-card reader POS uses). Fire-and-forget after the grid renders; never
-// blocks review or save. On any failure the seller just enters the cert.
-const SLAB_PASS_CONCURRENCY = 3;
-const SLAB_PASS_TIMEOUT_MS  = 10000;
+// each card's text is a few hundred pixels — too small to read cert digits or
+// small names reliably. This pass crops every card it can locate from the
+// ORIGINAL full-res photo using pass 1's bbox and re-reads it through
+// scan-card.js:
+//   - graded slabs → mode 'label' (grader / grade / cert only — small output,
+//     returns well inside Netlify's 10s limit)
+//   - raw cards    → mode 'card' (player / year / set / card # / parallel)
+// Fire-and-forget after the grid renders; never blocks review or save. The
+// catalog checks (correction pass, Trading Card API badge) run after this so
+// they check the re-read values, not pass 1's guesses.
+const SLAB_PASS_CONCURRENCY = 4;
+const SLAB_PASS_TIMEOUT_MS  = 12000; // server gives up at 9.3s; leave room for network/cold start
 const SLAB_PASS_MIN_EDGE    = 300;   // crop smaller than this → too small to read
 const SLAB_PASS_MIN_CONF    = 0.7;
 let _slabPassGen = 0;                // bumped to cancel an in-flight pass
@@ -8079,14 +8091,14 @@ function _showSlabPassProgress(done, total) {
     wrap.style.cssText = 'margin:0 0 0.75rem;display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap';
     wrap.innerHTML = `
       <span id="slabPassProgressText" style="font-size:0.78rem;color:var(--muted);font-family:'DM Mono',monospace"></span>
-      <button onclick="_slabPassGen++;_hideSlabPassProgress();showToast('Stopped reading slab labels','var(--muted)')"
+      <button onclick="_slabPassGen++;_hideSlabPassProgress();showToast('Stopped re-reading cards','var(--muted)')"
         style="font-size:0.72rem;padding:0.2rem 0.55rem;border-radius:5px;border:1px solid var(--border);
           background:transparent;color:var(--muted);cursor:pointer;font-family:'DM Sans',sans-serif">Cancel</button>`;
     const body = document.getElementById('bulkScanReviewBody');
     if (body && body.parentElement) body.parentElement.insertBefore(wrap, body);
   }
   const txt = document.getElementById('slabPassProgressText');
-  if (txt) txt.textContent = `Reading slab labels… ${done} of ${total}`;
+  if (txt) txt.textContent = `Re-reading cards… ${done} of ${total}`;
 }
 
 function _hideSlabPassProgress() {
@@ -8128,18 +8140,21 @@ function _bsCertNeedsEntry(block, card, labelBase64, flags, certValue, confidenc
 async function _runSlabLabelPass(cards) {
   const gen = ++_slabPassGen;
   const bmp = _bulkScanOriginalBitmap;
-  const targets = cards.filter(c => String(c.grader || '').trim());
-  if (!targets.length) return;
+  const isGraded = c => !!String(c.grader || '').trim();
 
   if (!bmp) {
     // No full-res source (client decode failed) — never trust a pass-1 cert
     // read from the downsized whole-showcase photo without the seller's eye.
-    targets.forEach(c => {
+    cards.filter(isGraded).forEach(c => {
       const block = document.querySelector(`.bulkscan-card-block[data-card-id="${CSS.escape(c.id)}"]`);
       if (block && c.certNumber) _bsCertNeedsEntry(block, c, null, [], c.certNumber, 0);
     });
     return;
   }
+
+  // Graded slabs first — cert numbers are what the seller can't fix by eye.
+  const targets = [...cards.filter(isGraded), ...cards.filter(c => !isGraded(c) && c.bbox)];
+  if (!targets.length) return;
 
   let done = 0;
   _showSlabPassProgress(0, targets.length);
@@ -8149,7 +8164,7 @@ async function _runSlabLabelPass(cards) {
     while (queue.length) {
       if (gen !== _slabPassGen) return;
       const c = queue.shift();
-      try { await _slabPassOne(c, bmp, gen); }
+      try { await (isGraded(c) ? _slabPassOne(c, bmp, gen) : _rawPassOne(c, bmp, gen)); }
       catch (e) { console.warn('[slabPass]', c.id, e?.message); }
       done++;
       if (gen === _slabPassGen) _showSlabPassProgress(done, targets.length);
@@ -8159,60 +8174,94 @@ async function _runSlabLabelPass(cards) {
   if (gen === _slabPassGen) _hideSlabPassProgress();
 }
 
+// Crops one card from the original bitmap and posts it to scan-card.
+// Returns { result, cropB64, labelB64 } or null when the card can't be cropped.
+async function _bulkReRead(c, bmp, mode) {
+  const rect = c.bbox ? _bulkScanBboxRect(c.bbox, bmp) : null;
+  if (!rect || Math.max(rect.w, rect.h) < SLAB_PASS_MIN_EDGE) return { tooSmall: !!rect, result: null };
+
+  const main = _bulkScanDrawScaled(bmp, rect.x, rect.y, rect.w, rect.h, 1568);
+  const cropB64 = main.canvas.toDataURL('image/jpeg', 0.9).split(',')[1];
+  // Top of the slab, for the seller's cert-check thumbnail only (not sent —
+  // it's the same pixels as the crop, so it would only add request time).
+  const labelH = Math.max(1, Math.round(rect.h * 0.35));
+  const labelB64 = mode === 'label'
+    ? _bulkScanDrawScaled(bmp, rect.x, rect.y, rect.w, labelH, 800).canvas.toDataURL('image/jpeg', 0.85).split(',')[1]
+    : null;
+
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), SLAB_PASS_TIMEOUT_MS);
+  let result = null;
+  const t0 = performance.now();
+  try {
+    const res = await fetch('/.netlify/functions/scan-card', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image_base64: cropB64, media_type: 'image/jpeg', mode }),
+      signal: ctrl.signal,
+    });
+    result = res.ok ? await res.json() : { success: false, error: `http_${res.status}` };
+  } catch (e) {
+    result = { success: false, error: e?.name === 'AbortError' ? 'client_timeout' : 'network_error' };
+  } finally { clearTimeout(timer); }
+  if (!result?.success) {
+    console.warn('[slabPass] re-read failed', { card: c.id, mode, error: result?.error,
+      server_ms: result?.elapsed_ms, client_ms: Math.round(performance.now() - t0) });
+  } else if (window.CARDSHOW_DEBUG) {
+    console.log('[slabPass]', c.id, mode, 'server', result.elapsed_ms, 'ms, client', Math.round(performance.now() - t0), 'ms');
+  }
+  return { result, cropB64, labelB64 };
+}
+
 async function _slabPassOne(c, bmp, gen) {
   const findBlock = () => document.querySelector(`.bulkscan-card-block[data-card-id="${CSS.escape(c.id)}"]`);
-  let block = findBlock();
+  if (!findBlock()) return;
+
+  const r = await _bulkReRead(c, bmp, 'label');
+  if (gen !== _slabPassGen) return;
+  const block = findBlock();      // re-check: seller may have closed/removed it
   if (!block) return;
 
-  const rect = c.bbox ? _bulkScanBboxRect(c.bbox, bmp) : null;
-  if (!rect || Math.max(rect.w, rect.h) < SLAB_PASS_MIN_EDGE) {
+  if (!r.cropB64) {
     _bsCertNeedsEntry(block, c, null, [], '', 0);
-    _bsAppendNote(block, rect
+    _bsAppendNote(block, r.tooSmall
       ? 'Slab too small in photo — shoot closer for cert numbers'
       : 'Could not locate this slab in the photo — enter the cert # from the label');
     return;
   }
 
-  const main  = _bulkScanDrawScaled(bmp, rect.x, rect.y, rect.w, rect.h, 1568);
-  const mainB64 = main.canvas.toDataURL('image/jpeg', 0.9).split(',')[1];
-  const labelH = Math.max(1, Math.round(rect.h * 0.28));
-  const label = _bulkScanDrawScaled(bmp, rect.x, rect.y, rect.w, labelH, 1200);
-  const labelB64 = label.canvas.toDataURL('image/jpeg', 0.9).split(',')[1];
-
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), SLAB_PASS_TIMEOUT_MS);
-  let result = null;
-  try {
-    const res = await fetch('/.netlify/functions/scan-card', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image_base64: mainB64, media_type: 'image/jpeg', label_image_base64: labelB64 }),
-      signal: ctrl.signal,
-    });
-    result = res.ok ? await res.json() : null;
-  } catch { result = null; }
-  finally { clearTimeout(timer); }
-
-  if (gen !== _slabPassGen) return;
-  block = findBlock();            // re-check: seller may have closed/removed it
-  if (!block) return;
-
+  const result = r.result;
+  const labelB64 = r.labelB64;
   const sc   = result?.success ? result.card : null;
   const conf = sc?.confidence || {};
   const flags = (result?.flags || sc?.flags || []);
   const certFlags = flags.filter(f => /^cert_/.test(f));
   const snap = _bulkScanSnapshots[c.id];
 
+  let graderSet = false, gradeSet = false;
   if (sc) {
     if (sc.grading_company && (conf.grade ?? 0) >= SLAB_PASS_MIN_CONF && !_bsFieldEdited(block, 'grader', c.grader)) {
       _bsSetGrader(block, sc.grading_company);
+      graderSet = true;
       if (snap) { snap.values.grader = sc.grading_company; snap.confidence.grader = conf.grade; }
     }
     const g = _numericGrade(sc.grade);
     if (g && (conf.grade ?? 0) >= SLAB_PASS_MIN_CONF && !_bsFieldEdited(block, 'grade', _numericGrade(c.grade))) {
       _bsApplyValidatedField(block, 'grade', g);
+      gradeSet = true;
       if (snap) { snap.values.grade = g; snap.confidence.grade = conf.grade; }
     }
+  }
+  if (!sc || !graderSet || !gradeSet) {
+    // The label couldn't be re-read: pass 1's grader/grade came from the
+    // downsized showcase photo, so ask the seller to check them.
+    ['grader', 'grade'].forEach(f => {
+      const el = block.querySelector(`[data-field="${f}"]`);
+      if (el && !_bsFieldEdited(block, f, f === 'grade' ? _numericGrade(c.grade) : c.grader) && !(f === 'grader' ? graderSet : gradeSet)) {
+        _scanFlagConfidence(el, 0);
+      }
+    });
+    if (!sc) _bsAppendNote(block, "Couldn't re-read this slab's label — check the grader, grade and cert # against the photo");
   }
 
   if (_bsFieldEdited(block, 'certNumber', c.certNumber)) return; // seller already typed it
@@ -8233,6 +8282,72 @@ async function _slabPassOne(c, bmp, gen) {
     // the downsized showcase photo. Clear it and ask for manual entry.
     _bsCertNeedsEntry(block, c, labelB64, flags, '', conf.cert_number);
   }
+}
+
+// Raw card: full re-read from the full-res crop. Fills only fields the seller
+// hasn't edited, and only when the re-read is confident.
+async function _rawPassOne(c, bmp, gen) {
+  const findBlock = () => document.querySelector(`.bulkscan-card-block[data-card-id="${CSS.escape(c.id)}"]`);
+  if (!findBlock()) return;
+
+  const r = await _bulkReRead(c, bmp, 'card');
+  if (gen !== _slabPassGen) return;
+  const block = findBlock();
+  if (!block || !r.cropB64) return;
+
+  const sc = r.result?.success ? r.result.card : null;
+  if (!sc) return; // pass-1 values stay; the catalog checks still run on them
+  const conf = sc.confidence || {};
+  const snap = _bulkScanSnapshots[c.id];
+  const pass1 = snap?.values || {};
+  const ok = k => (conf[k] ?? 0) >= SLAB_PASS_MIN_CONF;
+
+  const titleEl = block.querySelector('[data-field="title"]');
+  const titleUntouched = titleEl && titleEl.value === (block.dataset.autoTitle ?? titleEl.value);
+  let changed = false;
+  const apply = (field, value, pass1Value, confKey, snapKey) => {
+    const v = String(value ?? '').trim();
+    if (!v || !ok(confKey)) return;
+    if (_bsFieldEdited(block, field, pass1Value)) return;
+    const el = block.querySelector(`[data-field="${field}"]`);
+    if (!el || el.value.trim() === v) return;
+    _bsApplyValidatedField(block, field, v);
+    if (snap) { snap.values[snapKey] = v; snap.confidence[snapKey] = conf[confKey]; }
+    changed = true;
+  };
+  apply('player',     sc.player_name, pass1.player,      'player_name',   'player');
+  apply('year',       sc.year,        pass1.year,        'year',          'year');
+  apply('set',        sc.set_name,    pass1.set,         'set_name',      'set');
+  apply('cardNumber', sc.card_number, pass1.card_number, 'card_number',   'card_number');
+  apply('parallel',   _scanParallelText(sc), pass1.parallel, 'parallel_name', 'parallel');
+
+  // The re-read spotted a slab pass 1 missed — fill grader/grade too.
+  if (sc.grading_company && ok('grade') && !_bsFieldEdited(block, 'grader', c.grader)) {
+    _bsSetGrader(block, sc.grading_company);
+    const g = _numericGrade(sc.grade);
+    if (g) _bsApplyValidatedField(block, 'grade', g);
+    if (sc.cert_number && ok('cert_number') && !(sc.flags || []).some(f => /^cert_/.test(f))) {
+      _bsApplyValidatedField(block, 'certNumber', sc.cert_number);
+    }
+    changed = true;
+  }
+
+  // Rebuild the auto-generated title from the corrected fields, unless the
+  // seller has typed their own.
+  if (changed && titleUntouched) {
+    const v = f => block.querySelector(`[data-field="${f}"]`)?.value.trim() || '';
+    const t = buildCardTitle({
+      player: v('player'), year: v('year'), cardSet: v('set'), parallel: v('parallel'),
+      cardNum: v('cardNumber'), sport: sc.category === 'TCG' ? 'TCG' : '', rawTitle: sc.card_title || '',
+    });
+    if (t) {
+      titleEl.value = t;
+      block.dataset.autoTitle = t;
+      titleEl.classList.add('db-filled');
+      setTimeout(() => titleEl.classList.remove('db-filled'), 8000);
+    }
+  }
+  if (changed) _bsUpdateFingerprintPreview(block);
 }
 
 // ── RAW-CARD CORRECTION PASS ──
@@ -8308,8 +8423,11 @@ function _applyCorrectionToBlock(block, tier, correctedPlayer) {
 }
 
 async function _runCorrectionPass(cards) {
+  // Live DOM values, not the pass-1 snapshot — the re-read pass may have
+  // filled a card number or found a grader since render.
+  const liveVal = (c, f) => document.querySelector(`.bulkscan-card-block[data-card-id="${CSS.escape(c.id)}"] [data-field="${f}"]`)?.value.trim() || '';
   const targets = cards
-    .filter(c => !(c.grader || '').toString().trim() && (c.cardNumber || '').toString().trim())
+    .filter(c => !liveVal(c, 'grader') && liveVal(c, 'cardNumber'))
     .slice(0, BULK_SCAN_CORRECTION_LIMIT);
 
   if (!targets.length) return;
@@ -8634,7 +8752,7 @@ function bulkScanCardBlockHTML(c, idx) {
     : '';
 
   return `
-    <div class="bulkscan-card-block" data-card-id="${_bsEsc(c.id)}">
+    <div class="bulkscan-card-block" data-card-id="${_bsEsc(c.id)}" data-auto-title="${_bsEsc(c.title)}">
       <div class="bulkscan-card-header">
         <input type="checkbox" class="bs-include-checkbox" data-field="included" checked onchange="bsToggleInclude(this)">
         <div class="mapper-confidence ${_bsEsc(c.confidence)}">${_bsEsc(c.confidence)}</div>

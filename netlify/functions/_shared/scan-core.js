@@ -9,8 +9,11 @@
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 const MODEL             = 'claude-sonnet-4-6';
 const MAX_TOKENS        = 1024;
-// Must fire before Netlify's ~10s synchronous function limit.
-const TIMEOUT_MS        = 8000;
+// Must fire before Netlify's 10s synchronous function limit, with a little
+// room left to return the timeout response. Measured on the deploy preview:
+// a full-card read of a ~1568px crop takes ~7.8s end to end, so 8s was too
+// tight and timed out on real photos.
+const TIMEOUT_MS        = 9300;
 
 const CONF_FIELDS = ['player_name', 'year', 'set_name', 'card_number', 'parallel_name', 'grade', 'cert_number'];
 
@@ -63,6 +66,9 @@ Read before you interpret: if there is a grading label, transcribe it verbatim i
 Text:
 - Return text exactly as printed, with its original capitalization. Do not lowercase.
 - If a field is not clearly visible, return null. Never guess.
+- Read the player or character name from the text printed on the card or label. Never infer it
+  from the team, uniform, logo or photo — two players on the same team are easy to confuse. If
+  the printed name is not legible, return null.
 
 Grading:
 - grading_company is whatever company name is on the label (PSA, BGS, SGC, CGC, TAG, HGA, CSG, or any other).
@@ -147,7 +153,44 @@ function validateCard(card) {
   return { card: out, flags };
 }
 
-async function scanCard({ imageBase64, mediaType = 'image/jpeg', labelImageBase64 = null, apiKey = process.env.ANTHROPIC_API_KEY }) {
+// Label-only mode (bulk scan pass 2 on a cropped slab): far smaller output
+// than record_card, so it returns well inside the Netlify timeout.
+const LABEL_CONF_FIELDS = ['grade', 'cert_number'];
+const RECORD_LABEL_TOOL = {
+  name: 'record_label',
+  description: 'Record what is printed on the grading label of the slab in the photo.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      label_text:      { type: ['string', 'null'], description: 'Verbatim transcription of the grading label, or null if there is no label.' },
+      grading_company: nullableString,
+      grade:           nullableString,
+      grade_numeric:   { type: ['number', 'null'] },
+      cert_number:     nullableString,
+      confidence: {
+        type: 'object',
+        properties: Object.fromEntries(LABEL_CONF_FIELDS.map(k => [k, { type: 'number', minimum: 0, maximum: 1 }])),
+        required: LABEL_CONF_FIELDS,
+      },
+    },
+    required: ['label_text', 'grading_company', 'grade', 'grade_numeric', 'cert_number', 'confidence'],
+  },
+};
+
+const LABEL_PROMPT = `You read the grading label on one graded trading card slab and record it with the record_label tool.
+- Transcribe the label verbatim into label_text first, then fill the other fields from it.
+- grading_company is the company named on the label or slab (PSA, BGS, SGC, CGC, TAG, HGA, CSG, or any other). PSA labels are red-bordered with "PSA"; CGC labels say "CGC"; BGS labels say "BECKETT". Read it, do not guess.
+- grade is the card grade as printed ("10", "9.5", "Authentic"). On dual-grade labels, the card grade, not the auto grade. grade_numeric is that grade as a number, or null.
+- cert_number is the certification number printed on the label (often next to a barcode). It is never a "45/99" serial and never the card number.
+- If any digit of the cert number is not clearly legible, return cert_number: null. A partial or guessed cert number is worse than none.
+- If there is no slab or label in the photo, return nulls.
+- confidence: 0 to 1 for grade and cert_number. Use 0 for a null field.`;
+
+async function scanCard({ imageBase64, mediaType = 'image/jpeg', labelImageBase64 = null, mode = 'card', apiKey = process.env.ANTHROPIC_API_KEY }) {
+  const labelMode = mode === 'label';
+  const tool   = labelMode ? RECORD_LABEL_TOOL : RECORD_CARD_TOOL;
+  const system = labelMode ? LABEL_PROMPT : SYSTEM_PROMPT;
+  const t0 = Date.now();
   if (!apiKey) return { success: false, error: 'api_error', message: 'ANTHROPIC_API_KEY not configured' };
   if (!imageBase64) return { success: false, error: 'parse_error', message: 'image required' };
 
@@ -161,7 +204,7 @@ async function scanCard({ imageBase64, mediaType = 'image/jpeg', labelImageBase6
       { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: labelImageBase64 } },
     );
   }
-  content.push({ type: 'text', text: 'Record this card with the record_card tool.' });
+  content.push({ type: 'text', text: labelMode ? 'Record this label with the record_label tool.' : 'Record this card with the record_card tool.' });
 
   const controller = new AbortController();
   const timeoutId  = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -180,9 +223,9 @@ async function scanCard({ imageBase64, mediaType = 'image/jpeg', labelImageBase6
         model:       MODEL,
         max_tokens:  MAX_TOKENS,
         temperature: 0,
-        system:      SYSTEM_PROMPT,
-        tools:       [RECORD_CARD_TOOL],
-        tool_choice: { type: 'tool', name: 'record_card' },
+        system,
+        tools:       [tool],
+        tool_choice: { type: 'tool', name: tool.name },
         messages:    [{ role: 'user', content }],
       }),
     });
@@ -196,19 +239,21 @@ async function scanCard({ imageBase64, mediaType = 'image/jpeg', labelImageBase6
   } catch (err) {
     clearTimeout(timeoutId);
     if (err.name === 'AbortError') {
-      return { success: false, error: 'timeout', message: `Card scan timed out after ${TIMEOUT_MS / 1000} seconds` };
+      console.warn('[scan-core] timed out', { mode, ms: Date.now() - t0 });
+      return { success: false, error: 'timeout', message: `Card scan timed out after ${TIMEOUT_MS / 1000} seconds`, elapsed_ms: Date.now() - t0 };
     }
     return { success: false, error: 'api_error', message: err.message };
   }
 
-  const toolBlock = (data.content || []).find(b => b.type === 'tool_use' && b.name === 'record_card');
+  const elapsed_ms = Date.now() - t0;
+  const toolBlock = (data.content || []).find(b => b.type === 'tool_use' && b.name === tool.name);
   if (!toolBlock || !toolBlock.input || typeof toolBlock.input !== 'object') {
     console.error('[scan-core] no record_card tool_use block; stop_reason:', data.stop_reason);
     return { success: false, error: 'parse_error', message: 'Scan returned no card record' };
   }
 
   const { card, flags } = validateCard(toolBlock.input);
-  return { success: true, card, flags };
+  return { success: true, card, flags, elapsed_ms, mode: labelMode ? 'label' : 'card' };
 }
 
 module.exports = { scanCard, validateCard, CERT_LENGTHS, RECORD_CARD_TOOL, SYSTEM_PROMPT, MODEL };
