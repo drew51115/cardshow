@@ -222,11 +222,18 @@ async function tbRenderReport() {
 
 function _tbLoadQRLib(cb, onErr) {
   if (window.QRCode) { cb(); return; }
-  const s = document.createElement('script');
-  s.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
-  s.onload = cb;
-  s.onerror = onErr || (() => _tbRenderQRFallback());
-  document.head.appendChild(s);
+  // Self-hosted first, cdnjs as backup (same as app.html's loadQRLib).
+  const sources = ['/qrcode.min.js', 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js'];
+  const fail = onErr || (() => _tbRenderQRFallback());
+  const trySource = i => {
+    if (i >= sources.length) { fail(); return; }
+    const s = document.createElement('script');
+    s.src = sources[i];
+    s.onload = () => window.QRCode ? cb() : trySource(i + 1);
+    s.onerror = () => { s.remove(); trySource(i + 1); };
+    document.head.appendChild(s);
+  };
+  trySource(0);
 }
 
 function tbRenderQR() {
