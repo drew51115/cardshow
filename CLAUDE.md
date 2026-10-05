@@ -37,6 +37,7 @@ js/trade-zone.js                         → Guest auth, post/board/propose/conf
 js/trade-board.js                        → Realtime board rendering + report aggregation for trade-board.html
 js/trade-share.js                        → Phase 4 canvas compositor + Web Share API for the branded trade graphic
 supabase/migrations/20260825120000_trade_zone.sql → Trade Zone schema, storage buckets, RLS, and RPC functions — run in Supabase SQL editor
+qrcode.min.js                     → Self-hosted qrcodejs 1.0.0 (all QR codes); cdnjs is only a backup — see "Seller QR blank"
 CLAUDE.md                         → This file
 ```
 
@@ -4390,6 +4391,34 @@ Before, a raw row with no price counted as "updated" on every re-upload (`NaN !=
   Available in the DB. A repaired Sold twin stays Sold after the first re-upload, but a second
   re-upload resets it like any other Sold card.
 - No grade parsing from Card Title, and no SQL backfill. Repair only happens through a re-upload.
+
+## Seller QR Code Blank (session 2026-10-05)
+
+Seller report: the My QR Code panel showed a blank white box, while the URL text under it was
+correct.
+
+### Root cause
+- The QR library (qrcodejs) was loaded only from cdnjs.
+- When that request fails, the error handler drew its fallback onto `#qrCanvas` (the buyer
+  modal's canvas), not the seller's canvas. So the seller's canvas stayed blank white, with no
+  message and no console error.
+- Reproduced in a headless phone viewport: with cdnjs blocked, `#sellerQrCanvas` stays all
+  white. With the library available, the same seller/show URL (127 chars) renders fine, so the
+  URL length is not the cause.
+- A second, smaller risk: `renderQR()` drew from the library's `<img>` after a 120ms timer.
+  That img gets its src only after an async data-URI test, so a slow phone could read an
+  empty img and draw nothing.
+
+### Fix
+- `qrcode.min.js` is now self-hosted at the repo root, like `xlsx.full.min.js`.
+- `loadQRLib()` tries `/qrcode.min.js` first, then cdnjs. Callers that arrive while the script
+  is loading are queued, so there are no duplicate `<script>` tags. After a failure, the next
+  call tries again.
+- `renderQR()` copies from the library's `<canvas>`, which is drawn synchronously, so there is
+  no timer. If loading or drawing fails, the fallback goes to the same canvas and says "QR code
+  didn't load — Reload the page to try again".
+- The first (dead, overridden) `renderQR()` definition was removed.
+- `js/trade-board.js`'s `_tbLoadQRLib()` uses the same self-hosted-first order.
 
 ## Show Configuration (Demo Data)
 - **MLP Card Show** — Oct 17-18, 2026 · Grand Hyatt Tampa Bay, FL · Code: MLPTPA (primary demo, shown to buyers without code)

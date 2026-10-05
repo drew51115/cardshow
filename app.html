@@ -12210,59 +12210,44 @@ function selectQRSeller(seller) {
   buildQRPanel();
 }
 
-// Minimal QR code renderer using qrcode-generator approach
-// We'll use the qrcodejs CDN library loaded dynamically
+// QR library (qrcodejs 1.0.0). Self-hosted at /qrcode.min.js, with cdnjs as a
+// backup. Before this, cdnjs was the only source: when it was blocked or
+// unreachable (show-floor wifi, ad/content blockers), every QR stayed a blank
+// white box. Callbacks that arrive while the script is loading are queued, so
+// the panel and the modal never append duplicate <script> tags.
+const QR_LIB_SOURCES = [
+  '/qrcode.min.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js'
+];
+let _qrLibWaiters = null; // null = not loading; array of {cb, onErr} while loading
+
 function loadQRLib(cb, onErr) {
   if (window.QRCode) { cb(); return; }
-  const s = document.createElement('script');
-  s.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
-  s.onload = cb;
-  s.onerror = onErr || (() => { renderQRFallback('qrCanvas', activeQRSeller); });
-  document.head.appendChild(s);
-}
+  const waiter = { cb, onErr };
+  if (_qrLibWaiters) { _qrLibWaiters.push(waiter); return; }
+  _qrLibWaiters = [waiter];
 
-function renderQR(canvasId, seller, size) {
-  const url = getSellerShowURL(seller);
-  const canvas = document.getElementById(canvasId);
-  if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#fff';
-  ctx.fillRect(0,0,canvas.width,canvas.height);
-
-  loadQRLib(() => {
-    // QRCode lib works with divs; we'll use a temp div then copy to canvas
-    const tmp = document.createElement('div');
-    tmp.style.cssText = 'position:absolute;left:-9999px;top:-9999px';
-    document.body.appendChild(tmp);
-    try {
-      new QRCode(tmp, {
-        text: url, width: size, height: size,
-        colorDark: '#0a0a0a', colorLight: '#ffffff',
-        correctLevel: QRCode.CorrectLevel.M
-      });
-      setTimeout(() => {
-        const img = tmp.querySelector('img') || tmp.querySelector('canvas');
-        if (img) {
-          const c = document.getElementById(canvasId);
-          if (!c) return;
-          const cx = c.getContext('2d');
-          if (img.tagName === 'CANVAS') {
-            cx.drawImage(img, 0, 0, c.width, c.height);
-          } else {
-            const i2 = new Image();
-            i2.onload = () => cx.drawImage(i2, 0, 0, c.width, c.height);
-            i2.src = img.src;
-          }
-        }
-        document.body.removeChild(tmp);
-        // Draw small CardShow logo overlay in center
-        overlayQRLogo(canvasId, size);
-      }, 100);
-    } catch(e) {
-      document.body.removeChild(tmp);
-      renderQRFallback(canvasId, seller);
+  const finish = ok => {
+    const waiters = _qrLibWaiters || [];
+    _qrLibWaiters = null; // a later call retries from scratch after a failure
+    waiters.forEach(w => {
+      try { ok ? w.cb() : (w.onErr && w.onErr()); }
+      catch (e) { console.warn('QR render failed:', e); }
+    });
+  };
+  const trySource = i => {
+    if (i >= QR_LIB_SOURCES.length) {
+      console.warn('QR library failed to load from every source');
+      finish(false);
+      return;
     }
-  });
+    const s = document.createElement('script');
+    s.src = QR_LIB_SOURCES[i];
+    s.onload = () => window.QRCode ? finish(true) : trySource(i + 1);
+    s.onerror = () => { s.remove(); trySource(i + 1); };
+    document.head.appendChild(s);
+  };
+  trySource(0);
 }
 
 async function overlayQRLogo(canvasId, size) {
@@ -12301,17 +12286,19 @@ async function overlayQRLogo(canvasId, size) {
 }
 
 function renderQRFallback(canvasId, seller) {
-  // Simple pixel pattern fallback if CDN fails
+  // Shown when the QR library can't load or render: a visible message instead
+  // of a blank white box. The link text under the QR still works via Copy.
   const canvas = document.getElementById(canvasId);
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#fff'; ctx.fillRect(0,0,canvas.width,canvas.height);
-  ctx.fillStyle = '#0a0a0a';
-  ctx.font = 'bold 11px monospace'; ctx.textAlign = 'center';
-  ctx.fillText('Scan at show:', canvas.width/2, 50);
-  ctx.font = '9px monospace';
-  ctx.fillText('@' + seller, canvas.width/2, 70);
-  ctx.fillText(activeShow ? activeShow.name : '', canvas.width/2, 88);
+  const w = canvas.width, h = canvas.height;
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = '#0a0a0a'; ctx.textAlign = 'center';
+  ctx.font = `bold ${Math.round(w * 0.075)}px sans-serif`;
+  ctx.fillText('QR code didn\u2019t load', w / 2, h * 0.42);
+  ctx.font = `${Math.round(w * 0.06)}px sans-serif`;
+  ctx.fillText('Reload the page to try again', w / 2, h * 0.56);
+  if (seller) ctx.fillText('@' + seller, w / 2, h * 0.68);
 }
 
 // ── "Powered by CardShow" footer — shared by every downloadable/printable
@@ -12900,8 +12887,13 @@ async function downloadSellerQRModal() {
   gsMark('qr');
 }
 
-// Override renderQR to accept an explicit URL parameter
-const _origRenderQR = renderQR;
+// Draws a QR for `overrideUrl` (or the seller's show URL) onto canvasId.
+// Copies from the library's own <canvas>, which qrcodejs paints synchronously
+// inside `new QRCode()`. The <img> it also creates only gets its src after an
+// async data-URI support test, so reading the img on a timer could draw
+// nothing on a slow phone. If the library can't load or throws, the fallback
+// is drawn on this same canvas (it used to go to the buyer modal's
+// #qrCanvas, which left the seller's canvas silently blank).
 function renderQR(canvasId, seller, size, overrideUrl) {
   const url = overrideUrl || getSellerShowURL(seller);
   const canvas = document.getElementById(canvasId);
@@ -12910,6 +12902,7 @@ function renderQR(canvasId, seller, size, overrideUrl) {
   ctx.fillStyle = '#fff';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+  const fallback = () => renderQRFallback(canvasId, seller);
   loadQRLib(() => {
     const tmp = document.createElement('div');
     tmp.style.cssText = 'position:absolute;left:-9999px;top:-9999px';
@@ -12920,28 +12913,21 @@ function renderQR(canvasId, seller, size, overrideUrl) {
         colorDark: '#0a0a0a', colorLight: '#ffffff',
         correctLevel: QRCode.CorrectLevel.M
       });
-      setTimeout(() => {
-        const img = tmp.querySelector('img') || tmp.querySelector('canvas');
-        if (img) {
-          const c = document.getElementById(canvasId);
-          if (!c) { document.body.removeChild(tmp); return; }
-          const cx = c.getContext('2d');
-          if (img.tagName === 'CANVAS') {
-            cx.drawImage(img, 0, 0, c.width, c.height);
-          } else {
-            const i2 = new Image();
-            i2.onload = () => { cx.drawImage(i2, 0, 0, c.width, c.height); overlayQRLogo(canvasId, size); };
-            i2.src = img.src;
-          }
-        }
-        document.body.removeChild(tmp);
-        overlayQRLogo(canvasId, size);
-      }, 120);
-    } catch(e) {
-      document.body.removeChild(tmp);
-      renderQRFallback(canvasId, seller);
+      const src = tmp.querySelector('canvas');
+      const c = document.getElementById(canvasId);
+      if (!src || !c) throw new Error('QR canvas unavailable');
+      const cx = c.getContext('2d');
+      cx.fillStyle = '#fff';
+      cx.fillRect(0, 0, c.width, c.height);
+      cx.drawImage(src, 0, 0, c.width, c.height);
+      overlayQRLogo(canvasId, size);
+    } catch (e) {
+      console.warn('QR render failed:', e);
+      fallback();
+    } finally {
+      tmp.remove();
     }
-  });
+  }, fallback);
 }
 
 // Keyboard close for seller modal
