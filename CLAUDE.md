@@ -2394,6 +2394,36 @@ migration, no new external library.
 - Beta test at organizer's next show — respond with concrete proposal
 - Card Ladder partnership outreach — co-marketing deal for comp data access
 
+## Landing Page Consolidation (session 2026-10-08)
+`index.html` was rebuilt around the current feature set and cut from ~2,670 to ~2,290 lines.
+The As Seen At section (`#social-proof`) was left exactly as it was.
+
+**Section order now:** Hero → marquee → The Problem → Which One Is You? → How It Works →
+For Buyers (`#buyers`) → For Sellers · ShowVision (`#sellers`) → For Sellers · Price & Sell →
+Every Category (`#tcg`) → Import + template → For Organizers (`#organizers`) → Show floor
+record → Try It Now → As Seen At → Final CTA → footer. Nav and hero-pill anchors are unchanged.
+
+**Merged or removed:** the three-column "One Platform, Three Audiences" block (it repeated
+Which One Is You?), the stats strip, the standalone Table Numbers, Seller Profile, Shareable
+Show Page and QR sections (folded into the Buyers, Sellers and Organizers sections), two of
+the four inline CTAs, and the separate Integrations and Template sections (now one). Their
+CSS (`.triptych*`, `.panel-*`, `.stat-*`, `.qr-section`, `.qr-mock`) and the QR demo canvas
+script were removed.
+
+**Stale claims fixed:** barcode cert scanning (removed from the app 2026-09-06), "comps from
+eBay" (comps come from Card Hedge, CardSight and PriceCharting, high-confidence only), the
+admin "All Inventory" tab (removed 2026-09-12), and the `show.html#…` hash link (now
+`?id=`).
+
+**Newly covered:** bulk case scan, guided search, the GTCR lost/stolen check, the
++ Sell / Add menu, manual sales, multi-day sale dates, share cards, export, category and
+subcategory filters, 8 graders plus "Other", serial number/print run/features, live
+inventory sync, Find a Table plus floor map, organizer floor map, analytics, heatmap, and QR
+engagement.
+
+**Also fixed:** the page scrolled sideways on phones. `.final-cta` now has
+`overflow: hidden` (its 800px glow overflowed), and the footer stacks at ≤600px.
+
 ## Social Proof Section (#social-proof)
 Location: index.html, between the CSV-format stat row and the Final CTA / footer.
 Purpose: Grows over time as CardShow gets press, show partnerships, and industry features.
@@ -2429,6 +2459,27 @@ Current entries (as of September 2026):
   and West Coast Hobby Expo. Content unchanged from its original featured-badge copy (Hobby
   Tech Pitch Competition, NSCC 2026, Dr. James Beckett/Scott Lock/Jeremy Lee judges) — still
   uses `assets/enter-the-inferno-promo.png`, which was never removed from the repo.
+- Global Trading Card Registry (GTCR) — integration partner, featured badge + logo tile, added
+  October 2026. Stacked second, right after CTCA (CTCA runs the GTCR). `assets/gtcr-logo.png` is
+  the user-supplied seal, trimmed and kept as a transparent PNG (~87KB), and uses
+  `.sp-featured-img--logo`. Tagline "Register. Verify. Protect. Transfer." comes from thegtcr.com.
+  The body copy, as the user asked for it, says vendors can register graded cards with the GTCR
+  when adding them to inventory, and are alerted about lost/stolen cards. **The second claim is
+  live (Trust Check, see "Trust Check via GTCR"). The first is ahead of the product:**
+  registration is built but dark (`GTCR_CONSENT_UI_LAUNCHED=false`, `GTCR_REGISTRATION_ENABLED`
+  off), and it registers a card on sale with seller consent, not when the card is added.
+  Revisit the wording if registration launches differently.
+- The Monster Collectibles Show — featured sponsor, featured badge + logo tile, added October
+  2026. Stacked third (after CTCA and GTCR, before West Coast Hobby Expo) as the newest sponsorship.
+  `assets/monster-show-logo.png` is the show's own logo, trimmed to its content and kept as a
+  transparent PNG (palette-quantized, ~118KB) so it sits directly on the dark card. The source
+  has a transparent background, and a JPEG would put it in a white box. Its `<img>` adds
+  `.sp-featured-img--logo` (`object-fit: contain`, vertically centered) so the non-square logo
+  isn't cropped. Copy comes from monstershowusa.com: Cal Expo, Sacramento, CA, October 9-11,
+  2026, 300+ vendor tables, 10,000+ expected attendees, sports cards/Pokémon/TCG/comics/coins/
+  toys/memorabilia. "Featured sponsor, live on the show floor all weekend" is per the user, the
+  same sourcing as WCHE. **The copy is in present tense ("is a featured sponsor"). Switch it to
+  past tense after the show ends Oct 11.**
 - The National Sports Collectors Convention (logo tile)
 - InfernoRed Technology (logo tile)
 - Sports Cards Live / Jeremy Lee (logo tile)

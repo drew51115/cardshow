@@ -360,69 +360,6 @@ nav {
 
 
 /* ════════════════════════════════════════
-   AUDIENCE TRIPTYCH
-════════════════════════════════════════ */
-.triptych {
-  display: grid; grid-template-columns: repeat(3, 1fr);
-  gap: 1.5px;
-  background: var(--border);
-  border-radius: 20px; overflow: hidden;
-}
-.triptych-panel {
-  background: var(--surface);
-  padding: 3rem 2.5rem;
-  position: relative; overflow: hidden;
-  transition: background 0.3s;
-}
-.triptych-panel:hover { background: var(--card); }
-.triptych-panel::before {
-  content: '';
-  position: absolute; top: 0; left: 0; right: 0;
-  height: 4px;
-}
-.triptych-buyer::before   { background: var(--buyer); }
-.triptych-seller::before  { background: var(--seller); }
-.triptych-org::before     { background: var(--org); }
-
-.panel-icon {
-  font-size: 2.5rem; margin-bottom: 1.4rem;
-  display: block;
-  filter: drop-shadow(0 4px 16px rgba(0,0,0,0.4));
-}
-.panel-role {
-  font-family: 'DM Mono', monospace; font-size: 0.7rem;
-  letter-spacing: 0.14em; text-transform: uppercase;
-  margin-bottom: 0.6rem;
-}
-.triptych-buyer  .panel-role { color: var(--buyer); }
-.triptych-seller .panel-role { color: var(--seller); }
-.triptych-org    .panel-role { color: var(--org); }
-
-.panel-headline {
-  font-family: 'Bebas Neue', sans-serif;
-  font-size: 2.4rem; letter-spacing: 0.04em;
-  color: var(--text); line-height: 1; margin-bottom: 1rem;
-}
-.panel-body {
-  font-size: 0.9rem; color: var(--muted); line-height: 1.65;
-}
-.panel-features {
-  list-style: none; margin-top: 1.4rem;
-  display: flex; flex-direction: column; gap: 0.6rem;
-}
-.panel-features li {
-  font-size: 0.84rem; color: var(--text);
-  display: flex; align-items: flex-start; gap: 0.6rem; line-height: 1.35;
-}
-.panel-features li::before {
-  content: ''; width: 6px; height: 6px; border-radius: 50%;
-  flex-shrink: 0; margin-top: 0.3rem;
-}
-.triptych-buyer  .panel-features li::before { background: var(--buyer); }
-.triptych-seller .panel-features li::before { background: var(--seller); }
-.triptych-org    .panel-features li::before { background: var(--org); }
-
-/* ════════════════════════════════════════
    HOW IT WORKS — STEPS
 ════════════════════════════════════════ */
 .steps-grid {
@@ -452,29 +389,6 @@ nav {
 .step-body { font-size: 0.88rem; color: var(--muted); line-height: 1.6; }
 
 /* ════════════════════════════════════════
-   STAT ROW
-════════════════════════════════════════ */
-.stat-row {
-  display: grid; grid-template-columns: repeat(4, 1fr);
-  gap: 2px; background: var(--border);
-  border-radius: 16px; overflow: hidden;
-  margin: 4rem 0;
-}
-.stat-box {
-  background: var(--surface); padding: 2.5rem 2rem; text-align: center;
-}
-.stat-val {
-  font-family: 'Bebas Neue', sans-serif;
-  font-size: 3.5rem; color: var(--gold); letter-spacing: 0.04em;
-  line-height: 1; display: block;
-}
-.stat-label {
-  font-family: 'DM Mono', monospace; font-size: 0.7rem;
-  letter-spacing: 0.12em; text-transform: uppercase;
-  color: var(--muted); margin-top: 0.4rem;
-}
-
-/* ════════════════════════════════════════
    INTEGRATIONS
 ════════════════════════════════════════ */
 .integrations-row {
@@ -492,39 +406,12 @@ nav {
 .integration-pill span { font-size: 1.1rem; }
 
 /* ════════════════════════════════════════
-   TABLE NUMBERS
-════════════════════════════════════════ */
-
-/* ════════════════════════════════════════
-   QR SECTION
-════════════════════════════════════════ */
-.qr-section {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 24px; padding: 5rem;
-  text-align: center; position: relative; overflow: hidden;
-}
-.qr-section::before {
-  content: '';
-  position: absolute; top: -200px; left: 50%; transform: translateX(-50%);
-  width: 600px; height: 600px; border-radius: 50%;
-  background: radial-gradient(ellipse, rgba(245,200,66,0.07), transparent 70%);
-}
-.qr-mock {
-  display: inline-block;
-  background: #fff; border-radius: 16px; padding: 16px;
-  margin: 2.5rem auto;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.4), 0 0 0 1px rgba(245,200,66,0.15);
-}
-.qr-mock canvas { display: block; }
-
-/* ════════════════════════════════════════
    CTA FINAL
 ════════════════════════════════════════ */
 .final-cta {
   padding: 160px 0 120px;
   text-align: center;
-  position: relative;
+  position: relative; overflow: hidden;
 }
 .final-cta-glow {
   position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
@@ -749,16 +636,14 @@ footer {
 @media (max-width: 900px) {
   .split { grid-template-columns: 1fr; gap: 3rem; }
   .split-reverse { direction: ltr; }
-  .triptych { grid-template-columns: 1fr; }
   .steps-grid { grid-template-columns: 1fr; }
-  .stat-row { grid-template-columns: 1fr 1fr; }
   .nav-links { display: none; }
-  .qr-section { padding: 3rem 1.5rem; }
 }
 @media (max-width: 600px) {
-  .stat-row { grid-template-columns: 1fr 1fr; }
   .hero-headline { font-size: 56px; }
   .section { padding: 80px 0; }
+  .footer-inner { flex-direction: column; gap: 1rem; text-align: center; }
+  .footer-links { flex-wrap: wrap; justify-content: center; gap: 0.75rem 1.25rem; }
 }
 
 /* ── SHOW FLOOR DATA SECTION ───────────────────────────────── */
@@ -918,6 +803,10 @@ footer {
   border-radius: 8px;
   object-fit: cover;
 }
+.sp-featured-img--logo {
+  object-fit: contain;
+  align-self: center;
+}
 .sp-featured-content { flex: 1; }
 .sp-featured-eyebrow {
   font-family: 'DM Mono', monospace;
@@ -1054,36 +943,37 @@ footer {
         <a href="#buyers" class="pill pill-buyer">🔍 Buyers</a>
         <a href="#sellers" class="pill pill-seller">🃏 Sellers</a>
         <a href="#organizers" class="pill pill-org">🎪 Show Organizers</a>
-        <a href="#tcg" class="pill" style="background:rgba(168,85,247,0.1);color:#c084fc;border:1px solid rgba(168,85,247,0.25)">⚡ TCG &amp; Sports</a>
+        <a href="#tcg" class="pill" style="background:rgba(168,85,247,0.1);color:#c084fc;border:1px solid rgba(168,85,247,0.25)">⚡ Sports · TCG · Non-Sport</a>
       </div>
     </div>
   </div>
   <div class="scroll-hint">Scroll <span>↓</span></div>
 </section>
 
+
 <!-- ════════ MARQUEE STRIP ════════ -->
 <div class="problem-strip">
   <div class="problem-strip-inner">
     <!-- duplicated for seamless loop -->
     <div class="strip-item"><div class="strip-dot"></div>Browse before you arrive</div>
-    <div class="strip-item"><div class="strip-dot"></div>ShowVision scans slabs in seconds</div>
-    <div class="strip-item"><div class="strip-dot"></div>Live market comps. Real sales.</div>
-    <div class="strip-item"><div class="strip-dot"></div>Table numbers for every seller</div>
-    <div class="strip-item"><div class="strip-dot"></div>One QR code. Full inventory.</div>
-    <div class="strip-item"><div class="strip-dot"></div>Upload any spreadsheet format</div>
-    <div class="strip-item"><div class="strip-dot"></div>Pokémon · MTG · One Piece · Sports</div>
-    <div class="strip-item"><div class="strip-dot"></div>Sealed Products · Lots · Singles</div>
-    <div class="strip-item"><div class="strip-dot"></div>PSA · BGS · CGC · SGC · Raw</div>
+    <div class="strip-item"><div class="strip-dot"></div>ShowVision reads cards and slabs from a photo</div>
+    <div class="strip-item"><div class="strip-dot"></div>Photograph a whole case at once</div>
+    <div class="strip-item"><div class="strip-dot"></div>Market value on every card</div>
+    <div class="strip-item"><div class="strip-dot"></div>Table numbers and floor maps</div>
+    <div class="strip-item"><div class="strip-dot"></div>Lost &amp; stolen checks via the GTCR</div>
+    <div class="strip-item"><div class="strip-dot"></div>Sports · TCG · Non-Sport</div>
+    <div class="strip-item"><div class="strip-dot"></div>Singles · Sealed · Lots</div>
+    <div class="strip-item"><div class="strip-dot"></div>PSA · BGS · CGC · SGC · TAG · Raw</div>
     <div class="strip-item"><div class="strip-dot"></div>Shopify · Card Dealer Pro · Flipwise · Ludex · TCGplayer</div>
     <div class="strip-item"><div class="strip-dot"></div>Browse before you arrive</div>
-    <div class="strip-item"><div class="strip-dot"></div>ShowVision scans slabs in seconds</div>
-    <div class="strip-item"><div class="strip-dot"></div>Live market comps. Real sales.</div>
-    <div class="strip-item"><div class="strip-dot"></div>Table numbers for every seller</div>
-    <div class="strip-item"><div class="strip-dot"></div>One QR code. Full inventory.</div>
-    <div class="strip-item"><div class="strip-dot"></div>Upload any spreadsheet format</div>
-    <div class="strip-item"><div class="strip-dot"></div>Pokémon · MTG · One Piece · Sports</div>
-    <div class="strip-item"><div class="strip-dot"></div>Sealed Products · Lots · Singles</div>
-    <div class="strip-item"><div class="strip-dot"></div>PSA · BGS · CGC · SGC · Raw</div>
+    <div class="strip-item"><div class="strip-dot"></div>ShowVision reads cards and slabs from a photo</div>
+    <div class="strip-item"><div class="strip-dot"></div>Photograph a whole case at once</div>
+    <div class="strip-item"><div class="strip-dot"></div>Market value on every card</div>
+    <div class="strip-item"><div class="strip-dot"></div>Table numbers and floor maps</div>
+    <div class="strip-item"><div class="strip-dot"></div>Lost &amp; stolen checks via the GTCR</div>
+    <div class="strip-item"><div class="strip-dot"></div>Sports · TCG · Non-Sport</div>
+    <div class="strip-item"><div class="strip-dot"></div>Singles · Sealed · Lots</div>
+    <div class="strip-item"><div class="strip-dot"></div>PSA · BGS · CGC · SGC · TAG · Raw</div>
     <div class="strip-item"><div class="strip-dot"></div>Shopify · Card Dealer Pro · Flipwise · Ludex · TCGplayer</div>
   </div>
 </div>
@@ -1180,8 +1070,8 @@ footer {
           <p class="wiy-answer-body">Browse every card from every seller at the show, with table numbers telling you exactly where to go.</p>
           <ul class="wiy-answer-list">
             <li>Search all sellers in one place</li>
-            <li>Filter by player, sport, grade, or price</li>
-            <li>Market value badge on every card</li>
+            <li>Filter by category, sport, grade, or price</li>
+            <li>Market value and table number on every card</li>
             <li>Message the seller on WhatsApp before you even leave home</li>
           </ul>
           <a href="/app" class="wiy-answer-cta">Try buyer demo →</a>
@@ -1202,9 +1092,9 @@ footer {
           <div class="wiy-answer-headline">Upload Once. Price Smart.</div>
           <p class="wiy-answer-body">Drop your existing spreadsheet. Scan your slabs. Check real comps on every card before the show starts.</p>
           <ul class="wiy-answer-list">
-            <li>ShowVision reads PSA, BGS, CGC labels in seconds</li>
+            <li>ShowVision reads a card or slab from one photo</li>
             <li>Live market comps across your whole inventory</li>
-            <li>Mark cards sold in real time at the table</li>
+            <li>Record every sale at the table in a couple of taps</li>
             <li>Sales report after the show</li>
           </ul>
           <p class="wiy-answer-body">Every sale you record in CardShow is saved. Your post-show report is ready the moment doors close.</p>
@@ -1228,198 +1118,13 @@ footer {
           <ul class="wiy-answer-list">
             <li>Authorize sellers and assign table numbers</li>
             <li>One-click publish and share link</li>
-            <li>QR code for entrance signage</li>
-            <li>Share the link instantly across Instagram, X, Facebook, and group chats</li>
+            <li>Entrance QR signage and a floor map</li>
+            <li>Analytics on what sold, by seller and by table</li>
           </ul>
           <a href="mailto:info@getcardshow.com?subject=CardShow%20Partnership%20Inquiry" class="wiy-answer-cta">Get in touch →</a>
         </div>
       </div>
 
-    </div>
-  </div>
-</section>
-
-<!-- ════════ AUDIENCE TRIPTYCH ════════ -->
-<section class="section" id="buyers">
-  <div class="container">
-    <div style="text-align:center;margin-bottom:3.5rem">
-      <div class="label reveal" style="justify-content:center">Built for everyone</div>
-      <h2 class="section-headline reveal reveal-d1" style="text-align:center">
-        One Platform.<br><em>Three Audiences.</em>
-      </h2>
-    </div>
-
-    <div class="triptych reveal reveal-d2">
-
-      <div class="triptych-panel triptych-buyer">
-        <span class="panel-icon">🔍</span>
-        <div class="panel-role">For Buyers</div>
-        <div class="panel-headline">Find Your Card.</div>
-        <p class="panel-body">Browse every card from every seller at the show — before you even leave home. Filter by player, sport, grade, or price.</p>
-        <ul class="panel-features">
-          <li>Search all sellers in one place</li>
-          <li>Table numbers so you know exactly where to go</li>
-          <li>Market value shown on every card — see if a price is a deal, fair, or high</li>
-          <li>"Find a Table" directory lists every seller, their category, and table number</li>
-          <li>Message sellers via WhatsApp or Instagram DM</li>
-          <li>Scan a QR at the entrance to go live</li>
-          <li>Trade Zone — post a card, get matched with another buyer, and confirm the swap right on the show floor</li>
-        </ul>
-      </div>
-
-      <div class="triptych-panel triptych-seller">
-        <span class="panel-icon">🃏</span>
-        <div class="panel-role">For Sellers</div>
-        <div class="panel-headline">Upload Once.</div>
-        <p class="panel-body">Drop your existing spreadsheet — Shopify, Card Dealer Pro, Flipwise, Ludex, TCGplayer, or Excel. CardShow maps your columns automatically, including singles, sealed products, and lots.</p>
-        <ul class="panel-features">
-          <li>Scan any PSA, BGS, or CGC slab in seconds — ShowVision reads the label automatically</li>
-          <li>Snap a photo of a walk-up sale you never catalogued and confirm it table-side</li>
-          <li>Check live market comps for your whole inventory before pricing</li>
-          <li>Auto-detects Shopify, Flipwise, Ludex, TCGplayer, Card Dealer Pro formats</li>
-          <li>Singles, Sealed Products (Blasters, Hobby Boxes), and Lots</li>
-          <li>Mark cards sold in real time · Sales report with revenue and top cards</li>
-          <li>Every transaction logged with date and time, sorted automatically</li>
-          <li>Log a sale after the fact — cash outside the app, a different show, a trade — it still counts</li>
-          <li>Every sale can generate a branded share graphic — post straight to Instagram or X</li>
-        </ul>
-      </div>
-
-      <div class="triptych-panel triptych-org">
-        <span class="panel-icon">🎪</span>
-        <div class="panel-role">For Organizers</div>
-        <div class="panel-headline">Run Your Show.</div>
-        <p class="panel-body">A dedicated Shows dashboard gives organizers full control — authorize sellers, assign tables, publish inventory, and share a public show page across Instagram, X, and Facebook in one click.</p>
-        <ul class="panel-features">
-          <li>Shows dashboard with one-click publish per show</li>
-          <li>Multi-day shows with start and end dates</li>
-          <li>Assign table numbers to every authorized seller</li>
-          <li>Shareable public show page — no login needed to view</li>
-          <li>Generate marketing + signage QR codes</li>
-          <li>Separate inventory tab for full admin oversight</li>
-          <li>Per-show analytics — GMV, sell-through rate, top sellers, and table performance</li>
-        </ul>
-      </div>
-
-    </div>
-  </div>
-</section>
-
-<!-- ── SHOW FLOOR DATA SECTION ─────────────────────────────── -->
-<section class="data-section">
-  <div class="data-section-inner">
-
-    <p class="data-eyebrow">Built for the hobby</p>
-
-    <h2 class="data-headline">
-      The show floor record the hobby never had
-    </h2>
-
-    <p class="data-body">
-      Beckett built the first price guide from what dealers
-      reported selling cards for. CardShow records what dealers
-      actually sell cards for, at shows, across the country.
-    </p>
-
-    <p class="data-body">
-      Every card marked sold on CardShow generates a permanent
-      record. Player, grade, price, show location, date. No
-      estimates. No averages. What cards sell for at the table.
-    </p>
-
-    <div class="data-stats">
-      <div class="data-stat">
-        <span class="data-stat-label">Tracked per sale</span>
-        <ul class="data-stat-list">
-          <li>Player and card details</li>
-          <li>Grade and grading company</li>
-          <li>Sold price and asking price</li>
-          <li>Payment method</li>
-          <li>Show name and location</li>
-          <li>Table number and seller</li>
-          <li>Date and time</li>
-        </ul>
-      </div>
-      <div class="data-stat">
-        <span class="data-stat-label">Why it matters</span>
-        <ul class="data-stat-list">
-          <li>eBay shows what cards sell for online</li>
-          <li>CardShow shows what they sell for at shows</li>
-          <li>Regional price differences, visible for the first time</li>
-          <li>Grade premiums at shows vs online, tracked over time</li>
-          <li>The comp layer the hobby has been missing</li>
-        </ul>
-      </div>
-    </div>
-
-    <p class="data-cta-line">
-      Every show adds to the record.
-      <a href="mailto:info@getcardshow.com?subject=CardShow%20Organizer%20Access" class="data-link">
-        Run your show on CardShow
-      </a>
-    </p>
-
-  </div>
-</section>
-
-<!-- ════════ TCG SECTION ════════ -->
-<section class="section" id="tcg" style="padding-top:0">
-  <div class="container">
-    <div class="split">
-      <div>
-        <div class="label section-label reveal">TCG &amp; Collectibles</div>
-        <h2 class="section-headline reveal reveal-d1">Pokémon. MTG.<br>One Piece. <em>Yu-Gi-Oh.</em></h2>
-        <p class="section-body reveal reveal-d2">
-          CardShow isn't just sports cards. Our smart category engine identifies TCG cards automatically, so Charizard SIR shows up under TCG, not "Other." Sealed products like Blaster Boxes and Hobby Boxes get their own item type and product label.
-        </p>
-        <ul class="feature-list reveal reveal-d3">
-          <li>Auto-detects Pokémon, MTG, One Piece, Yu-Gi-Oh from card names and rarity terms</li>
-          <li>Radiant, Reverse Holo, Special Illustration Rare, Alt Art — all recognized</li>
-          <li>Sealed product types: Blaster Box, Hobby Box, Mega Box, Booster Pack, and more</li>
-          <li>Lot / Bundle item type for multi-card collections</li>
-          <li>Buyers can filter by TCG just like any sport</li>
-        </ul>
-      </div>
-      <div class="reveal reveal-d2">
-        <div class="mockup-frame">
-          <div class="mockup-topbar">
-            <div class="mockup-dot"></div><div class="mockup-dot"></div><div class="mockup-dot"></div>
-            <div class="mockup-url">getcardshow.com · Add Item</div>
-          </div>
-          <div style="padding:1.2rem;display:flex;flex-direction:column;gap:0.7rem">
-            <div style="display:flex;gap:0.3rem;background:var(--surface);border-radius:8px;padding:0.2rem">
-              <div style="flex:1;padding:0.38rem 0.5rem;border-radius:6px;background:var(--gold);color:var(--black);font-size:0.72rem;font-weight:700;text-align:center;font-family:'DM Sans',sans-serif">🃏 Single Card</div>
-              <div style="flex:1;padding:0.38rem 0.5rem;border-radius:6px;color:var(--muted);font-size:0.72rem;text-align:center;font-family:'DM Sans',sans-serif">📦 Sealed</div>
-              <div style="flex:1;padding:0.38rem 0.5rem;border-radius:6px;color:var(--muted);font-size:0.72rem;text-align:center;font-family:'DM Sans',sans-serif">📋 Lot</div>
-            </div>
-            <div class="mock-card" style="margin:0">
-              <div style="font-size:0.65rem;font-family:'DM Mono',monospace;color:var(--gold);letter-spacing:0.08em;margin-bottom:0.3rem">TCG 🃏 · Auto-detected</div>
-              <div class="mock-player">Charizard</div>
-              <div class="mock-title">2023 Pokémon SV Obsidian Flames · Special Illustration Rare #228</div>
-              <div style="display:flex;gap:0.4rem;margin-bottom:0.5rem">
-                <span class="mock-badge badge-blue">PSA 10</span>
-                <span class="mock-badge" style="background:rgba(168,85,247,0.12);color:#c084fc;border:1px solid rgba(168,85,247,0.3)">Pokémon</span>
-              </div>
-              <div class="mock-footer">
-                <div class="mock-price">$1,200</div>
-                <span style="font-family:'DM Mono',monospace;font-size:0.62rem;color:var(--muted)">📦 Binder 3 · Page 1</span>
-              </div>
-            </div>
-            <div class="mock-card" style="margin:0;border-color:rgba(96,165,250,0.3)">
-              <div style="display:flex;align-items:center;gap:0.4rem;margin-bottom:0.3rem">
-                <span style="background:#1e3a5f;color:#60a5fa;font-size:0.58rem;padding:0.1rem 0.35rem;border-radius:4px;font-family:'DM Mono',monospace">📦 SEALED</span>
-                <div style="font-size:0.65rem;font-family:'DM Mono',monospace;color:var(--muted);letter-spacing:0.05em">Blaster Box</div>
-              </div>
-              <div class="mock-player" style="font-size:1.1rem">2024 Topps Chrome Baseball</div>
-              <div class="mock-title">Factory Sealed · Case 2</div>
-              <div class="mock-footer">
-                <div class="mock-price">$32</div>
-                <span class="mock-badge badge-green" style="font-size:0.62rem">Factory Sealed</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
   </div>
 </section>
@@ -1437,77 +1142,43 @@ footer {
       <div class="step">
         <div class="step-num">01</div>
         <span class="step-icon">📋</span>
-        <div class="step-title">Sellers Upload</div>
-        <p class="step-body">Drop any CSV or spreadsheet — Shopify, Card Dealer Pro, Flipwise, Ludex, TCGplayer, or custom. Auto-detects columns, parses Shopify Tags, and supports singles, sealed products, and lots.</p>
+        <div class="step-title">Sellers Add Cards</div>
+        <p class="step-body">Upload any spreadsheet, snap a photo of one card, or photograph a whole case. Singles, sealed product, and lots all welcome.</p>
       </div>
       <div class="step">
         <div class="step-num">02</div>
         <span class="step-icon">⚡</span>
-        <div class="step-title">Organizer Shares</div>
-        <p class="step-body">The show admin creates the event, authorizes sellers, and publishes inventory live. One click generates a shareable public show page and QR codes — share the link instantly across Instagram, X, Facebook, or any group chat.</p>
+        <div class="step-title">Organizers Publish</div>
+        <p class="step-body">Create the show, add sellers and table numbers, publish inventory, and share one short link and an entrance QR code.</p>
       </div>
       <div class="step">
         <div class="step-num">03</div>
         <span class="step-icon">📲</span>
-        <div class="step-title">Buyers Browse</div>
-        <p class="step-body">Scan the QR at the entrance and browse every card at the show — filtered, sorted, with table numbers pinpointing every seller. Walk straight to the right table and message sellers directly on WhatsApp.</p>
+        <div class="step-title">Buyers Find It</div>
+        <p class="step-body">Search every seller at once, see market value and table numbers, then walk straight to the right table. Inventory updates live as cards sell.</p>
       </div>
     </div>
   </div>
 </section>
 
-<!-- ════════ STATS ════════ -->
-<section class="section-sm">
-  <div class="container">
-    <div class="stat-row reveal">
-      <div class="stat-box">
-        <span class="stat-val">Any</span>
-        <div class="stat-label">CSV format accepted</div>
-      </div>
-      <div class="stat-box">
-        <span class="stat-val">3</span>
-        <div class="stat-label">Item types — singles, sealed, lots</div>
-      </div>
-      <div class="stat-box">
-        <span class="stat-val">0</span>
-        <div class="stat-label">Reformatting required</div>
-      </div>
-      <div class="stat-box">
-        <span class="stat-val">Live</span>
-        <div class="stat-label">Sold tracking at your table</div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ════════ INLINE CTA 2 ════════ -->
-<div style="padding:2rem 0;text-align:center;border-bottom:1px solid var(--border)">
-  <div class="container" style="display:flex;align-items:center;justify-content:center;gap:1.5rem;flex-wrap:wrap">
-    <span style="font-family:'Instrument Serif',serif;font-style:italic;font-size:1.15rem;color:var(--muted)">Your next show is closer than you think.</span>
-    <a href="/app" class="btn btn-gold" style="font-size:0.9rem;padding:0.75rem 1.8rem">Start for Free →</a>
-  </div>
-</div>
-
-<!-- ════════ TABLE NUMBERS ════════ -->
-<section class="section" style="padding-top:0">
+<!-- ════════ FOR BUYERS ════════ -->
+<section class="section" id="buyers">
   <div class="container">
     <div class="split split-reverse">
       <div>
-        <div class="label section-label reveal">Navigate the Floor</div>
-        <h2 class="section-headline reveal reveal-d1">Know Exactly<br>Where to <em>Go.</em></h2>
+        <div class="label section-label reveal">For Buyers</div>
+        <h2 class="section-headline reveal reveal-d1">Find It.<br>Then Walk <em>Straight to It.</em></h2>
         <p class="section-body reveal reveal-d2">
-          Every card shows the seller's assigned table number. Buyers stop wandering and walk straight to the right table — no asking around, no circling the floor twice.
+          Scan the QR at the entrance, or open the show link at home, and search every seller's inventory in one place. Every card shows its table number and what it's actually worth.
         </p>
         <ul class="feature-list reveal reveal-d3">
-          <li>Organizers assign table numbers to every seller from the admin panel</li>
-          <li>Sellers can self-assign their table number once they're set up</li>
-          <li>Every card in the buyer view shows a 📍 Table badge</li>
-          <li>Card detail shows both the seller handle and table location</li>
-          <li>Works alongside WhatsApp — message first, then navigate</li>
+          <li>Search all sellers at once. Filter by Sports, TCG, or Non-Sport, then by sport, game, or franchise, grade, grader, and price</li>
+          <li>Market value on every card, with a Deal / Fair / High badge on the asking price</li>
+          <li>📍 Table number on every card, plus a Find a Table directory and floor map</li>
+          <li>Inventory updates live. Sold cards drop off, and new ones show up as sellers add them</li>
+          <li>Message the seller on WhatsApp or Instagram before you walk over</li>
+          <li>Trade Zone: post a card you want to trade, get matched, and confirm the swap on the floor</li>
         </ul>
-        <p class="reveal reveal-d4" style="font-size:0.8rem;color:var(--muted);margin-top:1.2rem;font-family:'DM Mono',monospace;letter-spacing:0.04em">
-          Table numbers update live — set them at setup, update anytime during the show.
-        </p>
       </div>
       <div class="reveal reveal-d2">
         <div class="mockup-frame">
@@ -1516,6 +1187,11 @@ footer {
             <div class="mockup-url">getcardshow.com · Buyer View</div>
           </div>
           <div style="padding:1.2rem;display:flex;flex-direction:column;gap:0.75rem">
+            <div style="display:flex;gap:0.4rem;flex-wrap:wrap">
+              <span style="background:rgba(245,200,66,0.1);border:1px solid rgba(245,200,66,0.25);border-radius:20px;padding:0.2rem 0.7rem;font-size:0.72rem;color:var(--gold);font-family:'DM Mono',monospace">Sports</span>
+              <span style="background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.3);border-radius:20px;padding:0.2rem 0.7rem;font-size:0.72rem;color:#60a5fa;font-family:'DM Mono',monospace">Basketball</span>
+              <span style="background:var(--card);border:1px solid var(--border);border-radius:20px;padding:0.2rem 0.7rem;font-size:0.72rem;color:var(--muted);font-family:'DM Mono',monospace">PSA 10</span>
+            </div>
 
             <div class="mock-card">
               <div style="font-size:0.65rem;font-family:'DM Mono',monospace;color:var(--gold);letter-spacing:0.08em;margin-bottom:0.3rem">Basketball 🏀</div>
@@ -1523,7 +1199,7 @@ footer {
               <div class="mock-title">2025-26 Topps Chrome RC Auto · Sapphire</div>
               <div style="display:flex;gap:0.4rem;margin-bottom:0.5rem;align-items:center">
                 <span class="mock-badge badge-blue">PSA 10</span>
-                <span class="mock-badge badge-gold">Sapphire</span>
+                <span class="mock-badge badge-green">🔥 DEAL</span>
               </div>
               <div class="mock-footer">
                 <div class="mock-price">$11,500</div>
@@ -1532,32 +1208,32 @@ footer {
             </div>
 
             <div class="mock-card">
-              <div style="font-size:0.65rem;font-family:'DM Mono',monospace;color:var(--gold);letter-spacing:0.08em;margin-bottom:0.3rem">Baseball ⚾</div>
-              <div class="mock-player">Paul Skenes</div>
-              <div class="mock-title">2024 Topps Chrome RC Auto · Lava Refractor</div>
+              <div style="font-size:0.65rem;font-family:'DM Mono',monospace;color:var(--gold);letter-spacing:0.08em;margin-bottom:0.3rem">Basketball 🏀</div>
+              <div class="mock-player">Victor Wembanyama</div>
+              <div class="mock-title">2023-24 Panini Prizm RC · Silver</div>
               <div style="display:flex;gap:0.4rem;margin-bottom:0.5rem;align-items:center">
-                <span class="mock-badge badge-amber">BGS 9.5</span>
+                <span class="mock-badge badge-blue">PSA 10</span>
               </div>
               <div class="mock-footer">
-                <div class="mock-price">$2,800</div>
+                <div class="mock-price">$1,150</div>
                 <span style="display:inline-flex;align-items:center;gap:0.25rem;background:rgba(245,200,66,0.1);border:1px solid rgba(245,200,66,0.25);border-radius:6px;padding:0.12rem 0.5rem;font-family:'DM Mono',monospace;font-size:0.65rem;font-weight:700;color:var(--gold)">📍 Table 7</span>
               </div>
             </div>
 
             <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:0.85rem;margin-top:0.2rem">
-              <div style="font-family:'DM Mono',monospace;font-size:0.62rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin-bottom:0.5rem">Admin · Assign Table Numbers</div>
+              <div style="font-family:'DM Mono',monospace;font-size:0.62rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin-bottom:0.5rem">Find a Table</div>
               <div style="display:flex;flex-direction:column;gap:0.4rem">
                 <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem">
-                  <span style="color:var(--text)">@bleeding_ink_sports</span>
+                  <span style="color:var(--text)">Bleeding Ink Sports</span>
                   <span style="font-family:'DM Mono',monospace;font-size:0.7rem;font-weight:700;color:var(--gold)">Table 12</span>
                 </div>
                 <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem">
-                  <span style="color:var(--text)">@slab_city_sd</span>
+                  <span style="color:var(--text)">Slab City SD</span>
                   <span style="font-family:'DM Mono',monospace;font-size:0.7rem;font-weight:700;color:var(--gold)">Table 7</span>
                 </div>
                 <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem">
-                  <span style="color:var(--text)">@golden_era_cards</span>
-                  <span style="font-family:'DM Mono',monospace;font-size:0.7rem;color:var(--muted);font-style:italic">Unassigned</span>
+                  <span style="color:var(--text)">Golden Era Cards</span>
+                  <span style="font-family:'DM Mono',monospace;font-size:0.7rem;font-weight:700;color:var(--gold)">Table 3</span>
                 </div>
               </div>
             </div>
@@ -1569,27 +1245,28 @@ footer {
   </div>
 </section>
 
-<!-- ════════ SHOWVISION ════════ -->
-<section class="section" id="sellers" style="padding-top:0">
+<!-- ════════ FOR SELLERS: ADD CARDS ════════ -->
+<section class="section" id="sellers">
   <div class="container">
     <div class="split split-reverse">
       <div>
-        <div class="label section-label reveal">ShowVision</div>
-        <h2 class="section-headline reveal reveal-d1">Add a Card<br>in <em>3 Seconds.</em></h2>
+        <div class="label section-label reveal">For Sellers · ShowVision</div>
+        <h2 class="section-headline reveal reveal-d1">Add a Card<br>in <em>Seconds.</em></h2>
         <p class="section-body reveal reveal-d2">
-          Point your camera at any PSA, BGS, or CGC slab. ShowVision reads the cert barcode automatically — or snap a photo and it identifies the player, year, set, grade, and parallel from the label alone. No typing. No searching.
+          Snap a photo of a slab or a raw card and ShowVision fills in the player, year, set, card number, parallel, grader, and grade. Or photograph a whole case, or drop in the spreadsheet you already have.
         </p>
         <ul class="feature-list reveal reveal-d3">
-          <li>Barcode detection reads PSA, CGC, and SGC cert numbers instantly</li>
-          <li>ShowVision identifies cards even without a cert number — raw cards included</li>
-          <li>Auto-fills player, year, set, card number, parallel, grade, and grader</li>
-          <li>Confidence indicators flag uncertain fields in amber or red before you save</li>
-          <li>Live card database — search by name to auto-fill from millions of cards</li>
-          <li>Works in any browser on iOS or Android — no app download required</li>
-          <li>Scan-to-Sell — photograph a walk-up sale that was never pre-listed and confirm it on the spot</li>
-          <li>Duplicate detection flags a card you may have already listed, before you save it twice</li>
+          <li>One card: snap a photo and review the filled-in fields</li>
+          <li>Whole case: photograph a showcase and review every card it finds before saving</li>
+          <li>Spreadsheet: Shopify, Card Dealer Pro, Flipwise, Ludex, TCGplayer, or any CSV/Excel file. Columns map automatically</li>
+          <li>Type it in with a guided search: pick the player, set, card number, and parallel</li>
+          <li>Amber and red highlights flag anything ShowVision isn't sure about</li>
+          <li>Duplicate warning if a card is already in your inventory</li>
+          <li>Every graded card is checked against the Global Trading Card Registry. You're alerted if it's been reported lost or stolen, and it stays off the show floor until you decide</li>
+          <li>Works in any phone browser. No app to install</li>
         </ul>
       </div>
+      <div class="reveal reveal-d2">
       <div class="reveal reveal-d2">
         <div class="mockup-frame">
           <div class="mockup-topbar">
@@ -1606,7 +1283,7 @@ footer {
               <div style="position:absolute;bottom:14px;right:14px;width:22px;height:22px;border-bottom:2.5px solid var(--gold);border-right:2.5px solid var(--gold);border-radius:0 0 3px 0"></div>
               <div style="font-size:2.5rem;margin-bottom:0.5rem">📷</div>
               <div style="font-family:'DM Mono',monospace;font-size:0.68rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--gold)">Aim at card or slab</div>
-              <div style="font-size:0.72rem;color:var(--muted);margin-top:0.25rem">Barcode detected automatically</div>
+              <div style="font-size:0.72rem;color:var(--muted);margin-top:0.25rem">Snap a photo · no typing</div>
             </div>
             <!-- Auto-filled result -->
             <div style="background:var(--card);border:1px solid rgba(245,200,66,0.3);border-radius:12px;padding:1rem">
@@ -1643,37 +1320,34 @@ footer {
           </div>
         </div>
       </div>
+      </div>
     </div>
   </div>
 </section>
 
-<!-- ════════ INLINE CTA 3 ════════ -->
-<div style="background:rgba(245,200,66,0.05);border-top:1px solid rgba(245,200,66,0.12);border-bottom:1px solid rgba(245,200,66,0.12);padding:2rem 0;text-align:center">
-  <div class="container" style="display:flex;align-items:center;justify-content:center;gap:1.5rem;flex-wrap:wrap">
-    <span style="font-family:'Instrument Serif',serif;font-style:italic;font-size:1.15rem;color:var(--muted)">Add your first card in under 10 seconds.</span>
-    <a href="/app" class="btn btn-gold" style="font-size:0.9rem;padding:0.75rem 1.8rem">Join for Free →</a>
-  </div>
-</div>
-
-<!-- ════════ COMP PRICING ════════ -->
+<!-- ════════ FOR SELLERS: PRICE & SELL ════════ -->
 <section class="section" style="padding-top:0">
   <div class="container">
     <div class="split">
       <div>
-        <div class="label section-label reveal">Live Market Data</div>
-        <h2 class="section-headline reveal reveal-d1">Know What Every<br>Card Is <em>Worth.</em></h2>
+        <div class="label section-label reveal">For Sellers · At the Table</div>
+        <h2 class="section-headline reveal reveal-d1">Price It Right.<br><em>Sell It Fast.</em></h2>
         <p class="section-body reveal reveal-d2">
-          CardShow pulls real completed sales from eBay — not estimates, not list prices. Sellers price with confidence before the show. Buyers see market value right in the card detail, with a badge that calls out underpriced cards on the spot.
+          Check comps on your whole inventory in one click, then record every sale at the table in a couple of taps. Your report is ready the moment the doors close.
         </p>
         <ul class="feature-list reveal reveal-d3">
-          <li>Sellers: "Check Comps" prices your whole inventory in one click</li>
-          <li>Matches exact parallel, grade, and grader — Silver PSA 10 ≠ base PSA 10</li>
-          <li>Buyers see market value on every card they tap — Deal / Fair / High badge</li>
-          <li>Recent sale dates and prices shown — buyers know if a deal is actually a deal</li>
-          <li>Sports cards via CardSight AI real-sale data; Pokémon via TCGPlayer market prices</li>
-          <li>24-hour cache prevents redundant lookups mid-show</li>
+          <li>Check Comps prices your inventory from real sales, matched to the exact parallel, grade, and grader</li>
+          <li>Comps only appear when the match is high confidence. No shaky guesses</li>
+          <li>One + Sell / Add button: sell a card from your inventory, or snap a walk-up card you never listed</li>
+          <li>Record sold price and payment method. Every sale is dated, even across multi-day shows</li>
+          <li>Log a sale after the fact: cash outside the app, another show, a trade</li>
+          <li>Sales report by show with revenue, best sale, and top cards. Export to CSV</li>
+          <li>Turn any sale into a branded share card for Instagram or X</li>
+          <li>Your profile (display name, WhatsApp, Instagram) is shown only to buyers at your shows</li>
+          <li>Table QR code that opens your own storefront</li>
         </ul>
       </div>
+      <div class="reveal reveal-d2">
       <div class="reveal reveal-d2">
         <div class="mockup-frame">
           <div class="mockup-topbar">
@@ -1725,56 +1399,103 @@ footer {
           </div>
         </div>
       </div>
+      </div>
     </div>
   </div>
 </section>
 
-<!-- ════════ INLINE CTA 4 ════════ -->
-<div style="padding:2rem 0;text-align:center;border-top:1px solid var(--border)">
+<!-- ════════ INLINE CTA 2 ════════ -->
+<div style="padding:2rem 0;text-align:center;border-bottom:1px solid var(--border)">
   <div class="container" style="display:flex;align-items:center;justify-content:center;gap:1.5rem;flex-wrap:wrap">
-    <span style="font-family:'Instrument Serif',serif;font-style:italic;font-size:1.15rem;color:var(--muted)">Know exactly what every card is worth before you price it.</span>
+    <span style="font-family:'Instrument Serif',serif;font-style:italic;font-size:1.15rem;color:var(--muted)">Your next show is closer than you think.</span>
     <a href="/app" class="btn btn-gold" style="font-size:0.9rem;padding:0.75rem 1.8rem">Start for Free →</a>
   </div>
 </div>
 
-<!-- ════════ INTEGRATIONS ════════ -->
-<section class="section-sm" style="background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
-  <div class="container" style="text-align:center">
-    <div class="label reveal" style="justify-content:center;margin-bottom:1rem">Works with your existing tools</div>
-    <h3 style="font-family:'Bebas Neue',sans-serif;font-size:2.2rem;letter-spacing:0.04em;color:var(--text);margin-bottom:0.3rem" class="reveal reveal-d1">
-      Your spreadsheet. <span style="color:var(--gold)">Any format.</span>
-    </h3>
-    <p style="color:var(--muted);font-size:0.95rem;max-width:520px;margin:0 auto 0.5rem" class="reveal reveal-d2">
-      CardShow auto-detects columns from Shopify exports, Card Dealer Pro, Flipwise, Ludex, TCGplayer, or any custom CSV. Shopify Tags are parsed for grade, grader, year, and set data automatically.
-    </p>
-    <div class="integrations-row reveal reveal-d3">
-      <div class="integration-pill"><span>🛍️</span> Shopify</div>
-      <div class="integration-pill"><span>📋</span> Card Dealer Pro</div>
-      <div class="integration-pill"><span>🔄</span> Flipwise</div>
-      <div class="integration-pill"><span>📱</span> Ludex</div>
-      <div class="integration-pill"><span>🎴</span> TCGplayer</div>
-      <div class="integration-pill"><span>📊</span> Excel / CSV</div>
-      <div class="integration-pill"><span>📑</span> Google Sheets</div>
-      <div class="integration-pill"><span>🏷️</span> PSA / BGS / CGC / SGC</div>
+<!-- ════════ EVERY CATEGORY ════════ -->
+<section class="section" id="tcg">
+  <div class="container">
+    <div class="split">
+      <div>
+        <div class="label section-label reveal">Every Category</div>
+        <h2 class="section-headline reveal reveal-d1">Sports. TCG.<br><em>Non-Sport.</em></h2>
+        <p class="section-body reveal reveal-d2">
+          Baseball to Pokémon to Marvel. Every card gets a category and a sport, game, or franchise, so buyers can drill straight to what they collect. Sealed product and lots get their own item types.
+        </p>
+        <ul class="feature-list reveal reveal-d3">
+          <li>Sports: baseball, basketball, football, hockey, soccer, and more</li>
+          <li>TCG: Pokémon, Magic, Yu-Gi-Oh!, One Piece, Lorcana, and more</li>
+          <li>Non-Sport: Marvel, Star Wars, Disney, DC, Star Trek</li>
+          <li>Sealed boxes and packs, plus lots and bundles</li>
+          <li>PSA, BGS, CGC, SGC, TAG, HGA, GMA, Arena Club, or any other grader</li>
+          <li>Serial number, print run, and features like RC, Auto, Patch, and Refractor</li>
+        </ul>
+      </div>
+      <div class="reveal reveal-d2">
+        <div class="mockup-frame">
+          <div class="mockup-topbar">
+            <div class="mockup-dot"></div><div class="mockup-dot"></div><div class="mockup-dot"></div>
+            <div class="mockup-url">getcardshow.com · Add Item</div>
+          </div>
+          <div style="padding:1.2rem;display:flex;flex-direction:column;gap:0.7rem">
+            <div style="display:flex;gap:0.3rem;background:var(--surface);border-radius:8px;padding:0.2rem">
+              <div style="flex:1;padding:0.38rem 0.5rem;border-radius:6px;background:var(--gold);color:var(--black);font-size:0.72rem;font-weight:700;text-align:center;font-family:'DM Sans',sans-serif">🃏 Single Card</div>
+              <div style="flex:1;padding:0.38rem 0.5rem;border-radius:6px;color:var(--muted);font-size:0.72rem;text-align:center;font-family:'DM Sans',sans-serif">📦 Sealed</div>
+              <div style="flex:1;padding:0.38rem 0.5rem;border-radius:6px;color:var(--muted);font-size:0.72rem;text-align:center;font-family:'DM Sans',sans-serif">📋 Lot</div>
+            </div>
+            <div class="mock-card" style="margin:0">
+              <div style="font-size:0.65rem;font-family:'DM Mono',monospace;color:var(--gold);letter-spacing:0.08em;margin-bottom:0.3rem">Pokémon 🃏 · TCG</div>
+              <div class="mock-player">Charizard</div>
+              <div class="mock-title">2023 Pokémon SV Obsidian Flames · Special Illustration Rare #228</div>
+              <div style="display:flex;gap:0.4rem;margin-bottom:0.5rem">
+                <span class="mock-badge badge-blue">PSA 10</span>
+                <span class="mock-badge" style="background:rgba(168,85,247,0.12);color:#c084fc;border:1px solid rgba(168,85,247,0.3)">Pokémon</span>
+              </div>
+              <div class="mock-footer">
+                <div class="mock-price">$1,200</div>
+                <span style="font-family:'DM Mono',monospace;font-size:0.62rem;color:var(--muted)">📦 Binder 3 · Page 1</span>
+              </div>
+            </div>
+            <div class="mock-card" style="margin:0;border-color:rgba(96,165,250,0.3)">
+              <div style="display:flex;align-items:center;gap:0.4rem;margin-bottom:0.3rem">
+                <span style="background:#1e3a5f;color:#60a5fa;font-size:0.58rem;padding:0.1rem 0.35rem;border-radius:4px;font-family:'DM Mono',monospace">📦 SEALED</span>
+                <div style="font-size:0.65rem;font-family:'DM Mono',monospace;color:var(--muted);letter-spacing:0.05em">Blaster Box</div>
+              </div>
+              <div class="mock-player" style="font-size:1.1rem">2024 Topps Chrome Baseball</div>
+              <div class="mock-title">Factory Sealed · Case 2</div>
+              <div class="mock-footer">
+                <div class="mock-price">$32</div>
+                <span class="mock-badge badge-green" style="font-size:0.62rem">Factory Sealed</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </section>
 
-
-<!-- ════════ INVENTORY TEMPLATE DOWNLOAD ════════ -->
-<section class="section-sm" style="border-bottom:1px solid var(--border)">
+<!-- ════════ IMPORT + TEMPLATE ════════ -->
+<section class="section-sm" style="background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
   <div class="container">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:2rem;flex-wrap:wrap">
-      <div class="reveal">
-        <div class="label" style="margin-bottom:0.6rem">Starting from scratch?</div>
-        <h3 style="font-family:'Bebas Neue',sans-serif;font-size:1.8rem;letter-spacing:0.04em;color:var(--text);margin:0 0 0.4rem">
-          Download the CardShow<br><span style="color:var(--gold)">Inventory Template</span>
+      <div class="reveal" style="flex:1;min-width:280px">
+        <div class="label" style="margin-bottom:0.6rem">Works with your existing tools</div>
+        <h3 style="font-family:'Bebas Neue',sans-serif;font-size:2.2rem;letter-spacing:0.04em;color:var(--text);margin:0 0 0.4rem">
+          Your spreadsheet. <span style="color:var(--gold)">Any format.</span>
         </h3>
-        <p style="color:var(--muted);font-size:0.88rem;max-width:440px;margin:0 0 1.1rem;line-height:1.6">
-          Pre-filled with 13 example cards — graded sports, raw Pokemon,
-          sealed product, and lots. Every column maps automatically on
-          upload. No reformatting required.
+        <p style="color:var(--muted);font-size:0.92rem;max-width:520px;margin:0 0 1rem;line-height:1.6">
+          CardShow maps columns from Shopify, Card Dealer Pro, Flipwise, Ludex, TCGplayer, or any CSV or Excel file. Export your inventory back out anytime. Starting from scratch? Grab the template.
         </p>
+        <div class="integrations-row" style="justify-content:flex-start;margin:0 0 1.2rem">
+          <div class="integration-pill"><span>🛍️</span> Shopify</div>
+          <div class="integration-pill"><span>📋</span> Card Dealer Pro</div>
+          <div class="integration-pill"><span>🔄</span> Flipwise</div>
+          <div class="integration-pill"><span>📱</span> Ludex</div>
+          <div class="integration-pill"><span>🎴</span> TCGplayer</div>
+          <div class="integration-pill"><span>📊</span> Excel / CSV</div>
+          <div class="integration-pill"><span>📑</span> Google Sheets</div>
+        </div>
         <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap">
           <a href="/downloads/CardShow_Inventory_Template.xlsx"
              download="CardShow_Inventory_Template.xlsx"
@@ -1836,207 +1557,29 @@ footer {
   </div>
 </section>
 
-<!-- ════════ SHAREABLE SHOW PAGE ════════ -->
-<section class="section">
-  <div class="container">
-    <div class="split reveal">
-      <div>
-        <div class="label section-label" style="margin-bottom:1.2rem">Share everywhere, instantly</div>
-        <h2 class="section-headline">
-          Share to All<br>Your <em>Socials.</em>
-        </h2>
-        <p class="section-body">
-          Organizers generate a public show page in one click — showcasing top inventory from every seller. Drop the link on Instagram, X, Facebook, or any group chat and give buyers a reason to show up before they ever leave home.
-        </p>
-        <ul class="feature-list">
-          <li>One-click shareable URL — no login required to view</li>
-          <li>Features your highest-value cards across all sellers</li>
-          <li>Shows sport breakdown, seller count, and card count</li>
-          <li>Live countdown timer to show day</li>
-          <li>Seller contact info and table numbers revealed at the show</li>
-        </ul>
-        <div style="margin-top:1.8rem;display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap">
-          <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:0.6rem 1rem;font-family:'DM Mono',monospace;font-size:0.72rem;color:var(--gold);letter-spacing:0.04em">
-            getcardshow.com/show.html#…
-          </div>
-          <span style="font-size:0.78rem;color:var(--muted)">← copied to clipboard in one tap</span>
-        </div>
-      </div>
-
-      <div>
-        <!-- Show page mockup -->
-        <div class="mockup-frame" style="overflow:hidden">
-          <div class="mockup-topbar">
-            <div class="mockup-dot"></div><div class="mockup-dot"></div><div class="mockup-dot"></div>
-            <div class="mockup-url">getcardshow.com/show.html#mlptpa</div>
-          </div>
-          <!-- Hero strip -->
-          <div style="background:linear-gradient(135deg,#0d1018 0%,#131828 100%);padding:1.2rem;border-bottom:1px solid var(--border)">
-            <div style="font-family:'DM Mono',monospace;font-size:0.6rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--gold);margin-bottom:0.35rem;opacity:0.7">Grand Hyatt Tampa Bay, FL</div>
-            <div style="font-family:'Bebas Neue',sans-serif;font-size:1.8rem;letter-spacing:0.04em;line-height:1;color:#e8eaf5;margin-bottom:0.8rem">MLP<br><span style="color:var(--gold)">Card Show</span></div>
-            <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.9rem">
-              <span style="background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.25);border-radius:5px;padding:0.2rem 0.6rem;font-family:'DM Mono',monospace;font-size:0.62rem;color:#4ade80">🟢 Happening Now</span>
-              <span style="background:var(--card);border:1px solid var(--border);border-radius:5px;padding:0.2rem 0.6rem;font-family:'DM Mono',monospace;font-size:0.62rem;color:var(--text)">📅 May 23, 2026</span>
-            </div>
-            <div style="display:flex;gap:0;border:1px solid var(--border);border-radius:8px;overflow:hidden;width:fit-content">
-              <div style="padding:0.55rem 0.9rem;text-align:center;border-right:1px solid var(--border)">
-                <div style="font-family:'Bebas Neue',sans-serif;font-size:1.4rem;color:var(--gold);line-height:1">32</div>
-                <div style="font-family:'DM Mono',monospace;font-size:0.55rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted)">Sellers</div>
-              </div>
-              <div style="padding:0.55rem 0.9rem;text-align:center;border-right:1px solid var(--border)">
-                <div style="font-family:'Bebas Neue',sans-serif;font-size:1.4rem;color:var(--gold);line-height:1">823+</div>
-                <div style="font-family:'DM Mono',monospace;font-size:0.55rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted)">Cards</div>
-              </div>
-              <div style="padding:0.55rem 0.9rem;text-align:center">
-                <div style="font-family:'Bebas Neue',sans-serif;font-size:1.4rem;color:var(--gold);line-height:1">5</div>
-                <div style="font-family:'DM Mono',monospace;font-size:0.55rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted)">Sports</div>
-              </div>
-            </div>
-          </div>
-          <!-- Featured cards preview -->
-          <div style="padding:1rem;background:var(--card)">
-            <div style="font-family:'DM Mono',monospace;font-size:0.6rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);margin-bottom:0.6rem">Highlights</div>
-            <div style="display:flex;flex-direction:column;gap:0.45rem">
-              <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:0.6rem 0.75rem;display:flex;align-items:center;justify-content:space-between">
-                <div>
-                  <div style="font-family:'Bebas Neue',sans-serif;font-size:0.95rem;letter-spacing:0.04em;color:var(--text)">Cooper Flagg</div>
-                  <div style="font-size:0.62rem;color:var(--muted)">2025-26 Topps Chrome · Sapphire</div>
-                </div>
-                <div style="text-align:right">
-                  <div style="font-family:'Bebas Neue',sans-serif;font-size:1rem;color:var(--gold)">$11,500</div>
-                  <span style="background:rgba(59,130,246,0.15);border:1px solid rgba(59,130,246,0.3);border-radius:20px;padding:0.1rem 0.4rem;font-family:'DM Mono',monospace;font-size:0.58rem;color:#60a5fa">PSA 10</span>
-                </div>
-              </div>
-              <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:0.6rem 0.75rem;display:flex;align-items:center;justify-content:space-between">
-                <div>
-                  <div style="font-family:'Bebas Neue',sans-serif;font-size:0.95rem;letter-spacing:0.04em;color:var(--text)">Shohei Ohtani</div>
-                  <div style="font-size:0.62rem;color:var(--muted)">2024 Topps Gold Auto /50</div>
-                </div>
-                <div style="text-align:right">
-                  <div style="font-family:'Bebas Neue',sans-serif;font-size:1rem;color:var(--gold)">$75,000</div>
-                  <span style="background:rgba(59,130,246,0.15);border:1px solid rgba(59,130,246,0.3);border-radius:20px;padding:0.1rem 0.4rem;font-family:'DM Mono',monospace;font-size:0.58rem;color:#60a5fa">PSA 10</span>
-                </div>
-              </div>
-              <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:0.6rem 0.75rem;display:flex;align-items:center;justify-content:space-between">
-                <div>
-                  <div style="font-family:'Bebas Neue',sans-serif;font-size:0.95rem;letter-spacing:0.04em;color:var(--text)">Michael Jordan</div>
-                  <div style="font-size:0.62rem;color:var(--muted)">1986-87 Fleer RC · #57</div>
-                </div>
-                <div style="text-align:right">
-                  <div style="font-family:'Bebas Neue',sans-serif;font-size:1rem;color:var(--gold)">$18,000</div>
-                  <span style="background:rgba(59,130,246,0.15);border:1px solid rgba(59,130,246,0.3);border-radius:20px;padding:0.1rem 0.4rem;font-family:'DM Mono',monospace;font-size:0.58rem;color:#60a5fa">PSA 8</span>
-                </div>
-              </div>
-            </div>
-            <div style="margin-top:0.7rem;text-align:center;font-family:'DM Mono',monospace;font-size:0.62rem;color:var(--muted);letter-spacing:0.04em">
-              Showing 3 of 823 cards · Table numbers &amp; contact at the show
-            </div>
-          </div>
-        </div>
-        <!-- Share admin button mockup -->
-        <div style="margin-top:0.75rem;display:flex;align-items:center;gap:0.5rem;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:0.65rem 1rem">
-          <span style="font-size:1rem">🔗</span>
-          <div style="flex:1">
-            <div style="font-size:0.75rem;font-weight:600;color:var(--text)">Share Page button in admin panel</div>
-            <div style="font-family:'DM Mono',monospace;font-size:0.62rem;color:var(--muted)">823 cards · 32 sellers · link copied to clipboard</div>
-          </div>
-          <div style="background:rgba(245,200,66,0.12);border:1px solid rgba(245,200,66,0.25);border-radius:6px;padding:0.25rem 0.6rem;font-family:'DM Mono',monospace;font-size:0.65rem;font-weight:700;color:var(--gold)">✓ Copied</div>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ════════ SELLER PROFILE & CONTACT ════════ -->
-<section class="section" style="padding-top:0">
-  <div class="container">
-    <div class="split">
-      <div>
-        <div class="label section-label reveal">Seller Identity</div>
-        <h2 class="section-headline reveal reveal-d1">Your Profile.<br><em>Your Contact.</em></h2>
-        <p class="section-body reveal reveal-d2">
-          Sellers set up their profile once — display name, WhatsApp number, and Instagram handle. Buyers see the right contact info for every card, on every table, at every show.
-        </p>
-        <ul class="feature-list reveal reveal-d3">
-          <li>Display name shown to buyers instead of a raw handle</li>
-          <li>WhatsApp, recommended for show-day contact. Pre-fills a message with card details when a buyer taps it</li>
-          <li>Instagram — optional secondary channel for sellers who prefer DMs</li>
-          <li>Contact info is private — only shown to buyers at shows you're part of, never public</li>
-          <li>Profile button in the nav with a live completeness indicator</li>
-        </ul>
-      </div>
-      <div class="reveal reveal-d2">
-        <div class="mockup-frame">
-          <div class="mockup-topbar">
-            <div class="mockup-dot"></div><div class="mockup-dot"></div><div class="mockup-dot"></div>
-            <div class="mockup-url">Seller Profile · getcardshow.com</div>
-          </div>
-          <div style="padding:1.2rem;display:flex;flex-direction:column;gap:0.75rem">
-            <!-- Nav profile button mockup -->
-            <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:0.75rem 0.9rem">
-              <div style="font-family:'DM Mono',monospace;font-size:0.6rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);margin-bottom:0.55rem">Nav · Seller Profile Button</div>
-              <div style="display:flex;align-items:center;gap:0.6rem">
-                <div style="width:28px;height:28px;border-radius:50%;background:rgba(245,200,66,0.15);border:1.5px solid var(--gold);display:flex;align-items:center;justify-content:center;font-size:0.65rem;font-weight:800;color:var(--gold)">BI</div>
-                <span style="font-size:0.8rem;font-weight:600;color:var(--text)">Bleeding Ink Sports</span>
-                <span style="margin-left:auto;font-size:0.65rem;color:#4ade80;font-family:'DM Mono',monospace">✓ Complete</span>
-              </div>
-            </div>
-            <!-- Profile modal mockup -->
-            <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:0.85rem">
-              <div style="font-family:'Bebas Neue',sans-serif;font-size:1.1rem;letter-spacing:0.06em;color:var(--text);margin-bottom:0.75rem">My Seller Profile</div>
-              <div style="display:flex;flex-direction:column;gap:0.6rem">
-                <div>
-                  <div style="font-family:'DM Mono',monospace;font-size:0.58rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);margin-bottom:0.25rem">Display Name</div>
-                  <div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:0.45rem 0.7rem;font-size:0.8rem;color:var(--text)">Bleeding Ink Sports</div>
-                </div>
-                <div>
-                  <div style="font-family:'DM Mono',monospace;font-size:0.58rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);margin-bottom:0.25rem">WhatsApp <span style="background:rgba(37,211,102,0.12);border:1px solid rgba(37,211,102,0.25);border-radius:20px;padding:0.1rem 0.4rem;color:#25d366;font-size:0.55rem">✓ Recommended</span></div>
-                  <div style="background:var(--surface);border:1px solid rgba(37,211,102,0.3);border-radius:6px;padding:0.45rem 0.7rem;font-size:0.8rem;color:var(--text)">+1 (480) 555-0101</div>
-                  <div style="font-size:0.62rem;color:rgba(74,222,128,0.8);margin-top:0.2rem;font-family:'DM Mono',monospace">🔒 Only shown to buyers at your shows, never public</div>
-                </div>
-                <div>
-                  <div style="font-family:'DM Mono',monospace;font-size:0.58rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);margin-bottom:0.25rem">Instagram <span style="color:var(--muted);font-size:0.55rem">Optional</span></div>
-                  <div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:0.45rem 0.7rem;font-size:0.8rem;color:var(--muted)">@bleeding_ink_sports</div>
-                </div>
-              </div>
-            </div>
-            <!-- Contact buttons mockup -->
-            <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:0.75rem 0.9rem">
-              <div style="font-family:'DM Mono',monospace;font-size:0.6rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);margin-bottom:0.5rem">Buyer View · Card Detail</div>
-              <div style="display:flex;gap:0.5rem">
-                <div style="flex:1;background:#25d366;border-radius:7px;padding:0.45rem 0.75rem;font-size:0.75rem;font-weight:700;color:#fff;text-align:center">💬 WhatsApp</div>
-                <div style="background:transparent;border:1px solid var(--border);border-radius:7px;padding:0.45rem 0.75rem;font-size:0.75rem;color:var(--muted);text-align:center">📸 IG</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ════════ ADMIN SHOWS DASHBOARD ════════ -->
-<section class="section" id="organizers" style="padding-top:0">
+<!-- ════════ FOR ORGANIZERS ════════ -->
+<section class="section" id="organizers">
   <div class="container">
     <div class="split split-reverse">
       <div>
         <div class="label section-label reveal">For Organizers</div>
-        <h2 class="section-headline reveal reveal-d1">Shows First.<br><em>Always.</em></h2>
+        <h2 class="section-headline reveal reveal-d1">Run the Show.<br><em>Fill the Room.</em></h2>
         <p class="section-body reveal reveal-d2">
-          The admin portal leads with a dedicated Shows dashboard — not an inventory table. Every show card gives organizers full control in one place: authorize sellers, assign tables, publish inventory, and share the show page.
+          One Shows dashboard to set up every event, publish every seller's inventory, and share a public show page that gives buyers a reason to come. After the show, see exactly what sold and where.
         </p>
         <ul class="feature-list reveal reveal-d3">
-          <li>Shows tab is the default landing screen for admins — inventory is a secondary tab</li>
-          <li>Each show card shows card count, seller count, and tables assigned at a glance</li>
-          <li>Multi-day shows get real start and end dates, not just a freeform label</li>
-          <li>⚡ Publish Inventory pushes all cards from authorized sellers instantly</li>
-          <li>Setup completeness signal — see which sellers still need a table number</li>
-          <li>Auto-number tables 1–N in one tap for large shows</li>
-          <li>One-click Analytics dashboard — GMV, sell-through, seller leaderboard, and search trends, per show</li>
+          <li>Create single or multi-day shows with real start and end dates</li>
+          <li>Search to add sellers and assign table numbers in one place, or auto-number them</li>
+          <li>Upload a venue map and place each table on it. Buyers get a map view of the floor</li>
+          <li>⚡ Publish Inventory pushes every seller's cards live. Cards added mid-show go live automatically</li>
+          <li>Short share link for Instagram, X, Facebook, and group chats. No login to view</li>
+          <li>Printable entrance signage with the show's QR code</li>
+          <li>Analytics per show: GMV, sell-through, revenue by seller and by table, top cards, top searches, and change vs. your last show</li>
+          <li>QR scans and unique visitors, plus a floor heatmap of which tables drew scans and sales</li>
         </ul>
-        <p class="reveal reveal-d4" style="font-size:0.8rem;color:var(--muted);margin-top:1.2rem;font-family:'DM Mono',monospace;letter-spacing:0.04em">
-          Admins switch to the Inventory tab for full catalog management across all sellers.
-        </p>
+        <div class="reveal reveal-d4" style="margin-top:1.6rem">
+          <a href="mailto:info@getcardshow.com?subject=CardShow%20Organizer%20Access" class="btn btn-gold" style="font-size:0.9rem;padding:0.8rem 1.8rem">Request Organizer Access →</a>
+        </div>
       </div>
       <div class="reveal reveal-d2">
         <div class="mockup-frame">
@@ -2045,11 +1588,6 @@ footer {
             <div class="mockup-url">Admin · Shows Dashboard</div>
           </div>
           <div style="padding:0.9rem;display:flex;flex-direction:column;gap:0.65rem">
-            <!-- Tab bar -->
-            <div style="display:flex;gap:0;background:var(--surface);border:1px solid var(--border);border-radius:7px;overflow:hidden;width:fit-content">
-              <div style="padding:0.38rem 0.9rem;background:var(--gold);color:var(--black);font-size:0.72rem;font-weight:700;font-family:'DM Sans',sans-serif">🎪 Shows</div>
-              <div style="padding:0.38rem 0.9rem;color:var(--muted);font-size:0.72rem;font-family:'DM Sans',sans-serif">📋 All Inventory</div>
-            </div>
             <!-- Show card 1 -->
             <div style="background:var(--surface);border:1px solid rgba(245,200,66,0.35);border-radius:10px;overflow:hidden">
               <div style="padding:0.7rem 0.85rem;border-bottom:1px solid var(--border)">
@@ -2079,7 +1617,8 @@ footer {
                 <div style="background:var(--gold);color:var(--black);border-radius:5px;padding:0.3rem 0.7rem;font-size:0.7rem;font-weight:700">⚡ Publish</div>
                 <div style="border:1px solid var(--border);border-radius:5px;padding:0.3rem 0.65rem;font-size:0.7rem;color:var(--muted)">🔗 Share</div>
                 <div style="border:1px solid var(--border);border-radius:5px;padding:0.3rem 0.65rem;font-size:0.7rem;color:var(--muted)">📢 QR</div>
-                <div style="border:1px solid var(--border);border-radius:5px;padding:0.3rem 0.65rem;font-size:0.7rem;color:var(--muted)">Edit</div>
+                <div style="border:1px solid var(--border);border-radius:5px;padding:0.3rem 0.65rem;font-size:0.7rem;color:var(--muted)">📊 Analytics</div>
+                <div style="border:1px solid var(--border);border-radius:5px;padding:0.3rem 0.65rem;font-size:0.7rem;color:var(--muted)">🗺️ Floor Map</div>
               </div>
             </div>
             <!-- Show card 2 -->
@@ -2107,30 +1646,62 @@ footer {
   </div>
 </section>
 
-<!-- ════════ QR SECTION ════════ -->
-<section class="section" style="padding-top:0">
-  <div class="container">
-    <div class="qr-section reveal">
-      <div class="label" style="justify-content:center;margin-bottom:1rem">At the show</div>
-      <h2 class="section-headline" style="text-align:center;font-size:clamp(40px,5vw,64px)">
-        One scan. <em>Every card.</em>
-      </h2>
-      <p style="color:var(--muted);font-size:1rem;max-width:520px;margin:1rem auto 0;line-height:1.6;text-align:center">
-        Each show gets a unique QR code for entrance signage. Buyers scan in and browse every seller's inventory, filtered by sport, grade, and price, with table numbers showing exactly where to go.
-      </p>
-      <div class="qr-mock">
-        <canvas id="qrDemo" width="180" height="180"></canvas>
+<!-- ── SHOW FLOOR DATA SECTION ─────────────────────────────── -->
+<section class="data-section">
+  <div class="data-section-inner">
+
+    <p class="data-eyebrow">Built for the hobby</p>
+
+    <h2 class="data-headline">
+      The show floor record the hobby never had
+    </h2>
+
+    <p class="data-body">
+      Beckett built the first price guide from what dealers
+      reported selling cards for. CardShow records what dealers
+      actually sell cards for, at shows, across the country.
+    </p>
+
+    <p class="data-body">
+      Every card marked sold on CardShow generates a permanent
+      record. Player, grade, price, show location, date. No
+      estimates. No averages. What cards sell for at the table.
+    </p>
+
+    <div class="data-stats">
+      <div class="data-stat">
+        <span class="data-stat-label">Tracked per sale</span>
+        <ul class="data-stat-list">
+          <li>Player and card details</li>
+          <li>Grade and grading company</li>
+          <li>Sold price and asking price</li>
+          <li>Payment method</li>
+          <li>Show name and location</li>
+          <li>Table number and seller</li>
+          <li>Date and time</li>
+        </ul>
       </div>
-      <div style="display:inline-flex;align-items:center;gap:0.6rem;background:rgba(245,200,66,0.08);border:1px solid rgba(245,200,66,0.2);border-radius:8px;padding:0.6rem 1.4rem;font-family:'DM Mono',monospace;font-size:1.1rem;font-weight:600;letter-spacing:0.18em;color:var(--gold);margin-bottom:1.5rem">
-        MLPTPA
+      <div class="data-stat">
+        <span class="data-stat-label">Why it matters</span>
+        <ul class="data-stat-list">
+          <li>eBay shows what cards sell for online</li>
+          <li>CardShow shows what they sell for at shows</li>
+          <li>Regional price differences, visible for the first time</li>
+          <li>Grade premiums at shows vs online, tracked over time</li>
+          <li>The comp layer the hobby has been missing</li>
+        </ul>
       </div>
-      <p style="font-size:0.78rem;color:var(--muted);font-family:'DM Mono',monospace;letter-spacing:0.04em">
-        MLP Card Show · Oct 17-18, 2026 · Grand Hyatt Tampa Bay, FL
-      </p>
     </div>
+
+    <p class="data-cta-line">
+      Every show adds to the record.
+      <a href="mailto:info@getcardshow.com?subject=CardShow%20Organizer%20Access" class="data-link">
+        Run your show on CardShow
+      </a>
+    </p>
+
   </div>
 </section>
-
 
 <!-- ════════ OPEN DEMO ════════ -->
 <section class="section" style="background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
@@ -2153,10 +1724,10 @@ footer {
           <h3 style="font-family:'Bebas Neue',sans-serif;font-size:2.4rem;letter-spacing:0.04em;color:var(--text);margin-bottom:0.75rem">Browse an entire show<br><span style="color:var(--buyer)">before you walk in.</span></h3>
           <p style="color:var(--muted);font-size:0.95rem;line-height:1.7;margin-bottom:1.4rem">The buyer demo loads a real show with graded sports cards, raw singles, Pokémon, sealed product, and lots from multiple sellers. Search, filter, and tap a card to see market value.</p>
           <ul class="feature-list" style="margin-bottom:1.8rem">
-            <li>Filter by sport, player name, grade, or price</li>
+            <li>Filter by category, sport, player, grade, or price</li>
             <li>Tap any card to see market value and recent sales</li>
             <li>See the seller's table number and contact them via WhatsApp</li>
-            <li>Switch to "Find a Table" for a directory of every seller</li>
+            <li>Switch to "Find a Table" for every seller and their table</li>
           </ul>
           <a href="/app" class="btn btn-gold" style="font-size:0.95rem;padding:0.9rem 2rem">Open Buyer Demo →</a>
         </div>
@@ -2262,7 +1833,7 @@ footer {
             <li>Create a show, authorize sellers, assign table numbers</li>
             <li>One-click publish sends all seller inventory live</li>
             <li>Generate a shareable public show page and QR code</li>
-            <li>Monitor card counts, seller counts, and setup completeness</li>
+            <li>Place tables on a floor map and track results in Analytics</li>
           </ul>
           <div style="display:flex;gap:0.75rem;flex-wrap:wrap">
             <a href="mailto:info@getcardshow.com?subject=CardShow%20Organizer%20Access" class="btn btn-gold" style="font-size:0.95rem;padding:0.9rem 2rem">Request Organizer Access →</a>
@@ -2276,10 +1847,6 @@ footer {
               <div class="mockup-url">Admin · Shows Dashboard</div>
             </div>
             <div style="padding:0.9rem;display:flex;flex-direction:column;gap:0.65rem">
-              <div style="display:flex;gap:0;background:var(--surface);border:1px solid var(--border);border-radius:7px;overflow:hidden;width:fit-content">
-                <div style="padding:0.38rem 0.9rem;background:var(--gold);color:var(--black);font-size:0.72rem;font-weight:700;font-family:'DM Sans',sans-serif">🎪 Shows</div>
-                <div style="padding:0.38rem 0.9rem;color:var(--muted);font-size:0.72rem;font-family:'DM Sans',sans-serif">📋 All Inventory</div>
-              </div>
               <div style="background:var(--surface);border:1px solid rgba(245,200,66,0.35);border-radius:10px;overflow:hidden">
                 <div style="padding:0.7rem 0.85rem;border-bottom:1px solid var(--border)">
                   <div style="font-family:'Bebas Neue',sans-serif;font-size:1rem;letter-spacing:0.04em;color:var(--text);display:flex;align-items:center;gap:0.4rem">
@@ -2356,6 +1923,68 @@ footer {
     </div>
   </div>
 
+  <!-- Featured partnership badge — Global Trading Card Registry -->
+  <div class="sp-featured-card">
+    <img
+      class="sp-featured-img sp-featured-img--logo"
+      src="/assets/gtcr-logo.png"
+      alt="Global Trading Card Registry (GTCR)"
+      loading="lazy"
+    >
+    <div class="sp-featured-content">
+      <div class="sp-featured-eyebrow">Integration Partner</div>
+      <div class="sp-featured-headline">Global Trading Card Registry</div>
+      <div class="sp-featured-sub">
+        GTCR &nbsp;&middot;&nbsp;
+        Register. Verify. Protect. Transfer.
+      </div>
+      <div class="sp-featured-body">
+        CardShow partners with the Global Trading Card Registry, the
+        independent trust registry for graded trading cards. Vendors can
+        register their graded cards with the GTCR as they add them to their
+        CardShow inventory, and every graded card is checked against the
+        registry by cert number. If a card has been reported lost or stolen,
+        CardShow alerts the vendor before it ever goes live to buyers.
+      </div>
+      <div class="sp-partner-pills">
+        <span class="sp-pill">Global Trading Card Registry</span>
+        <span class="sp-pill">Lost &amp; Stolen Alerts</span>
+        <span class="sp-pill">Graded Card Registration</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Featured sponsorship badge — Monster Collectibles Show -->
+  <div class="sp-featured-card">
+    <img
+      class="sp-featured-img sp-featured-img--logo"
+      src="/assets/monster-show-logo.png"
+      alt="The Monster Collectibles Show — One of the Nation's Largest Collectibles Show"
+      loading="lazy"
+    >
+    <div class="sp-featured-content">
+      <div class="sp-featured-eyebrow">Featured Sponsor</div>
+      <div class="sp-featured-headline">The Monster Collectibles Show</div>
+      <div class="sp-featured-sub">
+        Cal Expo &nbsp;&middot;&nbsp;
+        Sacramento, CA &nbsp;&middot;&nbsp;
+        October 9-11, 2026
+      </div>
+      <div class="sp-featured-body">
+        CardShow is a featured sponsor of The Monster, one of the nation's
+        largest collectibles shows. Over three days at Cal Expo in
+        Sacramento, 300+ vendor tables and 10,000+ collectors come together
+        for sports cards, Pok&eacute;mon and TCG, comics, coins, toys, and
+        memorabilia. CardShow is live on the show floor all weekend.
+      </div>
+      <div class="sp-partner-pills">
+        <span class="sp-pill">The Monster Show</span>
+        <span class="sp-pill">300+ Vendor Tables</span>
+        <span class="sp-pill">Sacramento &middot; Oct 9-11, 2026</span>
+      </div>
+    </div>
+  </div>
+
   <!-- Featured sponsorship badge -->
   <div class="sp-featured-card">
     <img
@@ -2420,6 +2049,14 @@ footer {
     <div class="sp-logo-tile">
       <span class="sp-tile-name">CTCA</span>
       <span class="sp-tile-sub">Certified Trading Card Association</span>
+    </div>
+    <div class="sp-logo-tile">
+      <span class="sp-tile-name">GTCR</span>
+      <span class="sp-tile-sub">Global Trading Card Registry</span>
+    </div>
+    <div class="sp-logo-tile">
+      <span class="sp-tile-name">THE MONSTER SHOW</span>
+      <span class="sp-tile-sub">Cal Expo, Sacramento &middot; Oct 9-11, 2026</span>
     </div>
     <div class="sp-logo-tile">
       <span class="sp-tile-name">WEST COAST HOBBY EXPO</span>
@@ -2514,63 +2151,6 @@ document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
 document.querySelectorAll('.hero .reveal').forEach(el => {
   setTimeout(() => el.classList.add('visible'), 100);
 });
-
-// ── QR DEMO CANVAS ──
-(function drawQR() {
-  const canvas = document.getElementById('qrDemo');
-  if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-  const S = 180, cell = S / 21;
-
-  ctx.fillStyle = '#fff';
-  ctx.fillRect(0, 0, S, S);
-
-  const pattern = [
-    [1,1,1,1,1,1,1,0,1,0,0,1,0,0,1,1,1,1,1,1,1],
-    [1,0,0,0,0,0,1,0,0,1,1,0,1,0,1,0,0,0,0,0,1],
-    [1,0,1,1,1,0,1,0,1,0,0,1,0,0,1,0,1,1,1,0,1],
-    [1,0,1,1,1,0,1,0,0,1,1,0,0,1,1,0,1,1,1,0,1],
-    [1,0,1,1,1,0,1,0,1,0,1,0,1,0,1,0,1,1,1,0,1],
-    [1,0,0,0,0,0,1,0,0,1,0,1,0,0,1,0,0,0,0,0,1],
-    [1,1,1,1,1,1,1,0,1,0,1,0,1,0,1,1,1,1,1,1,1],
-    [0,0,0,0,0,0,0,0,0,1,0,1,0,0,0,0,0,0,0,0,0],
-    [1,0,1,0,1,1,1,1,0,0,1,0,0,1,1,0,1,0,1,1,0],
-    [0,1,0,1,0,0,0,1,1,0,0,1,1,0,0,1,0,0,1,0,1],
-    [1,0,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1],
-    [0,1,1,0,0,0,0,1,0,1,0,0,1,0,1,0,1,0,1,1,0],
-    [1,0,1,1,0,1,1,0,1,0,0,1,0,1,0,1,1,0,0,1,1],
-    [0,0,0,0,0,0,0,0,1,1,0,0,1,0,0,0,0,0,1,0,0],
-    [1,1,1,1,1,1,1,0,0,0,1,0,0,1,1,0,1,1,0,0,1],
-    [1,0,0,0,0,0,1,0,1,0,0,1,0,0,0,1,0,0,1,1,0],
-    [1,0,1,1,1,0,1,0,0,1,0,0,1,0,1,0,0,1,0,0,1],
-    [1,0,1,1,1,0,1,1,1,0,1,0,0,1,0,1,0,1,1,0,0],
-    [1,0,1,1,1,0,1,0,0,0,0,1,1,0,1,0,1,0,0,1,1],
-    [1,0,0,0,0,0,1,0,1,0,1,0,0,1,0,1,0,1,0,0,0],
-    [1,1,1,1,1,1,1,0,0,1,0,1,1,0,1,0,0,1,1,0,1],
-  ];
-
-  ctx.fillStyle = '#07080c';
-  for (let r = 0; r < 21; r++) {
-    for (let c = 0; c < 21; c++) {
-      if (r >= 8 && r <= 12 && c >= 8 && c <= 12) continue;
-      if (pattern[r]?.[c]) {
-        ctx.beginPath();
-        ctx.roundRect(c*cell+1.5, r*cell+1.5, cell-3, cell-3, 2.5);
-        ctx.fill();
-      }
-    }
-  }
-
-  // Gold center logo
-  ctx.fillStyle = '#f5c842';
-  ctx.beginPath();
-  ctx.roundRect(64, 64, 52, 52, 9);
-  ctx.fill();
-  ctx.fillStyle = '#07080c';
-  ctx.font = 'bold 20px "Bebas Neue", sans-serif';
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText('CS', 90, 91);
-})();
 
 // ── TRY IT TABS ──
 function switchTryTab(tab, btn) {
