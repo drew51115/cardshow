@@ -2429,8 +2429,18 @@ Current entries (as of September 2026):
   and West Coast Hobby Expo. Content unchanged from its original featured-badge copy (Hobby
   Tech Pitch Competition, NSCC 2026, Dr. James Beckett/Scott Lock/Jeremy Lee judges) — still
   uses `assets/enter-the-inferno-promo.png`, which was never removed from the repo.
+- Global Trading Card Registry (GTCR) — integration partner, featured badge + logo tile, added
+  October 2026. Stacked second, right after CTCA (CTCA runs the GTCR). `assets/gtcr-logo.png` is
+  the user-supplied seal, trimmed and kept as a transparent PNG (~87KB), and uses
+  `.sp-featured-img--logo`. Tagline "Register. Verify. Protect. Transfer." comes from thegtcr.com.
+  The body copy, as the user asked for it, says vendors can register graded cards with the GTCR
+  when adding them to inventory, and are alerted about lost/stolen cards. **The second claim is
+  live (Trust Check, see "Trust Check via GTCR"). The first is ahead of the product:**
+  registration is built but dark (`GTCR_CONSENT_UI_LAUNCHED=false`, `GTCR_REGISTRATION_ENABLED`
+  off), and it registers a card on sale with seller consent, not when the card is added.
+  Revisit the wording if registration launches differently.
 - The Monster Collectibles Show — featured sponsor, featured badge + logo tile, added October
-  2026. Stacked second (after CTCA, before West Coast Hobby Expo) as the newest sponsorship.
+  2026. Stacked third (after CTCA and GTCR, before West Coast Hobby Expo) as the newest sponsorship.
   `assets/monster-show-logo.png` is the show's own logo, trimmed to its content and kept as a
   transparent PNG (palette-quantized, ~118KB) so it sits directly on the dark card. The source
   has a transparent background, and a JPEG would put it in a white box. Its `<img>` adds
