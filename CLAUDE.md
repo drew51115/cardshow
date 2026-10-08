@@ -2429,6 +2429,17 @@ Current entries (as of September 2026):
   and West Coast Hobby Expo. Content unchanged from its original featured-badge copy (Hobby
   Tech Pitch Competition, NSCC 2026, Dr. James Beckett/Scott Lock/Jeremy Lee judges) — still
   uses `assets/enter-the-inferno-promo.png`, which was never removed from the repo.
+- The Monster Collectibles Show — featured sponsor, featured badge + logo tile, added October
+  2026. Stacked second (after CTCA, before West Coast Hobby Expo) as the newest sponsorship.
+  `assets/monster-show-logo.png` is the show's own logo, trimmed to its content and kept as a
+  transparent PNG (palette-quantized, ~118KB) so it sits directly on the dark card. The source
+  has a transparent background, and a JPEG would put it in a white box. Its `<img>` adds
+  `.sp-featured-img--logo` (`object-fit: contain`, vertically centered) so the non-square logo
+  isn't cropped. Copy comes from monstershowusa.com: Cal Expo, Sacramento, CA, October 9-11,
+  2026, 300+ vendor tables, 10,000+ expected attendees, sports cards/Pokémon/TCG/comics/coins/
+  toys/memorabilia. "Featured sponsor, live on the show floor all weekend" is per the user, the
+  same sourcing as WCHE. **The copy is in present tense ("is a featured sponsor"). Switch it to
+  past tense after the show ends Oct 11.**
 - The National Sports Collectors Convention (logo tile)
 - InfernoRed Technology (logo tile)
 - Sports Cards Live / Jeremy Lee (logo tile)
