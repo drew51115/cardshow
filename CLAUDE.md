@@ -4471,6 +4471,43 @@ correct.
 - The first (dead, overridden) `renderQR()` definition was removed.
 - `js/trade-board.js`'s `_tbLoadQRLib()` uses the same self-hosted-first order.
 
+## Large Shows Loaded 0 Cards (session 2026-10-09)
+
+Organizer report: the Monster Collectible Show page (`show.html?id=show_mugg9qyevlxx`) showed
+0 cards, even though all 665 cards were published to `show_inventory`.
+
+### Root cause
+`fetchInventoryFromDB()` loaded the cards in one `inventory.in('id', cardIds)` call, and every
+UUID goes into the request URL. With 665 IDs the URL was ~26KB, and Supabase rejected it with
+a bare HTTP 400. The function returned without logging anything. Shows under ~600 cards fit,
+which is why this is the first show to break. The in-app buyer view (`loadBuyerInventoryFromDB`)
+and organizer analytics (`_orgFetchInventory`) had the same problem.
+
+Supabase also returns at most 1000 rows per request (confirmed: `content-range: 0-999/2870`).
+So a show with more than 1000 published cards would be cut off even after the URL fix.
+
+### Fix
+- New helpers:
+  - `dbSelectIn(build, ids)` (app.html) / `_sbSelectIn()` (show.html) split an ID list into
+    batches of 150, run them in parallel, and merge the rows. `build(ids)` must return a new
+    query each call. `dbDeleteIn` is the same helper, used for deletes.
+  - `dbSelectAllPages(build)` / `_sbSelectAllPages()` page through with `.range()` in 1000-row
+    steps. `build()` must include a stable `.order()`.
+- Used in:
+  - show.html: `fetchInventoryFromDB()` and `loadShowMetaFromDB()`'s sellers lookup.
+  - app.html: `loadBuyerInventoryFromDB()`, `_orgFetchInventory()`,
+    `hydrateCardShowMembership()`, `publishShowInventoryToDB()`'s card query, and the
+    `show_inventory` deletes in `sellerRemoveFromShow()` / `removeShowSellerFromDB()`.
+- `fetchInventoryFromDB()` now logs query errors to the console instead of failing silently.
+- On a short link, `fetchInventoryFromDB()` no longer replaces the full authorized seller list
+  (`showMeta.fromDB`) with only the sellers who have published cards. That replacement is
+  only needed for old hash links, whose seller list can be stale.
+
+### Not changed
+- `fetchSellerInventoryFromDB()` (a seller's own inventory on login) still reads one page. A
+  seller with more than 1000 cards would be cut off.
+- `buildShowPageUrlFromDB()` still reads one page.
+
 ## Show Configuration (Demo Data)
 - **MLP Card Show** — Oct 17-18, 2026 · Grand Hyatt Tampa Bay, FL · Code: MLPTPA (primary demo, shown to buyers without code)
 - **Chicago Sports Card Expo** — Nov 8, 2026 · Navy Pier, Chicago, IL · CHI2026

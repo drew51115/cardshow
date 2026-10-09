@@ -6648,6 +6648,40 @@
 let inventory = [];
 let sellerSearch = '';
 
+// ── SUPABASE LARGE-LIST HELPERS ──
+// Supabase rejects a request URL much over ~25KB with a bare 400, and an
+// .in('id', [...]) filter puts every UUID in the URL (~39 chars each once
+// encoded). A show with ~650+ published cards crossed that line and loaded 0
+// cards. dbSelectIn() splits the id list into batches and merges the rows;
+// dbDeleteIn() does the same for deletes. build(ids) must return a fresh
+// query each call (query builders are single-use).
+const DB_IN_CHUNK = 150;
+function _dbChunks(ids) {
+  const out = [];
+  for (let i = 0; i < ids.length; i += DB_IN_CHUNK) out.push(ids.slice(i, i + DB_IN_CHUNK));
+  return out;
+}
+async function dbSelectIn(build, ids) {
+  const results = await Promise.all(_dbChunks(ids).map(c => build(c)));
+  const failed = results.find(r => r.error);
+  if (failed) return { data: null, error: failed.error };
+  return { data: results.flatMap(r => r.data || []), error: null };
+}
+const dbDeleteIn = dbSelectIn;
+
+// Supabase also caps a response at 1000 rows by default. Pages through with
+// .range() until a short page comes back. build() must apply a stable .order().
+const DB_PAGE = 1000;
+async function dbSelectAllPages(build) {
+  const rows = [];
+  for (let from = 0; ; from += DB_PAGE) {
+    const { data, error } = await build().range(from, from + DB_PAGE - 1);
+    if (error) return { data: null, error };
+    rows.push(...(data || []));
+    if (!data || data.length < DB_PAGE) return { data: rows, error: null };
+  }
+}
+
 // ── TRADING CARD API PROXY HELPER ──
 // path is a full Trading Card API path + querystring, e.g. '/v1/players?full_name=paul+skenes'.
 // Routed through netlify/functions/tcapi.js so TRADING_CARD_API_KEY never reaches the browser.
@@ -13882,7 +13916,7 @@ function sellerRemoveFromShow(showId) {
   // show on the seller's next login (hydrateCardShowMembership() would
   // otherwise re-tag it from a DB row this button never actually deleted).
   if (dbIds.length && typeof db !== 'undefined') {
-    db.from('show_inventory').delete().eq('show_id', showId).in('card_id', dbIds)
+    dbDeleteIn(ids => db.from('show_inventory').delete().eq('show_id', showId).in('card_id', ids), dbIds)
       .then(({ error }) => { if (error) console.warn('sellerRemoveFromShow DB cleanup failed:', error.message); });
   }
 }
@@ -14147,24 +14181,25 @@ async function loadBuyerInventoryFromDB(showId, show) {
     // here. Fixed as a prerequisite for live-sync (below): this function now
     // re-runs on every Realtime event, so it can't afford the intermittent
     // flakiness the embedded-join form was already known to have.
-    const { data: siRows, error: siErr } = await db
+    const { data: siRows, error: siErr } = await dbSelectAllPages(() => db
       .from('show_inventory')
       .select('card_id')
-      .eq('show_id', showId);
+      .eq('show_id', showId)
+      .order('card_id'));
     if (siErr) { console.error('loadBuyerInventoryFromDB failed:', siErr.message); return; }
     if (!siRows || !siRows.length) return;
 
     const cardIds = [...new Set(siRows.map(r => r.card_id).filter(Boolean))];
     if (!cardIds.length) return;
 
-    let { data, error } = await db
+    let { data, error } = await dbSelectIn(ids => db
       .from('inventory')
       .select(`
         id, seller_id, card_title, player, year, card_set, card_number, parallel,
         grader, grade, condition, price, status, location,
         item_type, quantity, product_type, language, edition, category, subcategory
       `)
-      .in('id', cardIds);
+      .in('id', ids), cardIds);
 
     // category/subcategory are the newest inventory columns (see CLAUDE.md's
     // "Category / Subcategory Taxonomy" migration) — a project that hasn't run
@@ -14174,14 +14209,14 @@ async function loadBuyerInventoryFromDB(showId, show) {
     // two new columns rather than letting the whole buyer grid go blank over
     // two not-yet-persisted filter fields.
     if (error && /category|subcategory/i.test(error.message || '')) {
-      ({ data, error } = await db
+      ({ data, error } = await dbSelectIn(ids => db
         .from('inventory')
         .select(`
           id, seller_id, card_title, player, year, card_set, card_number, parallel,
           grader, grade, condition, price, status, location,
           item_type, quantity, product_type, language, edition
         `)
-        .in('id', cardIds));
+        .in('id', ids), cardIds));
     }
 
     if (error) { console.error('loadBuyerInventoryFromDB failed:', error.message); return; }
@@ -17287,16 +17322,17 @@ async function _orgFetchAndRender(showId) {
 // schema cache (see loadShowSellersAndTables()); the two-step form is the
 // established, proven-reliable pattern here.
 async function _orgFetchInventory(showId) {
-  const { data: siRows, error: siErr } = await db
+  const { data: siRows, error: siErr } = await dbSelectAllPages(() => db
     .from('show_inventory')
     .select('card_id')
-    .eq('show_id', showId);
+    .eq('show_id', showId)
+    .order('card_id'));
   if (siErr) throw new Error(`Inventory fetch: ${siErr.message}`);
 
   const cardIds = [...new Set((siRows || []).map(r => r.card_id).filter(Boolean))];
   if (!cardIds.length) return [];
 
-  const { data: cards, error: invErr } = await db
+  const { data: cards, error: invErr } = await dbSelectIn(ids => db
     .from('inventory')
     .select(`
       id, seller_id, card_title, player, year,
@@ -17304,7 +17340,7 @@ async function _orgFetchInventory(showId) {
       price, status, sold_price, payment_method,
       sale_notes, sold_time, item_type
     `)
-    .in('id', cardIds);
+    .in('id', ids), cardIds);
   if (invErr) throw new Error(`Inventory fetch: ${invErr.message}`);
   return cards || [];
 }
@@ -18740,13 +18776,13 @@ async function removeShowSellerFromDB(showId, handle) {
     // seller is removed. Mirrors sellerRemoveFromShow()'s own cleanup for
     // the seller-self-service removal path (see "activeShowId resilience"
     // in CLAUDE.md) — this is the missing organizer-side counterpart.
-    const { data: sellerCards, error: cardsError } = await db
-      .from('inventory').select('id').eq('seller_id', seller.id);
+    const { data: sellerCards, error: cardsError } = await dbSelectAllPages(() => db
+      .from('inventory').select('id').eq('seller_id', seller.id).order('id'));
     if (cardsError) { console.warn('removeShowSellerFromDB card lookup failed:', cardsError.message); return; }
     const cardIds = (sellerCards || []).map(r => r.id);
     if (cardIds.length) {
-      const { error: cleanupError } = await db
-        .from('show_inventory').delete().eq('show_id', showId).in('card_id', cardIds);
+      const { error: cleanupError } = await dbDeleteIn(ids => db
+        .from('show_inventory').delete().eq('show_id', showId).in('card_id', ids), cardIds);
       if (cleanupError) console.warn('removeShowSellerFromDB show_inventory cleanup failed:', cleanupError.message);
     }
   } catch(e) { console.warn('removeShowSellerFromDB error:', e.message); }
@@ -18788,15 +18824,17 @@ async function publishShowInventoryToDB(showId) {
     // Fetch all non-sold card IDs for those sellers. GTCR-flagged cards
     // (trust_flag = 'flagged') are excluded until the seller acts. Falls back to
     // the unfiltered select if the trust_flag migration hasn't run yet.
-    let { data: cards, error: cardErr } = await db
+    let { data: cards, error: cardErr } = await dbSelectAllPages(() => db
       .from('inventory').select('id, trust_flag')
       .in('seller_id', sellerIds)
-      .neq('status', 'Sold');
+      .neq('status', 'Sold')
+      .order('id'));
     if (cardErr && /trust_flag/i.test(cardErr.message || '')) {
-      ({ data: cards, error: cardErr } = await db
+      ({ data: cards, error: cardErr } = await dbSelectAllPages(() => db
         .from('inventory').select('id')
         .in('seller_id', sellerIds)
-        .neq('status', 'Sold'));
+        .neq('status', 'Sold')
+        .order('id')));
     }
     if (cardErr) { console.error('publishShowInventoryToDB fetch failed:', cardErr.message); return 0; }
     cards = (cards || []).filter(c => c.trust_flag !== 'flagged');
@@ -19501,10 +19539,10 @@ async function hydrateCardShowMembership(sellerHandle) {
     // some rows on embedded joins under a stale schema cache (see
     // _orgFetchInventory(), show.html's fetchInventoryFromDB()); the
     // two-step form is the established, proven-reliable pattern here.
-    const { data: rows, error } = await db
+    const { data: rows, error } = await dbSelectIn(ids => db
       .from('show_inventory')
       .select('show_id, card_id')
-      .in('card_id', myCards.map(c => c._dbId));
+      .in('card_id', ids), myCards.map(c => c._dbId));
 
     if (error || !rows) {
       console.warn('hydrateCardShowMembership failed:', error?.message);
