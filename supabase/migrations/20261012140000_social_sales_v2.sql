@@ -134,7 +134,8 @@ CREATE INDEX IF NOT EXISTS social_posts_source_tag_idx ON social_posts (source_h
 DO $$
 DECLARE
   v_expr text;
-  v_default text := $f$lower(coalesce(player,'')) || '|' || coalesce(year,'') || '|' || lower(coalesce(card_set,'')) || '|' || lower(coalesce(card_number,'')) || '|' || lower(coalesce(parallel,'')) || '|' || coalesce(grade,'') || '|' || lower(coalesce(grader,''))$f$;
+  v_default text := 'lower(coalesce(player,'''')) || ''|'' || coalesce(year,'''') || ''|'' || lower(coalesce(card_set,'''')) || ''|'' || lower(coalesce(card_number,'''')) || ''|'' || lower(coalesce(parallel,'''')) || ''|'' || coalesce(grade,'''') || ''|'' || lower(coalesce(grader,''''))';
+
 BEGIN
   SELECT pg_get_expr(d.adbin, d.adrelid) INTO v_expr
     FROM pg_attribute a
