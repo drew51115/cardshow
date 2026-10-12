@@ -358,6 +358,13 @@ GRANT EXECUTE ON FUNCTION bump_hashtag_yield(text, date, jsonb)          TO serv
 -- api_eligible = false are excluded.
 -- security_invoker: the view runs with the caller's rights, so social_sales'
 -- RLS (no policies) still applies. Granted to service_role only.
+-- Skipped once 20261012140000_social_sales_v2.sql has renamed the columns
+-- (v2 rebuilds this view), so re-running v1 after v2 is harmless.
+DO $do$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+              WHERE table_schema = 'public' AND table_name = 'social_sales' AND column_name = 'card_subject') THEN
+    EXECUTE $v$
 DROP VIEW IF EXISTS v_comp_sales;
 CREATE VIEW v_comp_sales WITH (security_invoker = true) AS
   SELECT
@@ -389,9 +396,11 @@ CREATE VIEW v_comp_sales WITH (security_invoker = true) AS
     s.card_set, s.card_number, s.card_variant, s.card_fingerprint, s.show_id,
     s.on_floor, s.cert_verified, s.corroboration_count
   FROM social_sales s;
-
-REVOKE ALL ON v_comp_sales FROM PUBLIC, anon, authenticated;
-GRANT SELECT ON v_comp_sales TO service_role;
+    $v$;
+    EXECUTE $v$ REVOKE ALL ON v_comp_sales FROM PUBLIC, anon, authenticated $v$;
+    EXECUTE $v$ GRANT SELECT ON v_comp_sales TO service_role $v$;
+  END IF;
+END $do$;
 
 -- ── 10. Private evidence bucket (D4) ────────────────────────────────────────
 -- Private: no storage.objects policies at all. Uploads, signed URLs for the

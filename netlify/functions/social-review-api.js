@@ -4,7 +4,8 @@
 // POST { action, ... }
 //   queue      { status?='review', limit?, offset? }  → rows + post + signed image URLs + counts
 //   posts      { limit? }                             → recent intake posts and their status
-//   approve    { id, fields, offfloor?, force? }      → writes social_sales (merges same-cert ±3d)
+//   approve    { id, fields, offfloor?, force? }      → writes social_sales (merges same-cert ±3d);
+//                                                      no show picked → approved_offfloor
 //   reject     { id, reason }
 //   duplicate  { id, sale_id }
 //   reverify   { id, fields? }                        → back to pending_verify (e.g. after fixing a cert digit)
@@ -16,10 +17,11 @@
 
 const P = require('../lib/social-pipeline');
 
-const EDITABLE = ['grader', 'cert_number', 'grade', 'grade_label', 'card_year', 'card_set', 'card_number',
-  'card_subject', 'card_variant', 'sold_price', 'sold_price_source', 'asking_price', 'asking_price_basis',
-  'show_id', 'sold_date'];
-const NUMERIC = ['grade', 'sold_price', 'asking_price'];
+const EDITABLE = ['grader', 'cert_number', 'grade', 'grade_label', 'year', 'card_set', 'card_number',
+  'player', 'parallel', 'category', 'subcategory', 'sold_price', 'sold_price_source', 'asking_price',
+  'asking_price_basis', 'show_id', 'sold_date'];
+const NUMERIC = ['sold_price', 'asking_price'];
+const TITLE_PARTS = ['year', 'card_set', 'player', 'parallel', 'card_number', 'category'];
 const LATER_STAGE_REASONS = /^(cert_card_mismatch|field_mismatch:|cert_not_found|cert_unreadable|stolen_report|outside_comp_band:|show_unattributed|show_ambiguous|possible_duplicate|conflicting_price)/;
 
 exports.handler = async (event) => {
@@ -101,7 +103,7 @@ async function queue(db, input) {
 async function posts(db, input) {
   const limit = Math.min(Number(input.limit) || 30, 100);
   const { data, error } = await db.from('social_posts')
-    .select('id, platform, post_url, ingest_method, caption_clean, posted_at, status, reject_reason, error, created_at, distinct_slab_count')
+    .select('id, platform, post_url, ingest_method, caption_clean, posted_at, status, reject_reason, filter_stage, filter_reason, error, created_at, distinct_slab_count')
     .neq('status', 'draft').order('created_at', { ascending: false }).limit(limit);
   if (error) throw error;
   return P.json(200, { success: true, posts: data || [] });
@@ -118,6 +120,8 @@ function coerce(field, value) {
   if (NUMERIC.includes(field)) return P.numOrNull(value);
   const s = P.norm(value);
   if (field === 'grader') return s.toUpperCase() || null;
+  if (field === 'grade') return P.normalizeGrade(s);
+  if (field === 'year') return P.normalizeYear(s);
   if (field === 'cert_number') return s.replace(/\s+/g, '').toUpperCase() || null;
   return s || null;
 }
@@ -136,7 +140,12 @@ function applyEdits(ext, fields = {}) {
   // Provenance follows the edit.
   if (editedFields.includes('sold_price') && !editedFields.includes('sold_price_source')) next.sold_price_source = 'reviewer';
   if (editedFields.includes('asking_price') && !editedFields.includes('asking_price_basis')) next.asking_price_basis = 'reviewer';
-  if (!editedFields.includes('asking_price') && next.asking_price_basis === 'assumed_equal_sold') next.asking_price = next.sold_price;
+  // The DB rejects an assumed_equal_sold asking price that differs from sold.
+  if (next.asking_price_basis === 'assumed_equal_sold') next.asking_price = next.sold_price;
+  if (editedFields.some(f => f === 'category' || f === 'subcategory')) {
+    Object.assign(next, P.resolveCategory(next.category, next.subcategory));
+  }
+  if (editedFields.some(f => TITLE_PARTS.includes(f))) next.card_title = P.buildCardTitle(next);
   if (editedFields.includes('show_id')) next.show_match_method = next.show_id ? 'reviewer' : 'unattributed';
   if (editedFields.includes('sold_date')) next.sold_date_basis = 'reviewer';
   return { next, edits, editedFields };
@@ -146,7 +155,6 @@ async function approve(db, admin, input) {
   const { ext, error } = await loadReviewable(db, input.id);
   if (error) return error;
   const { next, edits, editedFields } = applyEdits(ext, input.fields);
-  const offfloor = !!input.offfloor;
 
   if (!P.GRADERS.includes(next.grader)) return P.json(400, { success: false, error: 'bad_grader' });
   if (next.cert_number && !P.normalizeCert(next.grader, next.cert_number)) {
@@ -155,7 +163,9 @@ async function approve(db, admin, input) {
   if (!(next.sold_price > 0)) return P.json(400, { success: false, error: 'sold_price_required' });
   if (!(next.asking_price > 0)) return P.json(400, { success: false, error: 'asking_price_required' });
   if (!next.sold_date || !/^\d{4}-\d{2}-\d{2}$/.test(next.sold_date)) return P.json(400, { success: false, error: 'sold_date_required' });
-  if (!offfloor && !next.show_id) return P.json(400, { success: false, error: 'show_required', message: 'Pick a show, or approve as off-floor.' });
+  // No show attributed (e.g. a general-tag post with only a date match) →
+  // still a valid graded comp, kept out of show-floor data.
+  const offfloor = !!input.offfloor || !next.show_id;
   if (next.asking_price_basis === 'sticker' && next.sold_price > next.asking_price && !input.force) {
     return P.json(409, { success: false, error: 'sold_above_sticker', message: 'Sold price is above the sticker. Approve anyway?' });
   }
@@ -174,13 +184,14 @@ async function approve(db, admin, input) {
     updated_at: new Date().toISOString(),
   };
   for (const f of EDITABLE) if (editedFields.includes(f)) patch[f] = next[f];
-  for (const f of ['sold_price_source', 'asking_price', 'asking_price_basis', 'show_match_method', 'sold_date_basis']) patch[f] = next[f];
+  for (const f of ['sold_price_source', 'asking_price', 'asking_price_basis', 'show_match_method', 'sold_date_basis',
+                   'card_title', 'category', 'subcategory']) patch[f] = next[f];
   await db.from('social_extractions').update(patch).eq('id', ext.id);
   await P.maybeSchedulePurge(db, ext.post_id);
 
   const { data: post } = await db.from('social_posts').select('source_hashtag').eq('id', ext.post_id).maybeSingle();
   if (post?.source_hashtag) await P.bumpYield(db, post.source_hashtag, { approved: 1, approved_on_floor: offfloor ? 0 : 1 });
-  return P.json(200, { success: true, sale_id: pub.saleId, merged: pub.merged });
+  return P.json(200, { success: true, sale_id: pub.saleId, merged: pub.merged, offfloor });
 }
 
 async function reject(db, admin, input) {
@@ -234,7 +245,7 @@ async function reverify(db, event, input) {
 }
 
 async function findSales(db, input) {
-  let q = db.from('social_sales').select('id, grader, cert_number, card_subject, card_year, card_set, grade, sold_price, sold_date, show_id, corroboration_count')
+  let q = db.from('social_sales').select('id, grader, cert_number, player, year, card_set, grade, sold_price, sold_date, show_id, corroboration_count')
     .order('sold_date', { ascending: false }).limit(20);
   if (input.cert_number) q = q.eq('cert_number', P.norm(input.cert_number).toUpperCase());
   if (input.grader) q = q.eq('grader', P.norm(input.grader).toUpperCase());
@@ -277,7 +288,7 @@ async function report(db) {
   const withPrecision = (o) => Object.fromEntries(Object.entries(o).map(([k, b]) => [k, { ...b, precision: b.reviewed ? Math.round((b.clean / b.reviewed) * 1000) / 1000 : null }]));
 
   const postCounts = {};
-  for (const s of ['queued', 'extracting', 'extracted', 'multi_card', 'no_slab', 'rejected', 'failed']) {
+  for (const s of ['pending_filter', 'queued', 'extracting', 'extracted', 'multi_card', 'no_slab', 'filtered_out', 'rejected', 'failed']) {
     const { count } = await db.from('social_posts').select('id', { count: 'exact', head: true }).eq('status', s);
     postCounts[s] = count || 0;
   }

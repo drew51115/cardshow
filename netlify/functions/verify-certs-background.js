@@ -93,9 +93,17 @@ async function verifyOne(db, ext) {
   const reasons = [...(ext.route_reasons || [])];
   if (cert) {
     patch.verified_cert = {
-      year: cert.year, brand: cert.brand, card_number: cert.card_number, subject: cert.subject,
-      variety: cert.variety, grade: cert.grade, grade_label: cert.grade_label, category: cert.category,
+      year: cert.year, card_set: cert.card_set, card_number: cert.card_number, player: cert.player,
+      parallel: cert.parallel, grade: cert.grade, grade_label: cert.grade_label, category: cert.category,
     };
+    // The grader's category fills in what the model left blank.
+    const fromPsa = P.categoryFromPsa(cert.category);
+    if (fromPsa && !ext.category) {
+      patch.category = fromPsa.category;
+      patch.subcategory = fromPsa.subcategory;
+    } else if (fromPsa && ext.category === fromPsa.category && !ext.subcategory && fromPsa.subcategory) {
+      patch.subcategory = fromPsa.subcategory;
+    }
     const match = P.cardMatch(ext, cert);
     patch.card_match_score = match.score;
     if (match.score != null && match.score < 0.6) reasons.push('cert_card_mismatch');

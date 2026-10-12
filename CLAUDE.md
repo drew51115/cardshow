@@ -29,10 +29,12 @@ supabase/migrations/20260925120000_gtcr_trust_check.sql → inventory.trust_flag
 netlify/functions/expire-trade-posts.js  → Scheduled (hourly, see netlify.toml): calls expire_stale_trade_posts() RPC to hide stale trade_posts from the live board
 netlify/lib/social-pipeline.js           → Shared code for Social Sale Ingestion (extraction prompt, price rules, PSA cache, show matching, dedup) — see that section
 netlify/functions/social-intake.js       → Admin manual intake: create draft post → add_media (one image per call) → submit
+netlify/functions/prefilter-social-posts-background.js → Discovery funnel (metadata → caption → image triage); queued or filtered_out
 netlify/functions/extract-social-sale-background.js / verify-certs-background.js / resolve-and-route-background.js → the three pipeline stages
 netlify/functions/social-review-api.js   → Admin review queue API (approve / reject / duplicate / reverify / report / hashtags / watchlist)
 netlify/functions/social-pipeline-sweep.js / purge-social-evidence.js / social-slot-planner.js → Scheduled: hourly re-kick, daily evidence purge, weekly IG hashtag plan
 supabase/migrations/20261012120000_social_sales_v1.sql → Social Sale Ingestion schema, RPCs, v_comp_sales view, private social-evidence bucket
+supabase/migrations/20261012140000_social_sales_v2.sql → v1 → v2 upgrade (column names, text grade, admin read RLS, slot cap) — run after v1
 .env.example                             → Placeholder env vars for all keys
 downloads/                               → Static file downloads served by Netlify
 downloads/CardShow_Inventory_Template.xlsx → Pre-filled inventory template (13 example rows); linked from landing page and footer
@@ -2370,6 +2372,11 @@ migration, no new external library.
   consent-gated register-on-sale + deregister-on-revoke. Registration is built but **dark**
   (`GTCR_CONSENT_UI_LAUNCHED=false` client-side, `?gtcr_consent=1` test switch, `GTCR_REGISTRATION_ENABLED` server-side) until
   pricing is decided. Transfer-on-resale (Phase 5) not built — open decision. See "Trust Check via GTCR".
+- **Social Sale Ingestion v2 (session 2026-10-12)** — upgrade migration plus code alignment with the
+  rest of the schema: `player`/`year`/`parallel` column names, text grades, a fingerprint copied
+  from `show_floor_transactions`, category/subcategory/card_title, admin read access, the
+  `filtered_out` discovery funnel, and a database-enforced hashtag slot cap. See "v2 upgrade"
+  under "Social Sale Ingestion". **Requires `20261012140000_social_sales_v2.sql`.**
 - **Social Sale Ingestion, Phase 1 (session 2026-10-12)** — admin "📥 Social Sales" tab: manual
   intake of public sale posts (screenshots, optional link), Claude extraction, PSA cert check,
   show matching, dedup, and a keyboard-driven review queue writing to a new `social_sales` table
@@ -4609,7 +4616,7 @@ extract-social-sale-background claim_social_posts → Claude (claude-opus-5-5, a
                                  trade / sticker-only / no cert → rejected
                                → social_extractions rows 'pending_verify'
   ↓
-verify-certs-background        graded_certs cache → PSA API (consume_api_budget) → card match
+verify-certs-background        graded_certs cache → PSA API (claim_api_call) → card match
                                → one-digit cert recovery (cache only) → GTCR stolen check
                                → 'pending_resolve' (budget out: parked, sweep retries)
   ↓
@@ -4659,8 +4666,9 @@ retaken.
 JS lives in the `// ── SOCIAL SALES (admin)` block (`siOpen`, `siLoadQueue`, `siApprove`, …).
 
 ### Setup checklist
-1. Run `supabase/migrations/20261012120000_social_sales_v1.sql`. It also creates the private
-   `social-evidence` bucket.
+1. Run `supabase/migrations/20261012120000_social_sales_v1.sql` (it also creates the private
+   `social-evidence` bucket), then `20261012140000_social_sales_v2.sql`. Run the check query at the
+   end of v2.
 2. Set `SOCIAL_PIPELINE_SECRET` in Netlify (plus the existing `ANTHROPIC_API_KEY`,
    `PSA_API_TOKEN`, `SUPABASE_SERVICE_KEY`). Redeploy.
 3. Leave `SOCIAL_AUTO_APPROVE` unset until the Report tab shows the gate would pass.
@@ -4679,6 +4687,87 @@ date) passed a Node test script. The migration ran twice cleanly on local Postgr
 Supabase stub, and the claim/budget RPCs, generated columns, view, and anon/authenticated
 lock-out all behaved as intended. The admin UI was tested in a headless browser against mocked API
 responses. **No live run against Supabase, PSA or Claude has happened yet.**
+
+### v2 upgrade (session 2026-10-12)
+Built from the "v1 → v2 delta" spec. `SOCIAL_INGEST_SPEC_v2.md` and `social_sales_v1_to_v2.sql`,
+which that spec refers to, were not available (not in the repo or Drive). So
+`20261012140000_social_sales_v2.sql` was written against the schema v1 actually created (the
+"v1.2" row of the delta: sticker/sold prices and `show_hashtags` already present). Step 0 and
+Group C applied; Groups A and B were checked and the gaps filled.
+
+**Database (`20261012140000_social_sales_v2.sql`, one transaction, re-runnable):**
+- Renames: `card_subject → player`, `card_year → year`, `card_variant → parallel` on
+  `social_sales` and `social_extractions`; `graded_certs` `subject/brand/variety →
+  player/card_set/parallel`.
+- `grade` is text on all three tables, normalized like `'10'`, `'9.5'`.
+- **`social_sales.card_fingerprint` is copied from `show_floor_transactions`' own generated
+  expression** (read from `pg_attrdef`), because that table was built in the dashboard and its
+  exact expression isn't tracked anywhere. If that table has no generated fingerprint, or the
+  expression can't be reused, it falls back to the documented 7-field format and raises a
+  WARNING. The check query at the bottom of the file compares the two expressions.
+- New `social_sales` columns: `card_title`, `category`, `subcategory`, `is_test`,
+  `api_eligible`. A CHECK makes `asking_price = sold_price` whenever the basis is
+  `assumed_equal_sold`.
+- `social_posts`: `filter_stage`, `filter_reason`, status `pending_filter` / `filtered_out`
+  (v1's `rejected` / `funnel_*` rows are converted), plus a status CHECK.
+- RPCs: `consume_api_budget` → `claim_api_call`; new `claim_hashtag_slot(tag, account)` (30
+  unique tags per IG account per rolling 7 days, advisory-locked) and `claim_filter_posts`.
+  All service-role only.
+- `is_cardshow_admin()` (SECURITY DEFINER) backs an admin-only SELECT policy on every social
+  table. Writes stay service-role only.
+- `v_comp_sales` is readable by signed-in users and excludes test rows on both sides. Each
+  table's RLS decides what shows, so social rows appear only for admins and the service role.
+- v1's view block now skips itself once the columns are renamed, so re-running v1 after v2 is
+  harmless.
+
+**Code:**
+- **Extraction** now asks for `player` / `card_set` / `parallel` (v1 key names still accepted)
+  and for category/subcategory from the app's vocabulary. `resolveCategory()` validates it, with
+  accents and punctuation ignored. In verify, PSA's `Category` fills in a missing category.
+- **Text fields:** `normalizeGrade()` and `normalizeYear()` write grade and year in the formats
+  the app writes to `show_floor_transactions` (`parseFloat` grade, `parseInt` year, so
+  "2018-19" → `2018`). `card_title` keeps the full year and uses the app's `buildCardTitle()`
+  shape.
+- **Reject reason:** a sticker with no sold price is now `no_sold_price` (was `sticker_only`).
+- **Discovery funnel:**
+  - `prefilterPost()` runs three stages: metadata, caption filter, and Haiku image triage.
+  - It is driven by `prefilter-social-posts-background`, which claims `pending_filter` posts.
+  - Survivors go to `queued`; the rest go to `filtered_out` with their stage and reason, and
+    per-stage counts go to `hashtag_yield`.
+  - Image triage moved here from the extract function.
+  - A bulk drop with the filter box ticked goes through it; manual posts skip it.
+- **Show matching** also reads `shows.state`, as a weak signal that can't attribute a post on its
+  own.
+- **Review approve:**
+  - With no show picked, approve saves the sale as `approved_offfloor`, so a post matched on date
+    only lands off-floor.
+  - Under `assumed_equal_sold`, asking always equals sold. In the UI the asking field is locked
+    and follows sold.
+  - Category and subcategory are editable, and `card_title` is rebuilt when its parts change.
+- **Hashtag slots:** the slot planner aligns `week_start` to Monday, the same as
+  `claim_hashtag_slot()`. `P.claimHashtagSlot()` is the wrapper the future IG poller must call
+  before querying a new tag.
+
+**Kept as-is, differing from the delta's wording:**
+- `social_extractions` keeps flat card columns instead of a `card_read` jsonb. The keys inside are
+  the same names.
+- Image triage sends the stored image (≤1600px). There's no server-side resize library, so it is
+  not a separate low-res copy.
+
+**Verified:**
+- Local Postgres 16 with a Supabase stub. `show_floor_transactions` had a generated fingerprint,
+  an integer `year` and a numeric `grade`.
+- Run order v1 → v2 → v2 → v1 → v2: all clean.
+- Data converted as expected. A social sale and a platform sale of the same card and grade got
+  identical fingerprints.
+- A fake show id failed the FK. A mismatched `assumed_equal_sold` asking price failed the CHECK.
+- Slot cap: 30 tags granted, the 31st refused, reuse allowed, a second account independent.
+- Access: a seller saw platform rows only in `v_comp_sales` and no social rows; an admin saw both.
+  Writes from admins were denied, and anon/authenticated calls to `claim_api_call` /
+  `claim_filter_posts` were refused.
+- Node tests covered the new extraction fields, category resolution and prefilter stages (mocked
+  DB). A headless browser tested the review form.
+- **Still no live run against Supabase, PSA or Claude.**
 
 ## Show Configuration (Demo Data)
 - **MLP Card Show** — Oct 17-18, 2026 · Grand Hyatt Tampa Bay, FL · Code: MLPTPA (primary demo, shown to buyers without code)

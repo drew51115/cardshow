@@ -24,6 +24,9 @@ exports.handler = async () => {
     return (count || 0) > 0;
   };
   const kicked = [];
+  if (await has('social_posts', 'status', ['pending_filter'])) {
+    await P.kickStage(base, 'prefilter-social-posts-background', {}); kicked.push('prefilter');
+  }
   if (await has('social_posts', 'status', ['queued', 'extracting'])) {
     await P.kickStage(base, 'extract-social-sale-background', {}); kicked.push('extract');
   }

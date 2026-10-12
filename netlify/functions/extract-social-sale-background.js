@@ -10,7 +10,6 @@
 const P = require('../lib/social-pipeline');
 
 const BATCH = 5;
-const DISCOVERY_METHODS = ['ig_mention', 'ig_tag', 'ig_hashtag', 'ig_watchlist', 'x_search'];
 
 exports.handler = async (event) => {
   if (!P.isPipelineCall(event)) return { statusCode: 401 };
@@ -64,23 +63,6 @@ async function extractOne(db, post) {
   const now = new Date().toISOString();
   const purgeAfter = P.addDays(new Date(), P.RETENTION_DAYS).toISOString();
 
-  // Funnel stage 3 (§2A) — discovery channels only. A human already picked
-  // manual posts, so they skip straight to extraction.
-  const prefilter = { ...(post.prefilter || {}) };
-  if (DISCOVERY_METHODS.includes(post.ingest_method)) {
-    const statedSold = P.captionAmounts(post.caption_clean).length > 0;
-    const triage = await P.triageImage(images[0]);
-    prefilter.stage3 = triage;
-    if (triage && !(triage.oneSlab && (triage.priceVisible || statedSold))) {
-      await db.from('social_posts').update({
-        status: 'rejected', reject_reason: 'funnel_image_triage', prefilter,
-        claimed_at: null, purge_after: purgeAfter, updated_at: now,
-      }).eq('id', post.id);
-      return false;
-    }
-    await P.bumpYield(db, post.source_hashtag, { stage3_pass: 1 });
-  }
-
   const { result, model, tokensIn, tokensOut } = await P.extractPost({ images, caption: post.caption_clean });
   const verdict = P.processExtraction(result, post.caption_clean);
 
@@ -103,7 +85,6 @@ async function extractOne(db, post) {
     extraction_model: model,
     tokens_in: tokensIn,
     tokens_out: tokensOut,
-    prefilter,
     error: null,
     claimed_at: null,
     purge_after: terminal ? purgeAfter : null,

@@ -9,7 +9,8 @@
 //   POST { action: 'add_media', post_id, image_index, image_base64, media_type, width?, height? }
 //        → { success }                               (409 duplicate_image if already ingested)
 //   POST { action: 'submit', post_id, apply_funnel? }
-//        → { success, status }                       (queued → extraction kicked)
+//        → { success, status }   queued → extraction kicked, or with apply_funnel
+//                                pending_filter → prefilter-social-posts-background
 //   POST { action: 'discard', post_id }             (deletes a draft and its images)
 //
 // No scraping (D2): a URL is stored only as a reference and dedup key. The
@@ -144,20 +145,21 @@ async function submit(db, event, input) {
   if (!media?.length) return P.json(400, { success: false, error: 'no_images' });
   if (post.post_key.startsWith('pending:')) return P.json(400, { success: false, error: 'first_image_missing' });
 
-  // Funnel stage 2 (§2A). Recorded for every post so yields can be measured;
-  // only enforced when the submitter asks for it (testing the funnel on a bulk drop).
-  const verdict = P.captionFilter(post.caption_clean, { fromShowTag: !!post.hint_show_id });
-  const prefilter = { stage1: { pass: true }, stage2: verdict, enforced: !!input.apply_funnel };
-  const update = { prefilter, updated_at: new Date().toISOString() };
-  if (input.apply_funnel && !verdict.pass) {
-    Object.assign(update, { status: 'rejected', reject_reason: `funnel_${verdict.reason}`,
-      purge_after: P.addDays(new Date(), P.RETENTION_DAYS).toISOString() });
-  } else {
-    update.status = 'queued';
+  // With apply_funnel the post goes through the full discovery funnel
+  // (caption filter + image triage) like a hashtag find would. Otherwise a
+  // human already picked it: record the caption verdict for yield
+  // measurement only and queue it straight for extraction.
+  const base = P.siteBase(event);
+  if (input.apply_funnel) {
+    await db.from('social_posts').update({ status: 'pending_filter', updated_at: new Date().toISOString() }).eq('id', post.id);
+    await P.kickStage(base, 'prefilter-social-posts-background', { post_id: post.id });
+    return P.json(200, { success: true, status: 'pending_filter' });
   }
-  await db.from('social_posts').update(update).eq('id', post.id);
-  if (update.status === 'queued') await P.kickStage(P.siteBase(event), 'extract-social-sale-background', { post_id: post.id });
-  return P.json(200, { success: true, status: update.status, prefilter });
+  const verdict = P.captionFilter(post.caption_clean, { fromShowTag: !!post.hint_show_id });
+  const prefilter = { stage1: { pass: true }, stage2: verdict, enforced: false };
+  await db.from('social_posts').update({ status: 'queued', prefilter, updated_at: new Date().toISOString() }).eq('id', post.id);
+  await P.kickStage(base, 'extract-social-sale-background', { post_id: post.id });
+  return P.json(200, { success: true, status: 'queued', prefilter });
 }
 
 async function discard(db, postId) {

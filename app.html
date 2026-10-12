@@ -4758,7 +4758,7 @@
           <div class="si-card">
             <div class="si-h">Bulk drop</div>
             <div class="si-muted" style="margin-bottom:0.6rem">Each screenshot becomes its own post (no caption). Uses the Posted and Show values above.</div>
-            <label class="si-muted" style="display:flex;gap:0.4rem;align-items:center;margin-bottom:0.6rem"><input type="checkbox" id="siApplyFunnel"> Apply the discovery caption filter (drops posts it would skip)</label>
+            <label class="si-muted" style="display:flex;gap:0.4rem;align-items:center;margin-bottom:0.6rem"><input type="checkbox" id="siApplyFunnel"> Run the discovery filter first (caption + quick image check), like a hashtag find</label>
             <button class="btn btn-ghost" onclick="document.getElementById('siBulkFiles').click()">Choose screenshots…</button>
             <input type="file" id="siBulkFiles" accept="image/*" multiple style="display:none" onchange="siBulkDrop(this.files); this.value=''">
             <div id="siBulkProgress" class="si-muted" style="margin-top:0.5rem"></div>
@@ -16941,7 +16941,7 @@ function siMove(delta) {
   _siRenderReview();
 }
 
-const _SI_CERT_MAP = { grade: 'grade', card_subject: 'subject', card_year: 'year', card_number: 'card_number', card_set: 'brand', card_variant: 'variety' };
+const _SI_CERT_MAP = { grade: 'grade', player: 'player', year: 'year', card_number: 'card_number', card_set: 'card_set', parallel: 'parallel' };
 
 function _siDiffers(field, value, cert) {
   if (!cert || !_SI_CERT_MAP[field]) return false;
@@ -16949,7 +16949,7 @@ function _siDiffers(field, value, cert) {
   if (c == null || c === '' || value == null || value === '') return false;
   const n = v => String(v).toLowerCase().replace(/^#/, '').replace(/[^a-z0-9.]/g, '');
   if (field === 'grade') return Number(c) !== Number(value);
-  if (field === 'card_subject' || field === 'card_set') {
+  if (field === 'player' || field === 'card_set') {
     const a = new Set(String(value).toLowerCase().split(/\W+/).filter(t => t.length > 1));
     const b = String(c).toLowerCase().split(/\W+/).filter(t => t.length > 1);
     return !b.some(t => a.has(t));
@@ -17020,16 +17020,21 @@ function _siRenderReview() {
           ${_siFieldHTML('grade', 'Grade', r.grade, cert, 'number')}
         </div>
         <div class="si-row" style="margin-top:0.5rem">
-          ${_siFieldHTML('card_subject', 'Player / subject', r.card_subject, cert)}
-          ${_siFieldHTML('card_year', 'Year', r.card_year, cert)}
+          ${_siFieldHTML('player', 'Player / subject', r.player, cert)}
+          ${_siFieldHTML('year', 'Year', r.year, cert)}
         </div>
         <div class="si-row" style="margin-top:0.5rem">
           ${_siFieldHTML('card_set', 'Set', r.card_set, cert)}
           ${_siFieldHTML('card_number', 'Card #', r.card_number, cert)}
-          ${_siFieldHTML('card_variant', 'Parallel', r.card_variant, cert)}
+          ${_siFieldHTML('parallel', 'Parallel', r.parallel, cert)}
         </div>
         <div class="si-row" style="margin-top:0.5rem">
-          ${_siFieldHTML('sold_price', 'Sold $', r.sold_price, null, 'number')}
+          <div class="si-field"><label>Category</label>${sel('siF_category', [['', '—'], ...Object.keys(CATEGORY_SUBCATEGORIES).map(c => [c, c])], r.category)}</div>
+          <div class="si-field" style="flex:2 1 200px"><label>Subcategory</label><input id="siF_subcategory" list="siSubcatList" value="${_siEsc(r.subcategory || '')}"></div>
+          <datalist id="siSubcatList">${Object.values(CATEGORY_SUBCATEGORIES).flat().map(x => `<option value="${_siEsc(x)}">`).join('')}</datalist>
+        </div>
+        <div class="si-row" style="margin-top:0.5rem">
+          ${_siFieldHTML('sold_price', 'Sold $', r.sold_price, null, 'number').replace('<input ', '<input oninput="_siSyncAsking()" ')}
           <div class="si-field"><label>Sold price from</label>${sel('siF_sold_price_source', [['caption_explicit', 'Caption'], ['image_text', 'Text in image'], ['cash_shown', 'Cash counted'], ['reviewer', 'Reviewer']], r.sold_price_source)}</div>
         </div>
         ${r.cash_bills_seen ? `<div class="si-muted" style="margin-top:0.25rem">Bills seen: ${_siEsc(r.cash_bills_seen)}</div>` : ''}
@@ -17039,7 +17044,7 @@ function _siRenderReview() {
         </div>
         ${r.comp_median ? `<div class="si-muted" style="margin-top:0.25rem">Comp: $${Number(r.comp_median).toLocaleString()}</div>` : ''}
         <div class="si-row" style="margin-top:0.5rem">
-          <div class="si-field" style="flex:2 1 200px"><label>Show (${_siEsc(r.show_match_method || 'unattributed')})</label><select id="siF_show_id"><option value="">— None —</option>${showOpts}</select></div>
+          <div class="si-field" style="flex:2 1 200px"><label>Show (${_siEsc(r.show_match_method || 'unattributed')})</label><select id="siF_show_id"><option value="">— None (approves as off-floor) —</option>${showOpts}</select></div>
           ${_siFieldHTML('sold_date', 'Sale date', r.sold_date, null, 'date')}
         </div>
         <div class="si-actions">
@@ -17062,12 +17067,26 @@ function _siRenderReview() {
         <div id="siDupList" style="margin-top:0.6rem"></div>
       </div>
     </div>`;
+  document.getElementById('siF_asking_price_basis')?.addEventListener('change', _siSyncAsking);
+  _siSyncAsking();
+}
+
+// "Same as sold" means asking = sold (the DB enforces it), so the asking
+// input follows the sold price and can't be edited while that basis is set.
+function _siSyncAsking() {
+  const basis = document.getElementById('siF_asking_price_basis');
+  const ask = document.getElementById('siF_asking_price');
+  const sold = document.getElementById('siF_sold_price');
+  if (!basis || !ask || !sold) return;
+  const tied = basis.value === 'assumed_equal_sold';
+  ask.disabled = tied;
+  if (tied) ask.value = sold.value;
 }
 
 function _siCollectFields() {
   const v = id => document.getElementById('siF_' + id)?.value ?? '';
   const f = {};
-  ['grader', 'cert_number', 'grade', 'card_subject', 'card_year', 'card_set', 'card_number', 'card_variant',
+  ['grader', 'cert_number', 'grade', 'player', 'year', 'card_set', 'card_number', 'parallel', 'category', 'subcategory',
    'sold_price', 'sold_price_source', 'asking_price', 'asking_price_basis', 'show_id', 'sold_date'].forEach(k => { f[k] = v(k); });
   return f;
 }
@@ -17101,9 +17120,9 @@ async function siApprove(offfloor, force = false) {
       showToast(out.message || out.error || 'Could not approve', 'var(--danger)');
       return;
     }
-    _siDone(out.merged ? 'Merged into an existing sale' : (offfloor ? 'Approved (off-floor)' : 'Approved'));
+    _siDone(out.merged ? 'Merged into an existing sale' : (out.offfloor ? 'Approved (off-floor)' : 'Approved'));
   } catch (err) {
-    showToast(err.message === 'show_required' ? 'Pick a show, or approve as off-floor' : 'Approve failed: ' + err.message, 'var(--danger)');
+    showToast('Approve failed: ' + err.message, 'var(--danger)');
   }
 }
 
@@ -17252,17 +17271,17 @@ async function siBulkDrop(files) {
   const list = [...(files || [])].filter(f => /^image\//.test(f.type));
   const prog = document.getElementById('siBulkProgress');
   const applyFunnel = document.getElementById('siApplyFunnel')?.checked;
-  let ok = 0, dup = 0, failed = 0, dropped = 0;
+  let ok = 0, dup = 0, failed = 0, filtering = 0;
   for (let i = 0; i < list.length; i++) {
     if (prog) prog.textContent = `Uploading ${i + 1} of ${list.length}…`;
     try {
       const out = await _siIngest({ files: [list[i]], method: 'bulk_drop', applyFunnel });
-      if (out.status === 'rejected') dropped++; else ok++;
+      if (out.status === 'pending_filter') filtering++; else ok++;
     } catch (err) {
       if (/already submitted/.test(err.message)) dup++; else { failed++; console.warn('[social] bulk item failed:', err.message); }
     }
   }
-  if (prog) prog.textContent = `${ok} submitted${dropped ? ` · ${dropped} dropped by the filter` : ''}${dup ? ` · ${dup} already submitted` : ''}${failed ? ` · ${failed} failed` : ''}`;
+  if (prog) prog.textContent = `${ok} submitted${filtering ? ` · ${filtering} going through the filter (see Recent posts)` : ''}${dup ? ` · ${dup} already submitted` : ''}${failed ? ` · ${failed} failed` : ''}`;
   siLoadPosts();
 }
 
@@ -17271,13 +17290,14 @@ async function siLoadPosts() {
   if (!el) return;
   try {
     const out = await _siCall('social-review-api', { action: 'posts', limit: 30 });
-    const label = { queued: 'Queued', extracting: 'Reading…', extracted: 'Read', multi_card: 'Skipped: more than one card',
-      no_slab: 'Skipped: no slab found', rejected: 'Rejected', failed: 'Failed' };
+    const label = { pending_filter: 'Filtering…', queued: 'Queued', extracting: 'Reading…', extracted: 'Read',
+      multi_card: 'Skipped: more than one card', no_slab: 'Skipped: no slab found', rejected: 'Rejected',
+      filtered_out: 'Filtered out', failed: 'Failed' };
     el.innerHTML = (out.posts || []).length
       ? `<table class="si-table"><tr><th>Submitted</th><th>Post</th><th>Status</th></tr>${out.posts.map(p => `<tr>
           <td>${new Date(p.created_at).toLocaleString()}</td>
           <td>${p.post_url ? `<a href="${_siEsc(p.post_url)}" target="_blank" rel="noopener" style="color:var(--accent)">${_siEsc(p.platform)}</a>` : 'upload'} · ${_siEsc((p.caption_clean || '').slice(0, 60))}</td>
-          <td>${_siEsc(label[p.status] || p.status)}${p.reject_reason && p.status !== 'multi_card' ? ` (${_siEsc(p.reject_reason)})` : ''}${p.error && p.status !== 'extracted' ? ` <span class="si-muted">${_siEsc(p.error.slice(0, 80))}</span>` : ''}</td>
+          <td>${_siEsc(label[p.status] || p.status)}${p.reject_reason && p.status !== 'multi_card' ? ` (${_siEsc(p.reject_reason)})` : ''}${p.filter_reason ? ` (stage ${p.filter_stage}: ${_siEsc(p.filter_reason.replace(/_/g, ' '))})` : ''}${p.error && p.status !== 'extracted' ? ` <span class="si-muted">${_siEsc(p.error.slice(0, 80))}</span>` : ''}</td>
         </tr>`).join('')}</table>`
       : '<div class="si-muted">Nothing submitted yet.</div>';
   } catch (err) { el.innerHTML = `<div class="si-muted">Could not load posts: ${_siEsc(err.message)}</div>`; }

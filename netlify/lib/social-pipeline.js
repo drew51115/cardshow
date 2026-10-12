@@ -5,8 +5,8 @@
 // each social-* function requires it and the bundler pulls it in. Every stage
 // is status-driven and idempotent:
 //
-//   social_posts.status        draft → queued → extracting → extracted
-//                                                          ↘ multi_card | no_slab | rejected | failed
+//   social_posts.status        draft → [pending_filter →] queued → extracting → extracted
+//                                       ↘ filtered_out         ↘ multi_card | no_slab | rejected | failed
 //   social_extractions.status  pending_verify → pending_resolve → review | auto_approved
 //                                  ↘ rejected                      → approved | approved_offfloor
 //                                                                     | rejected | duplicate
@@ -69,6 +69,76 @@ const numOrNull = (v) => {
 };
 const isoDate = (d) => (d instanceof Date && !isNaN(d) ? d.toISOString().slice(0, 10) : null);
 const addDays = (d, n) => new Date(d.getTime() + n * 86400000);
+
+// Grades are stored as normalized text ('10', '9.5'): the same rendering
+// show_floor_transactions' numeric grade gets, so card_fingerprint matches.
+function normalizeGrade(v) {
+  if (v === null || v === undefined || v === '') return null;
+  const m = String(v).match(/\d+(?:\.\d+)?/);
+  if (!m) return null;
+  const n = parseFloat(m[0]);
+  return Number.isFinite(n) && n >= 0 && n <= 10 ? String(n) : null;
+}
+
+// The app stores show_floor_transactions.year as parseInt(Year), so "2018-19"
+// becomes 2018. Same here, or the fingerprints won't line up.
+function normalizeYear(v) {
+  const m = String(v ?? '').match(/(?:19|20)\d{2}/);
+  return m ? m[0] : null;
+}
+
+// Same vocabulary as CATEGORY_SUBCATEGORIES in app.html (duplicated: no
+// shared module between the page and the functions).
+const CATEGORY_SUBCATEGORIES = {
+  'Sports': ['Baseball', 'Basketball', 'Football', 'Hockey', 'Soccer', 'Golf', 'Boxing', 'MMA/UFC', 'Wrestling', 'Racing/Motorsports', 'Tennis', 'Other Sport'],
+  'TCG': ['Pokémon', 'Magic: The Gathering', 'Yu-Gi-Oh!', 'One Piece Card Game', 'Disney Lorcana', 'Digimon Card Game', 'Dragon Ball Super Fusion World', 'Gundam Card Game', 'Flesh and Blood', 'Star Wars Unlimited', 'Weiss Schwarz', 'Union Arena', 'Other TCG'],
+  'Non-Sport': ['Marvel', 'Star Wars', 'Disney', 'DC', 'Star Trek', 'Other Non-Sport'],
+};
+
+// PSA's Category field ("BASEBALL CARDS", "TCG CARDS", "POKEMON CARDS"…) → taxonomy.
+const PSA_CATEGORY_HINTS = [
+  [/baseball/i, 'Sports', 'Baseball'], [/basketball/i, 'Sports', 'Basketball'],
+  [/football/i, 'Sports', 'Football'], [/hockey/i, 'Sports', 'Hockey'],
+  [/soccer/i, 'Sports', 'Soccer'], [/golf/i, 'Sports', 'Golf'], [/boxing/i, 'Sports', 'Boxing'],
+  [/\bufc\b|\bmma\b/i, 'Sports', 'MMA/UFC'], [/wrestl/i, 'Sports', 'Wrestling'],
+  [/racing|nascar|formula/i, 'Sports', 'Racing/Motorsports'], [/tennis/i, 'Sports', 'Tennis'],
+  [/pok[eé]mon/i, 'TCG', 'Pokémon'], [/magic/i, 'TCG', 'Magic: The Gathering'],
+  [/yu-?gi-?oh/i, 'TCG', 'Yu-Gi-Oh!'], [/one piece/i, 'TCG', 'One Piece Card Game'],
+  [/lorcana/i, 'TCG', 'Disney Lorcana'], [/tcg/i, 'TCG', null],
+  [/marvel/i, 'Non-Sport', 'Marvel'], [/star wars/i, 'Non-Sport', 'Star Wars'],
+  [/non-?sport/i, 'Non-Sport', null],
+];
+
+// Validate a category/subcategory pair against the vocabulary. A known
+// subcategory implies its category; an unknown one is kept only with a
+// valid category (the app's "Other …" free-text path does the same).
+const foldKey = (s) => lc(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '');
+function resolveCategory(category, subcategory) {
+  const cats = Object.keys(CATEGORY_SUBCATEGORIES);
+  let cat = cats.find(c => foldKey(c) === foldKey(category)) || null;
+  const subRaw = norm(subcategory);
+  let sub = null;
+  if (subRaw) {
+    for (const c of cats) {
+      const hit = CATEGORY_SUBCATEGORIES[c].find(x => foldKey(x) === foldKey(subRaw));
+      if (hit && (!cat || cat === c)) { sub = hit; cat = c; break; }
+    }
+    if (!sub && cat) sub = subRaw;
+  }
+  return { category: cat, subcategory: sub };
+}
+
+function categoryFromPsa(psaCategory) {
+  const hit = PSA_CATEGORY_HINTS.find(([re]) => re.test(psaCategory || ''));
+  return hit ? { category: hit[1], subcategory: hit[2] } : null;
+}
+
+// Same shape as buildCardTitle() in app.html: "{year} {set} {player} {parallel}"
+// for sports and non-sport, with "#{number}" for TCG.
+function buildCardTitle({ year, card_set, player, parallel, card_number, category }) {
+  const num = category === 'TCG' && card_number ? `#${String(card_number).replace(/^#/, '')}` : null;
+  return [year, card_set, player, num, parallel].map(v => norm(v)).filter(Boolean).join(' ') || null;
+}
 
 // Admin gate for the review UI and manual intake: a valid Supabase session
 // whose uid is in the admins table.
@@ -230,8 +300,12 @@ For EVERY graded slab visible in ANY image, report:
   is unreadable, set cert_number to null and put your best partial read in cert_partial with "?"
   for each unknown digit.
 - grade (number, e.g. 10 or 9.5) and grade_label (e.g. "GEM MT", "PRISTINE", "BLACK LABEL")
-- card: year, set (brand/set), card_number, subject (player or character), variant (parallel),
+- card: year, card_set (brand and set), card_number, player (player or character), parallel,
   all as printed
+- category: "Sports" | "TCG" | "Non-Sport", and subcategory: the sport, game or franchise, using one
+  of these names when it fits: Baseball, Basketball, Football, Hockey, Soccer, Golf, Boxing, MMA/UFC,
+  Wrestling, Racing/Motorsports, Tennis, Pokémon, Magic: The Gathering, Yu-Gi-Oh!, One Piece Card Game,
+  Disney Lorcana, Digimon Card Game, Marvel, Star Wars, Disney, DC, Star Trek. null if unsure.
 - image_index (0-based) and bbox [x, y, w, h] normalized 0-1 for the image where it is clearest
 
 PRICES. Report two separate things per slab:
@@ -259,7 +333,8 @@ JSON shape:
 {"post_role": "...", "show_hints": [], "sale_date_hints": [], "distinct_slab_count": 1,
  "slabs": [{"image_index": 0, "bbox": [0,0,0,0], "grader": "PSA", "cert_number": "...",
    "cert_partial": null, "grade": 10, "grade_label": "GEM MT",
-   "card": {"year": "", "set": "", "card_number": "", "subject": "", "variant": ""},
+   "card": {"year": "", "card_set": "", "card_number": "", "player": "", "parallel": ""},
+   "category": null, "subcategory": null,
    "sticker_price": null, "sold_price": null, "price_currency": "USD", "sold_price_source": null,
    "cash_bills_seen": null, "is_trade": false, "conf": {"cert": 0, "card": 0, "price_link": 0}}],
  "notes": ""}`;
@@ -404,11 +479,17 @@ function processExtraction(result, caption) {
 
   let status = 'pending_verify', rejectReason = null;
   if (isTrade)                        { status = 'rejected'; rejectReason = 'trade'; }
-  else if (soldPrice == null || soldPrice <= 0) { status = 'rejected'; rejectReason = sticker != null ? 'sticker_only' : 'no_sold_price'; }
+  else if (soldPrice == null || soldPrice <= 0) { status = 'rejected'; rejectReason = 'no_sold_price'; }
   else if (!grader || grader === 'OTHER') { status = 'rejected'; rejectReason = 'unsupported_grader'; }
   else if (!cert && !certPartial)      { status = 'rejected'; rejectReason = 'no_cert'; }
 
+  // Accept the v1 prompt's key names too (subject / set / variant).
   const card = slab.card || {};
+  const player   = norm(card.player ?? card.subject) || null;
+  const cardSet  = norm(card.card_set ?? card.set) || null;
+  const parallel = norm(card.parallel ?? card.variant) || null;
+  const cardNumber = norm(card.card_number).replace(/^#/, '') || null;
+  const { category, subcategory } = resolveCategory(slab.category, slab.subcategory);
   return {
     postStatus: 'extracted',
     rows: [{
@@ -418,13 +499,16 @@ function processExtraction(result, caption) {
       grader,
       cert_number: cert,
       cert_partial: cert ? null : certPartial,
-      grade:       numOrNull(slab.grade),
+      grade:       normalizeGrade(slab.grade),
       grade_label: norm(slab.grade_label) || null,
-      card_year:   norm(card.year) || null,
-      card_set:    norm(card.set) || null,
-      card_number: norm(card.card_number).replace(/^#/, '') || null,
-      card_subject: norm(card.subject) || null,
-      card_variant: norm(card.variant) || null,
+      year:        normalizeYear(card.year),
+      card_set:    cardSet,
+      card_number: cardNumber,
+      player,
+      parallel,
+      card_title:  buildCardTitle({ year: norm(card.year), card_set: cardSet, player, parallel, card_number: cardNumber, category }),
+      category,
+      subcategory,
       sticker_price: sticker,
       sold_price:  soldPrice,
       sold_price_source: soldSource,
@@ -457,11 +541,11 @@ function normalizePsaCert(certNumber, data) {
     cert_number: certNumber,
     valid: true,
     year: norm(c.Year) || null,
-    brand: norm(c.Brand) || null,
+    card_set: norm(c.Brand) || null,
     card_number: norm(c.CardNumber) || null,
-    subject: norm(c.Subject) || null,
-    variety: norm(c.Variety) || null,
-    grade: gradeFromLabel(label),
+    player: norm(c.Subject) || null,
+    parallel: norm(c.Variety) || null,
+    grade: normalizeGrade(gradeFromLabel(label)),
     grade_label: norm(label) || null,
     category: norm(c.Category) || null,
     raw: data,
@@ -479,7 +563,7 @@ async function lookupCert(db, grader, certNumber) {
   const token = process.env.PSA_API_TOKEN;
   if (!token) return { status: 'error', error: 'PSA_API_TOKEN not set' };
 
-  const { data: allowed, error: budgetErr } = await db.rpc('consume_api_budget', { p_key: 'psa', p_limit: PSA_DAILY_LIMIT });
+  const { data: allowed, error: budgetErr } = await db.rpc('claim_api_call', { p_key: 'psa', p_limit: PSA_DAILY_LIMIT });
   if (budgetErr) return { status: 'error', error: budgetErr.message };
   if (!allowed) return { status: 'budget' };
 
@@ -538,14 +622,14 @@ function cardMatch(ext, cert) {
     if (value < 0.5) mismatched.push(field);
   };
   if (ext.grade != null && cert.grade != null) add('grade', 0.25, Number(ext.grade) === Number(cert.grade) ? 1 : 0);
-  add('subject', 0.3, ext.card_subject && cert.subject ? tokenOverlap(ext.card_subject, cert.subject) : null);
-  if (ext.card_year && cert.year) {
-    const ey = (norm(ext.card_year).match(/\d{4}/) || [])[0];
+  add('player', 0.3, ext.player && cert.player ? tokenOverlap(ext.player, cert.player) : null);
+  if (ext.year && cert.year) {
+    const ey = (norm(ext.year).match(/\d{4}/) || [])[0];
     const cy = (norm(cert.year).match(/\d{4}/) || [])[0];
     add('year', 0.15, ey && cy ? (ey === cy ? 1 : 0) : null);
   }
   if (ext.card_number && cert.card_number) add('card_number', 0.15, cardNum(ext.card_number) === cardNum(cert.card_number) ? 1 : 0);
-  add('set', 0.15, ext.card_set && cert.brand ? tokenOverlap(ext.card_set, cert.brand) : null);
+  add('card_set', 0.15, ext.card_set && cert.card_set ? tokenOverlap(ext.card_set, cert.card_set) : null);
   if (!parts.length) return { score: null, mismatched };
   const total = parts.reduce((s, p) => s + p.weight, 0);
   const score = parts.reduce((s, p) => s + p.weight * Math.min(1, p.value), 0) / total;
@@ -604,15 +688,15 @@ async function compMedian(base, ext) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ cards: [{
         id: ext.id,
-        player: ext.card_subject || '',
-        year: ext.card_year || null,
+        player: ext.player || '',
+        year: ext.year || null,
         cardSet: ext.card_set || '',
         cardNumber: ext.card_number || '',
         grade: ext.grade,
         grader: ext.grader,
-        parallel: ext.card_variant || '',
+        parallel: ext.parallel || '',
         sport: '',
-        cardTitle: [ext.card_year, ext.card_set, ext.card_subject, ext.card_variant].filter(Boolean).join(' '),
+        cardTitle: ext.card_title || [ext.year, ext.card_set, ext.player, ext.parallel].filter(Boolean).join(' '),
       }] }),
       signal: AbortSignal.timeout(20000),
     });
@@ -681,6 +765,12 @@ function attributeShow({ shows, hashtags, caption, showHints, postedAt, sourceHa
     else if (nameTokens.length && nameHits >= Math.min(2, nameTokens.length)) { score += 0.4; method = method || 'name'; }
     const places = [show.city, show.venue].map(lc).filter(p => p && p.length > 2);
     if (places.some(p => text.includes(p))) { score += 0.25; method = method || 'venue_city'; }
+    // State is weak (a 2-letter code): it can support a match but never
+    // reaches the threshold alone, even with the date.
+    const st = norm(show.state);
+    if (st.length >= 2 && new RegExp(`\\b${st.replace(/[^A-Za-z ]/g, '')}\\b`, 'i').test(text)) {
+      score += 0.15; method = method || 'state';
+    }
     const inside = postedAt >= range.start && postedAt <= addDays(range.end, 1);
     score += inside ? 0.15 : 0.05;
     if (method) scored.push({ showId: show.id, method, score: Math.min(1, score) });
@@ -738,7 +828,7 @@ function isAutoEligible(ext) {
     && !(ext.route_reasons || []).length;
 }
 
-const CRITICAL_FIELDS = ['grader', 'cert_number', 'grade', 'sold_price', 'card_subject', 'card_year', 'card_number', 'card_set'];
+const CRITICAL_FIELDS = ['grader', 'cert_number', 'grade', 'sold_price', 'player', 'year', 'card_number', 'card_set'];
 
 // D5: auto-approve only once ≥200 reviewed auto-eligible rows were approved
 // without a correction to a critical field at ≥98%.
@@ -800,11 +890,14 @@ async function publishExtraction(db, ext, { method, onFloor, force = false }) {
     cert_number: ext.cert_number,
     grade: ext.grade,
     grade_label: ext.grade_label,
-    card_year: ext.card_year,
+    year: ext.year,
     card_set: ext.card_set,
     card_number: ext.card_number,
-    card_subject: ext.card_subject,
-    card_variant: ext.card_variant,
+    player: ext.player,
+    parallel: ext.parallel,
+    card_title: ext.card_title || buildCardTitle(ext),
+    category: ext.category || null,
+    subcategory: ext.subcategory || null,
     sold_price: ext.sold_price,
     sold_price_source: ext.sold_price_source,
     asking_price: ext.asking_price,
@@ -836,12 +929,80 @@ async function maybeSchedulePurge(db, postId) {
   }
 }
 
+// ── Discovery funnel (§2A) ──────────────────────────────────────────────────
+// Stages 1-3 for one post. Survivors go to 'queued'; the rest to
+// 'filtered_out' with filter_stage / filter_reason. Counts per stage go to
+// hashtag_yield under the post's source_hashtag. Returns the new status.
+const DISCOVERY_METHODS = ['ig_mention', 'ig_tag', 'ig_hashtag', 'ig_watchlist', 'x_search'];
+
+async function isActiveShowTag(db, tag) {
+  if (!tag) return false;
+  const today = isoDate(new Date());
+  const { data } = await db.from('show_hashtags').select('id, active_from, active_until')
+    .eq('tag', lc(tag).replace(/^#/, '')).eq('tier', 'show').eq('active', true);
+  return (data || []).some(h => (!h.active_from || h.active_from <= today) && (!h.active_until || h.active_until >= today));
+}
+
+async function prefilterPost(db, post) {
+  const counts = { seen: 1 };
+  const now = new Date().toISOString();
+  const finish = async (status, stage, reason, extra = {}) => {
+    await db.from('social_posts').update({
+      status, filter_stage: stage, filter_reason: reason, claimed_at: null, updated_at: now,
+      purge_after: status === 'filtered_out' ? addDays(new Date(), RETENTION_DAYS).toISOString() : null,
+      ...extra,
+    }).eq('id', post.id);
+    await bumpYield(db, post.source_hashtag, counts);
+    return status;
+  };
+
+  // Stage 1 — metadata: at least one stored image. (Duplicates never get this
+  // far: post_key and media sha256 are unique.)
+  const { data: media } = await db.from('social_post_media')
+    .select('image_index, storage_path, media_type').eq('post_id', post.id).order('image_index');
+  const images = (media || []).filter(m => /^image\//.test(m.media_type || 'image/jpeg'));
+  if (!images.length) return finish('filtered_out', 1, 'no_image');
+  counts.stage1_pass = 1;
+
+  // Stage 2 — caption text.
+  const fromShowTag = !!post.hint_show_id || await isActiveShowTag(db, post.source_hashtag);
+  const verdict = captionFilter(post.caption_clean, { fromShowTag });
+  const prefilter = { ...(post.prefilter || {}), stage1: { pass: true }, stage2: verdict };
+  if (!verdict.pass) return finish('filtered_out', 2, verdict.reason, { prefilter });
+  counts.stage2_pass = 1;
+
+  // Stage 3 — cheap image triage on the first image. A triage failure (null)
+  // lets the post through rather than dropping a possible sale.
+  const { data: blob } = await db.storage.from(EVIDENCE_BUCKET).download(images[0].storage_path);
+  let triage = null;
+  if (blob) {
+    triage = await triageImage({ base64: Buffer.from(await blob.arrayBuffer()).toString('base64'), mediaType: images[0].media_type || 'image/jpeg' });
+  }
+  prefilter.stage3 = triage;
+  const statedSold = captionAmounts(post.caption_clean).length > 0;
+  if (triage && !(triage.oneSlab && (triage.priceVisible || statedSold))) {
+    return finish('filtered_out', 3, !triage.oneSlab ? 'not_one_slab' : 'no_price_visible', { prefilter });
+  }
+  counts.stage3_pass = 1;
+  return finish('queued', null, null, { prefilter });
+}
+
+// Call before querying a hashtag on Instagram. False = the account's
+// 30-unique-tags-per-7-days cap is reached; don't query.
+async function claimHashtagSlot(db, tag, igAccount = process.env.SOCIAL_IG_ACCOUNT || 'cardshow.io') {
+  const { data, error } = await db.rpc('claim_hashtag_slot', { p_tag: tag, p_ig_account: igAccount });
+  if (error) { console.warn('[social] claim_hashtag_slot failed:', error.message); return false; }
+  return data === true;
+}
+
 async function bumpYield(db, tag, counts) {
   if (!tag) return;
   await db.rpc('bump_hashtag_yield', { p_tag: lc(tag).replace(/^#/, ''), p_day: isoDate(new Date()), p_counts: counts });
 }
 
 module.exports = {
+  DISCOVERY_METHODS, CATEGORY_SUBCATEGORIES, normalizeGrade, normalizeYear, resolveCategory,
+  categoryFromPsa, buildCardTitle, prefilterPost, isActiveShowTag, claimHashtagSlot,
   EXTRACT_MODEL, TRIAGE_MODEL, EVIDENCE_BUCKET, RETENTION_DAYS, GRADERS, FINAL, CRITICAL_FIELDS,
   json, getDb, sha256, norm, lc, numOrNull, isoDate, addDays,
   requireAdmin, isPipelineCall, siteBase, kickStage,

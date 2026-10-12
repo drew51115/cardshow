@@ -5,8 +5,11 @@
 // approved sales in hashtag_yield over the last 14 days. A general tag that
 // had a slot for the last two weeks and produced no approved sale is dropped.
 //
-// Hashtag polling itself (ig-hashtag-poll) is not built until Meta App Review
-// approves hashtag search; until then this only records the plan.
+// Planning is not using: a slot is only taken when a poller first queries the
+// tag, through claim_hashtag_slot() (P.claimHashtagSlot), which enforces the
+// 30-per-rolling-7-days cap in the database. Hashtag polling (ig-hashtag-poll)
+// is not built until Meta App Review approves hashtag search; until then this
+// only records the plan.
 
 const P = require('../lib/social-pipeline');
 
@@ -17,7 +20,10 @@ exports.handler = async () => {
   const db = P.getDb();
   if (!db) return { statusCode: 503 };
   const today = new Date();
-  const weekStart = P.isoDate(today);
+  // Monday of this week (UTC), the same week_start claim_hashtag_slot() uses.
+  const monday = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+  monday.setUTCDate(monday.getUTCDate() - ((monday.getUTCDay() + 6) % 7));
+  const weekStart = P.isoDate(monday);
   const weekEnd = P.isoDate(P.addDays(today, 7));
 
   const { data: tags } = await db.from('show_hashtags').select('*').eq('active', true);
