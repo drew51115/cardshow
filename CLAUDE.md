@@ -27,6 +27,12 @@ netlify/functions/gtcr-trust-check.js    → Serverless: GTCR Trust Check (READ 
 netlify/functions/gtcr-registry.js       → Serverless: GTCR consent + registration (WRITE key) — POST {action:'status'|'grant'|'revoke'|'drain_removals'|'register'}
 supabase/migrations/20260925120000_gtcr_trust_check.sql → inventory.trust_flag + cert_trust_checks / gtcr_consent_events / gtcr_registrations (RLS: read-own, no client writes)
 netlify/functions/expire-trade-posts.js  → Scheduled (hourly, see netlify.toml): calls expire_stale_trade_posts() RPC to hide stale trade_posts from the live board
+netlify/lib/social-pipeline.js           → Shared code for Social Sale Ingestion (extraction prompt, price rules, PSA cache, show matching, dedup) — see that section
+netlify/functions/social-intake.js       → Admin manual intake: create draft post → add_media (one image per call) → submit
+netlify/functions/extract-social-sale-background.js / verify-certs-background.js / resolve-and-route-background.js → the three pipeline stages
+netlify/functions/social-review-api.js   → Admin review queue API (approve / reject / duplicate / reverify / report / hashtags / watchlist)
+netlify/functions/social-pipeline-sweep.js / purge-social-evidence.js / social-slot-planner.js → Scheduled: hourly re-kick, daily evidence purge, weekly IG hashtag plan
+supabase/migrations/20261012120000_social_sales_v1.sql → Social Sale Ingestion schema, RPCs, v_comp_sales view, private social-evidence bucket
 .env.example                             → Placeholder env vars for all keys
 downloads/                               → Static file downloads served by Netlify
 downloads/CardShow_Inventory_Template.xlsx → Pre-filled inventory template (13 example rows); linked from landing page and footer
@@ -717,6 +723,11 @@ Called from `fillFormFromVision` (vision) and several other card-creation paths 
 | `GTCR_API_BASE` | Optional; default `https://thegtcr.com/functions` |
 | `GTCR_REGISTRATION_ENABLED` | Must be `true` to allow consent grant + registration. Keep off until pricing is decided |
 | `CARDSIGHT_API_KEY` | CardSight AI key — secondary sports card comp source. Free tier: 750 calls/month. cardsight.ai/for-developers |
+| `SOCIAL_PIPELINE_SECRET` | Required for Social Sale Ingestion: the stages send it to each other as `x-social-pipeline-secret` |
+| `SOCIAL_PSA_DAILY_LIMIT` | PSA cert lookups per UTC day for social ingestion (default 80; free tier is 100/day) |
+| `SOCIAL_AUTO_APPROVE` | `true` lets auto-approve run, but only once the precision gate also passes. Default off |
+| `SOCIAL_EVIDENCE_RETENTION_DAYS` | Days evidence images are kept after review finishes (default 30) |
+| `SOCIAL_IG_ACCOUNT` | IG business account the hashtag slot planner plans for (default `cardshow.io`) |
 
 ### Credential Injection (no build step workaround)
 Supabase URL and anon key are **not** hardcoded in tracked files. `netlify.toml` has a `command` that runs `sed` to replace `SUPABASE_URL_PLACEHOLDER` / `SUPABASE_ANON_KEY_PLACEHOLDER` in all three HTML files at deploy time. `SECRETS_SCAN_OMIT_KEYS = "SUPABASE_URL,SUPABASE_ANON_KEY"` prevents Netlify's secrets scanner from blocking the build on the injected values (they are intentionally public publishable keys).
@@ -2359,6 +2370,12 @@ migration, no new external library.
   consent-gated register-on-sale + deregister-on-revoke. Registration is built but **dark**
   (`GTCR_CONSENT_UI_LAUNCHED=false` client-side, `?gtcr_consent=1` test switch, `GTCR_REGISTRATION_ENABLED` server-side) until
   pricing is decided. Transfer-on-resale (Phase 5) not built — open decision. See "Trust Check via GTCR".
+- **Social Sale Ingestion, Phase 1 (session 2026-10-12)** — admin "📥 Social Sales" tab: manual
+  intake of public sale posts (screenshots, optional link), Claude extraction, PSA cert check,
+  show matching, dedup, and a keyboard-driven review queue writing to a new `social_sales` table
+  (not `show_floor_transactions`). Hashtag registry, watchlist and slot planner built; Instagram/X
+  polling not built yet. See "Social Sale Ingestion". **Requires the
+  `20261012120000_social_sales_v1.sql` migration and `SOCIAL_PIPELINE_SECRET`.**
 - **XLSX import grade-column fix (session 2026-10-02)** — columns blank in the first data row
   (Grade/Grader/Cert # on a raw card) were dropped for the whole XLSX file, so graded cards
   imported as Raw. `readXLSX()`/`openMapper()` now keep every column; a re-upload repairs the
@@ -4555,6 +4572,113 @@ immutable (UPDATE blocked by RLS).
 Insert one `show_floor_transactions` row from the inventory row, joining `shows`/`sellers` for the
 snapshot fields, for `inventory.id = '480b0b72-166f-46d5-8bd2-4827f3251c7f'` and
 `show_id = 'show_mv2j09jb67yk'`. Also add its `show_inventory` row if missing.
+
+## Social Sale Ingestion — Graded Cards (session 2026-10-12)
+
+Turns public Instagram/X posts of show-floor sales into verified, deduplicated sale records.
+Built from Build Spec v1. **Phase 1 is built (manual intake + review loop).** Phase 2 registries
+(hashtags, watchlist, slot planner, caption filter, image triage) are built; the Instagram/X
+pollers are not (they need Meta App Review and an X API plan).
+
+**v1 scope:** graded slabs (PSA/BGS/SGC/CGC/TAG), USD, one slab per post, cash or stated price
+only. Trades, offers, lots and bundles are rejected.
+
+### Key decisions (from the spec)
+- **D1:** approved sales go to `social_sales`, never `show_floor_transactions`, so organizer
+  GMV and sell-through stay platform-only. `v_comp_sales` unions both for comps
+  (service_role only; `security_invoker`).
+- **D2:** no scraping. A pasted URL is only a reference and dedup key; screenshots are what
+  gets read.
+- **D3:** no poster identity on sale records. `social_posts` keeps a hashed `post_key` and a
+  caption with @handles/URLs stripped (`cleanCaption()`).
+- **D4:** images live in the private `social-evidence` bucket until review finishes + 30 days,
+  then `purge-social-evidence` deletes them.
+- **D5:** auto-approve needs `SOCIAL_AUTO_APPROVE=true` **and** ≥200 reviewed rows of the §8
+  pattern at ≥98% precision (`autoApproveGate()`). Every row records `auto_eligible`, so
+  precision is measured while auto-approve is off.
+- **D6:** `graded_certs` caches every grader lookup permanently (PSA free tier is 100/day).
+
+### Pipeline
+```
+social-intake (admin)          create draft → add_media ×N → submit → status 'queued'
+  ↓ kickStage (x-social-pipeline-secret)
+extract-social-sale-background claim_social_posts → Claude (claude-opus-5-5, all images +
+                               caption, one call) → processExtraction():
+                                 single-card gate (distinct_slab_count ≠ 1 or bundle words → multi_card)
+                                 sticker = asking, never sold; caption "asking X, sold Y"
+                                 trade / sticker-only / no cert → rejected
+                               → social_extractions rows 'pending_verify'
+  ↓
+verify-certs-background        graded_certs cache → PSA API (consume_api_budget) → card match
+                               → one-digit cert recovery (cache only) → GTCR stolen check
+                               → 'pending_resolve' (budget out: parked, sweep retries)
+  ↓
+resolve-and-route-background   comp-lookup sanity band (0.4×–2.5×) → show attribution →
+                               sale date → same-cert ±3 days check → score → auto or 'review'
+  ↓
+social-review-api (admin)      approve / approve off-floor / reject / duplicate / reverify
+                               → publishExtraction() → social_sales (merges same cert ±3 days,
+                               corroboration_count + 1)
+```
+Each stage is status-driven and idempotent. Stages hand off with `kickStage()` (POST to the next
+background function). `social-pipeline-sweep` re-kicks waiting work hourly and deletes drafts
+older than a day. Claims use `FOR UPDATE SKIP LOCKED` RPCs; a claim older than 15 minutes can be
+retaken.
+
+### Things that differ from the spec, and why
+- **Image uploads are one per call** (`create` → `add_media` → `submit`). A 10-image carousel in
+  one request would exceed Netlify's ~6MB body limit.
+- **Shared module.** The pipeline's logic is in `netlify/lib/social-pipeline.js`, required by
+  each function, rather than duplicated (the usual pattern here). Ten functions share most of
+  it.
+- **Anthropic SDK.** `@anthropic-ai/sdk` was added to `package.json`. Extraction uses
+  `claude-opus-5-5` (effort `high`, server-side `fallbacks: "default"`, checks
+  `stop_reason === 'refusal'`). Image triage uses `claude-haiku-5-5`.
+- **No Kapture.** Nothing Kapture-related exists in this repo, so the stolen check is GTCR only
+  (`GTCR_READ_API_KEY`).
+- **Non-PSA graders.** No cert API is wired for BGS/SGC/CGC/TAG yet (open question 2). They get
+  `verify_status 'unsupported_grader'` and always go to review.
+- **Show score threshold is 0.4.** A city or venue match inside the show's dates is enough, as long
+  as no other show scores within 0.1. Date alone never attributes a post. A show the submitter
+  picks at intake wins outright (`show_match_method 'submitter'`).
+- **Sold above sticker** blocks approval behind a confirm, rather than a hard reject.
+- **Reviewer edits** to a price set its source/basis to `'reviewer'`. The edit diff is stored in
+  `review_edits` / `edited_fields` for precision reporting.
+
+### Admin UI (app.html, "📥 Social Sales" admin tab, `#socialIntakePanel`)
+- **Review:** image with the slab's bbox, caption, editable fields with the grader's record under
+  each (red when it disagrees), reason chips. Keys: `A` approve, `R` reject (pick a reason first),
+  `D` duplicate lookup, `J`/`K` next/prev.
+- **Add posts:** one post (URL, posted time, optional show, caption, 1–10 screenshots), or a bulk
+  drop (each screenshot = one post), optionally run through the discovery caption filter.
+  Images are compressed client-side with `_scanCardCompressImage()` (1600px, JPEG 0.85).
+- **Report:** precision by sold-price source and grader, auto-approve gate status, pipeline
+  counts, PSA lookups used today.
+- **Hashtags & watchlist:** `show_hashtags` (show tags active −1/+2 days around the show) and
+  `social_watchlist`.
+JS lives in the `// ── SOCIAL SALES (admin)` block (`siOpen`, `siLoadQueue`, `siApprove`, …).
+
+### Setup checklist
+1. Run `supabase/migrations/20261012120000_social_sales_v1.sql`. It also creates the private
+   `social-evidence` bucket.
+2. Set `SOCIAL_PIPELINE_SECRET` in Netlify (plus the existing `ANTHROPIC_API_KEY`,
+   `PSA_API_TOKEN`, `SUPABASE_SERVICE_KEY`). Redeploy.
+3. Leave `SOCIAL_AUTO_APPROVE` unset until the Report tab shows the gate would pass.
+
+### Not built yet
+- Instagram mentions webhook, tagged-media and hashtag polling, X search (Phase 2). They need Meta
+  App Review / an X plan. Pollers should insert `social_posts` rows with the right
+  `ingest_method` and `source_hashtag`, call `captionFilter()` (stage 2), set status `queued`,
+  and kick extraction. Stage 3 image triage already runs for those methods.
+- Weekly digest, community submission form (Phase 3), seller "claim" of a social sale.
+- `CERT_FORMATS` regexes are starting values; check them against real slabs before go-live.
+
+### Verified
+Pure logic (price rules, single-card gate, caption parsing, card match, show attribution, sale
+date) passed a Node test script. The migration ran twice cleanly on local Postgres 16 with a
+Supabase stub, and the claim/budget RPCs, generated columns, view, and anon/authenticated
+lock-out all behaved as intended. The admin UI was tested in a headless browser against mocked API
+responses. **No live run against Supabase, PSA or Claude has happened yet.**
 
 ## Show Configuration (Demo Data)
 - **MLP Card Show** — Oct 17-18, 2026 · Grand Hyatt Tampa Bay, FL · Code: MLPTPA (primary demo, shown to buyers without code)

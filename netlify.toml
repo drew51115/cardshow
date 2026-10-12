@@ -23,3 +23,14 @@
 
 [build.processing.html]
   pretty_urls = false
+
+# Social Sale Ingestion: hourly re-kick of any stage with waiting work,
+# daily evidence purge (D4), weekly Instagram hashtag slot plan.
+[functions."social-pipeline-sweep"]
+  schedule = "@hourly"
+
+[functions."purge-social-evidence"]
+  schedule = "@daily"
+
+[functions."social-slot-planner"]
+  schedule = "@weekly"
