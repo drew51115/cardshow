@@ -4543,6 +4543,14 @@ Verified headless: a Scan-to-Sell sale with `activeShowId = null` and a show run
 writes `inventory` insert → update, `show_inventory` upsert, and `show_floor_transactions` insert
 with the right `show_id` and `inventory_id`.
 
+### Also fixed: wrong `show_date` on multi-day shows
+`show_floor_transactions.show_date` is a Postgres `date`, but both `recordShowTransaction()` and
+`recordManualSaleTransaction()` sent `show.date`, the display text. Postgres doesn't reject
+"Oct 9-11, 2026"; it reads it as **2011-10-09** ("Aug 29-30, 2026" → 2030-08-29), so every
+multi-day show's rows got a wrong date. Both now send `_showDateISO(show)`: `startDate`, else
+`_parseShowDate(date)` as 'YYYY-MM-DD', else null. Existing rows are not corrected; the table is
+immutable (UPDATE blocked by RLS).
+
 ### Backfill for the reported sale (run by hand in the SQL editor)
 Insert one `show_floor_transactions` row from the inventory row, joining `shows`/`sellers` for the
 snapshot fields, for `inventory.id = '480b0b72-166f-46d5-8bd2-4827f3251c7f'` and

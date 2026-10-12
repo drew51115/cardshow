@@ -10989,6 +10989,16 @@ function _showIsToday(show) {
   return iso(start) <= today && today <= iso(end);
 }
 
+// show_floor_transactions.show_date is a Postgres date. show.date is display
+// text ("Oct 9-11, 2026"), which Postgres misreads (as 2011-10-09) instead of
+// rejecting. Send the real start date as 'YYYY-MM-DD'.
+function _showDateISO(show) {
+  if (!show) return null;
+  if (show.startDate) return show.startDate;
+  const d = _parseShowDate(show.date || '');
+  return d ? d.toLocaleDateString('en-CA') : null;
+}
+
 function _sellerShowIds() {
   return Object.values(shows)
     .filter(s => s.sellers instanceof Set && s.sellers.has(currentSeller))
@@ -20113,7 +20123,7 @@ async function recordManualSaleTransaction(card, showId) {
       // Show snapshot — denormalised so record is self-describing
       show_id:        showId,
       show_name:      show.name,
-      show_date:      show.date     || null,
+      show_date:      _showDateISO(show),
       show_location:  show.location || null,
       show_city:      city,
       show_state:     state,
@@ -20819,7 +20829,7 @@ async function _insertShowTransaction(card, showId) {
       // Show snapshot — denormalised so record is self-describing
       show_id:       showId,
       show_name:     show.name,
-      show_date:     show.date     || null,
+      show_date:     _showDateISO(show),
       show_location: show.location || null,
       show_city:     city,
       show_state:    state,
