@@ -4508,6 +4508,54 @@ So a show with more than 1000 published cards would be cut off even after the UR
   seller with more than 1000 cards would be cut off.
 - `buildShowPageUrlFromDB()` still reads one page.
 
+## Scan-to-Sell Sales Missing from show_floor_transactions (session 2026-10-12)
+
+Real report: a card sold through **Sell / Add → Sell a card → It's not in my inventory** (photo,
+identify, Sell Drawer) was saved to `inventory` (`480b0b72-…`) but never reached
+`show_floor_transactions` for its show (`show_mv2j09jb67yk`).
+
+### Root cause
+`recordShowTransaction()` needs a show. It used `activeShowId`, else the card's own show when the
+card belongs to exactly one. Both were empty for this sale:
+- `activeShowId` is set only by tapping **⚡ Add My Cards** on this device (restored from
+  localStorage). A seller on a new device, or with cleared storage, has none.
+- A Scan-to-Sell card is brand new, so `card._shows` is empty. `posInsertAndOpenDrawer()` only
+  publishes it when `activeShowId` is set.
+
+So the function returned silently. Any pre-existing card in zero or several shows hit the same gap.
+
+### Fix (app.html)
+- `_resolveSaleShowId(card)`: `activeShowId` → the card's only show → a show the card is in that
+  runs today → a show the seller is authorized for that runs today → `null`. `_showIsToday(show)`
+  uses `startDate`/`endDate`, else parses the freeform `date` (handles "Aug 29-30, 2026").
+- The Sell Drawer has a **Show** field (`#sdShow`, filled by `_sdPopulateShowSelector()`), listing
+  the seller's shows plus "Off-show / no show", pre-selected from `_resolveSaleShowId()`. Hidden
+  when the seller has no shows.
+- `sdConfirm()` passes that show to `recordShowTransaction(card, showId)`. If the card isn't in that
+  show yet, it calls `_autoPublishCardToShow()` so the sale also counts in organizer analytics.
+  Choosing Off-show skips the transaction (logged to the console).
+- `recordShowTransaction()` without an override uses `_resolveSaleShowId()`. The insert itself moved
+  to `_insertShowTransaction(card, showId)`, unchanged.
+- `_autoPublishCardToShow()` skips a publish already in flight for the same card+show
+  (`card._publishing`), since a second upsert is an UPDATE that `show_inventory` RLS rejects.
+
+Verified headless: a Scan-to-Sell sale with `activeShowId = null` and a show running today now
+writes `inventory` insert → update, `show_inventory` upsert, and `show_floor_transactions` insert
+with the right `show_id` and `inventory_id`.
+
+### Also fixed: wrong `show_date` on multi-day shows
+`show_floor_transactions.show_date` is a Postgres `date`, but both `recordShowTransaction()` and
+`recordManualSaleTransaction()` sent `show.date`, the display text. Postgres doesn't reject
+"Oct 9-11, 2026"; it reads it as **2011-10-09** ("Aug 29-30, 2026" → 2030-08-29), so every
+multi-day show's rows got a wrong date. Both now send `_showDateISO(show)`: `startDate`, else
+`_parseShowDate(date)` as 'YYYY-MM-DD', else null. Existing rows are not corrected; the table is
+immutable (UPDATE blocked by RLS).
+
+### Backfill for the reported sale (run by hand in the SQL editor)
+Insert one `show_floor_transactions` row from the inventory row, joining `shows`/`sellers` for the
+snapshot fields, for `inventory.id = '480b0b72-166f-46d5-8bd2-4827f3251c7f'` and
+`show_id = 'show_mv2j09jb67yk'`. Also add its `show_inventory` row if missing.
+
 ## Show Configuration (Demo Data)
 - **MLP Card Show** — Oct 17-18, 2026 · Grand Hyatt Tampa Bay, FL · Code: MLPTPA (primary demo, shown to buyers without code)
 - **Chicago Sports Card Expo** — Nov 8, 2026 · Navy Pier, Chicago, IL · CHI2026
