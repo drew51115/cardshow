@@ -5805,6 +5805,12 @@
           </div>
         </div>
       </div>
+      <div id="sdShowWrap" style="display:none">
+        <div class="drawer-field-label">Show</div>
+        <select id="sdShow" class="filter-select" style="width:100%;margin-bottom:0">
+          <option value="">Off-show / no show</option>
+        </select>
+      </div>
       <div>
         <div class="drawer-field-label">Notes (optional)</div>
         <textarea class="sale-notes-input" id="sdNotes"
@@ -10940,6 +10946,7 @@ function openSellDrawer(realIdx) {
   document.getElementById('sdPrice').value = '';
   document.getElementById('sdNotes').value = '';
   document.querySelectorAll('.pay-opt').forEach(b => b.classList.remove('pay-selected'));
+  _sdPopulateShowSelector(card);
 
   const ask = Number(card.Price || 0);
   const prices = [ask, Math.round(ask * 0.95), Math.round(ask * 0.9)];
@@ -10954,6 +10961,68 @@ function openSellDrawer(realIdx) {
 
   document.getElementById('sellDrawerOverlay').classList.add('open');
   setTimeout(() => document.getElementById('sdPrice').focus(), 350);
+}
+
+// ── Which show a sale belongs to ──
+// show_floor_transactions needs a show for every sale. activeShowId is only
+// set after "Add My Cards" on this device, so it is often null (new device,
+// cleared storage). A Scan-to-Sell card is also brand new, so it has no
+// show membership yet either. Without a fallback, recordShowTransaction()
+// skipped those sales silently. Order:
+//   1. activeShowId
+//   2. the card's only show
+//   3. a show the card is in that is running today
+//   4. a show the seller is authorized for that is running today
+// Returns null when none applies. The Sell Drawer's Show field lets the
+// seller correct or pick it either way.
+function _showIsToday(show) {
+  if (!show) return false;
+  const today = _todayISO();
+  if (show.startDate) return show.startDate <= today && today <= (show.endDate || show.startDate);
+  const start = _parseShowDate(show.date || '');
+  if (!start) return false;
+  // Freeform "Aug 29-30, 2026" → end day 30; otherwise a single-day show.
+  const m = (show.date || '').match(/\d{1,2}\s*-\s*(\d{1,2})\s*,/);
+  const end = new Date(start);
+  if (m) end.setDate(parseInt(m[1], 10));
+  const iso = d => d.toLocaleDateString('en-CA');
+  return iso(start) <= today && today <= iso(end);
+}
+
+function _sellerShowIds() {
+  return Object.values(shows)
+    .filter(s => s.sellers instanceof Set && s.sellers.has(currentSeller))
+    .map(s => s.id);
+}
+
+function _resolveSaleShowId(card) {
+  if (activeShowId && shows[activeShowId]) return activeShowId;
+  const cardShows = card && card._shows instanceof Set ? [...card._shows].filter(id => shows[id]) : [];
+  if (cardShows.length === 1) return cardShows[0];
+  const cardToday = cardShows.filter(id => _showIsToday(shows[id]));
+  if (cardToday.length) return cardToday[0];
+  const sellerToday = _sellerShowIds().filter(id => _showIsToday(shows[id]));
+  if (sellerToday.length) return sellerToday[0];
+  return null;
+}
+
+function _sdPopulateShowSelector(card) {
+  const wrap = document.getElementById('sdShowWrap');
+  const sel  = document.getElementById('sdShow');
+  if (!wrap || !sel) return;
+  while (sel.options.length > 1) sel.remove(1);   // keep "Off-show"
+  const ids = new Set(_sellerShowIds());
+  if (card && card._shows instanceof Set) card._shows.forEach(id => { if (shows[id]) ids.add(id); });
+  [...ids].map(id => shows[id])
+    .sort((a, b) => (b.startDate || b.date || '').localeCompare(a.startDate || a.date || ''))
+    .forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s.id;
+      opt.text  = s.name + (s.date ? ' · ' + s.date : '');
+      sel.appendChild(opt);
+    });
+  sel.value = _resolveSaleShowId(card) || '';
+  wrap.style.display = ids.size ? '' : 'none';
 }
 
 function sdSetPrice(p) {
@@ -10994,6 +11063,10 @@ function sdConfirm() {
   if (!sdSelectedPayment)   { showToast('⚠️ Select a payment method', 'var(--danger)'); return; }
 
   const card = inventory[sdActiveIdx];
+  // Read before closeSellDrawer(). Empty = seller chose Off-show.
+  const saleShowId = document.getElementById('sdShowWrap')?.style.display === 'none'
+    ? _resolveSaleShowId(card)
+    : (document.getElementById('sdShow')?.value || null);
   card.Status        = 'Sold';
   card.SoldPrice     = price;
   card.PaymentMethod = sdSelectedPayment;
@@ -11003,7 +11076,14 @@ function sdConfirm() {
 
   closeSellDrawer();
   updateCardInDB(card).then(() => gtcrRegisterOnSale(card)); // GTCR registration needs status=Sold persisted first
-  recordShowTransaction(card);   // ← fire-and-forget, no await
+  // A card sold at a show it isn't published to (e.g. a Scan-to-Sell card
+  // when activeShowId was unset) gets its show_inventory row now, so the
+  // sale also counts in organizer analytics. Duplicate-safe — see
+  // _autoPublishCardToShow().
+  if (saleShowId && card._dbId && !(card._shows instanceof Set && card._shows.has(saleShowId))) {
+    _autoPublishCardToShow(card, card._dbId, saleShowId);
+  }
+  recordShowTransaction(card, saleShowId);   // ← fire-and-forget, no await
   syncBuyerView();
   updateStats();
   updateReport();
@@ -11019,7 +11099,7 @@ function sdConfirm() {
   // Never fires for 'never' from this path.
   const dropPref = getDropPromptPref();
   if (dropPref === 'always' || (dropPref === 'manual_only' && card._posOrigin)) {
-    showDropPrompt(card, activeShowId);
+    showDropPrompt(card, saleShowId);
   }
 }
 
@@ -20493,16 +20573,25 @@ async function gtcrConsentToggleChanged(el) {
 // A flagged card is never published. A GTCR outage fails open.
 function _autoPublishCardToShow(card, dbId, showId) {
   if (!showId || !dbId || typeof db === 'undefined') return;
+  // Skip a publish already in flight for this card+show. A second upsert of
+  // an existing row is an UPDATE, which show_inventory's RLS rejects (401).
+  if (!card._publishing) card._publishing = new Set();
+  if (card._publishing.has(showId)) return;
+  card._publishing.add(showId);
 
   _gtcrClearForPublish(card, dbId).then(cleared => {
-    if (!cleared) { console.info('[auto-publish] skipped — GTCR flag on', card['Cert #']); return; }
+    if (!cleared) {
+      card._publishing.delete(showId);
+      console.info('[auto-publish] skipped — GTCR flag on', card['Cert #']);
+      return;
+    }
     db.from('show_inventory')
       .upsert(
         { show_id: showId, card_id: dbId },
         { onConflict: 'show_id,card_id' }
       )
       .then(({ error }) => {
-        if (error) { console.warn('[auto-publish]', error.message); return; }
+        if (error) { card._publishing.delete(showId); console.warn('[auto-publish]', error.message); return; }
         if (!card._shows) card._shows = new Set();
         card._shows.add(showId);
         showCardCounts[showId] = (showCardCounts[showId] || 0) + 1;
@@ -20629,13 +20718,20 @@ async function updateCardInDB(card) {
 // The sold confirmation UI must complete instantly regardless of
 // Supabase write latency. Failures are logged but never surfaced.
 //
-// Fires when activeShowId is set, or falls back to the card's own single
-// show membership (see comment inside the function for why).
+// Show: the explicit showIdOverride from the Sell Drawer, else
+// _resolveSaleShowId() (activeShowId → card's show → a show running today).
 // Uses detectCardSport() (API routing) not detectSport() (UI only).
 
-async function recordShowTransaction(card) {
+async function recordShowTransaction(card, showIdOverride) {
   if (typeof db === 'undefined') return;
   if (!currentSeller) return;
+
+  // sdConfirm() passes the show picked in the Sell Drawer (pre-filled by
+  // _resolveSaleShowId()). null there means the seller chose Off-show.
+  if (showIdOverride !== undefined) {
+    if (!showIdOverride) { console.info('[transaction] off-show sale — not logged to show_floor_transactions'); return; }
+    return _insertShowTransaction(card, showIdOverride);
+  }
 
   // Prefer the live activeShowId (explicit session context), but fall back
   // to the card's own show membership when it's unset. activeShowId is a
@@ -20648,14 +20744,16 @@ async function recordShowTransaction(card) {
   // rehydrated from the DB on login (see hydrateCardShowMembership()), so
   // a card belonging to exactly one show is an unambiguous, reload-proof
   // source of truth for which show this sale belongs to. A card in zero or
-  // multiple shows still requires the explicit activeShowId context.
-  const showId = activeShowId ||
-    (card._shows instanceof Set && card._shows.size === 1 ? [...card._shows][0] : null);
-  if (!showId) return;
+  // several shows falls back to a show running today (_resolveSaleShowId).
+  const showId = _resolveSaleShowId(card);
+  if (!showId) { console.warn('[transaction] no show for this sale — not logged'); return; }
+  return _insertShowTransaction(card, showId);
+}
 
+async function _insertShowTransaction(card, showId) {
   try {
     const show = shows[showId];
-    if (!show) return;
+    if (!show) { console.warn('[transaction] show not loaded:', showId); return; }
 
     // Prefer DB-populated city/state; fall back to parsing location
     let city  = show.city  || null;
