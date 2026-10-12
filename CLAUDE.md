@@ -4769,6 +4769,25 @@ Group C applied; Groups A and B were checked and the gaps filled.
   DB). A headless browser tested the review form.
 - **Still no live run against Supabase, PSA or Claude.**
 
+### Price-unknown sales and background slabs (session 2026-10-12)
+Two real "In/Out" posts were rejected before review (a PSA slab posed with fanned cash, "In"/"Out"
+overlays, no stated amount).
+- **Slab count:** the extraction prompt now counts only *subject* slabs (the one being shown as
+  sold), ignoring slabs in a background case or binder. It also reports `background_slab_count`
+  (kept in `extraction_raw`). The stage-3 triage question says the same.
+- **Price unknown → review:** the prompt reports `sale_signal` (In/Out overlay, posed with cash,
+  "sold"-type caption) and `cash_visible`, and only counts cash when every bill is visible.
+  `processExtraction()` sends a slab with no sold price to review (reason `price_unknown`) when
+  there's a sale signal: the model's flags, counted bills, or `SOLD_WORD_RE` in the caption. With
+  no sale signal (e.g. a sticker alone) it is still rejected as `no_sold_price`.
+- A price-unknown row has `sold_price`/`sold_price_source` null and never matches the auto-approve
+  pattern. `sanityFlag()` returns null for it, and a same-cert match is `possible_duplicate`.
+- **Review:** the form shows "sale, price not stated" and the sticker for reference. The reviewer
+  types the sold price (source becomes `reviewer`) or rejects with "Price unclear". With no
+  sticker, asking defaults to the sold price (`assumed_equal_sold`).
+- v2's one-off "reject rows with no sold price" UPDATE was removed, so re-running v2 can't reject
+  these rows.
+
 ## Show Configuration (Demo Data)
 - **MLP Card Show** — Oct 17-18, 2026 · Grand Hyatt Tampa Bay, FL · Code: MLPTPA (primary demo, shown to buyers without code)
 - **Chicago Sports Card Expo** — Nov 8, 2026 · Navy Pier, Chicago, IL · CHI2026

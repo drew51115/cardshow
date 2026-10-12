@@ -140,6 +140,9 @@ function applyEdits(ext, fields = {}) {
   // Provenance follows the edit.
   if (editedFields.includes('sold_price') && !editedFields.includes('sold_price_source')) next.sold_price_source = 'reviewer';
   if (editedFields.includes('asking_price') && !editedFields.includes('asking_price_basis')) next.asking_price_basis = 'reviewer';
+  // A price-unknown sale has no asking price yet: once the reviewer enters the
+  // sold price, asking defaults to the same amount.
+  if (next.asking_price == null && !next.asking_price_basis && next.sold_price > 0) next.asking_price_basis = 'assumed_equal_sold';
   // The DB rejects an assumed_equal_sold asking price that differs from sold.
   if (next.asking_price_basis === 'assumed_equal_sold') next.asking_price = next.sold_price;
   if (editedFields.some(f => f === 'category' || f === 'subcategory')) {
@@ -160,7 +163,7 @@ async function approve(db, admin, input) {
   if (next.cert_number && !P.normalizeCert(next.grader, next.cert_number)) {
     return P.json(400, { success: false, error: 'bad_cert_format', message: 'Fix the cert number (no "?" digits) or clear it.' });
   }
-  if (!(next.sold_price > 0)) return P.json(400, { success: false, error: 'sold_price_required' });
+  if (!(next.sold_price > 0)) return P.json(400, { success: false, error: 'sold_price_required', message: 'Enter the sold price, or reject the post if it isn\'t known.' });
   if (!(next.asking_price > 0)) return P.json(400, { success: false, error: 'asking_price_required' });
   if (!next.sold_date || !/^\d{4}-\d{2}-\d{2}$/.test(next.sold_date)) return P.json(400, { success: false, error: 'sold_date_required' });
   // No show attributed (e.g. a general-tag post with only a date match) →

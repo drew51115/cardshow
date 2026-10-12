@@ -253,6 +253,8 @@ const SALE_RE  = /\b(sold|pick ?up|picked up|pulled the trigger|paid|got it for|
 const GRADE_RE = /\b(psa|bgs|beckett|sgc|cgc|tag ?grad\w*|slab(bed)?|graded|gem mint|black label)\b/i;
 const TRADE_RE = /\b(trade[ds]?|traded|trading|t\/c|swap(ped)?|offers?|obo)\b/i;
 const BUNDLE_RE = /\b(lot|bundle|for both|for all|both for|all for|x2|pair|the pair|2 for|3 for)\b/i;
+// Caption says a sale happened (amount or not). Used to keep a price-unknown sale for review.
+const SOLD_WORD_RE = /\b(sold|closed (out )?(the|a|this) deal|closing out|let (it|this|her|him) go|cashed out|in\s*\/\s*out)\b/i;
 
 // Funnel stage 2 (§2A): free caption text filter. Advisory for manual intake
 // (a human already chose the post); enforced for discovery channels.
@@ -290,11 +292,25 @@ const EXTRACT_SYSTEM_PROMPT = `You extract graded trading card SALES from social
 Return ONLY a JSON object (no markdown fences, no preamble). Never guess: use null when a value
 is not clearly visible.
 
-First count DISTINCT graded slabs across all images. The same slab shown in several images counts
-once (match by cert number or identical label). Report distinct_slab_count. If distinct_slab_count
-is not 1, still list the slabs you see but set sold_price and sticker_price to null on all of them.
+First decide which graded slabs the post is ABOUT. A subject slab is the one being shown off as
+sold or bought: it is the focus of the photo (centered, held up, singled out, labeled with text
+like "Out" or "Sold", or set apart next to cash or a price). Slabs that are only in the background
+(other inventory in a display case, binder, table or stack, partly cut off or out of focus) are
+NOT subject slabs. Ignore them completely: do not list them and do not count them.
+Count DISTINCT subject slabs across all images. The same slab shown in several images counts once
+(match by cert number or identical label). Report that number as distinct_slab_count, and the
+number of background slabs you ignored as background_slab_count. If distinct_slab_count is not 1,
+still list the subject slabs but set sold_price and sticker_price to null on all of them.
 
-For EVERY graded slab visible in ANY image, report:
+SALE SIGNALS. A common show-floor format overlays the word "Out" on the card and "In" on cash: the
+card went out and the cash came in, which means the card was SOLD for that cash. Report at the top
+level:
+- sale_signal: true if the post clearly shows the subject slab was sold (an "In/Out" overlay with
+  cash, the slab posed with cash as payment, or caption words like "sold", "closed the deal",
+  "let it go"), even when the amount cannot be determined. false otherwise.
+- cash_visible: true if cash is shown with the subject slab.
+
+For EVERY subject slab, report:
 - grader: "PSA" | "BGS" | "SGC" | "CGC" | "TAG" | "OTHER"
 - cert_number: the digits exactly as printed on the slab label, keeping leading zeros. If any digit
   is unreadable, set cert_number to null and put your best partial read in cert_partial with "?"
@@ -315,8 +331,10 @@ PRICES. Report two separate things per slab:
    "caption_explicit" (the caption states the sold or paid amount)
    "image_text" (a handwritten or printed sale amount in the image that is not the slab sticker)
    "cash_shown" (cash physically beside or on the slab: count the visible bills and report what you
-   saw in cash_bills_seen, e.g. "3x$100, 1x$50")
-   Never use the sticker as sold_price. null if none of these exist.
+   saw in cash_bills_seen, e.g. "3x$100, 1x$50"). Only when every bill can be counted; fanned or
+   stacked bills that overlap so that some are hidden can't be counted, so leave sold_price null.
+   Never use the sticker as sold_price. null if none of these exist. A missing amount is fine:
+   report null and set sale_signal instead.
    Report sold_price_source as one of those three strings, or null.
 - price_currency: "USD" unless the post clearly uses another currency, then its ISO code.
 - is_trade: true if the post describes a trade or trade plus cash.
@@ -331,6 +349,7 @@ Also report at the top level:
 
 JSON shape:
 {"post_role": "...", "show_hints": [], "sale_date_hints": [], "distinct_slab_count": 1,
+ "background_slab_count": 0, "sale_signal": false, "cash_visible": false,
  "slabs": [{"image_index": 0, "bbox": [0,0,0,0], "grader": "PSA", "cert_number": "...",
    "cert_partial": null, "grade": 10, "grade_label": "GEM MT",
    "card": {"year": "", "card_set": "", "card_number": "", "player": "", "parallel": ""},
@@ -385,7 +404,7 @@ async function triageImage({ base64, mediaType }) {
         role: 'user',
         content: [
           { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
-          { type: 'text', text: 'Answer with JSON only: {"one_slab": true|false, "price_visible": true|false}. one_slab: exactly one graded card slab is shown. price_visible: cash or a written price is visible next to it.' },
+          { type: 'text', text: 'Answer with JSON only: {"one_slab": true|false, "price_visible": true|false}. one_slab: the photo is about exactly one graded card slab (other slabs in the background, e.g. in a display case or binder, do not count). price_visible: cash or a written price is visible next to it.' },
         ],
       }],
     });
@@ -477,9 +496,19 @@ function processExtraction(result, caption) {
 
   const isTrade = slab.is_trade === true || TRADE_RE.test(norm(caption));
 
+  // A clear sale with no readable amount (e.g. an "In/Out" post with fanned
+  // cash) goes to review so a person can enter the price; a sticker or a bare
+  // photo with no sign of a sale is still rejected.
+  if (soldPrice != null && soldPrice <= 0) soldPrice = null;
+  const saleSignal = result?.sale_signal === true || result?.cash_visible === true
+    || norm(slab.cash_bills_seen) !== '' || SOLD_WORD_RE.test(norm(caption));
+  const priceUnknown = soldPrice == null && saleSignal;
+  if (soldPrice == null) soldSource = null;
+  if (priceUnknown) reasons.push('price_unknown');
+
   let status = 'pending_verify', rejectReason = null;
   if (isTrade)                        { status = 'rejected'; rejectReason = 'trade'; }
-  else if (soldPrice == null || soldPrice <= 0) { status = 'rejected'; rejectReason = 'no_sold_price'; }
+  else if (soldPrice == null && !priceUnknown) { status = 'rejected'; rejectReason = 'no_sold_price'; }
   else if (!grader || grader === 'OTHER') { status = 'rejected'; rejectReason = 'unsupported_grader'; }
   else if (!cert && !certPartial)      { status = 'rejected'; rejectReason = 'no_cert'; }
 
@@ -711,6 +740,7 @@ async function compMedian(base, ext) {
 
 function sanityFlag(sold, median) {
   if (!median) return 'no_comp';
+  if (sold == null) return null; // price unknown: nothing to compare yet
   const ratio = sold / median;
   if (ratio < SANITY_LOW) return 'low';
   if (ratio > SANITY_HIGH) return 'high';

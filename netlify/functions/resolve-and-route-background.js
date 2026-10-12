@@ -91,7 +91,10 @@ async function resolveOne(db, ext, ctx) {
 
   // Same cert sold within ±3 days already on file?
   const existing = await P.findSameSale(db, ext.grader, ext.cert_number, sold.date);
-  if (existing) reasons.push(P.samePrice(ext.sold_price, existing.sold_price) ? 'possible_duplicate' : 'conflicting_price');
+  if (existing) {
+    // With no price yet there's nothing to conflict with; the reviewer sees the match.
+    reasons.push(ext.sold_price == null || P.samePrice(ext.sold_price, existing.sold_price) ? 'possible_duplicate' : 'conflicting_price');
+  }
 
   const resolved = {
     ...ext,

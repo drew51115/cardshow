@@ -16969,8 +16969,9 @@ function _siFieldHTML(field, label, value, cert, type = 'text') {
 
 function _siReasonChip(r) {
   const bad = /stolen|mismatch|not_found|conflicting|outside_comp|above_sticker|cert_format/.test(r);
-  const warn = /unattributed|ambiguous|multiple|cash|unreadable|non_usd|duplicate|not_found_caption|caption_price/.test(r);
-  return `<span class="si-chip ${bad ? 'bad' : warn ? 'warn' : ''}">${_siEsc(r.replace(/_/g, ' '))}</span>`;
+  const warn = /unattributed|ambiguous|multiple|cash|unreadable|non_usd|duplicate|not_found_caption|caption_price|price_unknown/.test(r);
+  const label = r === 'price_unknown' ? 'sale, price not stated' : r.replace(/_/g, ' ');
+  return `<span class="si-chip ${bad ? 'bad' : warn ? 'warn' : ''}">${_siEsc(label)}</span>`;
 }
 
 function _siRenderReview() {
@@ -17035,12 +17036,13 @@ function _siRenderReview() {
         </div>
         <div class="si-row" style="margin-top:0.5rem">
           ${_siFieldHTML('sold_price', 'Sold $', r.sold_price, null, 'number').replace('<input ', '<input oninput="_siSyncAsking()" ')}
-          <div class="si-field"><label>Sold price from</label>${sel('siF_sold_price_source', [['caption_explicit', 'Caption'], ['image_text', 'Text in image'], ['cash_shown', 'Cash counted'], ['reviewer', 'Reviewer']], r.sold_price_source)}</div>
+          <div class="si-field"><label>Sold price from</label>${sel('siF_sold_price_source', [['', '—'], ['caption_explicit', 'Caption'], ['image_text', 'Text in image'], ['cash_shown', 'Cash counted'], ['reviewer', 'Reviewer']], r.sold_price_source)}</div>
         </div>
         ${r.cash_bills_seen ? `<div class="si-muted" style="margin-top:0.25rem">Bills seen: ${_siEsc(r.cash_bills_seen)}</div>` : ''}
+        ${r.sold_price == null ? `<div class="si-muted" style="margin-top:0.25rem;color:#f59e0b">The post shows a sale but no amount. Enter the sold price if you know it${r.sticker_price ? ` (sticker was $${Number(r.sticker_price).toLocaleString()})` : ''}, or reject with "Price unclear".</div>` : ''}
         <div class="si-row" style="margin-top:0.5rem">
           ${_siFieldHTML('asking_price', 'Asking $', r.asking_price, null, 'number')}
-          <div class="si-field"><label>Asking price from</label>${sel('siF_asking_price_basis', [['sticker', 'Sticker'], ['caption_ask', 'Caption'], ['assumed_equal_sold', 'Same as sold'], ['reviewer', 'Reviewer']], r.asking_price_basis)}</div>
+          <div class="si-field"><label>Asking price from</label>${sel('siF_asking_price_basis', [['', '— (same as sold)'], ['sticker', 'Sticker'], ['caption_ask', 'Caption'], ['assumed_equal_sold', 'Same as sold'], ['reviewer', 'Reviewer']], r.asking_price_basis)}</div>
         </div>
         ${r.comp_median ? `<div class="si-muted" style="margin-top:0.25rem">Comp: $${Number(r.comp_median).toLocaleString()}</div>` : ''}
         <div class="si-row" style="margin-top:0.5rem">

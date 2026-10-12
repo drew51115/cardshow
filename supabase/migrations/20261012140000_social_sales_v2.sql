@@ -106,9 +106,6 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- Reject-reason vocabulary: a sticker with no sold price is 'no_sold_price'.
 UPDATE social_extractions SET reject_reason = 'no_sold_price' WHERE reject_reason = 'sticker_only';
--- Anything still in the pipeline with no sold price can never be approved.
-UPDATE social_extractions SET status = 'rejected', reject_reason = 'no_sold_price', updated_at = now()
- WHERE status IN ('pending_verify', 'pending_resolve', 'review') AND (sold_price IS NULL OR sold_price <= 0);
 
 -- ── 4. Discovery funnel on posts ─────────────────────────────────────────────
 ALTER TABLE social_posts
