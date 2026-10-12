@@ -4793,6 +4793,13 @@ overlays, no stated amount).
   post's extraction rows, resets the post to `queued` and kicks extraction. It refuses a post with
   a recorded sale, a slab in review, or purged images. The posts list now also shows each read
   post's slab outcome (e.g. "Read → rejected (no sold price)").
+- **PSA unavailable → review, not parked:** a missing `PSA_API_TOKEN` or a PSA 401/403 (account
+  not approved) now returns `unavailable` from `lookupCert()`, and the slab goes straight to review
+  as `format_only` with reason `cert_api_unavailable` ("PSA check unavailable" chip). Before, these
+  counted as transient errors and parked the slab in `pending_verify` for up to 24 hours (forever on
+  a deploy preview, where the hourly sweep doesn't run). Timeouts and 5xx are still retried.
+  The Review header shows how many slabs are parked, and "Run again" on a parked post retries the
+  stuck stage instead of re-reading the post.
 
 ## Show Configuration (Demo Data)
 - **MLP Card Show** — Oct 17-18, 2026 · Grand Hyatt Tampa Bay, FL · Code: MLPTPA (primary demo, shown to buyers without code)

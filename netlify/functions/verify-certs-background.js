@@ -69,8 +69,12 @@ async function verifyOne(db, ext) {
       await db.from('social_extractions').update({ ...patch, claimed_at: new Date().toISOString(), verify_status: 'awaiting_budget' }).eq('id', ext.id);
       return false;
     }
-    if (r.status === 'error') {
-      // Transient (timeout, 5xx, missing token): keep it queued for the sweep,
+    if (r.status === 'unavailable') {
+      console.warn(`[social-verify] PSA unavailable (${r.error}); sending ${ext.id} to review unchecked`);
+      patch.verify_status = 'format_only';
+      ext.route_reasons = [...(ext.route_reasons || []), 'cert_api_unavailable'];
+    } else if (r.status === 'error') {
+      // Transient (timeout, 5xx): keep it queued for the sweep,
       // but don't spin forever — after a day, let review handle it unverified.
       const ageH = (Date.now() - new Date(ext.created_at).getTime()) / 3600000;
       if (ageH < 24) {

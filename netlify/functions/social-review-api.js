@@ -98,6 +98,11 @@ async function queue(db, input) {
     const { count } = await db.from('social_extractions').select('id', { count: 'exact', head: true }).eq('status', s);
     counts[s] = count || 0;
   }
+  // Slabs parked waiting on the cert check (PSA error or daily limit); the
+  // hourly sweep retries them, or "Run again" under Recent posts does it now.
+  const { count: stalled } = await db.from('social_extractions').select('id', { count: 'exact', head: true })
+    .eq('status', 'pending_verify').in('verify_status', ['error', 'awaiting_budget']);
+  counts.stalled = stalled || 0;
   return P.json(200, { success: true, rows: (rows || []).map(r => ({ ...r, post: postsById[r.post_id] || null })), counts });
 }
 
@@ -111,7 +116,7 @@ async function posts(db, input) {
   // was rejected (e.g. no sold price) shows why, and whether it can run again.
   const ids = (data || []).map(p => p.id);
   const { data: exts } = ids.length
-    ? await db.from('social_extractions').select('post_id, status, reject_reason').in('post_id', ids)
+    ? await db.from('social_extractions').select('post_id, status, reject_reason, verify_status').in('post_id', ids)
     : { data: [] };
   const byPost = {};
   for (const e of exts || []) (byPost[e.post_id] = byPost[e.post_id] || []).push(e);
@@ -119,7 +124,7 @@ async function posts(db, input) {
     const rows = byPost[p.id] || [];
     return {
       ...p,
-      slabs: rows.map(r => ({ status: r.status, reject_reason: r.reject_reason })),
+      slabs: rows.map(r => ({ status: r.status, reject_reason: r.reject_reason, verify_status: r.verify_status })),
       can_rerun: RERUN_POST_STATUSES.includes(p.status) && !rows.some(r => FINAL_SLAB_STATUSES.includes(r.status) || r.status === 'review'),
     };
   });
@@ -141,6 +146,16 @@ async function rerun(db, event, postId) {
   }
   if ((exts || []).some(e => e.status === 'review')) {
     return P.json(409, { success: false, error: 'in_review', message: 'This post is waiting in Review.' });
+  }
+  // Slabs still mid-pipeline (e.g. parked on a failed cert check): retry that
+  // stage now instead of paying for a fresh read of the post.
+  const inFlight = (exts || []).filter(e => e.status === 'pending_verify' || e.status === 'pending_resolve');
+  if (inFlight.length) {
+    await db.from('social_extractions').update({ claimed_at: null, updated_at: new Date().toISOString() })
+      .eq('post_id', postId).in('status', ['pending_verify', 'pending_resolve']);
+    const stage = inFlight.some(e => e.status === 'pending_verify') ? 'verify-certs-background' : 'resolve-and-route-background';
+    await P.kickStage(P.siteBase(event), stage, { post_id: postId });
+    return P.json(200, { success: true, status: 'retrying' });
   }
   const { data: media } = await db.from('social_post_media').select('purged_at').eq('post_id', postId);
   if (post.evidence_purged_at || !media?.length || media.some(m => m.purged_at)) {

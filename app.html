@@ -16926,7 +16926,8 @@ async function siLoadQueue() {
     const c = r.counts || {};
     const countEl = document.getElementById('siReviewCount');
     if (countEl) countEl.textContent = c.review ? `(${c.review})` : '';
-    if (meta) meta.textContent = `${c.review || 0} to review · ${(c.pending_verify || 0) + (c.pending_resolve || 0)} still processing`;
+    if (meta) meta.textContent = `${c.review || 0} to review · ${(c.pending_verify || 0) + (c.pending_resolve || 0)} still processing`
+      + (c.stalled ? ` (${c.stalled} waiting on the cert check — use "Run again" under Add posts → Recent posts)` : '');
   } catch (err) {
     _siQueue = [];
     if (meta) meta.textContent = 'Could not load the queue: ' + err.message;
@@ -16969,8 +16970,8 @@ function _siFieldHTML(field, label, value, cert, type = 'text') {
 
 function _siReasonChip(r) {
   const bad = /stolen|mismatch|not_found|conflicting|outside_comp|above_sticker|cert_format/.test(r);
-  const warn = /unattributed|ambiguous|multiple|cash|unreadable|non_usd|duplicate|not_found_caption|caption_price|price_unknown/.test(r);
-  const label = r === 'price_unknown' ? 'sale, price not stated' : r.replace(/_/g, ' ');
+  const warn = /unattributed|ambiguous|multiple|cash|unreadable|non_usd|duplicate|not_found_caption|caption_price|price_unknown|cert_api/.test(r);
+  const label = { price_unknown: 'sale, price not stated', cert_api_unavailable: 'PSA check unavailable — verify the cert by hand' }[r] || r.replace(/_/g, ' ');
   return `<span class="si-chip ${bad ? 'bad' : warn ? 'warn' : ''}">${_siEsc(label)}</span>`;
 }
 
@@ -17312,6 +17313,9 @@ function _siSlabOutcome(p) {
   const s = p.slabs[0];
   const words = { review: 'in review', rejected: 'rejected', approved: 'approved', approved_offfloor: 'approved (off-floor)',
     auto_approved: 'approved', duplicate: 'merged with an existing sale', pending_verify: 'checking cert…', pending_resolve: 'checking…' };
+  if (s.status === 'pending_verify' && (s.verify_status === 'error' || s.verify_status === 'awaiting_budget')) {
+    return ` → waiting on the cert check (${s.verify_status === 'error' ? 'PSA lookup failed' : 'PSA daily limit reached'})`;
+  }
   return ` → ${_siEsc(words[s.status] || s.status)}${s.reject_reason ? ` (${_siEsc(s.reject_reason.replace(/_/g, ' '))})` : ''}`;
 }
 

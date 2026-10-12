@@ -590,7 +590,9 @@ async function lookupCert(db, grader, certNumber) {
 
   if (grader !== 'PSA') return { status: 'unsupported' };
   const token = process.env.PSA_API_TOKEN;
-  if (!token) return { status: 'error', error: 'PSA_API_TOKEN not set' };
+  // No token, or PSA refusing our account (access is still pending approval):
+  // retrying won't help, so the slab goes to review unchecked instead of waiting.
+  if (!token) return { status: 'unavailable', error: 'PSA_API_TOKEN not set' };
 
   const { data: allowed, error: budgetErr } = await db.rpc('claim_api_call', { p_key: 'psa', p_limit: PSA_DAILY_LIMIT });
   if (budgetErr) return { status: 'error', error: budgetErr.message };
@@ -604,6 +606,7 @@ async function lookupCert(db, grader, certNumber) {
       signal: controller.signal,
     });
     if (res.status === 429) return { status: 'budget' };
+    if (res.status === 401 || res.status === 403) return { status: 'unavailable', error: `PSA HTTP ${res.status}` };
     const text = await res.text();
     let data = null;
     try { data = JSON.parse(text); } catch (_) { /* non-JSON */ }
