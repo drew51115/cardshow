@@ -4787,6 +4787,12 @@ overlays, no stated amount).
   sticker, asking defaults to the sold price (`assumed_equal_sold`).
 - v2's one-off "reject rows with no sold price" UPDATE was removed, so re-running v2 can't reject
   these rows.
+- **Run again:** re-uploading the same screenshot is refused (image hash dedup), so Recent posts
+  has a "↻ Run again" button for posts that ended without a sale (rejected, multi_card, no_slab,
+  filtered_out, failed, or read with a rejected slab). `social-review-api` `rerun` deletes the
+  post's extraction rows, resets the post to `queued` and kicks extraction. It refuses a post with
+  a recorded sale, a slab in review, or purged images. The posts list now also shows each read
+  post's slab outcome (e.g. "Read → rejected (no sold price)").
 
 ## Show Configuration (Demo Data)
 - **MLP Card Show** — Oct 17-18, 2026 · Grand Hyatt Tampa Bay, FL · Code: MLPTPA (primary demo, shown to buyers without code)

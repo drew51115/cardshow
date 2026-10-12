@@ -43,6 +43,7 @@ exports.handler = async (event) => {
       case 'reject':     return await reject(db, admin, input);
       case 'duplicate':  return await duplicate(db, admin, input);
       case 'reverify':   return await reverify(db, event, input);
+      case 'rerun':      return await rerun(db, event, input.post_id);
       case 'find_sales': return await findSales(db, input);
       case 'shows':      return await listShows(db);
       case 'report':     return await report(db);
@@ -106,7 +107,52 @@ async function posts(db, input) {
     .select('id, platform, post_url, ingest_method, caption_clean, posted_at, status, reject_reason, filter_stage, filter_reason, error, created_at, distinct_slab_count')
     .neq('status', 'draft').order('created_at', { ascending: false }).limit(limit);
   if (error) throw error;
-  return P.json(200, { success: true, posts: data || [] });
+  // Attach each post's slab outcome, so a post that was read but whose slab
+  // was rejected (e.g. no sold price) shows why, and whether it can run again.
+  const ids = (data || []).map(p => p.id);
+  const { data: exts } = ids.length
+    ? await db.from('social_extractions').select('post_id, status, reject_reason').in('post_id', ids)
+    : { data: [] };
+  const byPost = {};
+  for (const e of exts || []) (byPost[e.post_id] = byPost[e.post_id] || []).push(e);
+  const out = (data || []).map(p => {
+    const rows = byPost[p.id] || [];
+    return {
+      ...p,
+      slabs: rows.map(r => ({ status: r.status, reject_reason: r.reject_reason })),
+      can_rerun: RERUN_POST_STATUSES.includes(p.status) && !rows.some(r => FINAL_SLAB_STATUSES.includes(r.status) || r.status === 'review'),
+    };
+  });
+  return P.json(200, { success: true, posts: out });
+}
+
+// Posts that finished without a usable sale can be read again, e.g. after a
+// prompt or rule change. Same images, so no re-upload (which dedup blocks).
+const RERUN_POST_STATUSES = ['extracted', 'multi_card', 'no_slab', 'rejected', 'filtered_out', 'failed'];
+const FINAL_SLAB_STATUSES = ['approved', 'approved_offfloor', 'auto_approved', 'duplicate'];
+
+async function rerun(db, event, postId) {
+  const { data: post } = await db.from('social_posts').select('id, status, evidence_purged_at').eq('id', postId).maybeSingle();
+  if (!post) return P.json(404, { success: false, error: 'post_not_found' });
+  if (!RERUN_POST_STATUSES.includes(post.status)) return P.json(409, { success: false, error: 'post_in_progress', message: 'This post is still being processed.' });
+  const { data: exts } = await db.from('social_extractions').select('status').eq('post_id', postId);
+  if ((exts || []).some(e => FINAL_SLAB_STATUSES.includes(e.status))) {
+    return P.json(409, { success: false, error: 'already_approved', message: 'A sale from this post was already recorded.' });
+  }
+  if ((exts || []).some(e => e.status === 'review')) {
+    return P.json(409, { success: false, error: 'in_review', message: 'This post is waiting in Review.' });
+  }
+  const { data: media } = await db.from('social_post_media').select('purged_at').eq('post_id', postId);
+  if (post.evidence_purged_at || !media?.length || media.some(m => m.purged_at)) {
+    return P.json(409, { success: false, error: 'evidence_purged', message: 'The screenshots for this post were already deleted.' });
+  }
+  await db.from('social_extractions').delete().eq('post_id', postId);
+  await db.from('social_posts').update({
+    status: 'queued', attempts: 0, reject_reason: null, filter_stage: null, filter_reason: null,
+    error: null, claimed_at: null, purge_after: null, updated_at: new Date().toISOString(),
+  }).eq('id', postId);
+  await P.kickStage(P.siteBase(event), 'extract-social-sale-background', { post_id: postId });
+  return P.json(200, { success: true, status: 'queued' });
 }
 
 async function loadReviewable(db, id) {

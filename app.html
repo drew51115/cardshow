@@ -17231,13 +17231,13 @@ async function _siIngest({ url, caption, files, method, applyFunnel }) {
     action: 'create', post_url: url || null, caption: caption || null,
     posted_at: _siPostedIso(), show_id: document.getElementById('siShow')?.value || null, ingest_method: method,
   });
-  if (created._status === 409) throw new Error(created.error === 'duplicate_post' ? 'This post was already submitted' : created.error);
+  if (created._status === 409) throw new Error(created.error === 'duplicate_post' ? 'This post was already submitted. To read it again, use "Run again" on it under Recent posts.' : created.error);
   const postId = created.post_id;
   try {
     for (let i = 0; i < files.length; i++) {
       const b64 = await _scanCardCompressImage(files[i]);
       const out = await _siCall('social-intake', { action: 'add_media', post_id: postId, image_index: i, image_base64: b64, media_type: 'image/jpeg' });
-      if (out._status === 409) throw new Error(out.error === 'duplicate_image' ? 'A screenshot was already submitted with another post' : (out.error === 'duplicate_post' ? 'This post was already submitted' : out.error));
+      if (out._status === 409) throw new Error(out.error === 'duplicate_image' ? 'This screenshot was already submitted. To read it again, use "Run again" on that post under Recent posts.' : (out.error === 'duplicate_post' ? 'This post was already submitted' : out.error));
     }
     const sub = await _siCall('social-intake', { action: 'submit', post_id: postId, apply_funnel: !!applyFunnel });
     if (sub._status === 409) throw new Error(sub.error);
@@ -17296,13 +17296,36 @@ async function siLoadPosts() {
       multi_card: 'Skipped: more than one card', no_slab: 'Skipped: no slab found', rejected: 'Rejected',
       filtered_out: 'Filtered out', failed: 'Failed' };
     el.innerHTML = (out.posts || []).length
-      ? `<table class="si-table"><tr><th>Submitted</th><th>Post</th><th>Status</th></tr>${out.posts.map(p => `<tr>
+      ? `<table class="si-table"><tr><th>Submitted</th><th>Post</th><th>Status</th><th></th></tr>${out.posts.map(p => `<tr>
           <td>${new Date(p.created_at).toLocaleString()}</td>
           <td>${p.post_url ? `<a href="${_siEsc(p.post_url)}" target="_blank" rel="noopener" style="color:var(--accent)">${_siEsc(p.platform)}</a>` : 'upload'} · ${_siEsc((p.caption_clean || '').slice(0, 60))}</td>
-          <td>${_siEsc(label[p.status] || p.status)}${p.reject_reason && p.status !== 'multi_card' ? ` (${_siEsc(p.reject_reason)})` : ''}${p.filter_reason ? ` (stage ${p.filter_stage}: ${_siEsc(p.filter_reason.replace(/_/g, ' '))})` : ''}${p.error && p.status !== 'extracted' ? ` <span class="si-muted">${_siEsc(p.error.slice(0, 80))}</span>` : ''}</td>
+          <td>${_siEsc(label[p.status] || p.status)}${p.reject_reason && p.status !== 'multi_card' ? ` (${_siEsc(p.reject_reason)})` : ''}${p.filter_reason ? ` (stage ${p.filter_stage}: ${_siEsc(p.filter_reason.replace(/_/g, ' '))})` : ''}${p.error && p.status !== 'extracted' ? ` <span class="si-muted">${_siEsc(p.error.slice(0, 80))}</span>` : ''}${_siSlabOutcome(p)}</td>
+          <td>${p.can_rerun ? `<button class="btn btn-ghost" style="font-size:0.72rem;white-space:nowrap" onclick="siRerunPost('${_siEsc(p.id)}', this)">↻ Run again</button>` : ''}</td>
         </tr>`).join('')}</table>`
       : '<div class="si-muted">Nothing submitted yet.</div>';
   } catch (err) { el.innerHTML = `<div class="si-muted">Could not load posts: ${_siEsc(err.message)}</div>`; }
+}
+
+// What happened to a read post's slab: "→ in review", "→ rejected (no sold price)", …
+function _siSlabOutcome(p) {
+  if (p.status !== 'extracted' || !(p.slabs || []).length) return '';
+  const s = p.slabs[0];
+  const words = { review: 'in review', rejected: 'rejected', approved: 'approved', approved_offfloor: 'approved (off-floor)',
+    auto_approved: 'approved', duplicate: 'merged with an existing sale', pending_verify: 'checking cert…', pending_resolve: 'checking…' };
+  return ` → ${_siEsc(words[s.status] || s.status)}${s.reject_reason ? ` (${_siEsc(s.reject_reason.replace(/_/g, ' '))})` : ''}`;
+}
+
+async function siRerunPost(postId, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = 'Queued…'; }
+  try {
+    const out = await _siCall('social-review-api', { action: 'rerun', post_id: postId });
+    if (out._status === 409) { showToast(out.message || out.error, 'var(--danger)'); if (btn) { btn.disabled = false; btn.textContent = '↻ Run again'; } return; }
+    showToast('Reading the post again — it will show up in Review if it qualifies');
+    setTimeout(siLoadPosts, 1500);
+  } catch (err) {
+    showToast('Run again failed: ' + err.message, 'var(--danger)');
+    if (btn) { btn.disabled = false; btn.textContent = '↻ Run again'; }
+  }
 }
 
 // ── Report ──
