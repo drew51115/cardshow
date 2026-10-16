@@ -442,6 +442,27 @@ closing. A `<div>`/`</div>` count check (or a real DOM inspection of a distant, 
 container) is worth running after any tag-balance fix here, not just the one screenshot that
 prompted it.
 
+### Add to Inventory button unreachable on iPhone (session 2026-10-16)
+Seller video (iPhone Safari): at the bottom of the Add Card form, the "Add to Inventory" button
+showed only while the seller held a drag past the end of the scroll. It snapped back under
+Safari's bottom toolbar on release, and the "+ Sell / Add" FAB covered it. The button couldn't
+be tapped. Three causes:
+1. `.card-edit-modal` used `max-height: calc(100vh - 120px)`. On iOS Safari `100vh` is the
+   viewport height with the toolbars collapsed, so the modal's bottom sat under the toolbar.
+2. The FAB (`.fab-add`, z-index 490) stacks above `.card-edit-overlay` (z-index 200) and sat
+   right on the button.
+3. The action row came at the very end of a long form, so it was only ever reachable by
+   scrolling to the bottom.
+
+Fix (CSS only): the modal height now uses `100dvh` (with `100vh` kept as the fallback) plus
+`overscroll-behavior: contain`, and the overlay pads for `env(safe-area-inset-bottom)`. The
+direct `.modal-actions` child of `.card-edit-modal` is `position: sticky; bottom: 0`, so the
+Save button stays visible while the form scrolls. This applies to Add Card, Edit Card and
+Comp Results. `body:has(.card-edit-overlay.open) .fab-add { display: none }` hides the FAB
+while one of these modals is open (needs iOS 15.4+). Checked in headless Chromium at iPhone 13
+size: the button is visible without scrolling, a tap lands on it, and the FAB is hidden while
+the modal is open and returns after it closes.
+
 ## Sport Classification — imported Sport field override (session 2026-09-14)
 
 Real bug report: several correctly-known baseball cards (Garrett Crochet, Kenny Lofton, Barry

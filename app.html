@@ -494,6 +494,9 @@
     .toast { bottom: 5.5rem; }
     /* room under the inventory list so the FAB never hides the last row */
     #view-seller { padding-bottom: 5rem; }
+    /* The FAB (z-index 490) sits above the card modals (z-index 200) and
+       landed on top of the Add to Inventory button. Hide it while one is open. */
+    body:has(.card-edit-overlay.open) .fab-add { display: none; }
   }
 
   /* ── BUYER VIEW ── */
@@ -2356,16 +2359,29 @@
     display: none; position: fixed; inset: 0;
     background: rgba(0,0,0,0.72); backdrop-filter: blur(4px);
     align-items: flex-start; justify-content: center;
-    z-index: 200; padding: 3rem 1rem 1rem;
+    z-index: 200; padding: 3rem 1rem calc(1rem + env(safe-area-inset-bottom, 0px));
   }
   .card-edit-overlay.open { display: flex; }
 
+  /* 100vh on iOS Safari is the viewport with its toolbars collapsed, so a
+     100vh-based height pushes the modal's bottom under Safari's bottom bar.
+     100dvh tracks the visible viewport; the 100vh line is the fallback for
+     browsers without dvh. */
   .card-edit-modal {
     background: var(--card); border: 1px solid var(--border);
     border-radius: 16px; width: 100%; max-width: 520px;
-    max-height: calc(100vh - 120px); overflow-y: auto;
+    max-height: calc(100vh - 120px);
+    max-height: calc(100dvh - 4rem - env(safe-area-inset-bottom, 0px));
+    overflow-y: auto; overscroll-behavior: contain;
     box-shadow: 0 24px 64px rgba(0,0,0,0.5);
     animation: cemIn 0.2s ease both;
+  }
+  /* Keep Add to Inventory / Save Changes visible while the form scrolls,
+     instead of only at the very end of a long form. */
+  .card-edit-modal > .modal-actions {
+    position: sticky; bottom: 0; z-index: 2;
+    background: var(--card); border-top: 1px solid var(--border);
+    padding-top: 0.9rem; margin-top: 0.5rem;
   }
   @keyframes cemIn {
     from { opacity:0; transform: translateY(-12px); }
