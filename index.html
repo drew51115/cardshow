@@ -131,7 +131,31 @@ nav {
   transition: color 0.15s; font-weight: 500;
 }
 .nav-links a:hover { color: var(--text); }
-.nav-cta { display: flex; gap: 0.75rem; }
+.nav-cta { display: flex; align-items: center; gap: 1.1rem; }
+.nav-signin {
+  font-size: 0.88rem; font-weight: 600; color: var(--text);
+  padding: 0.5rem 0.25rem; transition: color 0.15s;
+}
+.nav-signin:hover { color: var(--gold); }
+
+/* Mobile sticky CTA bar — appears once the hero has scrolled out of view */
+.mobile-cta-bar { display: none; }
+@media (max-width: 600px) {
+  /* The hero already shows the gold button; the nav keeps just "Sign in". */
+  .nav-get-started { display: none; }
+  .mobile-cta-bar {
+    display: flex; align-items: center; gap: 0.75rem;
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 90;
+    padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom, 0px));
+    background: rgba(7,8,12,0.94); backdrop-filter: blur(10px);
+    border-top: 1px solid var(--border);
+    transform: translateY(110%); transition: transform 0.25s ease;
+  }
+  .mobile-cta-bar.visible { transform: translateY(0); }
+  .mobile-cta-bar .btn { flex: 1; justify-content: center; padding: 0.8rem 1rem; font-size: 0.95rem; }
+  .mobile-cta-bar .nav-signin { flex: 0 0 auto; }
+  body > footer { padding-bottom: calc(5rem + env(safe-area-inset-bottom, 0px)); }
+}
 
 /* ════════════════════════════════════════
    HERO
@@ -196,23 +220,18 @@ nav {
 }
 
 .hero-ctas {
-  display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;
+  display: flex; flex-direction: column; align-items: center; gap: 1.1rem;
 }
+/* Secondary path for buyers — a text link, so the gold button is the only
+   button-shaped choice in the hero. */
+.hero-browse-link {
+  font-size: 0.95rem; color: var(--muted); font-weight: 500;
+  text-decoration: underline; text-underline-offset: 4px;
+  text-decoration-color: rgba(232,234,245,0.25);
+  transition: color 0.15s;
+}
+.hero-browse-link:hover { color: var(--text); }
 
-/* Audience pills */
-.hero-pills {
-  display: flex; gap: 0.6rem; justify-content: center; flex-wrap: wrap;
-  margin-top: 4rem;
-}
-.pill {
-  display: flex; align-items: center; gap: 0.5rem;
-  padding: 0.45rem 1rem; border-radius: 50px;
-  font-size: 0.8rem; font-weight: 500; font-family: 'DM Mono', monospace;
-  letter-spacing: 0.04em;
-}
-.pill-buyer  { background: rgba(59,130,246,0.1);  color: #60a5fa; border: 1px solid rgba(59,130,246,0.25); }
-.pill-seller { background: rgba(34,197,94,0.1);   color: #4ade80; border: 1px solid rgba(34,197,94,0.25); }
-.pill-org    { background: rgba(245,200,66,0.1);  color: var(--gold); border: 1px solid rgba(245,200,66,0.25); }
 
 /* Scroll indicator */
 .scroll-hint {
@@ -906,8 +925,8 @@ footer {
       <li><a href="/downloads/CardShow_Inventory_Template.xlsx" download style="color:var(--gold)">↓ Inventory Template</a></li>
     </ul>
     <div class="nav-cta">
-      <a href="/app" class="btn btn-outline" style="padding:0.55rem 1.2rem;font-size:0.82rem">Open Demo →</a>
-      <a href="mailto:info@getcardshow.com?subject=CardShow%20Partnership%20Inquiry" class="btn btn-gold" style="padding:0.55rem 1.2rem;font-size:0.82rem">Get in Touch</a>
+      <a href="/app" class="nav-signin">Sign in</a>
+      <a href="/app?signup=1" class="btn btn-gold nav-get-started" style="padding:0.55rem 1.2rem;font-size:0.82rem">Get started free</a>
     </div>
   </div>
 </nav>
@@ -932,18 +951,10 @@ footer {
         Show floor prices &nbsp;·&nbsp; Real transactions &nbsp;·&nbsp; Not eBay
       </p>
       <div class="hero-ctas reveal reveal-d3">
-        <a href="/app" class="btn btn-gold" style="font-size:1rem;padding:1rem 2.2rem">
-          Start for Free →
+        <a href="/app?signup=1" class="btn btn-gold" style="font-size:1rem;padding:1rem 2.2rem">
+          Get started — it's free →
         </a>
-        <a href="#how-it-works" class="btn btn-outline" style="font-size:1rem;padding:1rem 2.2rem">
-          See How It Works
-        </a>
-      </div>
-      <div class="hero-pills reveal reveal-d4">
-        <a href="#buyers" class="pill pill-buyer">🔍 Buyers</a>
-        <a href="#sellers" class="pill pill-seller">🃏 Sellers</a>
-        <a href="#organizers" class="pill pill-org">🎪 Show Organizers</a>
-        <a href="#tcg" class="pill" style="background:rgba(168,85,247,0.1);color:#c084fc;border:1px solid rgba(168,85,247,0.25)">⚡ Sports · TCG · Non-Sport</a>
+        <a href="/app?buyer=1" class="hero-browse-link">Just browsing? See a live show →</a>
       </div>
     </div>
   </div>
@@ -1041,7 +1052,7 @@ footer {
 <div style="background:rgba(245,200,66,0.05);border-top:1px solid rgba(245,200,66,0.12);border-bottom:1px solid rgba(245,200,66,0.12);padding:2rem 0;text-align:center">
   <div class="container" style="display:flex;align-items:center;justify-content:center;gap:1.5rem;flex-wrap:wrap">
     <span style="font-family:'Instrument Serif',serif;font-style:italic;font-size:1.15rem;color:var(--muted)">Ready to stop wandering and start finding?</span>
-    <a href="/app" class="btn btn-gold" style="font-size:0.9rem;padding:0.75rem 1.8rem">Start for Free →</a>
+    <a href="/app?signup=1" class="btn btn-gold" style="font-size:0.9rem;padding:0.75rem 1.8rem">Get started — it's free →</a>
   </div>
 </div>
 
@@ -1074,7 +1085,7 @@ footer {
             <li>Market value and table number on every card</li>
             <li>Message the seller on WhatsApp before you even leave home</li>
           </ul>
-          <a href="/app" class="wiy-answer-cta">Try buyer demo →</a>
+          <a href="/app?buyer=1" class="wiy-answer-cta">See a live show →</a>
         </div>
       </div>
 
@@ -1098,7 +1109,7 @@ footer {
             <li>Sales report after the show</li>
           </ul>
           <p class="wiy-answer-body">Every sale you record in CardShow is saved. Your post-show report is ready the moment doors close.</p>
-          <a href="/app" class="wiy-answer-cta">Try seller demo →</a>
+          <a href="/app?signup=1" class="wiy-answer-cta">Get started free →</a>
         </div>
       </div>
 
@@ -1403,14 +1414,6 @@ footer {
     </div>
   </div>
 </section>
-
-<!-- ════════ INLINE CTA 2 ════════ -->
-<div style="padding:2rem 0;text-align:center;border-bottom:1px solid var(--border)">
-  <div class="container" style="display:flex;align-items:center;justify-content:center;gap:1.5rem;flex-wrap:wrap">
-    <span style="font-family:'Instrument Serif',serif;font-style:italic;font-size:1.15rem;color:var(--muted)">Your next show is closer than you think.</span>
-    <a href="/app" class="btn btn-gold" style="font-size:0.9rem;padding:0.75rem 1.8rem">Start for Free →</a>
-  </div>
-</div>
 
 <!-- ════════ EVERY CATEGORY ════════ -->
 <section class="section" id="tcg">
@@ -1729,7 +1732,7 @@ footer {
             <li>See the seller's table number and contact them via WhatsApp</li>
             <li>Switch to "Find a Table" for every seller and their table</li>
           </ul>
-          <a href="/app" class="btn btn-gold" style="font-size:0.95rem;padding:0.9rem 2rem">Open Buyer Demo →</a>
+          <a href="/app?buyer=1" class="btn btn-outline" style="font-size:0.95rem;padding:0.9rem 2rem">See a Live Show →</a>
         </div>
         <div>
           <div class="mockup-frame">
@@ -1786,7 +1789,7 @@ footer {
             <li>Check Comps pulls real market prices across your inventory</li>
             <li>Mark a card sold to see the Report tab update live</li>
           </ul>
-          <a href="/app" class="btn btn-gold" style="font-size:0.95rem;padding:0.9rem 2rem">Open Seller Demo →</a>
+          <a href="/app?signup=1" class="btn btn-gold" style="font-size:0.95rem;padding:0.9rem 2rem">Get Started Free →</a>
         </div>
         <div>
           <div class="mockup-frame">
@@ -1837,7 +1840,6 @@ footer {
           </ul>
           <div style="display:flex;gap:0.75rem;flex-wrap:wrap">
             <a href="mailto:info@getcardshow.com?subject=CardShow%20Organizer%20Access" class="btn btn-gold" style="font-size:0.95rem;padding:0.9rem 2rem">Request Organizer Access →</a>
-            <a href="/app" class="btn btn-outline" style="font-size:0.95rem;padding:0.9rem 2rem">Open Demo</a>
           </div>
         </div>
         <div>
@@ -2103,15 +2105,13 @@ footer {
       Is Searchable.
     </h2>
     <p class="final-cta-sub reveal reveal-d2">
-      Try the live demo, reach out to integrate your show, or partner with us to bring CardShow to your sellers.
+      Sellers set up free in minutes. Buyers can browse a live show right now.
     </p>
     <div class="final-cta-btns reveal reveal-d3">
-      <a href="/app" class="btn btn-gold" style="font-size:1.05rem;padding:1.1rem 2.4rem">
-        Open Live Demo →
+      <a href="/app?signup=1" class="btn btn-gold" style="font-size:1.05rem;padding:1.1rem 2.4rem">
+        Get started — it's free →
       </a>
-      <a href="/seller-browse.html?seller=the_slab_lab_vegas" class="btn btn-outline" style="font-size:1.05rem;padding:1.1rem 2.4rem">
-        Browse a Seller
-      </a>
+      <a href="/app?buyer=1" class="hero-browse-link">Just browsing? See a live show →</a>
     </div>
     <div class="final-contact reveal reveal-d4">
       Show organizer or partnership inquiry? &nbsp;
@@ -2125,7 +2125,7 @@ footer {
   <div class="container footer-inner">
     <div class="footer-logo">Card<span>Show</span></div>
     <ul class="footer-links">
-      <li><a href="/app">Demo</a></li>
+      <li><a href="/app">Sign in</a></li>
       <li><a href="/seller-browse.html?seller=bleeding_ink_sports">Seller Browse</a></li>
       <li><a href="/downloads/CardShow_Inventory_Template.xlsx" download>Inventory template</a></li>
       <li><a href="mailto:info@getcardshow.com">Contact</a></li>
@@ -2133,6 +2133,12 @@ footer {
     <div class="footer-tag">⚡ Stop hunting. Start finding.</div>
   </div>
 </footer>
+
+<!-- Mobile only: shown after the hero scrolls away, hidden again over the final CTA -->
+<div class="mobile-cta-bar" id="mobileCtaBar" aria-hidden="true">
+  <a href="/app" class="nav-signin" tabindex="-1">Sign in</a>
+  <a href="/app?signup=1" class="btn btn-gold" tabindex="-1">Get started — it's free →</a>
+</div>
 
 <script>
 // ── SCROLL REVEAL ──
@@ -2151,6 +2157,25 @@ document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
 document.querySelectorAll('.hero .reveal').forEach(el => {
   setTimeout(() => el.classList.add('visible'), 100);
 });
+
+// ── MOBILE STICKY CTA BAR ──
+// Visible once the hero is off screen; hidden while the final CTA section is
+// on screen (it already has the same button).
+(function () {
+  const bar = document.getElementById('mobileCtaBar');
+  const hero = document.querySelector('.hero');
+  const finalCta = document.querySelector('.final-cta');
+  if (!bar || !hero || !('IntersectionObserver' in window)) return;
+  let heroVisible = true, finalVisible = false;
+  const update = () => {
+    const show = !heroVisible && !finalVisible;
+    bar.classList.toggle('visible', show);
+    bar.setAttribute('aria-hidden', show ? 'false' : 'true');
+    bar.querySelectorAll('a').forEach(a => a.tabIndex = show ? 0 : -1);
+  };
+  new IntersectionObserver(([e]) => { heroVisible = e.isIntersecting; update(); }).observe(hero);
+  if (finalCta) new IntersectionObserver(([e]) => { finalVisible = e.isIntersecting; update(); }).observe(finalCta);
+})();
 
 // ── TRY IT TABS ──
 function switchTryTab(tab, btn) {

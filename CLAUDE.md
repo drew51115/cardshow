@@ -11,7 +11,7 @@ CardShow is a sports card show inventory platform connecting buyers, sellers, an
 
 ## File Structure
 ```
-index.html                        → Landing/marketing page (formerly landing.html); forwards password-reset link hashes to app.html
+index.html                        → Landing/marketing page (formerly landing.html); forwards password-reset link hashes to app.html; CTAs link to app.html?signup=1 / ?buyer=1
 app.html                          → Main platform — seller/admin/buyer views (formerly index.html)
 show.html                         → Public show page (short link show.html?id=<showId>, loads from the DB; old hash-encoded links still open)
 seller-browse.html                → Buyer-facing seller storefront (QR scan destination)
@@ -441,6 +441,27 @@ remaining document* needs to stay the same, or a later, unrelated container can 
 closing. A `<div>`/`</div>` count check (or a real DOM inspection of a distant, unrelated
 container) is worth running after any tag-balance fix here, not just the one screenshot that
 prompted it.
+
+### Add to Inventory button unreachable on iPhone (session 2026-10-16)
+Seller video (iPhone Safari): at the bottom of the Add Card form, the "Add to Inventory" button
+showed only while the seller held a drag past the end of the scroll. It snapped back under
+Safari's bottom toolbar on release, and the "+ Sell / Add" FAB covered it. The button couldn't
+be tapped. Three causes:
+1. `.card-edit-modal` used `max-height: calc(100vh - 120px)`. On iOS Safari `100vh` is the
+   viewport height with the toolbars collapsed, so the modal's bottom sat under the toolbar.
+2. The FAB (`.fab-add`, z-index 490) stacks above `.card-edit-overlay` (z-index 200) and sat
+   right on the button.
+3. The action row came at the very end of a long form, so it was only ever reachable by
+   scrolling to the bottom.
+
+Fix (CSS only): the modal height now uses `100dvh` (with `100vh` kept as the fallback) plus
+`overscroll-behavior: contain`, and the overlay pads for `env(safe-area-inset-bottom)`. The
+direct `.modal-actions` child of `.card-edit-modal` is `position: sticky; bottom: 0`, so the
+Save button stays visible while the form scrolls. This applies to Add Card, Edit Card and
+Comp Results. `body:has(.card-edit-overlay.open) .fab-add { display: none }` hides the FAB
+while one of these modals is open (needs iOS 15.4+). Checked in headless Chromium at iPhone 13
+size: the button is visible without scrolling, a tap lands on it, and the FAB is hidden while
+the modal is open and returns after it closes.
 
 ## Sport Classification — imported Sport field override (session 2026-09-14)
 
@@ -2401,7 +2422,8 @@ The As Seen At section (`#social-proof`) was left exactly as it was.
 **Section order now:** Hero → marquee → The Problem → Which One Is You? → How It Works →
 For Buyers (`#buyers`) → For Sellers · ShowVision (`#sellers`) → For Sellers · Price & Sell →
 Every Category (`#tcg`) → Import + template → For Organizers (`#organizers`) → Show floor
-record → Try It Now → As Seen At → Final CTA → footer. Nav and hero-pill anchors are unchanged.
+record → Try It Now → As Seen At → Final CTA → footer. The hero pills and nav CTAs
+were replaced on 2026-10-16; see "Landing Page CTA Streamlining" below.
 
 **Merged or removed:** the three-column "One Platform, Three Audiences" block (it repeated
 Which One Is You?), the stats strip, the standalone Table Numbers, Seller Profile, Shareable
@@ -2423,6 +2445,39 @@ engagement.
 
 **Also fixed:** the page scrolled sideways on phones. `.final-cta` now has
 `overflow: hidden` (its 800px glow overflowed), and the footer stacks at ≤600px.
+
+## Landing Page CTA Streamlining (session 2026-10-16)
+Mobile feedback: the top of `index.html` showed four competing buttons. Open Demo and Start for
+Free both went to `/app` under different names. Get in Touch (a `mailto:`) had the gold
+primary style. Start for Free landed on a **Sign In** form. Returning sellers had no "Sign in"
+link at all.
+
+**One meaning per CTA type now:**
+- **Gold button = "Get started — it's free"** → `/app?signup=1`. Used in the hero, inline CTA 1,
+  the Try It Now seller panel, the final CTA, the mobile sticky bar, and the desktop nav.
+- **Text link = "Just browsing? See a live show"** → `/app?buyer=1`. Used in the hero and the final
+  CTA. The Which One Is You? buyer card and the Try It Now buyer panel (outline button) go to the
+  same place.
+- **"Sign in"** → `/app`. Shown in the nav, the sticky bar, and the footer (replaces "Demo").
+- **Organizers** keep "Request Organizer Access" / "Get in touch" (`mailto:`), inside the
+  organizer sections only.
+
+**Removed:** the nav's Open Demo and Get in Touch buttons, the hero's See How It Works button and
+its four audience pills (plus their `.hero-pills`/`.pill*` CSS), inline CTA 2, the organizer
+panel's Open Demo button, and the final CTA's Browse a Seller button.
+
+**Mobile (≤600px):** the nav shows only "Sign in" (`.nav-get-started` is hidden). A sticky bar
+(`#mobileCtaBar`) with Sign in plus the gold button slides up once the hero leaves the screen,
+and hides again while `.final-cta` is on screen. Both are driven by IntersectionObservers in the
+page script. `body > footer` gets bottom padding so the bar never covers the footer links.
+
+**app.html entry params** (handled in the init block just before the `?code=` show deep link,
+skipped when `code` is present):
+- `?signup=1` switches the auth box to sign-up mode (`toggleAuthMode()`).
+- `?buyer=1` calls `enterAsBuyer()`.
+
+Both clear the query string with `history.replaceState`. Netlify's `/app → /app.html 200`
+rewrite keeps the query string.
 
 ## Social Proof Section (#social-proof)
 Location: index.html, between the CSV-format stat row and the Final CTA / footer.
