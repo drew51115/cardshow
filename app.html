@@ -21108,6 +21108,14 @@ async function submitPasswordReset() {
 
   const params = new URLSearchParams(window.location.search);
   const code = params.get('code');
+  // Landing-page entry points: ?signup=1 opens the auth box in sign-up mode,
+  // ?buyer=1 goes straight to the buyer show picker.
+  if (!code && (params.get('signup') || params.get('buyer'))) {
+    window.history.replaceState({}, '', window.location.pathname);
+    if (params.get('buyer')) { enterAsBuyer(); return; }
+    if (authMode !== 'signup') toggleAuthMode();
+    return;
+  }
   if (!code) return; // normal login page — nothing more to do
   if (params.get('type') === 'recovery') return; // an auth link, not a show access code
 
