@@ -4395,6 +4395,49 @@
   }
   .msl-photo-retake-btn:active { border-color: var(--accent); color: var(--accent); }
 
+
+  /* ── Social Sales (admin) — see "Social Sale Ingestion" in CLAUDE.md ── */
+  .si-subtabs { display:flex; gap:0.35rem; flex-wrap:wrap; margin-bottom:0.9rem; }
+  .si-subtab { padding:0.4rem 0.8rem; border:1px solid var(--border); border-radius:999px; background:var(--surface);
+    color:var(--muted); font-size:0.78rem; font-weight:600; cursor:pointer; font-family:'DM Sans',sans-serif; }
+  .si-subtab.active { border-color:var(--accent); color:var(--accent); }
+  .si-card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:1rem; margin-bottom:0.9rem; }
+  .si-h { font-family:'Bebas Neue',sans-serif; font-size:1.15rem; letter-spacing:0.05em; color:var(--text); margin-bottom:0.6rem; }
+  .si-muted { color:var(--muted); font-size:0.78rem; }
+  .si-row { display:flex; gap:0.6rem; flex-wrap:wrap; align-items:flex-start; }
+  .si-field { display:flex; flex-direction:column; gap:0.25rem; min-width:0; flex:1 1 140px; }
+  .si-field label { font-family:'DM Mono',monospace; font-size:0.66rem; letter-spacing:0.06em; text-transform:uppercase; color:var(--muted); }
+  .si-field input, .si-field select, .si-field textarea { background:var(--surface); border:1px solid var(--border); color:var(--text);
+    border-radius:8px; padding:0.45rem 0.55rem; font-size:0.85rem; font-family:'DM Sans',sans-serif; width:100%; box-sizing:border-box; }
+  .si-field textarea { min-height:70px; resize:vertical; }
+  .si-field .si-certval { font-size:0.7rem; color:var(--muted); font-family:'DM Mono',monospace; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .si-field.si-mismatch input { border-color:rgba(239,68,68,0.8); }
+  .si-field.si-mismatch .si-certval { color:#ef4444; }
+  .si-drop { border:1.5px dashed var(--border); border-radius:10px; padding:1rem; text-align:center; color:var(--muted); font-size:0.82rem; cursor:pointer; }
+  .si-drop.drag { border-color:var(--accent); color:var(--text); }
+  .si-thumbs { display:flex; gap:0.4rem; flex-wrap:wrap; margin-top:0.5rem; }
+  .si-thumbs img { width:64px; height:64px; object-fit:cover; border-radius:6px; border:1px solid var(--border); cursor:pointer; }
+  .si-thumbs img.active { border-color:var(--accent); }
+  .si-review { display:grid; grid-template-columns:minmax(0,1.1fr) minmax(0,1fr); gap:1rem; }
+  @media (max-width: 899px) { .si-review { grid-template-columns:1fr; } }
+  .si-imgwrap { position:relative; background:#000; border-radius:10px; overflow:hidden; }
+  .si-imgwrap img { display:block; width:100%; height:auto; max-height:70vh; object-fit:contain; }
+  .si-bbox { position:absolute; border:2px solid var(--accent); box-shadow:0 0 0 9999px rgba(0,0,0,0.25); pointer-events:none; border-radius:4px; }
+  .si-caption { white-space:pre-wrap; font-size:0.82rem; color:var(--text); background:var(--surface); border:1px solid var(--border);
+    border-radius:8px; padding:0.6rem; margin-top:0.6rem; max-height:180px; overflow:auto; }
+  .si-chips { display:flex; gap:0.3rem; flex-wrap:wrap; margin:0.5rem 0; }
+  .si-chip { font-family:'DM Mono',monospace; font-size:0.66rem; padding:0.15rem 0.45rem; border-radius:999px; border:1px solid var(--border); color:var(--muted); }
+  .si-chip.warn { border-color:rgba(245,158,11,0.7); color:#f59e0b; }
+  .si-chip.bad { border-color:rgba(239,68,68,0.7); color:#ef4444; }
+  .si-chip.good { border-color:rgba(22,163,74,0.7); color:#16a34a; }
+  .si-actions { display:flex; gap:0.45rem; flex-wrap:wrap; margin-top:0.8rem; align-items:center; }
+  .si-actions .btn { font-size:0.8rem; }
+  .si-kbd { font-family:'DM Mono',monospace; font-size:0.62rem; opacity:0.7; margin-left:0.25rem; }
+  .si-table { width:100%; border-collapse:collapse; font-size:0.78rem; }
+  .si-table th, .si-table td { text-align:left; padding:0.4rem 0.5rem; border-bottom:1px solid var(--border); }
+  .si-table th { font-family:'DM Mono',monospace; font-size:0.64rem; letter-spacing:0.05em; text-transform:uppercase; color:var(--muted); font-weight:500; }
+  .si-tablewrap { overflow-x:auto; }
+  .si-nav { display:flex; align-items:center; justify-content:space-between; gap:0.5rem; margin-bottom:0.6rem; flex-wrap:wrap; }
 </style>
 </head>
 <body>
@@ -4668,9 +4711,107 @@
           <button class="admin-tab active" id="adminTabShows" onclick="switchAdminTab('shows')">
             🎪 Shows
           </button>
+          <button class="admin-tab" id="adminTabSocial" onclick="switchAdminTab('social')">
+            📥 Social Sales
+          </button>
           <button class="admin-tab" id="adminTabReport" onclick="switchAdminTab('report')" style="display:none">
             📊 Report
           </button>
+        </div>
+      </div>
+
+      <!-- ═══════════════════════════════════════════════
+           SOCIAL SALES (admin) — manual intake + review queue
+           for public show-floor sale posts. Server side lives in
+           netlify/functions/social-*.js. See CLAUDE.md
+           "Social Sale Ingestion".
+      ═══════════════════════════════════════════════ -->
+      <div id="socialIntakePanel" style="display:none">
+        <div style="margin-bottom:0.8rem">
+          <h2 style="font-family:'Bebas Neue',sans-serif;font-size:1.6rem;letter-spacing:0.06em;color:var(--text);line-height:1">Social Sales</h2>
+          <div style="font-size:0.75rem;color:var(--muted);margin-top:0.2rem">Graded show-floor sales from public posts · single slab · cash or stated price only</div>
+        </div>
+        <div class="si-subtabs">
+          <button class="si-subtab active" data-si-view="review" onclick="siShowView('review')">Review <span id="siReviewCount"></span></button>
+          <button class="si-subtab" data-si-view="intake" onclick="siShowView('intake')">Add posts</button>
+          <button class="si-subtab" data-si-view="report" onclick="siShowView('report')">Report</button>
+          <button class="si-subtab" data-si-view="setup" onclick="siShowView('setup')">Hashtags &amp; watchlist</button>
+        </div>
+
+        <!-- Review queue -->
+        <div id="siViewReview">
+          <div class="si-nav">
+            <div class="si-muted" id="siQueueMeta">Loading…</div>
+            <div style="display:flex;gap:0.4rem">
+              <button class="btn btn-ghost" style="font-size:0.75rem" onclick="siMove(-1)">← Prev<span class="si-kbd">K</span></button>
+              <button class="btn btn-ghost" style="font-size:0.75rem" onclick="siMove(1)">Next →<span class="si-kbd">J</span></button>
+              <button class="btn btn-ghost" style="font-size:0.75rem" onclick="siLoadQueue()">↻</button>
+            </div>
+          </div>
+          <div id="siReviewBody"></div>
+        </div>
+
+        <!-- Intake -->
+        <div id="siViewIntake" style="display:none">
+          <div class="si-card">
+            <div class="si-h">One post</div>
+            <div class="si-muted" style="margin-bottom:0.6rem">Paste the link if there is one, and add 1–10 screenshots of the post. The link is only kept as a reference; the screenshots are what gets read.</div>
+            <div class="si-row">
+              <div class="si-field" style="flex:2 1 260px"><label>Post URL (optional)</label><input id="siUrl" type="url" placeholder="https://www.instagram.com/p/…"></div>
+              <div class="si-field"><label>Posted</label><input id="siPostedAt" type="datetime-local"></div>
+              <div class="si-field"><label>Show (if known)</label><select id="siShow"><option value="">— Work it out —</option></select></div>
+            </div>
+            <div class="si-field" style="margin-top:0.6rem"><label>Caption (paste as written)</label><textarea id="siCaption" placeholder="Sold this PSA 10 for $1,450 at #WCHE…"></textarea></div>
+            <div class="si-drop" id="siDrop" style="margin-top:0.6rem" onclick="document.getElementById('siFiles').click()">Drop screenshots here or tap to choose</div>
+            <input type="file" id="siFiles" accept="image/*" multiple style="display:none" onchange="siAddFiles(this.files); this.value=''">
+            <div class="si-thumbs" id="siPreview"></div>
+            <div class="si-actions">
+              <button class="btn btn-primary" id="siSubmitBtn" onclick="siSubmitPost()">Submit post</button>
+              <button class="btn btn-ghost" onclick="siClearForm()">Clear</button>
+            </div>
+          </div>
+
+          <div class="si-card">
+            <div class="si-h">Bulk drop</div>
+            <div class="si-muted" style="margin-bottom:0.6rem">Each screenshot becomes its own post (no caption). Uses the Posted and Show values above.</div>
+            <label class="si-muted" style="display:flex;gap:0.4rem;align-items:center;margin-bottom:0.6rem"><input type="checkbox" id="siApplyFunnel"> Run the discovery filter first (caption + quick image check), like a hashtag find</label>
+            <button class="btn btn-ghost" onclick="document.getElementById('siBulkFiles').click()">Choose screenshots…</button>
+            <input type="file" id="siBulkFiles" accept="image/*" multiple style="display:none" onchange="siBulkDrop(this.files); this.value=''">
+            <div id="siBulkProgress" class="si-muted" style="margin-top:0.5rem"></div>
+          </div>
+
+          <div class="si-card">
+            <div class="si-nav"><div class="si-h" style="margin:0">Recent posts</div><button class="btn btn-ghost" style="font-size:0.75rem" onclick="siLoadPosts()">↻ Refresh</button></div>
+            <div class="si-tablewrap" id="siPostsTable"></div>
+          </div>
+        </div>
+
+        <!-- Report -->
+        <div id="siViewReport" style="display:none"><div id="siReportBody" class="si-muted">Loading…</div></div>
+
+        <!-- Setup -->
+        <div id="siViewSetup" style="display:none">
+          <div class="si-card">
+            <div class="si-h">Hashtags</div>
+            <div class="si-muted" style="margin-bottom:0.6rem">Show tags are active from 1 day before the show to 2 days after. General tags are always on. Instagram hashtag polling starts once Meta approves hashtag search; until then this is the registry the weekly slot planner works from.</div>
+            <div class="si-row">
+              <div class="si-field"><label>Tag</label><input id="siTag" placeholder="#wche"></div>
+              <div class="si-field"><label>Show (blank = general)</label><select id="siTagShow"><option value="">— General hobby tag —</option></select></div>
+              <label class="si-muted" style="display:flex;gap:0.35rem;align-items:center;padding-bottom:0.5rem"><input type="checkbox" id="siTagOfficial"> Official</label>
+              <button class="btn btn-primary" style="font-size:0.8rem" onclick="siAddHashtag()">Add</button>
+            </div>
+            <div class="si-tablewrap" id="siHashtagTable" style="margin-top:0.7rem"></div>
+          </div>
+          <div class="si-card">
+            <div class="si-h">Dealer watchlist</div>
+            <div class="si-muted" style="margin-bottom:0.6rem">Business/Creator accounts to poll once Instagram access is live. Never linked to sale records.</div>
+            <div class="si-row">
+              <div class="si-field" style="flex:0 1 130px"><label>Platform</label><select id="siWlPlatform"><option value="instagram">Instagram</option><option value="x">X</option></select></div>
+              <div class="si-field"><label>Account</label><input id="siWlAccount" placeholder="@dealer"></div>
+              <button class="btn btn-primary" style="font-size:0.8rem" onclick="siAddWatch()">Add</button>
+            </div>
+            <div class="si-tablewrap" id="siWatchTable" style="margin-top:0.7rem"></div>
+          </div>
         </div>
       </div>
 
@@ -12815,6 +12956,8 @@ async function signOut() {
   if (soHandle) soHandle.textContent = '';
 
   document.getElementById('adminTabBar').style.display          = 'none';
+  const _siPanel = document.getElementById('socialIntakePanel');
+  if (_siPanel) _siPanel.style.display = 'none';
   document.getElementById('sellerQrPanel').classList.remove('visible');
   document.getElementById('adminShowsPanel').style.display      = 'none';
   document.getElementById('sellerShowsPanel').style.display     = 'none';
@@ -16647,7 +16790,7 @@ function switchSellerTab(tab) {
 }
 
 // ── ADMIN TAB SYSTEM ──
-let _adminTab = 'shows'; // 'shows' (only reachable value today — see switchAdminTab())
+let _adminTab = 'shows'; // 'shows' | 'social' ('report' is unreachable — see switchAdminTab())
 
 function switchAdminTab(tab) {
   _adminTab = tab;
@@ -16661,15 +16804,22 @@ function switchAdminTab(tab) {
 
   const showsTab    = document.getElementById('adminTabShows');
   const reportTab   = document.getElementById('adminTabReport');
+  const socialTab   = document.getElementById('adminTabSocial');
   const dashboard   = document.getElementById('adminShowsDashboard');
   const invPanel    = document.getElementById('adminInventoryPanel');
   const reportPanel = document.getElementById('adminReportPanel');
+  const socialPanel = document.getElementById('socialIntakePanel');
   const tableWrap   = invPanel ? invPanel.querySelector('.table-wrap') : null;
 
-  [showsTab, reportTab].forEach(t => t && t.classList.remove('active'));
-  [dashboard, invPanel, reportPanel].forEach(p => p && (p.style.display = 'none'));
+  [showsTab, reportTab, socialTab].forEach(t => t && t.classList.remove('active'));
+  [dashboard, invPanel, reportPanel, socialPanel].forEach(p => p && (p.style.display = 'none'));
 
-  if (tab === 'report') {
+  if (tab === 'social') {
+    socialTab && socialTab.classList.add('active');
+    if (socialPanel) socialPanel.style.display = 'block';
+    siOpen();
+
+  } else if (tab === 'report') {
     reportTab && reportTab.classList.add('active');
     if (invPanel) {
       invPanel.style.display = 'block';
@@ -16690,6 +16840,586 @@ function switchAdminTab(tab) {
     if (dashboard) dashboard.style.display = 'block';
     renderAdminShowsDashboard();
   }
+}
+
+
+// ── SOCIAL SALES (admin) ─────────────────────────────────────────────
+// Manual intake + review queue for public show-floor sale posts. All data
+// goes through netlify/functions/social-intake.js and social-review-api.js
+// (service key, admin-gated). See CLAUDE.md "Social Sale Ingestion".
+let _siView = 'review';
+let _siQueue = [];          // review rows (each with .post)
+let _siIdx = 0;
+let _siImg = 0;             // image index shown for the current row
+let _siShows = null;        // [{id, name, date}] from the server (all shows)
+let _siPending = [];        // [{file, url}] screenshots staged for one post
+let _siKeysBound = false;
+
+function _siEsc(v) {
+  return String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+async function _siCall(fn, body) {
+  const { data } = await db.auth.getSession();
+  const token = data?.session?.access_token;
+  if (!token) throw new Error('Please sign in again');
+  const res = await fetch(`/.netlify/functions/${fn}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(body),
+  });
+  let out = {};
+  try { out = await res.json(); } catch (_) { /* non-JSON */ }
+  out._status = res.status;
+  if (!res.ok && res.status !== 409) throw new Error(out.message || out.error || `HTTP ${res.status}`);
+  return out;
+}
+
+function siOpen() {
+  if (!_siKeysBound) {
+    _siKeysBound = true;
+    document.addEventListener('keydown', _siKeydown);
+    const drop = document.getElementById('siDrop');
+    if (drop) {
+      drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('drag'); });
+      drop.addEventListener('dragleave', () => drop.classList.remove('drag'));
+      drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('drag'); siAddFiles(e.dataTransfer.files); });
+    }
+  }
+  const posted = document.getElementById('siPostedAt');
+  if (posted && !posted.value) {
+    const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+    posted.value = d.toISOString().slice(0, 16);
+  }
+  _siLoadShows();
+  siShowView(_siView);
+}
+
+function siShowView(view) {
+  _siView = view;
+  document.querySelectorAll('.si-subtab').forEach(b => b.classList.toggle('active', b.dataset.siView === view));
+  ['review', 'intake', 'report', 'setup'].forEach(v => {
+    const el = document.getElementById('siView' + v[0].toUpperCase() + v.slice(1));
+    if (el) el.style.display = v === view ? 'block' : 'none';
+  });
+  if (view === 'review') siLoadQueue();
+  else if (view === 'intake') siLoadPosts();
+  else if (view === 'report') siLoadReport();
+  else if (view === 'setup') { siLoadHashtags(); siLoadWatch(); }
+}
+
+async function _siLoadShows() {
+  if (_siShows) return _siShows;
+  try {
+    const r = await _siCall('social-review-api', { action: 'shows' });
+    _siShows = r.shows || [];
+  } catch (err) {
+    console.warn('[social] shows load failed:', err.message);
+    _siShows = Object.values(shows).map(s => ({ id: s.id, name: s.name, date: s.date }));
+  }
+  const opts = _siShows.map(s => `<option value="${_siEsc(s.id)}">${_siEsc(s.name)}${s.date ? ' · ' + _siEsc(s.date) : ''}</option>`).join('');
+  const intake = document.getElementById('siShow');
+  if (intake) intake.innerHTML = '<option value="">— Work it out —</option>' + opts;
+  const tag = document.getElementById('siTagShow');
+  if (tag) tag.innerHTML = '<option value="">— General hobby tag —</option>' + opts;
+  return _siShows;
+}
+
+function _siShowName(id) {
+  const s = (_siShows || []).find(x => x.id === id);
+  return s ? s.name : (id || '—');
+}
+
+// ── Review queue ──
+async function siLoadQueue() {
+  const meta = document.getElementById('siQueueMeta');
+  if (meta) meta.textContent = 'Loading…';
+  try {
+    const r = await _siCall('social-review-api', { action: 'queue', status: 'review', limit: 100 });
+    _siQueue = r.rows || [];
+    _siIdx = Math.min(_siIdx, Math.max(0, _siQueue.length - 1));
+    _siImg = _siQueue[_siIdx]?.image_index ?? 0;
+    const c = r.counts || {};
+    const countEl = document.getElementById('siReviewCount');
+    if (countEl) countEl.textContent = c.review ? `(${c.review})` : '';
+    if (meta) meta.textContent = `${c.review || 0} to review · ${(c.pending_verify || 0) + (c.pending_resolve || 0)} still processing`
+      + (c.stalled ? ` (${c.stalled} waiting on the cert check — use "Run again" under Add posts → Recent posts)` : '');
+  } catch (err) {
+    _siQueue = [];
+    if (meta) meta.textContent = 'Could not load the queue: ' + err.message;
+  }
+  _siRenderReview();
+}
+
+function siMove(delta) {
+  if (!_siQueue.length) return;
+  _siIdx = (_siIdx + delta + _siQueue.length) % _siQueue.length;
+  _siImg = _siQueue[_siIdx].image_index ?? 0;
+  _siRenderReview();
+}
+
+const _SI_CERT_MAP = { grade: 'grade', player: 'player', year: 'year', card_number: 'card_number', card_set: 'card_set', parallel: 'parallel' };
+
+function _siDiffers(field, value, cert) {
+  if (!cert || !_SI_CERT_MAP[field]) return false;
+  const c = cert[_SI_CERT_MAP[field]];
+  if (c == null || c === '' || value == null || value === '') return false;
+  const n = v => String(v).toLowerCase().replace(/^#/, '').replace(/[^a-z0-9.]/g, '');
+  if (field === 'grade') return Number(c) !== Number(value);
+  if (field === 'player' || field === 'card_set') {
+    const a = new Set(String(value).toLowerCase().split(/\W+/).filter(t => t.length > 1));
+    const b = String(c).toLowerCase().split(/\W+/).filter(t => t.length > 1);
+    return !b.some(t => a.has(t));
+  }
+  return n(value) !== n(c);
+}
+
+function _siFieldHTML(field, label, value, cert, type = 'text') {
+  const certVal = cert && _SI_CERT_MAP[field] ? cert[_SI_CERT_MAP[field]] : null;
+  const differs = _siDiffers(field, value, cert);
+  return `<div class="si-field${differs ? ' si-mismatch' : ''}">
+    <label>${label}</label>
+    <input id="siF_${field}" type="${type}" value="${_siEsc(value ?? '')}" ${type === 'number' ? 'step="any"' : ''}>
+    ${certVal != null && certVal !== '' ? `<div class="si-certval" title="${_siEsc(certVal)}">Grader: ${_siEsc(certVal)}</div>` : ''}
+  </div>`;
+}
+
+function _siReasonChip(r) {
+  const bad = /stolen|mismatch|not_found|conflicting|outside_comp|above_sticker|cert_format/.test(r);
+  const warn = /unattributed|ambiguous|multiple|cash|unreadable|non_usd|duplicate|not_found_caption|caption_price|price_unknown|cert_api/.test(r);
+  const label = { price_unknown: 'sale, price not stated', cert_api_unavailable: 'PSA check unavailable — verify the cert by hand' }[r] || r.replace(/_/g, ' ');
+  return `<span class="si-chip ${bad ? 'bad' : warn ? 'warn' : ''}">${_siEsc(label)}</span>`;
+}
+
+function _siRenderReview() {
+  const body = document.getElementById('siReviewBody');
+  if (!body) return;
+  const r = _siQueue[_siIdx];
+  if (!r) {
+    body.innerHTML = `<div class="si-card" style="text-align:center;padding:2.5rem 1rem"><div style="font-size:1.8rem">✓</div><div class="si-h" style="margin-top:0.4rem">Queue is empty</div><div class="si-muted">New posts show up here once they've been read and checked.</div></div>`;
+    return;
+  }
+  const post = r.post || {};
+  const images = post.images || [];
+  const img = images.find(i => i.index === _siImg) || images[0];
+  const bbox = Array.isArray(r.bbox) && img && img.index === r.image_index ? r.bbox : null;
+  const cert = r.verified_cert;
+  const verifyChip = {
+    verified: '<span class="si-chip good">cert verified</span>',
+    not_found: '<span class="si-chip bad">cert not found</span>',
+    unsupported_grader: '<span class="si-chip warn">no cert API for this grader</span>',
+    format_only: '<span class="si-chip warn">cert not checked</span>',
+    no_cert: '<span class="si-chip bad">no readable cert</span>',
+  }[r.verify_status] || `<span class="si-chip">${_siEsc(r.verify_status)}</span>`;
+  const showOpts = (_siShows || []).map(s => `<option value="${_siEsc(s.id)}" ${s.id === r.show_id ? 'selected' : ''}>${_siEsc(s.name)}${s.date ? ' · ' + _siEsc(s.date) : ''}</option>`).join('');
+  const sel = (id, opts, value) => `<select id="${id}">${opts.map(([v, l]) => `<option value="${v}" ${v === (value || '') ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
+
+  body.innerHTML = `
+    <div class="si-nav"><div class="si-muted">${_siIdx + 1} of ${_siQueue.length} · confidence ${r.confidence != null ? Math.round(r.confidence * 100) + '%' : '—'}${r.auto_eligible ? ' · <span style="color:#16a34a">matches the auto-approve pattern</span>' : ''}</div></div>
+    <div class="si-review">
+      <div>
+        <div class="si-imgwrap">
+          ${img?.url ? `<img src="${_siEsc(img.url)}" alt="Post image">` : '<div class="si-muted" style="padding:3rem;text-align:center">Image purged or unavailable</div>'}
+          ${bbox ? `<div class="si-bbox" style="left:${bbox[0] * 100}%;top:${bbox[1] * 100}%;width:${bbox[2] * 100}%;height:${bbox[3] * 100}%"></div>` : ''}
+        </div>
+        ${images.length > 1 ? `<div class="si-thumbs">${images.map(i => `<img src="${_siEsc(i.url)}" class="${i.index === (img && img.index) ? 'active' : ''}" onclick="_siImg=${i.index};_siRenderReview()" alt="">`).join('')}</div>` : ''}
+        <div class="si-caption">${_siEsc(post.caption_clean || '(no caption)')}</div>
+        <div class="si-muted" style="margin-top:0.4rem">
+          ${post.post_url ? `<a href="${_siEsc(post.post_url)}" target="_blank" rel="noopener" style="color:var(--accent)">Open post ↗</a> · ` : ''}
+          ${_siEsc(post.platform || '')} · ${_siEsc(post.ingest_method || '')} · posted ${post.posted_at ? new Date(post.posted_at).toLocaleString() : '—'}
+          ${post.notes ? `<br>Model notes: ${_siEsc(post.notes)}` : ''}
+        </div>
+      </div>
+      <div>
+        <div class="si-chips">${verifyChip}${r.card_match_score != null ? `<span class="si-chip ${r.card_match_score >= 0.9 ? 'good' : r.card_match_score < 0.6 ? 'bad' : 'warn'}">card match ${Math.round(r.card_match_score * 100)}%</span>` : ''}${r.stolen_flag ? '<span class="si-chip bad">⚠ stolen/lost report</span>' : ''}${(r.route_reasons || []).map(_siReasonChip).join('')}</div>
+        <div class="si-row">
+          <div class="si-field" style="flex:0 1 110px"><label>Grader</label>${sel('siF_grader', ['PSA', 'BGS', 'SGC', 'CGC', 'TAG'].map(g => [g, g]), r.grader)}</div>
+          ${_siFieldHTML('cert_number', 'Cert #', r.cert_number || r.cert_partial, null)}
+          ${_siFieldHTML('grade', 'Grade', r.grade, cert, 'number')}
+        </div>
+        <div class="si-row" style="margin-top:0.5rem">
+          ${_siFieldHTML('player', 'Player / subject', r.player, cert)}
+          ${_siFieldHTML('year', 'Year', r.year, cert)}
+        </div>
+        <div class="si-row" style="margin-top:0.5rem">
+          ${_siFieldHTML('card_set', 'Set', r.card_set, cert)}
+          ${_siFieldHTML('card_number', 'Card #', r.card_number, cert)}
+          ${_siFieldHTML('parallel', 'Parallel', r.parallel, cert)}
+        </div>
+        <div class="si-row" style="margin-top:0.5rem">
+          <div class="si-field"><label>Category</label>${sel('siF_category', [['', '—'], ...Object.keys(CATEGORY_SUBCATEGORIES).map(c => [c, c])], r.category)}</div>
+          <div class="si-field" style="flex:2 1 200px"><label>Subcategory</label><input id="siF_subcategory" list="siSubcatList" value="${_siEsc(r.subcategory || '')}"></div>
+          <datalist id="siSubcatList">${Object.values(CATEGORY_SUBCATEGORIES).flat().map(x => `<option value="${_siEsc(x)}">`).join('')}</datalist>
+        </div>
+        <div class="si-row" style="margin-top:0.5rem">
+          ${_siFieldHTML('sold_price', 'Sold $', r.sold_price, null, 'number').replace('<input ', '<input oninput="_siSyncAsking()" ')}
+          <div class="si-field"><label>Sold price from</label>${sel('siF_sold_price_source', [['', '—'], ['caption_explicit', 'Caption'], ['image_text', 'Text in image'], ['cash_shown', 'Cash counted'], ['reviewer', 'Reviewer']], r.sold_price_source)}</div>
+        </div>
+        ${r.cash_bills_seen ? `<div class="si-muted" style="margin-top:0.25rem">Bills seen: ${_siEsc(r.cash_bills_seen)}</div>` : ''}
+        ${r.sold_price == null ? `<div class="si-muted" style="margin-top:0.25rem;color:#f59e0b">The post shows a sale but no amount. Enter the sold price if you know it${r.sticker_price ? ` (sticker was $${Number(r.sticker_price).toLocaleString()})` : ''}, or reject with "Price unclear".</div>` : ''}
+        <div class="si-row" style="margin-top:0.5rem">
+          ${_siFieldHTML('asking_price', 'Asking $', r.asking_price, null, 'number')}
+          <div class="si-field"><label>Asking price from</label>${sel('siF_asking_price_basis', [['', '— (same as sold)'], ['sticker', 'Sticker'], ['caption_ask', 'Caption'], ['assumed_equal_sold', 'Same as sold'], ['reviewer', 'Reviewer']], r.asking_price_basis)}</div>
+        </div>
+        ${r.comp_median ? `<div class="si-muted" style="margin-top:0.25rem">Comp: $${Number(r.comp_median).toLocaleString()}</div>` : ''}
+        <div class="si-row" style="margin-top:0.5rem">
+          <div class="si-field" style="flex:2 1 200px"><label>Show (${_siEsc(r.show_match_method || 'unattributed')})</label><select id="siF_show_id"><option value="">— None (approves as off-floor) —</option>${showOpts}</select></div>
+          ${_siFieldHTML('sold_date', 'Sale date', r.sold_date, null, 'date')}
+        </div>
+        <div class="si-actions">
+          <button class="btn btn-primary" onclick="siApprove(false)">Approve<span class="si-kbd">A</span></button>
+          <button class="btn btn-ghost" onclick="siApprove(true)">Approve off-floor</button>
+          <select id="siRejectReason" style="background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:0.4rem;font-size:0.8rem">
+            <option value="">Reject reason…</option>
+            <option value="not_a_sale">Not a sale</option>
+            <option value="wrong_card">Wrong card</option>
+            <option value="price_unclear">Price unclear</option>
+            <option value="multi_card">More than one card</option>
+            <option value="trade">Trade</option>
+            <option value="not_graded">Not a graded slab</option>
+            <option value="spam_or_fake">Spam / fake</option>
+          </select>
+          <button class="btn btn-ghost" onclick="siReject()">Reject<span class="si-kbd">R</span></button>
+          <button class="btn btn-ghost" onclick="siFindDuplicates()">Duplicate of…<span class="si-kbd">D</span></button>
+          <button class="btn btn-ghost" onclick="siReverify()">Re-run verify</button>
+        </div>
+        <div id="siDupList" style="margin-top:0.6rem"></div>
+      </div>
+    </div>`;
+  document.getElementById('siF_asking_price_basis')?.addEventListener('change', _siSyncAsking);
+  _siSyncAsking();
+}
+
+// "Same as sold" means asking = sold (the DB enforces it), so the asking
+// input follows the sold price and can't be edited while that basis is set.
+function _siSyncAsking() {
+  const basis = document.getElementById('siF_asking_price_basis');
+  const ask = document.getElementById('siF_asking_price');
+  const sold = document.getElementById('siF_sold_price');
+  if (!basis || !ask || !sold) return;
+  const tied = basis.value === 'assumed_equal_sold';
+  ask.disabled = tied;
+  if (tied) ask.value = sold.value;
+}
+
+function _siCollectFields() {
+  const v = id => document.getElementById('siF_' + id)?.value ?? '';
+  const f = {};
+  ['grader', 'cert_number', 'grade', 'player', 'year', 'card_set', 'card_number', 'parallel', 'category', 'subcategory',
+   'sold_price', 'sold_price_source', 'asking_price', 'asking_price_basis', 'show_id', 'sold_date'].forEach(k => { f[k] = v(k); });
+  return f;
+}
+
+function _siDone(msg) {
+  _siQueue.splice(_siIdx, 1);
+  if (_siIdx >= _siQueue.length) _siIdx = Math.max(0, _siQueue.length - 1);
+  _siImg = _siQueue[_siIdx]?.image_index ?? 0;
+  const countEl = document.getElementById('siReviewCount');
+  if (countEl) countEl.textContent = _siQueue.length ? `(${_siQueue.length})` : '';
+  _siRenderReview();
+  showToast(msg);
+}
+
+async function siApprove(offfloor, force = false) {
+  const r = _siQueue[_siIdx];
+  if (!r) return;
+  const fields = _siCollectFields();
+  try {
+    const out = await _siCall('social-review-api', { action: 'approve', id: r.id, fields, offfloor, force });
+    if (out._status === 409) {
+      if (out.error === 'conflicting_price' && out.existing) {
+        const e = out.existing;
+        if (confirm(`This cert already has a sale on ${e.sold_date} at $${Number(e.sold_price).toLocaleString()}. Replace that price with $${Number(fields.sold_price).toLocaleString()}?`)) return siApprove(offfloor, true);
+        return;
+      }
+      if (out.error === 'sold_above_sticker') {
+        if (confirm(out.message || 'Sold price is above the sticker. Approve anyway?')) return siApprove(offfloor, true);
+        return;
+      }
+      showToast(out.message || out.error || 'Could not approve', 'var(--danger)');
+      return;
+    }
+    _siDone(out.merged ? 'Merged into an existing sale' : (out.offfloor ? 'Approved (off-floor)' : 'Approved'));
+  } catch (err) {
+    showToast('Approve failed: ' + err.message, 'var(--danger)');
+  }
+}
+
+async function siReject() {
+  const r = _siQueue[_siIdx];
+  if (!r) return;
+  const sel = document.getElementById('siRejectReason');
+  if (!sel?.value) { sel?.focus(); showToast('Pick a reject reason first', 'var(--danger)'); return; }
+  try {
+    await _siCall('social-review-api', { action: 'reject', id: r.id, reason: sel.value });
+    _siDone('Rejected');
+  } catch (err) { showToast('Reject failed: ' + err.message, 'var(--danger)'); }
+}
+
+async function siFindDuplicates() {
+  const r = _siQueue[_siIdx];
+  const box = document.getElementById('siDupList');
+  if (!r || !box) return;
+  const cert = document.getElementById('siF_cert_number')?.value || r.cert_number;
+  if (!cert) { box.innerHTML = '<div class="si-muted">No cert number to match on.</div>'; return; }
+  box.innerHTML = '<div class="si-muted">Looking for sales of this cert…</div>';
+  try {
+    const out = await _siCall('social-review-api', { action: 'find_sales', cert_number: cert, grader: document.getElementById('siF_grader')?.value });
+    const sales = out.sales || [];
+    box.innerHTML = sales.length
+      ? `<table class="si-table"><tr><th>Date</th><th>Sold</th><th>Show</th><th>Posts</th><th></th></tr>${sales.map(s => `<tr><td>${_siEsc(s.sold_date)}</td><td>$${Number(s.sold_price).toLocaleString()}</td><td>${_siEsc(_siShowName(s.show_id))}</td><td>${s.corroboration_count}</td><td><button class="btn btn-ghost" style="font-size:0.72rem" onclick="siMarkDuplicate('${_siEsc(s.id)}')">Same sale</button></td></tr>`).join('')}</table>`
+      : '<div class="si-muted">No recorded sale for this cert yet.</div>';
+  } catch (err) { box.innerHTML = `<div class="si-muted">Lookup failed: ${_siEsc(err.message)}</div>`; }
+}
+
+async function siMarkDuplicate(saleId) {
+  const r = _siQueue[_siIdx];
+  if (!r) return;
+  try {
+    await _siCall('social-review-api', { action: 'duplicate', id: r.id, sale_id: saleId });
+    _siDone('Marked as a duplicate');
+  } catch (err) { showToast('Failed: ' + err.message, 'var(--danger)'); }
+}
+
+async function siReverify() {
+  const r = _siQueue[_siIdx];
+  if (!r) return;
+  try {
+    const out = await _siCall('social-review-api', { action: 'reverify', id: r.id, fields: {
+      grader: document.getElementById('siF_grader')?.value,
+      cert_number: document.getElementById('siF_cert_number')?.value,
+    } });
+    if (out._status === 409 || out.success === false) { showToast(out.error || 'Could not re-run', 'var(--danger)'); return; }
+    _siDone('Sent back for verification');
+  } catch (err) { showToast(err.message === 'bad_cert_format' ? 'That cert number doesn\'t look right for this grader' : 'Failed: ' + err.message, 'var(--danger)'); }
+}
+
+function _siKeydown(e) {
+  const panel = document.getElementById('socialIntakePanel');
+  if (!panel || panel.style.display === 'none' || _siView !== 'review') return;
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const tag = (e.target.tagName || '').toLowerCase();
+  if (['input', 'textarea', 'select'].includes(tag) || e.target.isContentEditable) return;
+  const k = e.key.toLowerCase();
+  if (k === 'j') { e.preventDefault(); siMove(1); }
+  else if (k === 'k') { e.preventDefault(); siMove(-1); }
+  else if (k === 'a') { e.preventDefault(); siApprove(false); }
+  else if (k === 'r') { e.preventDefault(); siReject(); }
+  else if (k === 'd') { e.preventDefault(); siFindDuplicates(); }
+}
+
+// ── Intake ──
+function siAddFiles(files) {
+  const imgs = [...(files || [])].filter(f => /^image\//.test(f.type));
+  for (const f of imgs) {
+    if (_siPending.length >= 10) { showToast('Up to 10 screenshots per post', 'var(--danger)'); break; }
+    _siPending.push({ file: f, url: URL.createObjectURL(f) });
+  }
+  _siRenderPending();
+}
+
+function _siRenderPending() {
+  const el = document.getElementById('siPreview');
+  if (!el) return;
+  el.innerHTML = _siPending.map((p, i) => `<img src="${p.url}" title="Remove" onclick="siRemovePending(${i})" alt="">`).join('');
+}
+
+function siRemovePending(i) {
+  const [p] = _siPending.splice(i, 1);
+  if (p) URL.revokeObjectURL(p.url);
+  _siRenderPending();
+}
+
+function siClearForm() {
+  _siPending.forEach(p => URL.revokeObjectURL(p.url));
+  _siPending = [];
+  _siRenderPending();
+  ['siUrl', 'siCaption'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+}
+
+function _siPostedIso() {
+  const v = document.getElementById('siPostedAt')?.value;
+  return v ? new Date(v).toISOString() : null;
+}
+
+// create → add_media per image → submit. Returns the submit response.
+async function _siIngest({ url, caption, files, method, applyFunnel }) {
+  const created = await _siCall('social-intake', {
+    action: 'create', post_url: url || null, caption: caption || null,
+    posted_at: _siPostedIso(), show_id: document.getElementById('siShow')?.value || null, ingest_method: method,
+  });
+  if (created._status === 409) throw new Error(created.error === 'duplicate_post' ? 'This post was already submitted. To read it again, use "Run again" on it under Recent posts.' : created.error);
+  const postId = created.post_id;
+  try {
+    for (let i = 0; i < files.length; i++) {
+      const b64 = await _scanCardCompressImage(files[i]);
+      const out = await _siCall('social-intake', { action: 'add_media', post_id: postId, image_index: i, image_base64: b64, media_type: 'image/jpeg' });
+      if (out._status === 409) throw new Error(out.error === 'duplicate_image' ? 'This screenshot was already submitted. To read it again, use "Run again" on that post under Recent posts.' : (out.error === 'duplicate_post' ? 'This post was already submitted' : out.error));
+    }
+    const sub = await _siCall('social-intake', { action: 'submit', post_id: postId, apply_funnel: !!applyFunnel });
+    if (sub._status === 409) throw new Error(sub.error);
+    return sub;
+  } catch (err) {
+    _siCall('social-intake', { action: 'discard', post_id: postId }).catch(() => {});
+    throw err;
+  }
+}
+
+async function siSubmitPost() {
+  if (!_siPending.length) { showToast('Add at least one screenshot', 'var(--danger)'); return; }
+  const btn = document.getElementById('siSubmitBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Uploading…'; }
+  try {
+    await _siIngest({
+      url: document.getElementById('siUrl')?.value.trim(),
+      caption: document.getElementById('siCaption')?.value,
+      files: _siPending.map(p => p.file),
+      method: document.getElementById('siUrl')?.value.trim() ? 'manual_url' : 'manual_upload',
+    });
+    siClearForm();
+    showToast('Submitted — it will show up in Review after it has been read');
+    siLoadPosts();
+  } catch (err) {
+    showToast(err.message, 'var(--danger)');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Submit post'; }
+  }
+}
+
+async function siBulkDrop(files) {
+  const list = [...(files || [])].filter(f => /^image\//.test(f.type));
+  const prog = document.getElementById('siBulkProgress');
+  const applyFunnel = document.getElementById('siApplyFunnel')?.checked;
+  let ok = 0, dup = 0, failed = 0, filtering = 0;
+  for (let i = 0; i < list.length; i++) {
+    if (prog) prog.textContent = `Uploading ${i + 1} of ${list.length}…`;
+    try {
+      const out = await _siIngest({ files: [list[i]], method: 'bulk_drop', applyFunnel });
+      if (out.status === 'pending_filter') filtering++; else ok++;
+    } catch (err) {
+      if (/already submitted/.test(err.message)) dup++; else { failed++; console.warn('[social] bulk item failed:', err.message); }
+    }
+  }
+  if (prog) prog.textContent = `${ok} submitted${filtering ? ` · ${filtering} going through the filter (see Recent posts)` : ''}${dup ? ` · ${dup} already submitted` : ''}${failed ? ` · ${failed} failed` : ''}`;
+  siLoadPosts();
+}
+
+async function siLoadPosts() {
+  const el = document.getElementById('siPostsTable');
+  if (!el) return;
+  try {
+    const out = await _siCall('social-review-api', { action: 'posts', limit: 30 });
+    const label = { pending_filter: 'Filtering…', queued: 'Queued', extracting: 'Reading…', extracted: 'Read',
+      multi_card: 'Skipped: more than one card', no_slab: 'Skipped: no slab found', rejected: 'Rejected',
+      filtered_out: 'Filtered out', failed: 'Failed' };
+    el.innerHTML = (out.posts || []).length
+      ? `<table class="si-table"><tr><th>Submitted</th><th>Post</th><th>Status</th><th></th></tr>${out.posts.map(p => `<tr>
+          <td>${new Date(p.created_at).toLocaleString()}</td>
+          <td>${p.post_url ? `<a href="${_siEsc(p.post_url)}" target="_blank" rel="noopener" style="color:var(--accent)">${_siEsc(p.platform)}</a>` : 'upload'} · ${_siEsc((p.caption_clean || '').slice(0, 60))}</td>
+          <td>${_siEsc(label[p.status] || p.status)}${p.reject_reason && p.status !== 'multi_card' ? ` (${_siEsc(p.reject_reason)})` : ''}${p.filter_reason ? ` (stage ${p.filter_stage}: ${_siEsc(p.filter_reason.replace(/_/g, ' '))})` : ''}${p.error && p.status !== 'extracted' ? ` <span class="si-muted">${_siEsc(p.error.slice(0, 80))}</span>` : ''}${_siSlabOutcome(p)}</td>
+          <td>${p.can_rerun ? `<button class="btn btn-ghost" style="font-size:0.72rem;white-space:nowrap" onclick="siRerunPost('${_siEsc(p.id)}', this)">↻ Run again</button>` : ''}</td>
+        </tr>`).join('')}</table>`
+      : '<div class="si-muted">Nothing submitted yet.</div>';
+  } catch (err) { el.innerHTML = `<div class="si-muted">Could not load posts: ${_siEsc(err.message)}</div>`; }
+}
+
+// What happened to a read post's slab: "→ in review", "→ rejected (no sold price)", …
+function _siSlabOutcome(p) {
+  if (p.status !== 'extracted' || !(p.slabs || []).length) return '';
+  const s = p.slabs[0];
+  const words = { review: 'in review', rejected: 'rejected', approved: 'approved', approved_offfloor: 'approved (off-floor)',
+    auto_approved: 'approved', duplicate: 'merged with an existing sale', pending_verify: 'checking cert…', pending_resolve: 'checking…' };
+  if (s.status === 'pending_verify' && (s.verify_status === 'error' || s.verify_status === 'awaiting_budget')) {
+    return ` → waiting on the cert check (${s.verify_status === 'error' ? 'PSA lookup failed' : 'PSA daily limit reached'})`;
+  }
+  return ` → ${_siEsc(words[s.status] || s.status)}${s.reject_reason ? ` (${_siEsc(s.reject_reason.replace(/_/g, ' '))})` : ''}`;
+}
+
+async function siRerunPost(postId, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = 'Queued…'; }
+  try {
+    const out = await _siCall('social-review-api', { action: 'rerun', post_id: postId });
+    if (out._status === 409) { showToast(out.message || out.error, 'var(--danger)'); if (btn) { btn.disabled = false; btn.textContent = '↻ Run again'; } return; }
+    showToast('Reading the post again — it will show up in Review if it qualifies');
+    setTimeout(siLoadPosts, 1500);
+  } catch (err) {
+    showToast('Run again failed: ' + err.message, 'var(--danger)');
+    if (btn) { btn.disabled = false; btn.textContent = '↻ Run again'; }
+  }
+}
+
+// ── Report ──
+async function siLoadReport() {
+  const el = document.getElementById('siReportBody');
+  if (!el) return;
+  el.textContent = 'Loading…';
+  try {
+    const r = await _siCall('social-review-api', { action: 'report' });
+    const pct = v => v == null ? '—' : (v * 100).toFixed(1) + '%';
+    const table = (title, obj) => `<div class="si-card"><div class="si-h">${title}</div><div class="si-tablewrap"><table class="si-table">
+      <tr><th></th><th>Reviewed</th><th>Approved</th><th>Approved unedited</th><th>Rejected</th><th>Precision</th></tr>
+      ${Object.entries(obj).map(([k, b]) => `<tr><td>${_siEsc(k.replace(/_/g, ' '))}</td><td>${b.reviewed}</td><td>${b.approved}</td><td>${b.clean}</td><td>${b.rejected}</td><td>${pct(b.precision)}</td></tr>`).join('') || '<tr><td colspan="6" class="si-muted">No reviewed rows yet</td></tr>'}
+    </table></div></div>`;
+    const a = r.auto_pattern || {}, g = r.gate || {};
+    const psa = (r.budget || []).find(b => b.budget_key === 'psa');
+    el.innerHTML = `
+      <div class="si-card"><div class="si-h">Pipeline</div>
+        <div class="si-muted">Posts: ${Object.entries(r.posts || {}).map(([k, v]) => `${_siEsc(k.replace(/_/g, ' '))} ${v}`).join(' · ')}</div>
+        <div class="si-muted" style="margin-top:0.3rem">Slabs: ${Object.entries(r.extractions || {}).map(([k, v]) => `${_siEsc(k.replace(/_/g, ' '))} ${v}`).join(' · ')}</div>
+        <div class="si-muted" style="margin-top:0.3rem">Sales recorded: ${r.social_sales} · PSA lookups today: ${psa ? `${psa.used} of ${psa.daily_limit}` : '0'}</div>
+      </div>
+      <div class="si-card"><div class="si-h">Auto-approve pattern</div>
+        <div class="si-muted">${a.reviewed || 0} reviewed rows matched it · precision ${pct(a.precision)} (needs ≥98% over ≥200 rows)</div>
+        <div class="si-muted" style="margin-top:0.3rem">Auto-approve is <b style="color:${g.open ? '#16a34a' : 'var(--text)'}">${g.open ? 'ON' : 'OFF'}</b>${g.reason ? ` — ${_siEsc(g.reason)}` : ''}</div>
+      </div>
+      ${table('By sold-price source', r.by_price_source || {})}
+      ${table('By grader', r.by_grader || {})}
+      <div class="si-muted">"Approved unedited" means approved with no change to the cert, grade, card or price. Precision = approved unedited ÷ reviewed.</div>`;
+  } catch (err) { el.textContent = 'Could not load the report: ' + err.message; }
+}
+
+// ── Setup: hashtags + watchlist ──
+async function siLoadHashtags(body = { op: 'list' }) {
+  const el = document.getElementById('siHashtagTable');
+  try {
+    const out = await _siCall('social-review-api', { action: 'hashtags', ...body });
+    if (out._status === 409) showToast('That tag is already listed', 'var(--danger)');
+    const rows = out.hashtags || [];
+    if (el) el.innerHTML = rows.length
+      ? `<table class="si-table"><tr><th>Tag</th><th>Tier</th><th>Show</th><th>Active</th><th></th></tr>${rows.map(h => `<tr>
+          <td>#${_siEsc(h.tag)}${h.official ? ' <span class="si-chip good">official</span>' : ''}</td><td>${_siEsc(h.tier)}</td>
+          <td>${h.show_id ? _siEsc(_siShowName(h.show_id)) : '—'}</td><td>${h.active_from ? `${_siEsc(h.active_from)} → ${_siEsc(h.active_until)}` : 'always'}</td>
+          <td><button class="btn btn-ghost" style="font-size:0.72rem" onclick="siLoadHashtags({op:'remove',id:'${_siEsc(h.id)}'})">Remove</button></td></tr>`).join('')}</table>`
+      : '<div class="si-muted">No hashtags yet.</div>';
+  } catch (err) { if (el) el.innerHTML = `<div class="si-muted">${_siEsc(err.message)}</div>`; }
+}
+
+function siAddHashtag() {
+  const tag = document.getElementById('siTag')?.value.trim();
+  if (!tag) return;
+  siLoadHashtags({ op: 'add', tag, show_id: document.getElementById('siTagShow')?.value || null,
+    official: document.getElementById('siTagOfficial')?.checked });
+  document.getElementById('siTag').value = '';
+}
+
+async function siLoadWatch(body = { op: 'list' }) {
+  const el = document.getElementById('siWatchTable');
+  try {
+    const out = await _siCall('social-review-api', { action: 'watchlist', ...body });
+    if (out._status === 409) showToast('That account is already listed', 'var(--danger)');
+    const rows = out.watchlist || [];
+    if (el) el.innerHTML = rows.length
+      ? `<table class="si-table"><tr><th>Platform</th><th>Account</th><th></th></tr>${rows.map(w => `<tr><td>${_siEsc(w.platform)}</td><td>@${_siEsc(w.account)}</td>
+          <td><button class="btn btn-ghost" style="font-size:0.72rem" onclick="siLoadWatch({op:'remove',id:'${_siEsc(w.id)}'})">Remove</button></td></tr>`).join('')}</table>`
+      : '<div class="si-muted">No accounts yet.</div>';
+  } catch (err) { if (el) el.innerHTML = `<div class="si-muted">${_siEsc(err.message)}</div>`; }
+}
+
+function siAddWatch() {
+  const account = document.getElementById('siWlAccount')?.value.trim();
+  if (!account) return;
+  siLoadWatch({ op: 'add', platform: document.getElementById('siWlPlatform')?.value, account });
+  document.getElementById('siWlAccount').value = '';
 }
 
 // ── ADMIN SHOWS DASHBOARD ──
