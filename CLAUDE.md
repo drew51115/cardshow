@@ -37,6 +37,10 @@ js/trade-zone.js                         → Guest auth, post/board/propose/conf
 js/trade-board.js                        → Realtime board rendering + report aggregation for trade-board.html
 js/trade-share.js                        → Phase 4 canvas compositor + Web Share API for the branded trade graphic
 supabase/migrations/20260825120000_trade_zone.sql → Trade Zone schema, storage buckets, RLS, and RPC functions — run in Supabase SQL editor
+js/show-mode.js                   → Show Mode v2 (flag show_mode_v2): routing, outbox, captures, identification, all Show Mode screens — loaded by app.html before its main script (bump its ?v= on change)
+netlify/functions/cardsight-identify.js → Serverless: POST {image_base64, media_type} → CardSight catalog identification (Show Mode; runs beside scan-card.js)
+supabase/migrations/20261023120000_show_mode_sales.sql → sales + card_captures tables, private card-captures bucket, record_sale()/void_sale() — see "Show Mode v2"
+tests/show-mode/                  → Playwright + SQL tests for Show Mode (see its README)
 sw.js                             → Service worker: offline app shell (network-first app.html, cached scripts/fonts); never caches Supabase or functions — see "Show Mode v2"
 manifest.webmanifest              → Installable app manifest ("Add to Home Screen"); icons at assets/app-icon-192.png / -512.png
 qrcode.min.js                     → Self-hosted qrcodejs 1.0.0 (all QR codes); cdnjs is only a backup — see "Seller QR blank"
@@ -229,6 +233,11 @@ Required for the Getting started checklist and first-use tips to sync across a s
 `ALTER TABLE sellers ADD COLUMN IF NOT EXISTS onboarding_state jsonb;`. Until it runs,
 `loadOnboardingState()` gets a column error, logs it, and leaves syncing off. The checklist and
 tips then work exactly as before, saved per device in localStorage.
+
+Required for Show Mode v2 sales and saved photos (see "Show Mode v2" below):
+`supabase/migrations/20261023120000_show_mode_sales.sql`. Until it runs, Show Mode sales fall back
+to the classic writes (`updateCardInDB()` + `recordShowTransaction()`, not atomic, no offline
+dedup) and photos stay on the device only.
 
 Required for Trust Check via GTCR (see that section below):
 `supabase/migrations/20260925120000_gtcr_trust_check.sql`. It adds `inventory.trust_flag` and three
@@ -4613,59 +4622,113 @@ Insert one `show_floor_transactions` row from the inventory row, joining `shows`
 snapshot fields, for `inventory.id = '480b0b72-166f-46d5-8bd2-4827f3251c7f'` and
 `show_id = 'show_mv2j09jb67yk'`. Also add its `show_inventory` row if missing.
 
-## Show Mode v2 (in progress — Phase 1 shipped, session 2026-10-23)
+## Show Mode v2 (in progress — Phases 1–2 shipped, session 2026-10-23)
 
-Mobile-first seller screen for a live show, built from the "Show Mode Seller Flow" spec
+Mobile-first seller screens for a live show, built from the "Show Mode Seller Flow" spec
 (Monster Show feedback: hard-to-find mark-sold, refresh logged sellers out, case-scan timeouts).
-Lives inside `app.html` as `#showModeRoot`, a fixed full-screen layer (z-index 150: above
-`<nav>` and the inventory table, below every modal at 200+, so Add Card, the Sell Drawer,
-Profile, the Sell / Add menu etc. all open on top of it).
+`#showModeRoot` in app.html is a fixed full-screen layer (z-index 150: above `<nav>` and the
+inventory table, below every modal at 200+, so Add Card, Profile, the Sell / Add menu, the share
+card etc. still open on top). All logic lives in **`js/show-mode.js`**, loaded right before
+app.html's main script (it must load first: app.html's `updateStats()` reads `_smShowId`). Its
+CSS (`--sm-*` tokens, scoped to `#showModeRoot`) stays in app.html.
 
-**Flag:** `SHOW_MODE_V2_ENABLED = false`. Test switch `?show_mode=1` turns it on for a browser
-(`?show_mode=0` off; stored as localStorage `showModeTest`; the param is stripped from the
-URL). With the flag off nothing in Show Mode runs. Session restore and the service worker are
-**not** flagged — they apply to every seller.
+**Flag:** `SHOW_MODE_V2_ENABLED = false` (in js/show-mode.js). Test switch `?show_mode=1` (`=0`
+off; localStorage `showModeTest`; stripped from the URL). Session restore and the service worker
+are **not** flagged.
 
-**Routing:** hash `#/sm/<showId>` (`/show/*` already rewrites to show.html, so no real route).
-`smAfterShowsLoaded()` (called after `loadShowsFromDB()` in `loginAsSeller()`) reopens it after
-a refresh, or opens it on its own for a show the seller is in that runs today — unless they
-chose classic view today (`smExited:<handle>` = `showId|YYYY-MM-DD`). Entry points: nav
-`#navShowModeBtn` and a "▶ Show Mode" button on each My Shows card.
+**Routing:** hash routes `#/sm/<showId>[/inventory|/sell|/log|/confirm|/sold/<clientSaleId>|/scans]`
+(`/show/*` already rewrites to show.html). `smRoute()` on `hashchange`; `smGo(path, replace)`.
+`smAfterShowsLoaded()` (after `loadShowsFromDB()` in `loginAsSeller()`) drains the outbox and
+reopens the same screen after a refresh, or opens Show Mode itself for a show running today
+unless the seller chose classic view today (`smExited:<handle>`). The confirm screen's state
+(`_smDraft`) and the last sale are kept in sessionStorage so a refresh comes back to them.
 
-**Phase 1 (done):**
-- Tokens (`--sm-*`, scoped to `#showModeRoot`), Bricolage Grotesque + Manrope, inline-SVG
-  stroke icons, bottom nav (Show / Inventory / Sell / Sales / More).
-- Home: live banner (LIVE NOW when `_showIsToday()`, `Table N · Day n` from
-  `shows[id].tables[currentSeller]` + start date, Share link → native share or copy of
-  `_showPageUrl()`), stats (Sold today = `SoldDate` today, Sales $, In case = available cards
-  with `_shows.has(showId)`), a notice + "Add my cards" when none are on the show, hero
-  "Sell a card", Add cards / Log a manual sale / Refresh prices, last 5 sales.
-  `updateStats()` and the post-hydration step re-render it.
-- **Temporary wiring until Phase 2:** Sell → existing `openQuickActions('sell')`; Add cards →
-  `openQuickActions('add')`; Log a manual sale → `openManualSaleModal()`; Refresh prices →
-  classic inventory + `runCompCheck()` (its progress bar lives in `.table-wrap`); Inventory /
-  Sales / More → "Switch to classic view" go back to the classic seller UI.
-- Seller session restore (see Critical Note 10). "Log in" links added to show.html and
-  seller-browse.html headers.
-- `sw.js` + `manifest.webmanifest`, registered from app.html only. Only `/app` and `/app.html`
-  navigations are handled (network-first, 4s timeout, then cache); other pages are untouched.
-  Bump `CACHE` in sw.js if the shell list changes.
-- Analytics: `_smLogEvent()` writes `sm_<event>` rows to `show_events` (`show_mode_opened`,
-  `sell_started` so far).
-- Tested headless (iPhone 13 / Pixel 7, Supabase mocked): login → Show Mode, refresh keeps the
-  seller signed in on the same screen, classic view + reload stays classic, sign-out + reload
-  shows login, all Show Mode buttons ≥ 44px, no horizontal scroll, offline reload serves the
-  shell, flag off leaves the classic UI unchanged.
+### Phase 1 (done)
+Home (live banner, Sold today / Sales / In case, Sell a card, Add cards, Log a manual sale,
+Refresh prices, recent sales), bottom nav, seller session restore (Critical Note 10; also uses a
+cached handle `sellerHandle:<uid>` when the network is down, so a reload with no signal doesn't
+sign the seller out), "Log in" links on show.html / seller-browse.html, `sw.js` +
+`manifest.webmanifest` (only `/app`/`/app.html` navigations, network-first with a 4s timeout).
+
+### Phase 2 (done)
+- **Sell (screen 2, `/sell`)**: dark camera screen (getUserMedia, 5:7 guide frame, tap shutter,
+  torch when supported, "Photo" file fallback) or Search over the seller's available inventory
+  (Graded/Raw/Sealed chips). A shutter tap saves the capture **first**, then identifies. The
+  result sheet shows In your case / Not in your case, "Photo saved", market price, and Sell this
+  card / Add & sell, Wrong card? (other inventory matches + identification candidates), Add back
+  photo, Sell several (stub).
+- **Log a sale (`/log`)**: the same screen in manual mode; search adds "Type it in". Manual
+  sales create the item **and** the sale together (`inventory.source = 'manual_sale'`, ledger
+  `source = 'manual'`).
+- **Confirm (screen 3)**: price chips Asking / −5% / −10% / Other (`smChipPrice()`, whole
+  dollars), payment Cash / Venmo / Card (last used per seller, `smLastPay:<handle>`; trade is out
+  of scope), optional buyer IG handle, editable card details for a new item (the market price
+  fills Asking). **Mark sold** is optimistic: it updates `inventory[]`, queues the sale, and goes
+  straight to Sold.
+- **Sold (screen 4)**: yellow screen, CSS confetti (off with reduced motion), haptic, 5s Undo
+  toast (back to confirm with the same values), Sell next card, Share sale (opens The Drop's
+  share card with the scan as its photo), Back to show. Home's Recent sales has Undo for 10
+  minutes (ids reloaded from `sales` on open) and a "Syncing" marker while queued.
+- **Inventory (screen 5, `/inventory`)**: search, In case / Sold / All tabs, one-tap Sell, renders
+  100 rows at a time ("Show more") instead of true virtualization.
+- **Recent scans (`/scans`, More → Recent scans, Search tab)**: captures not attached to an item
+  (on this device + `card_captures` rows, signed URLs for remote ones), with Sell / Add to case
+  (asks the asking price) / Delete (soft delete).
+- **Identification**: the phone calls `scan-card.js` (Claude) and `cardsight-identify.js`
+  (CardSight) in parallel; `smMergeIdentification()` — names + year agree → high confidence,
+  catalog set/number/parallel + Claude's slab label; disagree → the other read becomes a "Wrong
+  card?" candidate. Either can fail alone. CardSight endpoint confirmed from its SDK:
+  `POST https://api.cardsight.ai/v1/identify/card`, multipart `image`, `X-API-Key` (shares
+  `CARDSIGHT_API_KEY` and its quota with comp pricing).
+- **Matching** (`smScoreMatch()`): cert # = 100; else player last name 40 (+10 full), year 20,
+  card # 20, set tokens ≤15, grader+grade ±; ≥70 counts as "In your case". A slab whose cert
+  matches an item links to it — no duplicate.
+- **Server** (migration `20261023120000_show_mode_sales.sql`, tested on local Postgres 16 with
+  `tests/show-mode/sales.test.sql`): `sales` (mutable status; read-own RLS; no client writes),
+  `card_captures` (own rows; soft delete), private `card-captures` bucket (`<uid>/<capture>/
+  crop|original|back.jpg`, own-folder policies), `record_sale()` (idempotent on
+  `client_sale_id`; marks sold or creates the item from `p_new_item`, inserting only real
+  columns; publishes to the show; attaches the capture and sets `inventory.primary_capture_id`;
+  returns `{error:'already_sold'}` for a double sale) and `void_sale()` (10-minute window on the
+  server clock; item back to Available; reversing `show_floor_transactions` row with negative
+  `sold_price` and `voids_transaction_id`). The ledger row itself is still written by the
+  client's `_insertShowTransaction()`, now carrying `client_sale_id` (unique index) so it lands
+  exactly once.
+- **Outbox** (IndexedDB `cardshow-showmode`: `captures`, `outbox`): ops `capture_row`,
+  `capture_update`, `sale`, `void`, `add_item`, replayed in order by `smDrain()` on `online`,
+  after each enqueue, and with backoff. `smApplyPendingOps()` re-applies queued sales after the
+  inventory reloads. Undoing a sale that never left the phone cancels it (a new item becomes an
+  `add_item`). Photos upload separately (`_smUploadCaptures()`); the full original is dropped
+  from the device after upload, the crop is kept for thumbnails. Canvas re-encoding strips EXIF.
+- **Fallbacks**: no `record_sale` (PGRST202) → classic `updateCardInDB()`/`insertCardToDB()` +
+  `recordShowTransaction()`/`recordManualSaleTransaction()`; no `card_captures` → photos stay
+  on the device. Both tested.
+- **Analytics** (`show_events`, `sm_*`): show_mode_opened, sell_started, card_identified,
+  sale_confirmed, manual_sale_logged, sale_undone, capture_saved, capture_attached. Dropped when
+  offline.
+- **Tests**: `tests/show-mode/` — 48 browser checks (iPhone 13 and Pixel 7), a 3-check fallback
+  run, and the SQL file. See its README.
+
+### Known gaps / deviations
+- Already-sold conflict: shows a toast and reloads the card instead of the spec's "undo the
+  other sale or keep this one?" dialog.
+- Capture photos are saved on every shutter tap (not only on a successful match), so nothing is
+  lost on a failed identification.
+- Thumbnails come only from captures on this device; seller photos from other devices and
+  CardSight stock images are Phase 4.
+- Offline reload keeps the seller signed in but shows no inventory until the network returns
+  (inventory isn't cached on the device).
+- Catalog search in manual mode is "Type it in" (no catalog autocomplete yet).
+- The classic "first sale" tip is not shown from Show Mode (its text describes the classic UI).
 
 **Decisions from the user (2026-10-23):** sellers stay signed in across refresh; seller card
 photos may be stored in a private bucket; table number from `show_sellers.table_number`; trade
-sales out of scope; social assets show the seller's handle only by opt-in. CardSight identify
-key is available — plan is to run Claude vision and CardSight identify together (see Phase 2).
+sales out of scope; social assets show the seller's handle only by opt-in; use both Claude vision
+and CardSight identify.
 
-**Remaining phases:** 2 — sale model (`record_sale`/`void_sale` RPCs with `client_sale_id`
-idempotency, void as a reversing `show_floor_transactions` row), IndexedDB outbox, scan/search
-to sell, confirm, Sold + undo, captures (private bucket), manual sale in-flow, Recent scans.
-3 — case scan A–D (per-photo resumable uploads). 4 — images, social assets, analytics, polish.
+**Remaining phases:** 3 — case scan A–D (per-photo resumable uploads; background functions vs.
+phone-driven still to decide). 4 — images (signed URLs, CardSight stock images, backfill),
+social assets (handle opt-in), remaining analytics, polish.
 
 ## Show Configuration (Demo Data)
 - **MLP Card Show** — Oct 17-18, 2026 · Grand Hyatt Tampa Bay, FL · Code: MLPTPA (primary demo, shown to buyers without code)

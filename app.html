@@ -4515,6 +4515,139 @@
   .sm-sheet-backdrop.open { display: flex; }
   .sm-sheet { width: 100%; max-width: 480px; background: var(--sm-paper); border-radius: 28px 28px 0 0; padding: 18px 16px calc(18px + env(safe-area-inset-bottom, 0px)); display: grid; gap: 8px; }
   .sm-sheet-title { font-family: var(--sm-display); font-weight: 800; font-size: 22px; margin-bottom: 4px; }
+  /* ── Show Mode v2 · Phase 2 screens ── */
+  .sm-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+  #showModeRoot.sm-dark { background: var(--sm-ink); color: #fff; }
+  #showModeRoot.sm-dark .sm-page { padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px)); }
+  .sm-thumb { object-fit: cover; }
+  img.sm-thumb { display: block; }
+  .sm-topbar { display: flex; align-items: center; justify-content: space-between; padding: calc(10px + env(safe-area-inset-top, 0px)) 0 12px; }
+  .sm-title { font-family: var(--sm-display); font-weight: 800; font-size: 22px; letter-spacing: -0.3px; }
+  .sm-title--page { margin: 4px 0 6px; }
+  .sm-row--button { width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer; }
+  .sm-row--button .sm-row-title, .sm-row--button .sm-row-meta { display: block; }
+  .sm-row-price { font-weight: 800; font-size: 15px; white-space: nowrap; }
+  .sm-row--sold { opacity: 0.7; }
+  .sm-row-btn {
+    min-height: 48px; min-width: 64px; padding: 0 16px; border-radius: 14px; flex-shrink: 0;
+    border: 2px solid var(--sm-ink); background: var(--sm-accent); font-weight: 800; font-size: 15px;
+  }
+  .sm-row-btn--ghost { background: var(--sm-surface); border-color: var(--sm-line); }
+  .sm-sync { display: inline-block; margin-left: 4px; padding: 1px 8px; border-radius: 999px; background: var(--sm-warn-bg); color: var(--sm-warn-fg); font-weight: 800; font-size: 12px; }
+  .sm-sync--dark { background: var(--sm-ink); color: var(--sm-accent); }
+  .sm-badge { display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 999px; font-weight: 800; font-size: 13px; white-space: nowrap; }
+  .sm-badge--ok { background: var(--sm-success-bg); color: var(--sm-success-fg); }
+  .sm-badge--warn { background: var(--sm-warn-bg); color: var(--sm-warn-fg); }
+  .sm-link { background: none; border: 0; min-height: 44px; padding: 0 4px; font-weight: 700; font-size: 14px; text-decoration: underline; text-underline-offset: 3px; color: var(--sm-ink) !important; }
+  .sm-link--dark { color: var(--sm-ink) !important; }
+  .sm-links { display: flex; flex-wrap: wrap; gap: 4px 14px; justify-content: center; margin-top: 6px; }
+  .sm-primary {
+    width: 100%; min-height: 60px; margin-top: 14px; border-radius: 18px; border: 2px solid var(--sm-ink);
+    background: var(--sm-accent); box-shadow: 0 4px 0 var(--sm-ink); font-family: var(--sm-display); font-weight: 800; font-size: 20px;
+  }
+  .sm-primary:active, .sm-confirm-btn:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--sm-ink); }
+  .sm-primary--ink { background: var(--sm-ink); color: var(--sm-accent) !important; box-shadow: 0 4px 0 rgba(0,0,0,0.35); }
+
+  /* Scan / search (dark) */
+  .sm-dark-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: calc(10px + env(safe-area-inset-top, 0px)) 0 8px; }
+  .sm-dark-btn { width: 44px; height: 44px; border-radius: 14px; border: 0; background: var(--sm-dark-raised); color: #fff !important; display: inline-flex; align-items: center; justify-content: center; }
+  .sm-dark-btn[aria-pressed="true"] { background: var(--sm-accent); color: var(--sm-ink) !important; }
+  .sm-dark-btn--text { width: 64px; height: 56px; flex-direction: column; gap: 2px; font-weight: 700; font-size: 12px; }
+  .sm-seg { display: inline-flex; background: var(--sm-dark-raised); border-radius: 14px; padding: 4px; }
+  .sm-seg button { min-height: 44px; min-width: 88px; border: 0; border-radius: 10px; background: transparent; color: var(--sm-muted-on-dark) !important; font-weight: 800; font-size: 15px; }
+  .sm-seg button[aria-selected="true"] { background: var(--sm-accent); color: var(--sm-ink) !important; }
+  .sm-sell-title { font-family: var(--sm-display); font-weight: 800; font-size: 22px; margin: 4px 0 10px; }
+  .sm-camera { position: relative; width: 100%; aspect-ratio: 3 / 4; max-height: 58vh; border-radius: 16px; overflow: hidden; background: var(--sm-dark-camera); }
+  .sm-camera video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .sm-guide {
+    position: absolute; left: 50%; top: 50%; width: 66%; aspect-ratio: 5 / 7; transform: translate(-50%, -50%);
+    border: 3px solid var(--sm-accent); border-radius: 14px; box-shadow: 0 0 0 9999px rgba(0,0,0,0.35); max-height: 92%;
+  }
+  .sm-camera-msg { position: absolute; left: 16px; right: 16px; bottom: 16px; text-align: center; font-weight: 700; font-size: 14px; color: #fff; }
+  .sm-camera-caption { text-align: center; color: var(--sm-muted-on-dark); font-weight: 600; font-size: 14px; margin: 10px 0 6px; }
+  .sm-shutter-row { display: flex; align-items: center; justify-content: space-between; padding: 6px 4px; }
+  .sm-shutter { width: 76px; height: 76px; border-radius: 50%; border: 5px solid #fff; background: var(--sm-accent); box-shadow: 0 0 0 3px var(--sm-ink) inset; }
+  .sm-shutter:disabled { opacity: 0.5; }
+  .sm-search-wrap { display: grid; gap: 10px; }
+  .sm-search { display: flex; align-items: center; gap: 8px; min-height: 52px; padding: 0 14px; border-radius: 14px; background: var(--sm-surface); color: var(--sm-ink); border: 1px solid var(--sm-line); }
+  .sm-search input { flex: 1; min-height: 48px; border: 0; outline: 0; background: transparent; font: 600 16px var(--sm-body); color: var(--sm-ink); min-width: 0; }
+  .sm-search--light { margin-bottom: 10px; }
+  .sm-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+  .sm-chip { min-height: 44px; padding: 0 16px; border-radius: 14px; border: 2px solid var(--sm-line); background: var(--sm-surface); color: var(--sm-ink) !important; font-weight: 800; font-size: 15px; }
+  .sm-chip[aria-pressed="true"] { background: var(--sm-accent); border-color: var(--sm-ink); }
+  .sm-chip:disabled { opacity: 0.45; }
+  .sm-chip--big { min-height: 52px; }
+  .sm-list--light .sm-row { color: var(--sm-ink); }
+  .sm-dark .sm-empty { background: var(--sm-dark-raised); border-color: var(--sm-dark-raised); color: var(--sm-muted-on-dark); }
+  .sm-sec-btn--dark { background: var(--sm-dark-raised); border-color: var(--sm-dark-raised); color: #fff !important; }
+
+  /* Result sheet */
+  .sm-sheet-card {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 3; max-width: 480px; margin: 0 auto;
+    max-height: 78vh; overflow-y: auto; background: var(--sm-paper); color: var(--sm-ink);
+    border-radius: 28px 28px 0 0; padding: 16px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+    box-shadow: 0 -8px 30px rgba(0,0,0,0.35);
+  }
+  .sm-result-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+  .sm-saved { display: inline-flex; align-items: center; gap: 4px; font-weight: 700; font-size: 13px; color: var(--sm-success-fg); }
+  .sm-saved .sm-icon { width: 16px; height: 16px; }
+  .sm-result-main { display: flex; gap: 14px; align-items: center; }
+  .sm-result-img { width: 72px; height: 100px; object-fit: cover; border-radius: 8px; background: var(--sm-placeholder); border: 1px solid var(--sm-placeholder-line); flex-shrink: 0; }
+  .sm-result-name { font-family: var(--sm-display); font-weight: 800; font-size: 20px; line-height: 1.15; }
+  .sm-spinner { width: 28px; height: 28px; margin: 16px auto 4px; border-radius: 50%; border: 3px solid var(--sm-line); border-top-color: var(--sm-ink); animation: smSpin 0.8s linear infinite; }
+  @keyframes smSpin { to { transform: rotate(360deg); } }
+
+  /* Confirm */
+  .sm-market { text-align: right; font-size: 12px; color: var(--sm-muted); font-weight: 700; display: flex; flex-direction: column; }
+  .sm-market strong { font-size: 15px; color: var(--sm-ink); }
+  .sm-hero-price { font-family: var(--sm-display); font-weight: 800; font-size: 64px; letter-spacing: -2px; line-height: 1; margin: 2px 0 12px; }
+  .sm-chip-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .sm-chip-grid--3 { grid-template-columns: repeat(3, 1fr); }
+  .sm-chip-grid .sm-chip { padding: 0 6px; }
+  .sm-field { display: flex; flex-direction: column; gap: 4px; font-weight: 700; font-size: 13px; color: var(--sm-muted); margin-top: 10px; flex: 1; min-width: 0; }
+  .sm-field input, .sm-field select { min-height: 48px; padding: 0 12px; border-radius: 12px; border: 1px solid var(--sm-line); background: var(--sm-surface); font: 600 16px var(--sm-body); color: var(--sm-ink); width: 100%; }
+  .sm-form-row { display: flex; gap: 10px; }
+  .sm-details { margin-top: 10px; background: var(--sm-surface); border: 1px solid var(--sm-line); border-radius: 14px; padding: 4px 14px 14px; }
+  .sm-details summary { min-height: 44px; display: flex; align-items: center; font-weight: 800; cursor: pointer; }
+  .sm-confirm-btn {
+    width: 100%; min-height: 64px; margin-top: 22px; border-radius: 18px; border: 2px solid var(--sm-ink);
+    background: var(--sm-ink); color: var(--sm-accent) !important; box-shadow: 0 4px 0 rgba(0,0,0,0.3);
+    font-family: var(--sm-display); font-weight: 800; font-size: 22px; display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .sm-confirm-btn:disabled { opacity: 0.4; }
+  .sm-helper { text-align: center; font-weight: 600; font-size: 13px; color: var(--sm-muted); margin-top: 10px; }
+
+  /* Sold */
+  .sm-sold { position: relative; min-height: calc(100vh - 40px); min-height: calc(100dvh - 40px); margin: 0 -16px; padding: calc(56px + env(safe-area-inset-top, 0px)) 16px 120px; background: var(--sm-accent); text-align: center; overflow: hidden; }
+  .sm-sold-check { width: 84px; height: 84px; margin: 0 auto 12px; border-radius: 50%; background: var(--sm-ink); color: var(--sm-accent); display: flex; align-items: center; justify-content: center; }
+  .sm-sold-check .sm-icon { width: 44px; height: 44px; stroke-width: 3; }
+  .sm-sold-title { font-family: var(--sm-display); font-weight: 800; font-size: 52px; letter-spacing: -1px; line-height: 1; }
+  .sm-sold-detail { font-weight: 800; font-size: 17px; margin-top: 10px; }
+  .sm-sold-sub { font-weight: 600; font-size: 15px; margin-top: 6px; }
+  .sm-sold .sm-primary { margin-top: 28px; }
+  .sm-sold-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+  .sm-sold-actions .sm-sec-btn { justify-content: center; }
+  .sm-confetti { position: absolute; inset: 0; pointer-events: none; }
+  .sm-confetti i { position: absolute; top: -12px; left: calc(var(--i) * 5.5%); width: 8px; height: 14px; border-radius: 2px; background: var(--sm-ink); opacity: 0.85; animation: smConfetti 1.6s ease-in forwards; animation-delay: calc(var(--i) * 40ms); }
+  .sm-confetti i:nth-child(3n) { background: #fff; }
+  .sm-confetti i:nth-child(4n) { width: 10px; height: 10px; border-radius: 50%; }
+  @keyframes smConfetti { to { transform: translateY(105vh) rotate(540deg); opacity: 0.9; } }
+  @media (prefers-reduced-motion: reduce) { .sm-confetti { display: none; } .sm-spinner { animation-duration: 2.4s; } }
+  .sm-toast {
+    position: absolute; left: 16px; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 4;
+    max-width: 448px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    background: var(--sm-ink); color: #fff; border-radius: 14px; padding: 8px 8px 8px 16px; font-weight: 700; font-size: 14px;
+  }
+  .sm-toast-btn { min-height: 44px; padding: 0 16px; border-radius: 10px; border: 0; background: var(--sm-accent); color: var(--sm-ink) !important; font-weight: 800; font-size: 15px; }
+
+  /* Inventory + recent scans */
+  .sm-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 12px; background: var(--sm-surface); border: 1px solid var(--sm-line); border-radius: 14px; padding: 4px; }
+  .sm-tabs button { min-height: 44px; border: 0; border-radius: 10px; background: transparent; font-weight: 800; font-size: 15px; color: var(--sm-muted) !important; }
+  .sm-tabs button[aria-selected="true"] { background: var(--sm-ink); color: #fff !important; }
+  .sm-scan-row { background: var(--sm-surface); border: 1px solid var(--sm-line); border-radius: 14px; }
+  .sm-scan-row .sm-row { border: 0; background: transparent; }
+  .sm-scan-actions { display: flex; gap: 8px; padding: 0 12px 12px; flex-wrap: wrap; }
+  .sm-scan-actions .sm-row-btn { flex: 1; }
 </style>
 </head>
 <body>
@@ -6333,23 +6466,15 @@
 <!-- ══════ SHOW MODE v2 (flag: show_mode_v2) — see CLAUDE.md "Show Mode v2" ══════ -->
 <div id="showModeRoot" role="region" aria-label="Show Mode">
   <div class="sm-scroll" id="smScroll">
-    <div class="sm-page">
-      <div class="sm-header">
-        <div class="sm-wordmark">Card<span>Show</span></div>
-        <button class="sm-icon-btn" onclick="openProfile()" aria-label="Your account">
-          <svg class="sm-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>
-        </button>
-      </div>
-      <div id="smHome"></div>
-    </div>
+    <div class="sm-page" id="smView"></div>
   </div>
-  <div class="sm-bottom-nav" role="navigation" aria-label="Show Mode">
+  <div class="sm-bottom-nav" id="smBottomNav" role="navigation" aria-label="Show Mode">
     <div class="sm-bottom-nav-inner">
-      <button class="sm-nav-item active" id="smNavShow" onclick="smGoHome()" aria-current="page">
+      <button class="sm-nav-item active" id="smNavShow" data-screen="home" onclick="smGoHome()" aria-current="page">
         <svg class="sm-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>
         <span>Show</span>
       </button>
-      <button class="sm-nav-item" onclick="smOpenClassic('inventory')">
+      <button class="sm-nav-item" data-screen="inventory" onclick="smGo('/inventory')">
         <svg class="sm-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="7" height="10" rx="1.5"/><rect x="14" y="4" width="7" height="10" rx="1.5"/><path d="M3 19h18"/></svg>
         <span>Inventory</span>
       </button>
@@ -6372,6 +6497,7 @@
   <div class="sm-sheet-backdrop" id="smMoreBackdrop" onclick="if(event.target===this)smCloseMore()">
     <div class="sm-sheet" role="dialog" aria-modal="true" aria-labelledby="smMoreTitle">
       <div class="sm-sheet-title" id="smMoreTitle">More</div>
+      <button class="sm-sec-btn" onclick="smCloseMore();smGo('/scans')">Recent scans</button>
       <button class="sm-sec-btn" onclick="smCloseMore();openProfile()">Your profile</button>
       <button class="sm-sec-btn" onclick="smCloseMore();openFeatureGuide()">Feature guide</button>
       <button class="sm-sec-btn" onclick="smCloseMore();smOpenClassic('inventory')">Switch to classic view</button>
@@ -6839,6 +6965,8 @@
   </div>
 </div>
 
+<!-- Show Mode v2 (flag show_mode_v2). Bump ?v= when it changes: the service worker caches by URL. -->
+<script src="/js/show-mode.js?v=20261023b"></script>
 <script>
 // ── STATE ──
 let inventory = [];
@@ -10225,7 +10353,7 @@ function updateStats() {
   if (soldBox) soldBox.style.display = showActive ? '' : 'none';
   if (revBox)  revBox.style.display  = showActive ? '' : 'none';
   gsRender();
-  if (_smShowId) smRenderHome();
+  if (_smShowId) smRefresh();
 }
 
 function renderBuyerGrid(rows) {
@@ -12815,7 +12943,7 @@ function loginAsSeller(handle, opts) {
       renderSellerTable(getSellerInventory());
       updateStats();
       const myCards = inventory.filter(c => c.Seller === handle);
-      if (myCards.length > 0) {
+      if (myCards.length > 0 && !restored) {
         showToast(`✓ ${myCards.length} cards loaded from your inventory`);
       }
       // Backfills card._shows from the DB — see hydrateCardShowMembership()'s
@@ -12823,7 +12951,8 @@ function loginAsSeller(handle, opts) {
       // filter to work on anything but a never-refreshed session.
       await hydrateCardShowMembership(handle);
       updateReport(); // safe even if the seller isn't on the Report tab yet
-      if (_smShowId) smRenderHome(); // "In case" depends on the card._shows just loaded
+      smApplyPendingOps(); // Show Mode: re-apply sales still waiting in the offline queue
+      if (_smShowId) smRefresh(); // "In case" depends on the card._shows just loaded
       gtcrHydrateLatestChecks(); // badges + "Registry clear" markers survive a reload
       _gsDataReady = true; // the checklist waits for real data, so returning sellers never see a false "0 done"
       gsRender();
@@ -12969,9 +13098,15 @@ async function _restoreSellerSession() {
     const { data } = await db.auth.getSession();
     const uid = data && data.session && data.session.user && data.session.user.id;
     if (!uid) return false;
+    const cacheKey = 'sellerHandle:' + uid;
     const { data: seller, error } = await db.from('sellers').select('handle').eq('id', uid).maybeSingle();
-    if (error || !seller || !seller.handle) return false;
-    loginAsSeller(seller.handle, { restored: true });
+    let handle = seller && seller.handle;
+    // No signal at the show: the lookup fails, so use the handle cached at the
+    // last good restore rather than signing the seller out.
+    if (error && !navigator.onLine) { try { handle = localStorage.getItem(cacheKey); } catch (_) {} }
+    if (!handle) return false;
+    try { localStorage.setItem(cacheKey, handle); } catch (_) {}
+    loginAsSeller(handle, { restored: true });
     return true;
   } catch (e) {
     console.warn('[auth] session restore failed', e);
@@ -21057,6 +21192,10 @@ async function _insertShowTransaction(card, showId) {
       api_eligible: true,
       data_version: 1,
     };
+    // Show Mode sales: client_sale_id makes the ledger row exactly-once (unique
+    // index), and a manual sale keeps its 'manual' provenance.
+    if (card._clientSaleId) row.client_sale_id = card._clientSaleId;
+    if (card._ledgerSource) row.source = card._ledgerSource;
 
     let { error } = await db
       .from('show_floor_transactions')
@@ -21283,289 +21422,6 @@ async function submitPasswordReset() {
     if (err) err.textContent = (e && e.message) || 'Could not update your password. Please try again.';
     btn.disabled = false; btn.textContent = 'Save New Password →';
   }
-}
-
-// ══════ SHOW MODE v2 — Phase 1 (flag: show_mode_v2) ══════
-// Mobile-first seller screen for a live show. See CLAUDE.md "Show Mode v2".
-// Off by default. Test switch: ?show_mode=1 turns it on for this browser,
-// ?show_mode=0 turns it back off (remembered in localStorage, like the GTCR
-// consent switch). With the flag off nothing here runs and the classic seller
-// UI is unchanged.
-const SHOW_MODE_V2_ENABLED = false;
-const SHOW_MODE_TEST_KEY = 'showModeTest';
-function _smTestOverride() {
-  try {
-    const url = new URL(location.href);
-    const p = url.searchParams.get('show_mode');
-    if (p === '1') localStorage.setItem(SHOW_MODE_TEST_KEY, '1');
-    else if (p === '0') localStorage.removeItem(SHOW_MODE_TEST_KEY);
-    if (p !== null) {
-      url.searchParams.delete('show_mode');
-      history.replaceState(null, '', url.pathname + url.search + url.hash);
-    }
-    return localStorage.getItem(SHOW_MODE_TEST_KEY) === '1';
-  } catch (_) {
-    return false;
-  }
-}
-const SHOW_MODE_ON = SHOW_MODE_V2_ENABLED || _smTestOverride();
-function smIsEnabled() { return SHOW_MODE_ON; }
-
-var _smShowId = null; // show Show Mode is open for; var, not let — updateStats() reads it and may run before this line
-const SM_HASH_RE = /^#\/sm\/([^/?#]+)/;
-
-const SM_ICON = {
-  scan:    '<path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><rect x="8.5" y="7.5" width="7" height="9" rx="1"/>',
-  plus:    '<path d="M12 5v14M5 12h14"/>',
-  pen:     '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',
-  refresh: '<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/>',
-  share:   '<path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"/><path d="M12 3v12M7 8l5-5 5 5"/>',
-  chev:    '<path d="M9 6l6 6-6 6"/>',
-};
-function _smIcon(name, cls) {
-  return `<svg class="sm-icon ${cls || ''}" viewBox="0 0 24 24" aria-hidden="true">${SM_ICON[name]}</svg>`;
-}
-
-function _smAuthorizedShows() {
-  return Object.values(shows).filter(s => s.sellers instanceof Set && s.sellers.has(currentSeller));
-}
-
-// Which show to open when the seller doesn't pick one: the active show, then
-// one running today.
-function _smDefaultShowId() {
-  const mine = _smAuthorizedShows();
-  if (activeShowId && mine.some(s => s.id === activeShowId)) return activeShowId;
-  const today = mine.find(s => _showIsToday(s));
-  return today ? today.id : null;
-}
-
-// Nav button + per-show "Show Mode" buttons. Called after login and after
-// shows load.
-function smUpdateEntryPoints() {
-  const btn = document.getElementById('navShowModeBtn');
-  if (!btn) return;
-  btn.style.display = (smIsEnabled() && currentRole === 'seller' && _smAuthorizedShows().length) ? '' : 'none';
-}
-
-function smOpenFromNav() {
-  const id = _smDefaultShowId() || (_smAuthorizedShows()[0] || {}).id;
-  if (id) openShowMode(id);
-  else showToast('You haven\'t been added to a show yet', 'gold');
-}
-
-// Runs once shows{} is loaded on seller login. Reopens Show Mode after a
-// refresh (#/sm/<showId> in the URL), or opens it on its own when a show the
-// seller is in runs today, unless they switched to classic view today.
-function smAfterShowsLoaded() {
-  smUpdateEntryPoints();
-  if (!smIsEnabled() || currentRole !== 'seller') return;
-  const m = location.hash.match(SM_HASH_RE);
-  if (m) {
-    const id = decodeURIComponent(m[1]);
-    if (_smAuthorizedShows().some(s => s.id === id)) { openShowMode(id); return; }
-    _smClearHash();
-  }
-  const id = _smDefaultShowId();
-  if (id && _smExitedToday() !== id) openShowMode(id);
-}
-
-function _smExitKey() { return 'smExited:' + currentSeller; }
-function _smExitedToday() {
-  try {
-    const [id, day] = (localStorage.getItem(_smExitKey()) || '').split('|');
-    return day === _todayISO() ? id : null;
-  } catch (_) { return null; }
-}
-
-function _smClearHash() {
-  if (SM_HASH_RE.test(location.hash)) history.replaceState(null, '', location.pathname + location.search);
-}
-
-function openShowMode(showId) {
-  if (!smIsEnabled() || !shows[showId]) return;
-  _smShowId = showId;
-  try { localStorage.removeItem(_smExitKey()); } catch (_) {}
-  history.replaceState(null, '', location.pathname + location.search + '#/sm/' + encodeURIComponent(showId));
-  document.getElementById('showModeRoot').classList.add('open');
-  document.body.classList.add('sm-open');
-  if (typeof closeHelpMenu === 'function') closeHelpMenu();
-  smRenderHome();
-  _smLogEvent('show_mode_opened', {});
-}
-
-// remember: true when the seller chose classic view (so it doesn't reopen
-// itself again today). Sign-out and admin login close it without remembering.
-function closeShowMode(opts) {
-  const root = document.getElementById('showModeRoot');
-  if (!root) return;
-  if (opts && opts.remember && _smShowId) {
-    try { localStorage.setItem(_smExitKey(), _smShowId + '|' + _todayISO()); } catch (_) {}
-  }
-  smCloseMore();
-  root.classList.remove('open');
-  document.body.classList.remove('sm-open');
-  _smShowId = null;
-  _smClearHash();
-}
-
-function smGoHome() {
-  smCloseMore();
-  document.getElementById('smScroll').scrollTop = 0;
-  smRenderHome();
-}
-
-// Inventory / Sales tabs and "classic view" go back to the existing seller UI
-// until Phase 2 builds the Show Mode versions.
-function smOpenClassic(tab) {
-  closeShowMode({ remember: true });
-  switchSellerTab(tab === 'report' ? 'report' : 'inventory');
-  window.scrollTo(0, 0);
-}
-
-// Phase 1: the Sell button opens the existing Sell menu (search your
-// inventory, or Scan to Sell for a card that isn't in it). Phase 2 replaces
-// this with the Show Mode scan/search screen.
-function smStartSell(entry) {
-  _smLogEvent('sell_started', { entry });
-  openQuickActions('sell');
-}
-
-function smOpenMore()  { document.getElementById('smMoreBackdrop').classList.add('open'); }
-function smCloseMore() { const b = document.getElementById('smMoreBackdrop'); if (b) b.classList.remove('open'); }
-
-function smRefreshPrices() {
-  const cards = getSellerInventory().filter(r => r.Status !== 'Sold' && r._shows instanceof Set && r._shows.has(_smShowId));
-  const list = cards.length ? cards : getSellerInventory().filter(r => r.Status !== 'Sold');
-  if (!list.length) { showToast('No cards to price yet', 'gold'); return; }
-  // The comp check's progress bar lives in the inventory view, so go there.
-  smOpenClassic('inventory');
-  runCompCheck(list);
-}
-
-async function smShareShowLink() {
-  const show = shows[_smShowId];
-  if (!show) return;
-  const url = _showPageUrl(show.id);
-  if (navigator.share) {
-    try { await navigator.share({ title: show.name, url }); return; }
-    catch (e) { if (e && e.name === 'AbortError') return; }
-  }
-  try { await navigator.clipboard.writeText(url); showToast('Show link copied'); }
-  catch (_) { showToast(url); }
-}
-
-// "Day 2" of a multi-day show, or null when the show isn't running today.
-function _smShowDay(show) {
-  if (!_showIsToday(show)) return null;
-  const startISO = show.startDate || _showDateISO(show);
-  if (!startISO) return 1;
-  const start = new Date(startISO + 'T00:00:00');
-  const today = new Date(_todayISO() + 'T00:00:00');
-  return Math.round((today - start) / 86400000) + 1;
-}
-
-function _smSaleDate(r) {
-  const key = _txSortKey(r);
-  if (!key) return null;
-  const d = new Date(key);
-  return isNaN(d) ? null : d;
-}
-
-function _smRelTime(d) {
-  if (!d) return '';
-  const mins = Math.round((Date.now() - d.getTime()) / 60000);
-  if (mins < 1)  return 'just now';
-  if (mins < 60) return mins + 'm ago';
-  if (mins < 24 * 60 && d.toLocaleDateString('en-CA') === _todayISO()) return Math.round(mins / 60) + 'h ago';
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-}
-
-function _smMoney(n) {
-  return '$' + Math.round(Number(n) || 0).toLocaleString();
-}
-
-function smRenderHome() {
-  const el = document.getElementById('smHome');
-  const show = shows[_smShowId];
-  if (!el || !show) return;
-  const esc = _escHtml;
-  const today = _todayISO();
-  const mine = getSellerInventory();
-  const soldToday = mine.filter(r => r.Status === 'Sold' && r.SoldDate === today);
-  const salesTotal = soldToday.reduce((s, r) => s + (Number(r.SoldPrice) || 0), 0);
-  const available = mine.filter(r => r.Status !== 'Sold');
-  const inCase = available.filter(r => r._shows instanceof Set && r._shows.has(show.id)).length;
-
-  const day = _smShowDay(show);
-  const table = show.tables && show.tables[currentSeller];
-  const metaBits = [];
-  if (table) metaBits.push('Table ' + esc(table));
-  metaBits.push(day ? 'Day ' + day : esc(show.date || ''));
-  const live = !!day;
-
-  const recent = mine.filter(r => r.Status === 'Sold')
-    .sort((a, b) => _txSortKey(b).localeCompare(_txSortKey(a)))
-    .slice(0, 5);
-  const recentHTML = recent.length ? recent.map(r => {
-    const name = r.Player || r['Card Title'] || 'Card';
-    const grade = r.Grader ? `${r.Grader} ${r.Grade || ''}`.trim() : (r.Grade ? r.Grade : 'Raw');
-    const meta = [_smMoney(r.SoldPrice), r.PaymentMethod, _smRelTime(_smSaleDate(r))].filter(Boolean).map(esc).join(' · ');
-    return `<div class="sm-row">
-      <div class="sm-thumb" aria-hidden="true"></div>
-      <div class="sm-row-body">
-        <div class="sm-row-title">${esc(name)} · ${esc(grade)}</div>
-        <div class="sm-row-meta">${meta}</div>
-      </div>
-    </div>`;
-  }).join('') : '<div class="sm-empty">No sales yet. Your sales show up here.</div>';
-
-  const notice = (!inCase && available.length) ? `
-    <div class="sm-notice">
-      Your cards aren't on this show yet, so buyers can't see them.
-      <div><button class="sm-notice-btn" onclick="sellerPublishToShow('${esc(show.id)}')">Add my cards to this show</button></div>
-    </div>` : '';
-
-  el.innerHTML = `
-    <div class="sm-live">
-      <div class="sm-live-top">
-        <span class="sm-live-tag ${live ? '' : 'off'}"><span class="sm-live-dot" aria-hidden="true"></span>${live ? 'Live now' : 'Not live today'}</span>
-        <button class="sm-share-btn" onclick="smShareShowLink()">${_smIcon('share')}Share link</button>
-      </div>
-      <div class="sm-live-name">${esc(show.name)}</div>
-      <div class="sm-live-meta">${metaBits.join(' · ')}</div>
-    </div>
-    <div class="sm-stats" aria-live="polite">
-      <div class="sm-stat"><div class="sm-stat-num">${soldToday.length}</div><div class="sm-stat-label">Sold today</div></div>
-      <div class="sm-stat"><div class="sm-stat-num">${_smMoney(salesTotal)}</div><div class="sm-stat-label">Sales</div></div>
-      <div class="sm-stat"><div class="sm-stat-num">${inCase}</div><div class="sm-stat-label">In case</div></div>
-    </div>
-    ${notice}
-    <button class="sm-hero" onclick="smStartSell('home_cta')">
-      <span class="sm-hero-tile">${_smIcon('scan')}</span>
-      <span>
-        <span class="sm-hero-title" style="display:block">Sell a card</span>
-        <span class="sm-hero-sub" style="display:block">Scan it or search it. Done in 3 taps.</span>
-      </span>
-    </button>
-    <div class="sm-secondary">
-      <button class="sm-sec-btn" onclick="openQuickActions('add')">${_smIcon('plus')}Add cards${_smIcon('chev', 'sm-chev')}</button>
-      <button class="sm-sec-btn" onclick="openManualSaleModal()">${_smIcon('pen')}Log a manual sale${_smIcon('chev', 'sm-chev')}</button>
-      <button class="sm-sec-btn" onclick="smRefreshPrices()">${_smIcon('refresh')}Refresh prices${_smIcon('chev', 'sm-chev')}</button>
-    </div>
-    <div class="sm-section-label">Recent sales</div>
-    <div class="sm-list">${recentHTML}</div>`;
-}
-
-// Analytics: Show Mode events go to show_events (no third-party client).
-// Fire-and-forget; never blocks the UI.
-function _smLogEvent(type, data) {
-  if (typeof db === 'undefined' || !_smShowId) return;
-  const device = window.matchMedia('(max-width: 767px)').matches ? 'mobile' : 'desktop';
-  db.from('show_events').insert({
-    show_id: _smShowId,
-    event_type: 'sm_' + type,
-    event_data: Object.assign({ seller: currentSeller, device }, data || {}),
-  }).then(({ error }) => { if (error) console.warn('[show-mode] event log failed', error.message); });
 }
 
 // Page load: restore a signed-in seller, otherwise show the login page (clearing
