@@ -5,6 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
 <title>CardShow — Unified Inventory Platform</title>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,500;0,9..40,700;1,9..40,300&display=swap" rel="stylesheet">
+<!-- Show Mode v2 fonts (scoped to #showModeRoot) -->
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet">
+<!-- Installable app ("Add to Home Screen") + offline shell — see sw.js -->
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/assets/app-icon-192.png">
+<meta name="theme-color" content="#07080c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
+  }
+</script>
 
 <!-- Supabase client -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -4395,6 +4407,114 @@
   }
   .msl-photo-retake-btn:active { border-color: var(--accent); color: var(--accent); }
 
+
+  /* ── Show Mode v2 (flag: show_mode_v2) — see CLAUDE.md "Show Mode v2" ──
+     A full-screen, mobile-first layer over the seller view. Tokens are scoped
+     to #showModeRoot so the rest of the app keeps its dark theme. z-index 150:
+     above <nav> (100) and the inventory table, below every modal (200+), so
+     Add Card, the Sell Drawer, Profile etc. still open on top of it. */
+  #showModeRoot {
+    --sm-ink: #121212; --sm-paper: #FAF8F2; --sm-surface: #FFFFFF; --sm-line: #E6E2D8;
+    --sm-muted: #5C5A55; --sm-muted-on-dark: #C9C5BA; --sm-dark-raised: #2A2925;
+    --sm-dark-camera: #1E1D1A; --sm-accent: #FFD21F; --sm-accent-soft: #FFF8DB;
+    --sm-success-bg: #DDF2E4; --sm-success-fg: #0B5C2E; --sm-warn-bg: #FFF3C2; --sm-warn-fg: #6B5300;
+    --sm-placeholder: #EDE9DD; --sm-placeholder-line: #D8D3C5;
+    --sm-display: 'Bricolage Grotesque', 'DM Sans', sans-serif;
+    --sm-body: 'Manrope', 'DM Sans', sans-serif;
+    position: fixed; inset: 0; z-index: 150;
+    display: none; flex-direction: column;
+    background: var(--sm-paper); color: var(--sm-ink);
+    font-family: var(--sm-body); font-size: 15px;
+  }
+  #showModeRoot.open { display: flex; }
+  body.sm-open { overflow: hidden; }
+  body.sm-open .fab-add { display: none !important; }
+  #showModeRoot button { font-family: inherit; color: inherit; cursor: pointer; }
+  #showModeRoot :focus-visible { outline: 2px solid var(--sm-ink); outline-offset: 2px; }
+  .sm-icon { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+  .sm-scroll { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+  .sm-page { max-width: 480px; margin: 0 auto; padding: 0 16px calc(120px + env(safe-area-inset-bottom, 0px)); }
+  .sm-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: calc(10px + env(safe-area-inset-top, 0px)) 0 10px;
+  }
+  .sm-wordmark { font-family: var(--sm-display); font-weight: 800; font-size: 22px; letter-spacing: -0.5px; }
+  .sm-wordmark span { background: var(--sm-accent); padding: 0 4px; border-radius: 4px; margin-left: 1px; }
+  .sm-icon-btn {
+    width: 44px; height: 44px; border-radius: 14px; border: 1px solid var(--sm-line);
+    background: var(--sm-surface); display: inline-flex; align-items: center; justify-content: center;
+  }
+  .sm-live { background: var(--sm-ink); color: #fff; border-radius: 16px; padding: 16px; margin-bottom: 12px; }
+  .sm-live-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .sm-live-tag { display: inline-flex; align-items: center; gap: 8px; font-weight: 800; font-size: 13px; letter-spacing: 1px; text-transform: uppercase; color: var(--sm-accent); }
+  .sm-live-tag.off { color: var(--sm-muted-on-dark); }
+  .sm-live-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--sm-accent); animation: smPulse 1.6s ease-in-out infinite; }
+  .sm-live-tag.off .sm-live-dot { background: var(--sm-muted-on-dark); animation: none; }
+  @keyframes smPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(255,210,31,0.6); } 50% { box-shadow: 0 0 0 6px rgba(255,210,31,0); } }
+  @media (prefers-reduced-motion: reduce) { .sm-live-dot { animation: none; } }
+  .sm-live-name { font-family: var(--sm-display); font-weight: 800; font-size: 22px; line-height: 1.15; margin: 8px 0 4px; }
+  .sm-live-meta { font-weight: 600; font-size: 13px; color: var(--sm-muted-on-dark); }
+  .sm-share-btn {
+    min-height: 44px; padding: 0 14px; border-radius: 14px; border: 0;
+    background: var(--sm-dark-raised); color: #fff !important; font-weight: 700; font-size: 13px;
+    display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0;
+  }
+  .sm-share-btn .sm-icon { width: 18px; height: 18px; }
+  .sm-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
+  .sm-stat { background: var(--sm-surface); border: 1px solid var(--sm-line); border-radius: 14px; padding: 12px; }
+  .sm-stat-num { font-family: var(--sm-display); font-weight: 800; font-size: 26px; line-height: 1.1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sm-stat-label { font-weight: 600; font-size: 13px; color: var(--sm-muted); margin-top: 2px; }
+  .sm-hero {
+    width: 100%; display: flex; align-items: center; gap: 14px; text-align: left;
+    background: var(--sm-accent); border: 2px solid var(--sm-ink); border-radius: 18px;
+    box-shadow: 0 4px 0 var(--sm-ink); padding: 16px; min-height: 64px; margin-bottom: 18px;
+  }
+  .sm-hero:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--sm-ink); }
+  .sm-hero-tile { width: 52px; height: 52px; border-radius: 14px; background: var(--sm-ink); color: var(--sm-accent); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .sm-hero-tile .sm-icon { width: 28px; height: 28px; }
+  .sm-hero-title { font-family: var(--sm-display); font-weight: 800; font-size: 22px; line-height: 1.1; }
+  .sm-hero-sub { font-weight: 600; font-size: 13px; margin-top: 2px; }
+  .sm-secondary { display: grid; gap: 8px; margin-bottom: 20px; }
+  .sm-sec-btn {
+    width: 100%; min-height: 52px; display: flex; align-items: center; gap: 12px; text-align: left;
+    background: var(--sm-surface); border: 1px solid var(--sm-line); border-radius: 14px;
+    padding: 0 14px; font-weight: 700; font-size: 15px;
+  }
+  .sm-sec-btn .sm-chev { margin-left: auto; color: var(--sm-muted); width: 18px; height: 18px; }
+  .sm-notice { background: var(--sm-accent-soft); border: 2px solid var(--sm-accent); border-radius: 14px; padding: 12px 14px; margin-bottom: 14px; font-weight: 600; font-size: 14px; }
+  .sm-notice-btn { margin-top: 10px; min-height: 44px; padding: 0 16px; border-radius: 14px; border: 2px solid var(--sm-ink); background: var(--sm-accent); font-weight: 800; font-size: 14px; }
+  .sm-section-label { font-weight: 800; font-size: 13px; letter-spacing: 1px; text-transform: uppercase; color: var(--sm-muted); margin: 4px 0 8px; }
+  .sm-list { display: grid; gap: 8px; }
+  .sm-row { display: flex; align-items: center; gap: 12px; background: var(--sm-surface); border: 1px solid var(--sm-line); border-radius: 14px; padding: 10px 12px; min-height: 60px; }
+  .sm-thumb { width: 36px; height: 50px; border-radius: 6px; background: var(--sm-placeholder); border: 1px solid var(--sm-placeholder-line); flex-shrink: 0; }
+  .sm-row-body { min-width: 0; flex: 1; }
+  .sm-row-title { font-weight: 800; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sm-row-meta { font-weight: 600; font-size: 13px; color: var(--sm-muted); margin-top: 2px; }
+  .sm-empty { font-weight: 600; font-size: 14px; color: var(--sm-muted); padding: 14px; text-align: center; background: var(--sm-surface); border: 1px dashed var(--sm-line); border-radius: 14px; }
+  .sm-bottom-nav {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    background: var(--sm-surface); border-top: 1px solid var(--sm-line);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .sm-bottom-nav-inner { max-width: 480px; margin: 0 auto; display: grid; grid-template-columns: repeat(5, 1fr); align-items: end; }
+  .sm-nav-item {
+    min-height: 60px; border: 0; background: transparent; color: var(--sm-muted) !important;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+    font-weight: 700; font-size: 12px;
+  }
+  .sm-nav-item.active { color: var(--sm-ink) !important; }
+  .sm-nav-sell { position: relative; }
+  .sm-nav-sell-circle {
+    width: 60px; height: 60px; border-radius: 50%; margin-top: -26px;
+    background: var(--sm-accent); border: 2px solid var(--sm-ink); box-shadow: 0 4px 0 var(--sm-ink);
+    display: flex; align-items: center; justify-content: center; color: var(--sm-ink);
+  }
+  .sm-nav-sell-circle .sm-icon { width: 28px; height: 28px; }
+  .sm-nav-sell span { color: var(--sm-ink); }
+  .sm-sheet-backdrop { position: absolute; inset: 0; background: rgba(18,18,18,0.55); display: none; align-items: flex-end; justify-content: center; z-index: 2; }
+  .sm-sheet-backdrop.open { display: flex; }
+  .sm-sheet { width: 100%; max-width: 480px; background: var(--sm-paper); border-radius: 28px 28px 0 0; padding: 18px 16px calc(18px + env(safe-area-inset-bottom, 0px)); display: grid; gap: 8px; }
+  .sm-sheet-title { font-family: var(--sm-display); font-weight: 800; font-size: 22px; margin-bottom: 4px; }
 </style>
 </head>
 <body>
@@ -4484,6 +4604,9 @@
     <button class="nav-tab" id="navTabBuyer" onclick="switchView('buyer')">◎ Buyer</button>
   </div>
   <div class="nav-right">
+    <!-- Show Mode v2 entry — seller only, shown when the show_mode_v2 flag is on -->
+    <button class="nav-help-btn" id="navShowModeBtn" onclick="smOpenFromNav()" style="display:none;width:auto;padding:0 0.7rem;font-size:0.72rem"
+      title="Open Show Mode">▶ Show Mode</button>
     <!-- Help menu — seller only. Replays the onboarding tour and opens the Feature guide. -->
     <div class="nav-help-wrap" id="navHelpWrap" style="display:none">
       <button class="nav-help-btn" id="navHelpBtn" onclick="toggleHelpMenu(event)"
@@ -6204,6 +6327,57 @@
       </div>
     </div>
 
+  </div>
+</div>
+
+<!-- ══════ SHOW MODE v2 (flag: show_mode_v2) — see CLAUDE.md "Show Mode v2" ══════ -->
+<div id="showModeRoot" role="region" aria-label="Show Mode">
+  <div class="sm-scroll" id="smScroll">
+    <div class="sm-page">
+      <div class="sm-header">
+        <div class="sm-wordmark">Card<span>Show</span></div>
+        <button class="sm-icon-btn" onclick="openProfile()" aria-label="Your account">
+          <svg class="sm-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>
+        </button>
+      </div>
+      <div id="smHome"></div>
+    </div>
+  </div>
+  <div class="sm-bottom-nav" role="navigation" aria-label="Show Mode">
+    <div class="sm-bottom-nav-inner">
+      <button class="sm-nav-item active" id="smNavShow" onclick="smGoHome()" aria-current="page">
+        <svg class="sm-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>
+        <span>Show</span>
+      </button>
+      <button class="sm-nav-item" onclick="smOpenClassic('inventory')">
+        <svg class="sm-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="7" height="10" rx="1.5"/><rect x="14" y="4" width="7" height="10" rx="1.5"/><path d="M3 19h18"/></svg>
+        <span>Inventory</span>
+      </button>
+      <button class="sm-nav-item sm-nav-sell" onclick="smStartSell('nav')" aria-label="Sell a card">
+        <div class="sm-nav-sell-circle">
+          <svg class="sm-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><rect x="8.5" y="7.5" width="7" height="9" rx="1"/></svg>
+        </div>
+        <span>Sell</span>
+      </button>
+      <button class="sm-nav-item" onclick="smOpenClassic('report')">
+        <svg class="sm-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></svg>
+        <span>Sales</span>
+      </button>
+      <button class="sm-nav-item" onclick="smOpenMore()" aria-haspopup="dialog">
+        <svg class="sm-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg>
+        <span>More</span>
+      </button>
+    </div>
+  </div>
+  <div class="sm-sheet-backdrop" id="smMoreBackdrop" onclick="if(event.target===this)smCloseMore()">
+    <div class="sm-sheet" role="dialog" aria-modal="true" aria-labelledby="smMoreTitle">
+      <div class="sm-sheet-title" id="smMoreTitle">More</div>
+      <button class="sm-sec-btn" onclick="smCloseMore();openProfile()">Your profile</button>
+      <button class="sm-sec-btn" onclick="smCloseMore();openFeatureGuide()">Feature guide</button>
+      <button class="sm-sec-btn" onclick="smCloseMore();smOpenClassic('inventory')">Switch to classic view</button>
+      <button class="sm-sec-btn" onclick="smCloseMore();signOut()">Sign out</button>
+      <button class="sm-sec-btn" onclick="smCloseMore()">Cancel</button>
+    </div>
   </div>
 </div>
 
@@ -10051,6 +10225,7 @@ function updateStats() {
   if (soldBox) soldBox.style.display = showActive ? '' : 'none';
   if (revBox)  revBox.style.display  = showActive ? '' : 'none';
   gsRender();
+  if (_smShowId) smRenderHome();
 }
 
 function renderBuyerGrid(rows) {
@@ -12558,7 +12733,8 @@ let currentSeller = null; // seller handle when role === 'seller'
 // authRoleSelected, setAuthRole, submitAuth, enterAsBuyer are hoisted to top of script
 
 
-function loginAsSeller(handle) {
+function loginAsSeller(handle, opts) {
+  const restored = !!(opts && opts.restored);
   currentRole   = 'seller';
   currentSeller = handle;
   document.getElementById('authOverlay').classList.add('hidden');
@@ -12647,6 +12823,7 @@ function loginAsSeller(handle) {
       // filter to work on anything but a never-refreshed session.
       await hydrateCardShowMembership(handle);
       updateReport(); // safe even if the seller isn't on the Report tab yet
+      if (_smShowId) smRenderHome(); // "In case" depends on the card._shows just loaded
       gtcrHydrateLatestChecks(); // badges + "Registry clear" markers survive a reload
       _gsDataReady = true; // the checklist waits for real data, so returning sellers never see a false "0 done"
       gsRender();
@@ -12659,6 +12836,7 @@ function loginAsSeller(handle) {
     renderSellerShowsList();
     populateReportShowSelector();
     _restoreActiveShowId(handle); // survives a reload mid-show — see comment above the function
+    smAfterShowsLoaded(); // Show Mode v2: reopen the Show Mode screen after a refresh
   });
 
   loadOnboardingState(handle); // checklist + tips state, synced across devices
@@ -12680,7 +12858,8 @@ function loginAsSeller(handle) {
       });
   }
 
-  showToast(`Welcome, @${handle}`);
+  if (!restored) showToast(`Welcome, @${handle}`);
+  smUpdateEntryPoints();
 }
 
 function showNavUser(name, role, avatarClass) {
@@ -12697,6 +12876,9 @@ function showNavUser(name, role, avatarClass) {
 }
 
 function loginAsAdmin() {
+  closeShowMode();
+  const smNavBtn = document.getElementById('navShowModeBtn');
+  if (smNavBtn) smNavBtn.style.display = 'none';
   currentRole   = 'admin';
   currentSeller = null;
   document.getElementById('authOverlay').classList.add('hidden');
@@ -12780,6 +12962,23 @@ function initSidebarState() {
   }
 }
 
+// Restores a saved seller session on page load. Returns true when a seller was
+// signed back in. Admin sessions are not restored (admins sign in each visit).
+async function _restoreSellerSession() {
+  try {
+    const { data } = await db.auth.getSession();
+    const uid = data && data.session && data.session.user && data.session.user.id;
+    if (!uid) return false;
+    const { data: seller, error } = await db.from('sellers').select('handle').eq('id', uid).maybeSingle();
+    if (error || !seller || !seller.handle) return false;
+    loginAsSeller(seller.handle, { restored: true });
+    return true;
+  } catch (e) {
+    console.warn('[auth] session restore failed', e);
+    return false;
+  }
+}
+
 async function signOut() {
   if (_obStateTimer) _obSaveStateNow(); // flush a pending checklist/tips save while currentSeller is still set
   _obStateLoaded = false; _obStateSync = false;
@@ -12791,6 +12990,7 @@ async function signOut() {
   _gsDataReady = false;
   _gsLastDone  = null;
   _tipsHideAll();
+  closeShowMode();
   sellerQrMode  = 'table';
   buyerShowId   = null;
   _unsubscribeBuyerShowLive();
@@ -13929,6 +14129,7 @@ function renderSellerShowsList() {
       <div class="show-card-actions">
         <button class="btn-xs primary" onclick="sellerPublishToShow('${s.id}')">⚡ Add My Cards</button>
         <button class="btn-xs" onclick="sellerRemoveFromShow('${s.id}')">Remove</button>
+        ${smIsEnabled() ? `<button class="btn-xs" onclick="openShowMode('${s.id}')">▶ Show Mode</button>` : ''}
       </div>
     </div>`;
   }).join('');
@@ -21084,7 +21285,291 @@ async function submitPasswordReset() {
   }
 }
 
-// Always show the login page on fresh navigation — clear any lingering Supabase session.
+// ══════ SHOW MODE v2 — Phase 1 (flag: show_mode_v2) ══════
+// Mobile-first seller screen for a live show. See CLAUDE.md "Show Mode v2".
+// Off by default. Test switch: ?show_mode=1 turns it on for this browser,
+// ?show_mode=0 turns it back off (remembered in localStorage, like the GTCR
+// consent switch). With the flag off nothing here runs and the classic seller
+// UI is unchanged.
+const SHOW_MODE_V2_ENABLED = false;
+const SHOW_MODE_TEST_KEY = 'showModeTest';
+function _smTestOverride() {
+  try {
+    const url = new URL(location.href);
+    const p = url.searchParams.get('show_mode');
+    if (p === '1') localStorage.setItem(SHOW_MODE_TEST_KEY, '1');
+    else if (p === '0') localStorage.removeItem(SHOW_MODE_TEST_KEY);
+    if (p !== null) {
+      url.searchParams.delete('show_mode');
+      history.replaceState(null, '', url.pathname + url.search + url.hash);
+    }
+    return localStorage.getItem(SHOW_MODE_TEST_KEY) === '1';
+  } catch (_) {
+    return false;
+  }
+}
+const SHOW_MODE_ON = SHOW_MODE_V2_ENABLED || _smTestOverride();
+function smIsEnabled() { return SHOW_MODE_ON; }
+
+var _smShowId = null; // show Show Mode is open for; var, not let — updateStats() reads it and may run before this line
+const SM_HASH_RE = /^#\/sm\/([^/?#]+)/;
+
+const SM_ICON = {
+  scan:    '<path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><rect x="8.5" y="7.5" width="7" height="9" rx="1"/>',
+  plus:    '<path d="M12 5v14M5 12h14"/>',
+  pen:     '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',
+  refresh: '<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/>',
+  share:   '<path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"/><path d="M12 3v12M7 8l5-5 5 5"/>',
+  chev:    '<path d="M9 6l6 6-6 6"/>',
+};
+function _smIcon(name, cls) {
+  return `<svg class="sm-icon ${cls || ''}" viewBox="0 0 24 24" aria-hidden="true">${SM_ICON[name]}</svg>`;
+}
+
+function _smAuthorizedShows() {
+  return Object.values(shows).filter(s => s.sellers instanceof Set && s.sellers.has(currentSeller));
+}
+
+// Which show to open when the seller doesn't pick one: the active show, then
+// one running today.
+function _smDefaultShowId() {
+  const mine = _smAuthorizedShows();
+  if (activeShowId && mine.some(s => s.id === activeShowId)) return activeShowId;
+  const today = mine.find(s => _showIsToday(s));
+  return today ? today.id : null;
+}
+
+// Nav button + per-show "Show Mode" buttons. Called after login and after
+// shows load.
+function smUpdateEntryPoints() {
+  const btn = document.getElementById('navShowModeBtn');
+  if (!btn) return;
+  btn.style.display = (smIsEnabled() && currentRole === 'seller' && _smAuthorizedShows().length) ? '' : 'none';
+}
+
+function smOpenFromNav() {
+  const id = _smDefaultShowId() || (_smAuthorizedShows()[0] || {}).id;
+  if (id) openShowMode(id);
+  else showToast('You haven\'t been added to a show yet', 'gold');
+}
+
+// Runs once shows{} is loaded on seller login. Reopens Show Mode after a
+// refresh (#/sm/<showId> in the URL), or opens it on its own when a show the
+// seller is in runs today, unless they switched to classic view today.
+function smAfterShowsLoaded() {
+  smUpdateEntryPoints();
+  if (!smIsEnabled() || currentRole !== 'seller') return;
+  const m = location.hash.match(SM_HASH_RE);
+  if (m) {
+    const id = decodeURIComponent(m[1]);
+    if (_smAuthorizedShows().some(s => s.id === id)) { openShowMode(id); return; }
+    _smClearHash();
+  }
+  const id = _smDefaultShowId();
+  if (id && _smExitedToday() !== id) openShowMode(id);
+}
+
+function _smExitKey() { return 'smExited:' + currentSeller; }
+function _smExitedToday() {
+  try {
+    const [id, day] = (localStorage.getItem(_smExitKey()) || '').split('|');
+    return day === _todayISO() ? id : null;
+  } catch (_) { return null; }
+}
+
+function _smClearHash() {
+  if (SM_HASH_RE.test(location.hash)) history.replaceState(null, '', location.pathname + location.search);
+}
+
+function openShowMode(showId) {
+  if (!smIsEnabled() || !shows[showId]) return;
+  _smShowId = showId;
+  try { localStorage.removeItem(_smExitKey()); } catch (_) {}
+  history.replaceState(null, '', location.pathname + location.search + '#/sm/' + encodeURIComponent(showId));
+  document.getElementById('showModeRoot').classList.add('open');
+  document.body.classList.add('sm-open');
+  if (typeof closeHelpMenu === 'function') closeHelpMenu();
+  smRenderHome();
+  _smLogEvent('show_mode_opened', {});
+}
+
+// remember: true when the seller chose classic view (so it doesn't reopen
+// itself again today). Sign-out and admin login close it without remembering.
+function closeShowMode(opts) {
+  const root = document.getElementById('showModeRoot');
+  if (!root) return;
+  if (opts && opts.remember && _smShowId) {
+    try { localStorage.setItem(_smExitKey(), _smShowId + '|' + _todayISO()); } catch (_) {}
+  }
+  smCloseMore();
+  root.classList.remove('open');
+  document.body.classList.remove('sm-open');
+  _smShowId = null;
+  _smClearHash();
+}
+
+function smGoHome() {
+  smCloseMore();
+  document.getElementById('smScroll').scrollTop = 0;
+  smRenderHome();
+}
+
+// Inventory / Sales tabs and "classic view" go back to the existing seller UI
+// until Phase 2 builds the Show Mode versions.
+function smOpenClassic(tab) {
+  closeShowMode({ remember: true });
+  switchSellerTab(tab === 'report' ? 'report' : 'inventory');
+  window.scrollTo(0, 0);
+}
+
+// Phase 1: the Sell button opens the existing Sell menu (search your
+// inventory, or Scan to Sell for a card that isn't in it). Phase 2 replaces
+// this with the Show Mode scan/search screen.
+function smStartSell(entry) {
+  _smLogEvent('sell_started', { entry });
+  openQuickActions('sell');
+}
+
+function smOpenMore()  { document.getElementById('smMoreBackdrop').classList.add('open'); }
+function smCloseMore() { const b = document.getElementById('smMoreBackdrop'); if (b) b.classList.remove('open'); }
+
+function smRefreshPrices() {
+  const cards = getSellerInventory().filter(r => r.Status !== 'Sold' && r._shows instanceof Set && r._shows.has(_smShowId));
+  const list = cards.length ? cards : getSellerInventory().filter(r => r.Status !== 'Sold');
+  if (!list.length) { showToast('No cards to price yet', 'gold'); return; }
+  // The comp check's progress bar lives in the inventory view, so go there.
+  smOpenClassic('inventory');
+  runCompCheck(list);
+}
+
+async function smShareShowLink() {
+  const show = shows[_smShowId];
+  if (!show) return;
+  const url = _showPageUrl(show.id);
+  if (navigator.share) {
+    try { await navigator.share({ title: show.name, url }); return; }
+    catch (e) { if (e && e.name === 'AbortError') return; }
+  }
+  try { await navigator.clipboard.writeText(url); showToast('Show link copied'); }
+  catch (_) { showToast(url); }
+}
+
+// "Day 2" of a multi-day show, or null when the show isn't running today.
+function _smShowDay(show) {
+  if (!_showIsToday(show)) return null;
+  const startISO = show.startDate || _showDateISO(show);
+  if (!startISO) return 1;
+  const start = new Date(startISO + 'T00:00:00');
+  const today = new Date(_todayISO() + 'T00:00:00');
+  return Math.round((today - start) / 86400000) + 1;
+}
+
+function _smSaleDate(r) {
+  const key = _txSortKey(r);
+  if (!key) return null;
+  const d = new Date(key);
+  return isNaN(d) ? null : d;
+}
+
+function _smRelTime(d) {
+  if (!d) return '';
+  const mins = Math.round((Date.now() - d.getTime()) / 60000);
+  if (mins < 1)  return 'just now';
+  if (mins < 60) return mins + 'm ago';
+  if (mins < 24 * 60 && d.toLocaleDateString('en-CA') === _todayISO()) return Math.round(mins / 60) + 'h ago';
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function _smMoney(n) {
+  return '$' + Math.round(Number(n) || 0).toLocaleString();
+}
+
+function smRenderHome() {
+  const el = document.getElementById('smHome');
+  const show = shows[_smShowId];
+  if (!el || !show) return;
+  const esc = _escHtml;
+  const today = _todayISO();
+  const mine = getSellerInventory();
+  const soldToday = mine.filter(r => r.Status === 'Sold' && r.SoldDate === today);
+  const salesTotal = soldToday.reduce((s, r) => s + (Number(r.SoldPrice) || 0), 0);
+  const available = mine.filter(r => r.Status !== 'Sold');
+  const inCase = available.filter(r => r._shows instanceof Set && r._shows.has(show.id)).length;
+
+  const day = _smShowDay(show);
+  const table = show.tables && show.tables[currentSeller];
+  const metaBits = [];
+  if (table) metaBits.push('Table ' + esc(table));
+  metaBits.push(day ? 'Day ' + day : esc(show.date || ''));
+  const live = !!day;
+
+  const recent = mine.filter(r => r.Status === 'Sold')
+    .sort((a, b) => _txSortKey(b).localeCompare(_txSortKey(a)))
+    .slice(0, 5);
+  const recentHTML = recent.length ? recent.map(r => {
+    const name = r.Player || r['Card Title'] || 'Card';
+    const grade = r.Grader ? `${r.Grader} ${r.Grade || ''}`.trim() : (r.Grade ? r.Grade : 'Raw');
+    const meta = [_smMoney(r.SoldPrice), r.PaymentMethod, _smRelTime(_smSaleDate(r))].filter(Boolean).map(esc).join(' · ');
+    return `<div class="sm-row">
+      <div class="sm-thumb" aria-hidden="true"></div>
+      <div class="sm-row-body">
+        <div class="sm-row-title">${esc(name)} · ${esc(grade)}</div>
+        <div class="sm-row-meta">${meta}</div>
+      </div>
+    </div>`;
+  }).join('') : '<div class="sm-empty">No sales yet. Your sales show up here.</div>';
+
+  const notice = (!inCase && available.length) ? `
+    <div class="sm-notice">
+      Your cards aren't on this show yet, so buyers can't see them.
+      <div><button class="sm-notice-btn" onclick="sellerPublishToShow('${esc(show.id)}')">Add my cards to this show</button></div>
+    </div>` : '';
+
+  el.innerHTML = `
+    <div class="sm-live">
+      <div class="sm-live-top">
+        <span class="sm-live-tag ${live ? '' : 'off'}"><span class="sm-live-dot" aria-hidden="true"></span>${live ? 'Live now' : 'Not live today'}</span>
+        <button class="sm-share-btn" onclick="smShareShowLink()">${_smIcon('share')}Share link</button>
+      </div>
+      <div class="sm-live-name">${esc(show.name)}</div>
+      <div class="sm-live-meta">${metaBits.join(' · ')}</div>
+    </div>
+    <div class="sm-stats" aria-live="polite">
+      <div class="sm-stat"><div class="sm-stat-num">${soldToday.length}</div><div class="sm-stat-label">Sold today</div></div>
+      <div class="sm-stat"><div class="sm-stat-num">${_smMoney(salesTotal)}</div><div class="sm-stat-label">Sales</div></div>
+      <div class="sm-stat"><div class="sm-stat-num">${inCase}</div><div class="sm-stat-label">In case</div></div>
+    </div>
+    ${notice}
+    <button class="sm-hero" onclick="smStartSell('home_cta')">
+      <span class="sm-hero-tile">${_smIcon('scan')}</span>
+      <span>
+        <span class="sm-hero-title" style="display:block">Sell a card</span>
+        <span class="sm-hero-sub" style="display:block">Scan it or search it. Done in 3 taps.</span>
+      </span>
+    </button>
+    <div class="sm-secondary">
+      <button class="sm-sec-btn" onclick="openQuickActions('add')">${_smIcon('plus')}Add cards${_smIcon('chev', 'sm-chev')}</button>
+      <button class="sm-sec-btn" onclick="openManualSaleModal()">${_smIcon('pen')}Log a manual sale${_smIcon('chev', 'sm-chev')}</button>
+      <button class="sm-sec-btn" onclick="smRefreshPrices()">${_smIcon('refresh')}Refresh prices${_smIcon('chev', 'sm-chev')}</button>
+    </div>
+    <div class="sm-section-label">Recent sales</div>
+    <div class="sm-list">${recentHTML}</div>`;
+}
+
+// Analytics: Show Mode events go to show_events (no third-party client).
+// Fire-and-forget; never blocks the UI.
+function _smLogEvent(type, data) {
+  if (typeof db === 'undefined' || !_smShowId) return;
+  const device = window.matchMedia('(max-width: 767px)').matches ? 'mobile' : 'desktop';
+  db.from('show_events').insert({
+    show_id: _smShowId,
+    event_type: 'sm_' + type,
+    event_data: Object.assign({ seller: currentSeller, device }, data || {}),
+  }).then(({ error }) => { if (error) console.warn('[show-mode] event log failed', error.message); });
+}
+
+// Page load: restore a signed-in seller, otherwise show the login page (clearing
+// any other lingering Supabase session).
 // Deep-link: ?code=XXXX → skip login, enter buyer mode, join show directly.
 // Awaits signOut so the Supabase client is in a clean anon state before querying.
 (async function initPage() {
@@ -21097,17 +21582,26 @@ async function submitPasswordReset() {
     return;
   }
 
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get('code');
+  const authError = window._authRedirect && window._authRedirect.mode === 'error';
+
+  // Sellers stay signed in across a refresh (supabase-js keeps the session in
+  // localStorage and refreshes it). Entry links (?code=, ?signup=, ?buyer=,
+  // auth errors) and admins still start from a clean sign-out, as before.
+  if (!code && !authError && !params.get('signup') && !params.get('buyer')) {
+    if (await _restoreSellerSession()) return;
+  }
+
   await db.auth.signOut().catch(() => {});
 
-  if (window._authRedirect && window._authRedirect.mode === 'error') {
+  if (authError) {
     _clearAuthRedirectUrl();
     const errEl = document.getElementById('authError');
     if (errEl) errEl.textContent = 'That email link is invalid or has expired. Ask for a new one.';
     return;
   }
 
-  const params = new URLSearchParams(window.location.search);
-  const code = params.get('code');
   // Landing-page entry points: ?signup=1 opens the auth box in sign-up mode,
   // ?buyer=1 goes straight to the buyer show picker.
   if (!code && (params.get('signup') || params.get('buyer'))) {

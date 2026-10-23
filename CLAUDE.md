@@ -37,6 +37,8 @@ js/trade-zone.js                         → Guest auth, post/board/propose/conf
 js/trade-board.js                        → Realtime board rendering + report aggregation for trade-board.html
 js/trade-share.js                        → Phase 4 canvas compositor + Web Share API for the branded trade graphic
 supabase/migrations/20260825120000_trade_zone.sql → Trade Zone schema, storage buckets, RLS, and RPC functions — run in Supabase SQL editor
+sw.js                             → Service worker: offline app shell (network-first app.html, cached scripts/fonts); never caches Supabase or functions — see "Show Mode v2"
+manifest.webmanifest              → Installable app manifest ("Add to Home Screen"); icons at assets/app-icon-192.png / -512.png
 qrcode.min.js                     → Self-hosted qrcodejs 1.0.0 (all QR codes); cdnjs is only a backup — see "Seller QR blank"
 CLAUDE.md                         → This file
 ```
@@ -95,7 +97,7 @@ show_floor_transactions — id (uuid), created_at, sold_at (timestamptz),
 
 ## Auth Status — Phase 2 Deployed
 - **Current:** Supabase email + password auth via `supabase.auth.signUp()` / `signInWithPassword()`
-- **Session persistence:** Intentionally disabled — `db.auth.signOut()` runs on every page load so the login page always shows on fresh navigation. Sellers log in each visit.
+- **Session persistence:** sellers stay signed in across a refresh (session 2026-10-23). `initPage()` calls `_restoreSellerSession()`; admins and entry links (`?code=`, `?signup=`, `?buyer=`, auth-error links) still start from a clean sign-out. See "Show Mode v2".
 - **Seller records:** linked to `auth.uid()` in the sellers table
 - **⚠ RLS policies:** still using permissive `using (true)` — tightening to `auth.uid() = seller_id` is the next priority
 
@@ -321,7 +323,7 @@ Fonts: Bebas Neue (headlines), DM Sans (body), DM Mono (labels/badges), Barlow C
 7. **RLS currently permissive** — all policies use `using (true)`. Do not tighten until confirming auth.uid() is reliably set in all write paths.
 8. **Seller handle in DB** — inventory rows store seller_id (UUID), not handle. Always look up seller UUID by handle before querying inventory.
 9. **switchView() is async-safe** — guards `event?.target` so it can be called from async functions without throwing. Previously calling it after any `await` would throw a TypeError and halt the calling function silently.
-10. **No session restore on page load** — `db.auth.signOut()` runs on init. The login page always shows on fresh navigation. Do not re-add session restore without discussing UX implications first.
+10. **Seller session restore on page load (2026-10-23, user-approved)** — `initPage()` calls `_restoreSellerSession()`, which signs a saved seller back in via `loginAsSeller(handle, { restored: true })` (no welcome toast). Admin sessions, `?code=`/`?signup=`/`?buyer=` links and auth-error links still run `db.auth.signOut()` first, as before. Sign out is still explicit (`signOut()`).
 11. **Demo inventory is buyer-only** — `loadDemoInventory()` must only be called from `enterAsBuyer()`. Never call it on page load or from seller/admin login paths.
 12. **partnershipLink visibility** — hidden in `loginAsSeller()` and `loginAsAdmin()`, restored in `signOut()`. Seller Profile button occupies the same nav-right area.
 13. **Seller signup inserts sellers row immediately** — `signUp()` inserts the sellers row before checking `data.session`. When email confirmation is required, `data.session` is null and the code returns early; inserting first ensures the row exists by the time the user confirms and signs in. Unique violation (code 23505) is silently ignored.
@@ -4610,6 +4612,60 @@ immutable (UPDATE blocked by RLS).
 Insert one `show_floor_transactions` row from the inventory row, joining `shows`/`sellers` for the
 snapshot fields, for `inventory.id = '480b0b72-166f-46d5-8bd2-4827f3251c7f'` and
 `show_id = 'show_mv2j09jb67yk'`. Also add its `show_inventory` row if missing.
+
+## Show Mode v2 (in progress — Phase 1 shipped, session 2026-10-23)
+
+Mobile-first seller screen for a live show, built from the "Show Mode Seller Flow" spec
+(Monster Show feedback: hard-to-find mark-sold, refresh logged sellers out, case-scan timeouts).
+Lives inside `app.html` as `#showModeRoot`, a fixed full-screen layer (z-index 150: above
+`<nav>` and the inventory table, below every modal at 200+, so Add Card, the Sell Drawer,
+Profile, the Sell / Add menu etc. all open on top of it).
+
+**Flag:** `SHOW_MODE_V2_ENABLED = false`. Test switch `?show_mode=1` turns it on for a browser
+(`?show_mode=0` off; stored as localStorage `showModeTest`; the param is stripped from the
+URL). With the flag off nothing in Show Mode runs. Session restore and the service worker are
+**not** flagged — they apply to every seller.
+
+**Routing:** hash `#/sm/<showId>` (`/show/*` already rewrites to show.html, so no real route).
+`smAfterShowsLoaded()` (called after `loadShowsFromDB()` in `loginAsSeller()`) reopens it after
+a refresh, or opens it on its own for a show the seller is in that runs today — unless they
+chose classic view today (`smExited:<handle>` = `showId|YYYY-MM-DD`). Entry points: nav
+`#navShowModeBtn` and a "▶ Show Mode" button on each My Shows card.
+
+**Phase 1 (done):**
+- Tokens (`--sm-*`, scoped to `#showModeRoot`), Bricolage Grotesque + Manrope, inline-SVG
+  stroke icons, bottom nav (Show / Inventory / Sell / Sales / More).
+- Home: live banner (LIVE NOW when `_showIsToday()`, `Table N · Day n` from
+  `shows[id].tables[currentSeller]` + start date, Share link → native share or copy of
+  `_showPageUrl()`), stats (Sold today = `SoldDate` today, Sales $, In case = available cards
+  with `_shows.has(showId)`), a notice + "Add my cards" when none are on the show, hero
+  "Sell a card", Add cards / Log a manual sale / Refresh prices, last 5 sales.
+  `updateStats()` and the post-hydration step re-render it.
+- **Temporary wiring until Phase 2:** Sell → existing `openQuickActions('sell')`; Add cards →
+  `openQuickActions('add')`; Log a manual sale → `openManualSaleModal()`; Refresh prices →
+  classic inventory + `runCompCheck()` (its progress bar lives in `.table-wrap`); Inventory /
+  Sales / More → "Switch to classic view" go back to the classic seller UI.
+- Seller session restore (see Critical Note 10). "Log in" links added to show.html and
+  seller-browse.html headers.
+- `sw.js` + `manifest.webmanifest`, registered from app.html only. Only `/app` and `/app.html`
+  navigations are handled (network-first, 4s timeout, then cache); other pages are untouched.
+  Bump `CACHE` in sw.js if the shell list changes.
+- Analytics: `_smLogEvent()` writes `sm_<event>` rows to `show_events` (`show_mode_opened`,
+  `sell_started` so far).
+- Tested headless (iPhone 13 / Pixel 7, Supabase mocked): login → Show Mode, refresh keeps the
+  seller signed in on the same screen, classic view + reload stays classic, sign-out + reload
+  shows login, all Show Mode buttons ≥ 44px, no horizontal scroll, offline reload serves the
+  shell, flag off leaves the classic UI unchanged.
+
+**Decisions from the user (2026-10-23):** sellers stay signed in across refresh; seller card
+photos may be stored in a private bucket; table number from `show_sellers.table_number`; trade
+sales out of scope; social assets show the seller's handle only by opt-in. CardSight identify
+key is available — plan is to run Claude vision and CardSight identify together (see Phase 2).
+
+**Remaining phases:** 2 — sale model (`record_sale`/`void_sale` RPCs with `client_sale_id`
+idempotency, void as a reversing `show_floor_transactions` row), IndexedDB outbox, scan/search
+to sell, confirm, Sold + undo, captures (private bucket), manual sale in-flow, Recent scans.
+3 — case scan A–D (per-photo resumable uploads). 4 — images, social assets, analytics, polish.
 
 ## Show Configuration (Demo Data)
 - **MLP Card Show** — Oct 17-18, 2026 · Grand Hyatt Tampa Bay, FL · Code: MLPTPA (primary demo, shown to buyers without code)
