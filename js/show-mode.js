@@ -98,13 +98,20 @@ function _smIdb() {
   if (_smDbPromise) return _smDbPromise;
   _smDbPromise = new Promise((resolve, reject) => {
     if (!('indexedDB' in window)) { reject(new Error('no_indexeddb')); return; }
-    const req = indexedDB.open('cardshow-showmode', 1);
+    // v2 (Phase 3): scanBatches + scanPhotos for case scans (js/show-mode-scan.js).
+    const req = indexedDB.open('cardshow-showmode', 2);
     req.onupgradeneeded = () => {
       const d = req.result;
       if (!d.objectStoreNames.contains('captures')) d.createObjectStore('captures', { keyPath: 'id' });
       if (!d.objectStoreNames.contains('outbox')) d.createObjectStore('outbox', { keyPath: 'seq', autoIncrement: true });
+      if (!d.objectStoreNames.contains('scanBatches')) d.createObjectStore('scanBatches', { keyPath: 'id' });
+      if (!d.objectStoreNames.contains('scanPhotos')) d.createObjectStore('scanPhotos', { keyPath: 'id' });
     };
-    req.onsuccess = () => resolve(req.result);
+    req.onsuccess = () => {
+      const d = req.result;
+      d.onversionchange = () => { d.close(); _smDbPromise = null; };   // let another tab upgrade
+      resolve(d);
+    };
     req.onerror = () => reject(req.error);
   });
   _smDbPromise.catch(() => { _smDbPromise = null; });
@@ -132,7 +139,8 @@ const smStore = {
 // ════════════════════════════════════════════════════════════════════════════
 // Outbox: every server write Show Mode makes goes through here, in order, so a
 // sale made with no signal replays exactly once (record_sale is idempotent on
-// client_sale_id). Ops: capture_row, capture_update, sale, void, add_item.
+// client_sale_id). Ops: capture_row, capture_update, sale, void, add_item,
+// attach_capture.
 // Photo uploads run separately (_smUploadCaptures) since they're large.
 // ════════════════════════════════════════════════════════════════════════════
 let _smDraining = false;
@@ -205,6 +213,7 @@ async function _smRunOp(op) {
       case 'sale':           return await _smOpSale(op);
       case 'void':           return await _smOpVoid(op);
       case 'add_item':       return await _smOpAddItem(op);
+      case 'attach_capture': return await _smOpAttachCapture(op);
       default:               return 'done';
     }
   } catch (e) {
@@ -381,6 +390,18 @@ async function _smOpAddItem(op) {
     await db.from('inventory').update({ primary_capture_id: op.captureId, image_source: 'seller' })
       .eq('id', op.inventoryId).is('primary_capture_id', null);
   }
+  return 'done';
+}
+
+// A capture for a card that's already in inventory (a case-scan slab whose
+// cert matched): link it, and make it the card's image if it has none.
+async function _smOpAttachCapture(op) {
+  if (_smCapturesMissing) return 'done';
+  let res = await db.from('card_captures').update({ inventory_id: op.inventoryId, status: 'attached' }).eq('id', op.captureId);
+  if (res.error && _smIsNetworkError(res)) return 'retry';
+  res = await db.from('inventory').update({ primary_capture_id: op.captureId, image_source: 'seller' })
+    .eq('id', op.inventoryId).is('primary_capture_id', null);
+  if (res.error && _smIsNetworkError(res)) return 'retry';
   return 'done';
 }
 
@@ -846,6 +867,7 @@ function smAfterShowsLoaded() {
   smUpdateEntryPoints();
   if (!smIsEnabled() || currentRole !== 'seller') return;
   smDrain();
+  if (typeof scResume === 'function') scResume();
   const m = location.hash.match(SM_HASH_RE);
   if (m) {
     const id = decodeURIComponent(m[1]);
@@ -940,11 +962,12 @@ function smRoute() {
   const path = _smPath();
   const parts = path.split('/').filter(Boolean);
   const screen = parts[0] || 'home';
-  if (screen !== 'sell' && screen !== 'log') smStopCamera();
+  const caseCamera = typeof scIsCameraRoute === 'function' && scIsCameraRoute(parts);
+  if (screen !== 'sell' && screen !== 'log' && !caseCamera) smStopCamera();
   smCloseMore();
   if (screen !== 'sold') smHideToast();
   const root = document.getElementById('showModeRoot');
-  root.classList.toggle('sm-dark', screen === 'sell' || screen === 'log');
+  root.classList.toggle('sm-dark', screen === 'sell' || screen === 'log' || caseCamera);
   const navVisible = screen === 'home' || screen === 'inventory';
   document.getElementById('smBottomNav').style.display = navVisible ? '' : 'none';
   document.querySelectorAll('#smBottomNav .sm-nav-item[data-screen]').forEach(b => {
@@ -961,6 +984,7 @@ function smRoute() {
     case 'sold':      return smRenderSold(parts[1]);
     case 'inventory': return smRenderInventory();
     case 'scans':     return smRenderScans();
+    case 'add':       return scRoute(parts);
     default:          _smScreen = 'home'; return smRenderHome();
   }
 }
@@ -1065,7 +1089,8 @@ function smRenderHome() {
       </span>
     </button>
     <div class="sm-secondary">
-      <button class="sm-sec-btn" onclick="openQuickActions('add')">${_smIcon('plus')}Add cards${_smIcon('chev', 'sm-chev')}</button>
+      ${typeof scHomeBannerHTML === 'function' ? scHomeBannerHTML() : ''}
+      <button class="sm-sec-btn" onclick="smGo('/add/scan')">${_smIcon('plus')}Add cards${_smIcon('chev', 'sm-chev')}</button>
       <button class="sm-sec-btn" onclick="smStartManualSale()">${_smIcon('pen')}Log a manual sale${_smIcon('chev', 'sm-chev')}</button>
       <button class="sm-sec-btn" onclick="smRefreshPrices()">${_smIcon('refresh')}Refresh prices${_smIcon('chev', 'sm-chev')}</button>
     </div>

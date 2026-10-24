@@ -11,6 +11,7 @@ python3 -m http.server 8765 --directory ../..   # serve the repo root, in anothe
 node show-mode.e2e.mjs "iPhone 13"
 node show-mode.e2e.mjs "Pixel 7"
 node show-mode-legacy.e2e.mjs
+node case-scan.e2e.mjs "iPhone 13"           # Phase 3: case scan A–D (also "Pixel 7")
 ```
 Set `CHROMIUM_PATH` to use a specific Chromium (the cloud container has `/opt/pw-browsers/chromium`).
 Each line prints PASS or FAIL. The camera is Chromium's fake device.

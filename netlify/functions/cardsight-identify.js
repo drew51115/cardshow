@@ -1,6 +1,8 @@
 // netlify/functions/cardsight-identify.js
-// POST { image_base64, media_type } → CardSight AI catalog identification,
+// POST { image_base64, media_type, all? } → CardSight AI catalog identification,
 // normalized for Show Mode. See CLAUDE.md "Show Mode v2".
+// all: true (case scan, several cards per photo) adds `detections`, every
+// detection normalized the same way as `detection`.
 //
 // Runs alongside scan-card.js (Claude vision) — the phone calls both in
 // parallel and merges the results, so each stays inside Netlify's ~10s
@@ -58,6 +60,23 @@ function normalizeCard(card) {
   };
 }
 
+function normalizeDetection(det) {
+  const card = normalizeCard(det.card) || {};
+  const grading = det.grading || null;
+  const suggestions = Array.isArray(det.card?.suggestions)
+    ? det.card.suggestions.slice(0, 4).map(normalizeCard).filter(Boolean)
+    : [];
+  return {
+    ...card,
+    confidence: tier(det.confidence),
+    grader: grading?.company?.name || '',
+    grade: grading?.grade?.value || '',
+    certNumber: grading?.certNumber || '',
+    gradingConfidence: grading ? tier(grading.confidence) : null,
+    suggestions,
+  };
+}
+
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') return json(405, { success: false, error: 'method_not_allowed' });
 
@@ -67,7 +86,7 @@ exports.handler = async (event) => {
   let body;
   try { body = JSON.parse(event.body || '{}'); }
   catch { return json(400, { success: false, error: 'parse_error' }); }
-  const { image_base64, media_type } = body;
+  const { image_base64, media_type, all } = body;
   if (!image_base64) return json(400, { success: false, error: 'image_base64 required' });
 
   const mediaType = /^image\/(jpeg|png|webp)$/.test(media_type || '') ? media_type : 'image/jpeg';
@@ -89,27 +108,16 @@ exports.handler = async (event) => {
       return json(200, { success: false, error: `cardsight_http_${res.status}` });
     }
     const data = await res.json();
-    const det = Array.isArray(data.detections) ? data.detections[0] : null;
-    if (!det) {
+    const dets = Array.isArray(data.detections) ? data.detections : [];
+    if (!dets.length) {
       return json(200, { success: false, error: 'no_card', detectedCount: data.detectedCount ?? 0 });
     }
-    const card = normalizeCard(det.card) || {};
-    const grading = det.grading || null;
-    const suggestions = Array.isArray(det.card?.suggestions)
-      ? det.card.suggestions.slice(0, 4).map(normalizeCard).filter(Boolean)
-      : [];
+    const normalized = (all ? dets : dets.slice(0, 1)).map(normalizeDetection);
     return json(200, {
       success: true,
-      identified: !!(card.player || card.cardSet),
-      detection: {
-        ...card,
-        confidence: tier(det.confidence),
-        grader: grading?.company?.name || '',
-        grade: grading?.grade?.value || '',
-        certNumber: grading?.certNumber || '',
-        gradingConfidence: grading ? tier(grading.confidence) : null,
-        suggestions,
-      },
+      identified: !!(normalized[0].player || normalized[0].cardSet),
+      detection: normalized[0],
+      ...(all ? { detections: normalized } : {}),
       detectedCount: data.detectedCount ?? null,
       requestId: data.requestId || null,
     });

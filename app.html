@@ -4648,6 +4648,67 @@
   .sm-scan-row .sm-row { border: 0; background: transparent; }
   .sm-scan-actions { display: flex; gap: 8px; padding: 0 12px 12px; flex-wrap: wrap; }
   .sm-scan-actions .sm-row-btn { flex: 1; }
+
+  /* ── Show Mode v2 · Phase 3: case scan (js/show-mode-scan.js) ── */
+  .sc-camera { aspect-ratio: 1 / 1; max-height: 52vh; }
+  .sc-guide {
+    position: absolute; left: 50%; top: 50%; width: 88%; aspect-ratio: 1 / 1; max-height: 92%; transform: translate(-50%, -50%);
+    border: 3px solid var(--sm-accent); border-radius: 14px; box-shadow: 0 0 0 9999px rgba(0,0,0,0.35);
+    background-image:
+      linear-gradient(to right, transparent calc(33.33% - 0.5px), rgba(255,210,31,0.45) calc(33.33% - 0.5px), rgba(255,210,31,0.45) calc(33.33% + 0.5px), transparent calc(33.33% + 0.5px), transparent calc(66.66% - 0.5px), rgba(255,210,31,0.45) calc(66.66% - 0.5px), rgba(255,210,31,0.45) calc(66.66% + 0.5px), transparent calc(66.66% + 0.5px)),
+      linear-gradient(to bottom, transparent calc(33.33% - 0.5px), rgba(255,210,31,0.45) calc(33.33% - 0.5px), rgba(255,210,31,0.45) calc(33.33% + 0.5px), transparent calc(33.33% + 0.5px), transparent calc(66.66% - 0.5px), rgba(255,210,31,0.45) calc(66.66% - 0.5px), rgba(255,210,31,0.45) calc(66.66% + 0.5px), transparent calc(66.66% + 0.5px));
+  }
+  .sc-shutter { width: 84px; height: 84px; }
+  .sc-done-btn {
+    min-width: 88px; min-height: 52px; padding: 0 14px; border-radius: 14px; border: 2px solid var(--sm-ink);
+    background: var(--sm-accent); color: var(--sm-ink) !important; font-weight: 800; font-size: 15px; white-space: nowrap;
+  }
+  .sc-done-btn:disabled { background: var(--sm-dark-raised); border-color: var(--sm-dark-raised); color: var(--sm-muted-on-dark) !important; }
+  .sc-tray { min-height: 64px; margin: 4px 0 6px; }
+  .sc-tray-empty { color: var(--sm-muted-on-dark); font-weight: 600; font-size: 13px; text-align: center; padding: 18px 0; }
+  .sc-tray-row { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+  .sc-tray-thumb { position: relative; width: 52px; height: 52px; border-radius: 8px; overflow: hidden; flex-shrink: 0; background: var(--sm-dark-raised); }
+  .sc-tray-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .sc-tray-thumb span { position: absolute; left: 3px; top: 3px; min-width: 18px; height: 18px; border-radius: 9px; background: var(--sm-accent); color: var(--sm-ink); font-weight: 800; font-size: 12px; text-align: center; line-height: 18px; padding: 0 4px; }
+  .sc-tray-meta { color: var(--sm-muted-on-dark); font-weight: 700; font-size: 13px; margin-top: 4px; }
+  .sc-other-ways { display: block; margin: 4px auto 0; color: var(--sm-muted-on-dark) !important; }
+  .sc-summary { background: var(--sm-ink); color: #fff; border-radius: 16px; padding: 16px; margin-bottom: 12px; }
+  .sc-summary-num { font-family: var(--sm-display); font-weight: 800; font-size: 34px; line-height: 1.1; }
+  .sc-summary-num span { font-family: var(--sm-body); font-size: 15px; font-weight: 700; color: var(--sm-muted-on-dark); }
+  .sc-progress { height: 10px; border-radius: 5px; background: var(--sm-dark-raised); margin: 12px 0 10px; overflow: hidden; }
+  .sc-progress i { display: block; height: 100%; background: var(--sm-accent); border-radius: 5px; transition: width 0.3s; }
+  .sc-summary-text { font-weight: 600; font-size: 13px; color: var(--sm-muted-on-dark); }
+  .sc-photo-thumb { width: 50px; height: 50px; border-radius: 8px; object-fit: cover; background: var(--sm-placeholder); flex-shrink: 0; }
+  .sc-two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+  .sc-two .sm-sec-btn { justify-content: center; }
+  .sm-primary:disabled { opacity: 0.45; box-shadow: none; }
+  .sc-badge--bad { background: #FBE3E1; color: #8A1C12; }
+  .sm-row-title .sm-badge { font-size: 12px; padding: 2px 8px; margin-left: 4px; vertical-align: 1px; }
+  .sc-needs-label { color: var(--sm-warn-fg); }
+  .sc-needs { background: var(--sm-accent-soft); border: 2px solid var(--sm-accent); }
+  .sc-match.sc-off { opacity: 0.55; }
+  .sc-check { display: flex; flex-shrink: 0; }
+  .sc-check input {
+    -webkit-appearance: none; appearance: none; margin: 0; width: 44px; height: 44px; border-radius: 12px;
+    border: 2px solid var(--sm-ink); background: var(--sm-surface) center / 26px no-repeat; cursor: pointer;
+  }
+  .sc-check input:checked {
+    background-color: var(--sm-accent);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23121212' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E");
+  }
+  .sc-img-btn { border: 0; background: none; padding: 0; min-width: 44px; min-height: 50px; display: flex; align-items: center; justify-content: center; }
+  .sc-price { display: flex; align-items: center; gap: 2px; font-weight: 800; font-size: 15px; flex-shrink: 0; }
+  .sc-price input { width: 72px; min-height: 44px; padding: 0 8px; border-radius: 10px; border: 1px solid var(--sm-line); background: var(--sm-paper); font: 800 16px var(--sm-body); color: var(--sm-ink); text-align: right; }
+  .sc-home-banner { background: var(--sm-accent-soft); border: 2px solid var(--sm-accent); min-height: 60px; }
+  .sc-fix-top { display: flex; gap: 14px; align-items: flex-start; margin-bottom: 14px; }
+  .sc-fix-img { width: 110px; height: 154px; object-fit: cover; border-radius: 10px; background: var(--sm-placeholder); border: 1px solid var(--sm-placeholder-line); flex-shrink: 0; }
+  .sc-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .sc-tile {
+    display: flex; flex-direction: column; gap: 2px; text-align: left; min-height: 88px; padding: 12px;
+    border-radius: 14px; border: 2px solid var(--sm-line); background: var(--sm-surface); color: var(--sm-ink) !important;
+  }
+  .sc-tile[aria-pressed="true"] { border-color: var(--sm-ink); background: var(--sm-accent-soft); }
+  .sc-tile-name { font-weight: 800; font-size: 15px; }
 </style>
 </head>
 <body>
@@ -6966,7 +7027,8 @@
 </div>
 
 <!-- Show Mode v2 (flag show_mode_v2). Bump ?v= when it changes: the service worker caches by URL. -->
-<script src="/js/show-mode.js?v=20261023b"></script>
+<script src="/js/show-mode.js?v=20261024a"></script>
+<script src="/js/show-mode-scan.js?v=20261024a"></script>
 <script>
 // ── STATE ──
 let inventory = [];
@@ -8179,7 +8241,9 @@ async function handleBulkScanFile(input) {
       return;
     }
 
-    renderBulkScanReview(result.cards || []);
+    // Cards the model saw but couldn't read (no player or set) only matter to
+    // Show Mode's case scan, which lists them under "Needs a look".
+    renderBulkScanReview((result.cards || []).filter(c => c && (c.player || c.set)));
 
   } catch (err) {
     const reason = controller.signal.reason;

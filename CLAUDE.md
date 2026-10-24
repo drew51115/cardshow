@@ -38,6 +38,7 @@ js/trade-board.js                        → Realtime board rendering + report a
 js/trade-share.js                        → Phase 4 canvas compositor + Web Share API for the branded trade graphic
 supabase/migrations/20260825120000_trade_zone.sql → Trade Zone schema, storage buckets, RLS, and RPC functions — run in Supabase SQL editor
 js/show-mode.js                   → Show Mode v2 (flag show_mode_v2): routing, outbox, captures, identification, all Show Mode screens — loaded by app.html before its main script (bump its ?v= on change)
+js/show-mode-scan.js              → Show Mode case scan (screens A–D): per-photo queue, review, commit — loaded right after js/show-mode.js
 netlify/functions/cardsight-identify.js → Serverless: POST {image_base64, media_type} → CardSight catalog identification (Show Mode; runs beside scan-card.js)
 supabase/migrations/20261023120000_show_mode_sales.sql → sales + card_captures tables, private card-captures bucket, record_sale()/void_sale() — see "Show Mode v2"
 tests/show-mode/                  → Playwright + SQL tests for Show Mode (see its README)
@@ -4622,7 +4623,7 @@ Insert one `show_floor_transactions` row from the inventory row, joining `shows`
 snapshot fields, for `inventory.id = '480b0b72-166f-46d5-8bd2-4827f3251c7f'` and
 `show_id = 'show_mv2j09jb67yk'`. Also add its `show_inventory` row if missing.
 
-## Show Mode v2 (in progress — Phases 1–2 shipped, session 2026-10-23)
+## Show Mode v2 (in progress — Phases 1–3 shipped, sessions 2026-10-23/24)
 
 Mobile-first seller screens for a live show, built from the "Show Mode Seller Flow" spec
 (Monster Show feedback: hard-to-find mark-sold, refresh logged sellers out, case-scan timeouts).
@@ -4726,9 +4727,83 @@ photos may be stored in a private bucket; table number from `show_sellers.table_
 sales out of scope; social assets show the seller's handle only by opt-in; use both Claude vision
 and CardSight identify.
 
-**Remaining phases:** 3 — case scan A–D (per-photo resumable uploads; background functions vs.
-phone-driven still to decide). 4 — images (signed URLs, CardSight stock images, backfill),
-social assets (handle opt-in), remaining analytics, polish.
+### Phase 3 — case scan, screens A–D (done, session 2026-10-24)
+Replaces the classic one-request Bulk Scan inside Show Mode (Home → **Add cards**). All code is in
+`js/show-mode-scan.js` (`sc*` names). **No migration and no server job.** The phone drives the work
+and keeps batch state in IndexedDB (DB v2 adds the stores `scanBatches` and `scanPhotos`). The only
+server change is optional: the bulk-scan prompt now also asks for a per-card `box`.
+- **A (`/add/scan[/<batchId>]`)**: dark camera with a square 3×3 guide. The shutter captures the
+  guide area at 2000px, JPEG 0.8; "Photos" picks several from the camera roll. Each photo goes into
+  IndexedDB **before** anything is uploaded, then joins the queue at once. The tray shows numbered
+  thumbnails plus "~N cards". **Done · N** → B. "Other ways to add cards" opens the classic
+  Sell / Add menu.
+- **Queue (`_scProcessLoop`)**: one photo at a time. Each photo calls the already-deployed
+  `bulk-scan` Edge Function (Claude, all cards in the photo, 60s timeout, one photo per request)
+  and `cardsight-identify` with `all: true` (every detection) in parallel.
+  - A server error or timeout retries with backoff (5s, doubling, max 60s), and fails after
+    `SC_MAX_ATTEMPTS` (5).
+  - A dropped connection is "Waiting for signal" and doesn't use up an attempt. The `online`
+    event restarts it.
+  - 413/415 fail at once.
+  - A photo left "working" by a closed app goes back in the queue on the next login
+    (`scResume()`, from `smAfterShowsLoaded()`). The queue also restarts when the page becomes
+    visible again.
+  - It keeps running while the seller sells (any screen, Show Mode open or not, while the tab is
+    alive). When a batch finishes, a toast says "Case scan ready · Review", and the home screen
+    shows a "Case scan" banner (`scHomeBannerHTML()`).
+- **Matching (`scBuildItems`)**: Claude's cards are paired with CardSight detections by player last
+  name + year.
+  - Paired → confidence 0.95, using the catalog's set/number/parallel and Claude's slab label.
+  - Claude alone → high 0.9 / medium 0.7 / low 0.4.
+  - Unpaired CardSight detections become 0.5 "Wrong card?" options on the unpaired cards.
+  - If Claude found nothing, the CardSight detections stand alone.
+  - **Rule (`scClassify`)**: matched when top ≥ `SC_MATCH_MIN` (0.85) and it leads the second by
+    ≥ `SC_MATCH_GAP` (0.10); else needs a look. A card with no player/set → failed, with Claude's
+    note (e.g. "glare on the slab label"); the prompt now lists unreadable cards too. The classic
+    bulk-scan review filters those out.
+  - Crops come from the `box` (padded 6%, 1200px). Without a box (bulk-scan not redeployed yet)
+    the whole photo is the thumbnail and no crop capture is made.
+  - A slab whose cert matches an available card is marked "Already in your case" (`existingId`).
+  - Prices: `_scPriceItems()` fills market price via `_smMarketFor()` (comp-lookup), one card at a
+    time, and pre-fills an empty price with it.
+- **B (`/add/batches/<id>`)**: ink summary (`found of ~estimate`, `role=progressbar`), one row per
+  photo (Done n cards / Working / Waiting for signal / Failed) with **Retry now**. **Review N ready
+  now** works as soon as any photo is done. Also **Keep selling** and **Add photos**.
+- **C (`/review`)**: **Needs a look** first (accent-soft rows; Pick / Fix → D), then **Matched**
+  (44px checkbox, inline price, "Your photo" / "Case photo" / "Already in your case"). **Add N to
+  case · live now** → `scCommit()`:
+  - Each checked match gets its inventory id stored **first** (state `committing`), so a second
+    tap or a crash resend the same idempotent `add_item` op (source `case_scan`, published to the
+    show).
+  - A crop becomes a `case_scan` capture attached to the new card. For an existing slab the
+    capture is linked through the new outbox op `attach_capture`, and no duplicate is created.
+  - Unchecked and needs-a-look cards stay in the batch. The batch completes (and its full photos
+    are dropped from the device) once nothing is left. Completed batches are deleted after 7 days.
+- **D (`/items/<id>`)**: the seller's crop (110×154, or the whole photo), candidate tiles (2-up),
+  "Neither? Type it in" (fields; a typed card becomes confidence 1.0), **Use this match**,
+  **Retake this card** (one photo through the single-card `smIdentify()`, replacing the
+  candidates and crop), **Skip for now** (back, unchanged), "Not a card — remove it" (skipped).
+- **`cardsight-identify.js`**: `all: true` adds `detections[]` (each normalized like
+  `detection`). Single-card calls are unchanged.
+- **Analytics:** scan_batch_started, scan_photo_uploaded (attempt, bytes, latencyMs, cards),
+  scan_photo_failed, scan_review_completed, capture_attached (`attachType: 'case_scan'`).
+- **Tests:** `tests/show-mode/case-scan.e2e.mjs`. It has 11 unit checks plus the full flow (3
+  photos with a forced 503 → Retry now → review → fix → commit → re-commit adds nothing; resume
+  after a mid-photo reload; offline → Waiting for signal → online). All pass on iPhone 13 and
+  Pixel 7.
+
+**Deviations from the spec (Phase 3):** no presigned upload / server worker / `ScanBatch` tables.
+Identification is phone-driven, because the Netlify plan's background functions are unconfirmed.
+Each request now carries one photo, which removes the old whole-case timeout. So the batch lives on
+one device: it can't be reviewed from another phone, and photos aren't stored on the server until
+they're committed as crops. D's "Search it" is "Type it in" (no catalog search). Show-local "today"
+and estimates use simple counts (~6 cards per unprocessed photo).
+
+**To get per-card crops:** redeploy bulk-scan (`supabase functions deploy bulk-scan --project-ref
+qtnqawqlmttogwnjieky`). Without it everything works, but case-scan cards use the whole photo.
+
+**Remaining phase:** 4 — images (signed URLs, CardSight stock images, backfill), social assets
+(handle opt-in), remaining analytics, polish.
 
 ## Show Configuration (Demo Data)
 - **MLP Card Show** — Oct 17-18, 2026 · Grand Hyatt Tampa Bay, FL · Code: MLPTPA (primary demo, shown to buyers without code)
