@@ -6,6 +6,10 @@
 /show/    /show.html    200
 /show/*   /show.html    200
 
+# Privacy policy
+/privacy     /privacy.html    200
+/privacy/    /privacy.html    200
+
 # Seller browse
 /seller-browse     /seller-browse.html    200
 /seller-browse/    /seller-browse.html    200

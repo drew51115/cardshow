@@ -13,6 +13,7 @@ CardShow is a sports card show inventory platform connecting buyers, sellers, an
 ```
 index.html                        → Landing/marketing page (formerly landing.html); forwards password-reset link hashes to app.html; CTAs link to app.html?signup=1 / ?buyer=1
 app.html                          → Main platform — seller/admin/buyer views (formerly index.html)
+privacy.html                      → Privacy policy (effective 2026-10-25); served at /privacy via _redirects; #data-deletion anchor for data-deletion requests; linked from index.html footer
 show.html                         → Public show page (short link show.html?id=<showId>, loads from the DB; old hash-encoded links still open)
 seller-browse.html                → Buyer-facing seller storefront (QR scan destination)
 _redirects                        → Netlify routing rules
