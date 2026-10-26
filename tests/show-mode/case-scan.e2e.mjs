@@ -92,8 +92,9 @@ await page.fill('#authEmail', 't@x.com'); await page.fill('#authPassword', 'pass
 await page.evaluate(() => submitAuth());
 await wait(1500);
 check('Show Mode opens', await page.locator('#showModeRoot').isVisible());
-await page.click('.sm-sec-btn:has-text("Add cards")'); await wait(1200);
-check('Add cards → case camera', (await hash()).endsWith('/add/scan'));
+await page.click('.sm-sec-btn:has-text("Add cards")'); await wait(300);
+await page.click('#smAddBackdrop .sm-choice:has-text("A whole case")'); await wait(1200);
+check('Add cards → A whole case → case camera', (await hash()).endsWith('/add/scan'));
 check('camera running', await page.evaluate(() => { const v = document.getElementById('smVideo'); return !!(v && v.videoWidth); }));
 check('Done disabled before any photo', await page.isDisabled('#scDoneBtn'));
 await tapCheck('A: scan your case');

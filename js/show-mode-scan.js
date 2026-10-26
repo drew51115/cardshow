@@ -543,7 +543,6 @@ async function scRenderCapture(batchId) {
       <button class="sm-shutter sc-shutter" id="scShutter" onclick="scCapture()" aria-label="Take photo"></button>
       <button class="sc-done-btn" id="scDoneBtn" onclick="scCaptureDone()" disabled>Done</button>
     </div>
-    <button class="sm-link sc-other-ways" onclick="openQuickActions('add')">Other ways to add cards</button>
     <input type="file" id="scFileInput" accept="image/*" multiple style="display:none" onchange="scHandleFiles(this)">`;
   smStartCamera();
   _scRenderTray();

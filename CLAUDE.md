@@ -4707,7 +4707,7 @@ CSS (`--sm-*` tokens, scoped to `#showModeRoot`) stays in app.html.
 off; localStorage `showModeTest`; stripped from the URL). Session restore and the service worker
 are **not** flagged.
 
-**Routing:** hash routes `#/sm/<showId>[/inventory|/sell|/log|/confirm|/sold/<clientSaleId>|/scans]`
+**Routing:** hash routes `#/sm/<showId>[/inventory|/sell|/log|/confirm|/sold/<clientSaleId>|/scans|/addone|/addtype|/add/...]`
 (`/show/*` already rewrites to show.html). `smRoute()` on `hashchange`; `smGo(path, replace)`.
 `smAfterShowsLoaded()` (after `loadShowsFromDB()` in `loginAsSeller()`) drains the outbox and
 reopens the same screen after a refresh, or opens Show Mode itself for a show running today
@@ -4804,6 +4804,37 @@ call (removed on main) is gone. The classic fallback path already goes through `
 photos may be stored in a private bucket; table number from `show_sellers.table_number`; trade
 sales out of scope; social assets show the seller's handle only by opt-in; use both Claude vision
 and CardSight identify.
+
+### Add cards choice sheet + one-card add (session 2026-10-26)
+Seller feedback: **Add cards** went straight to the case scan, but at a table they usually add one
+or two cards. Home → **Add cards** now opens a bottom sheet (`#smAddBackdrop`, `smOpenAddSheet()` /
+`smAddChoose(kind)`, closed on any route change) with four options:
+- **One card** → `#/sm/<show>/addone`, the single-card camera from Sell (`smRenderSell('add')`,
+  camera only, no Scan/Search toggle). The photo is saved first (capture `entry_point =
+  'case_scan'`, since the DB check only allows sell_card / manual_sale / case_scan), then identified
+  with Claude + CardSight as in Sell. The result sheet (`_smRenderAddResult()`) has three states:
+  - **New card:** a "Your price" field, pre-filled with the rounded market price unless the seller
+    already typed one; **Add to case · live now** (`smAddToCase()`); Wrong card? (switches to a
+    CardSight candidate, `smAddUseCandidate()`); Edit details; Add back photo.
+  - **Already in your case** (`smMatchInventory`, e.g. a cert match): **Scan next card**, with
+    "Add another copy" and "It's a different card" links. Nothing is added unless asked.
+  - **Couldn't read:** Try again / Type it in.
+  After an add the sheet clears for the next card, and the title shows "N added".
+- **A whole case** → the Phase 3 case scan (`/add/scan`). Its "Other ways to add cards" link was
+  removed.
+- **Type it in** → `#/sm/<show>/addtype` (`smRenderAddType()`): player/character, year, card #,
+  set, parallel, grader, grade, cert #, price. It needs a player or set. Opened from a scan (Edit
+  details / It's a different card / Type it in), it is pre-filled, keeps the photo
+  (`sessionStorage.smAddDraft`) and returns to the camera after adding. From the sheet, the form
+  clears for the next card.
+- **Upload a spreadsheet** → clicks the classic `#uploadZone` file input inside the tap; the
+  column mapper (z-index 950) opens above Show Mode.
+- All adds go through `_smAddNewCard()` → the existing `add_item` outbox op (source `show_mode`,
+  published to the show, capture attached as the primary image).
+- Analytics: `sm_card_added` (`via: scan|typed`), plus `capture_attached` (`entryPoint: 'add_card'`).
+- Tests: `tests/show-mode/add-cards.e2e.mjs` covers the sheet, one card (new / wrong card /
+  already in case / another copy), Edit details, Type it in, the spreadsheet file picker and
+  Cancel. `case-scan.e2e.mjs` now enters through the sheet.
 
 ### Fix: Sell → Search rows showed no player name (session 2026-10-26)
 Seller screenshot: search results on the dark Sell screen showed only "2024 · Bowman Chrome ·

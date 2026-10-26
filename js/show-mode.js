@@ -955,6 +955,8 @@ function smOpenClassic(tab) {
 
 function smOpenMore()  { document.getElementById('smMoreBackdrop').classList.add('open'); }
 function smCloseMore() { const b = document.getElementById('smMoreBackdrop'); if (b) b.classList.remove('open'); }
+// Screens that use the single-card camera: sell, log a sale, add one card.
+function _smIsCameraScreen(screen) { return screen === 'sell' || screen === 'log' || screen === 'addone'; }
 
 // Re-render whatever is on screen after data changes (called by updateStats()
 // and after the outbox drains). The camera screen is left alone.
@@ -971,11 +973,12 @@ function smRoute() {
   const parts = path.split('/').filter(Boolean);
   const screen = parts[0] || 'home';
   const caseCamera = typeof scIsCameraRoute === 'function' && scIsCameraRoute(parts);
-  if (screen !== 'sell' && screen !== 'log' && !caseCamera) smStopCamera();
+  if (!_smIsCameraScreen(screen) && !caseCamera) smStopCamera();
   smCloseMore();
+  smCloseAddSheet();
   if (screen !== 'sold') smHideToast();
   const root = document.getElementById('showModeRoot');
-  root.classList.toggle('sm-dark', screen === 'sell' || screen === 'log' || caseCamera);
+  root.classList.toggle('sm-dark', _smIsCameraScreen(screen) || caseCamera);
   const navVisible = screen === 'home' || screen === 'inventory';
   document.getElementById('smBottomNav').style.display = navVisible ? '' : 'none';
   document.querySelectorAll('#smBottomNav .sm-nav-item[data-screen]').forEach(b => {
@@ -988,6 +991,8 @@ function smRoute() {
   switch (screen) {
     case 'sell':      return smRenderSell('sell');
     case 'log':       return smRenderSell('manual');
+    case 'addone':    return smRenderSell('add');
+    case 'addtype':   return smRenderAddType();
     case 'confirm':   return smRenderConfirm();
     case 'sold':      return smRenderSold(parts[1]);
     case 'inventory': return smRenderInventory();
@@ -1098,7 +1103,7 @@ function smRenderHome() {
     </button>
     <div class="sm-secondary">
       ${typeof scHomeBannerHTML === 'function' ? scHomeBannerHTML() : ''}
-      <button class="sm-sec-btn" onclick="smGo('/add/scan')">${_smIcon('plus')}Add cards${_smIcon('chev', 'sm-chev')}</button>
+      <button class="sm-sec-btn" onclick="smOpenAddSheet()" aria-haspopup="dialog">${_smIcon('plus')}Add cards${_smIcon('chev', 'sm-chev')}</button>
       <button class="sm-sec-btn" onclick="smStartManualSale()">${_smIcon('pen')}Log a manual sale${_smIcon('chev', 'sm-chev')}</button>
       <button class="sm-sec-btn" onclick="smRefreshPrices()">${_smIcon('refresh')}Refresh prices${_smIcon('chev', 'sm-chev')}</button>
     </div>
@@ -1202,22 +1207,24 @@ function smStartManualSale() {
 function smRenderSell(mode) {
   _smLastResult = null;
   const manual = mode === 'manual';
+  const adding = mode === 'add';
+  const title = adding ? 'Add a card' : (manual ? 'Log a sale' : 'Sell a card');
   const el = _smView();
   el.innerHTML = `
     <div class="sm-dark-header">
       <button class="sm-dark-btn" onclick="smGoHome()" aria-label="Close">${_smIcon('close')}</button>
-      <div class="sm-seg" role="tablist" aria-label="${manual ? 'Log a sale' : 'Sell a card'}">
+      ${adding ? '<span></span>' : `<div class="sm-seg" role="tablist" aria-label="${title}">
         <button role="tab" id="smSegScan" aria-selected="${_smSellMode === 'scan'}" onclick="smSetSellMode('scan')">Scan</button>
         <button role="tab" id="smSegSearch" aria-selected="${_smSellMode === 'search'}" onclick="smSetSellMode('search')">Search</button>
-      </div>
+      </div>`}
       <button class="sm-dark-btn" id="smFlashBtn" onclick="smToggleTorch()" aria-label="Flash" aria-pressed="false" style="visibility:hidden">${_smIcon('flash')}</button>
     </div>
-    <div class="sm-sell-title">${manual ? 'Log a sale' : 'Sell a card'}</div>
+    <div class="sm-sell-title">${title}${adding && _smAddedCount ? ` <span class="sm-added-count">${_smAddedCount} added</span>` : ''}</div>
     <div id="smSellBody"></div>
     <div id="smResultSheet"></div>
     <div class="sm-sr-only" aria-live="polite" id="smLive"></div>
     <input type="file" id="smFileInput" accept="image/*" style="display:none" onchange="smHandleFile(this)">`;
-  _smRenderSellBody(manual);
+  _smRenderSellBody(manual, adding);
 }
 
 function smSetSellMode(m) {
@@ -1227,11 +1234,12 @@ function smSetSellMode(m) {
   _smRenderSellBody(_smScreen === 'log');
 }
 
-function _smRenderSellBody(manual) {
+// adding: the one-card add screen is camera only (typing has its own screen).
+function _smRenderSellBody(manual, adding) {
   const body = document.getElementById('smSellBody');
   if (!body) return;
   document.getElementById('smResultSheet').innerHTML = '';
-  if (_smSellMode === 'scan') {
+  if (adding || _smSellMode === 'scan') {
     body.innerHTML = `
       <div class="sm-camera" id="smCamera">
         <video id="smVideo" playsinline muted autoplay></video>
@@ -1243,7 +1251,8 @@ function _smRenderSellBody(manual) {
         <button class="sm-dark-btn sm-dark-btn--text" onclick="document.getElementById('smFileInput').click()">${_smIcon('image')}<span>Photo</span></button>
         <button class="sm-shutter" id="smShutter" onclick="smCapture()" aria-label="Take photo"></button>
         <span style="width:64px"></span>
-      </div>`;
+      </div>
+      ${_smScreen === 'addone' ? `<div class="sm-links"><button class="sm-link sm-link--on-dark" onclick="smStartAddType()">Type it in instead</button></div>` : ''}`;
     smStartCamera();
   } else {
     smStopCamera();
@@ -1405,7 +1414,9 @@ async function smHandleFile(input) {
 
 async function _smProcessScan(crop, original) {
   const manual = _smScreen === 'log';
-  const entryPoint = manual ? 'manual_sale' : 'sell_card';
+  // One-card adds are stored as 'case_scan' (the entry_point check allows
+  // sell_card / manual_sale / case_scan, and this is an add to the case).
+  const entryPoint = _smScreen === 'addone' ? 'case_scan' : (manual ? 'manual_sale' : 'sell_card');
   const sheet = document.getElementById('smResultSheet');
   const shutter = document.getElementById('smShutter');
   if (shutter) shutter.disabled = true;
@@ -1429,7 +1440,7 @@ async function _smProcessScan(crop, original) {
     try { ident = await smIdentify(crop); }
     catch (e) { console.warn('[show-mode] identify failed', e); ident = { fields: null, confidence: 'none', candidates: [], sources: {} }; }
   }
-  if (_smScreen !== 'sell' && _smScreen !== 'log') return;   // seller left meanwhile
+  if (!_smIsCameraScreen(_smScreen)) return;   // seller left meanwhile
   if (shutter) shutter.disabled = false;
 
   const matches = ident.fields ? smMatchInventory(ident.fields) : [];
@@ -1456,6 +1467,7 @@ function _smRenderResult() {
   const sheet = document.getElementById('smResultSheet');
   const r = _smLastResult;
   if (!sheet || !r) return;
+  if (_smScreen === 'addone') return _smRenderAddResult();
   const manual = _smScreen === 'log';
   const thumb = _smThumbUrls.get(r.capture.id);
   if (!r.ident.fields) {
@@ -2156,6 +2168,231 @@ async function smScanDelete(id) {
   const url = _smThumbUrls.get(id);
   if (url) { URL.revokeObjectURL(url); _smThumbUrls.delete(id); }
   smRenderScans();
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Add cards: a choice sheet (one card / whole case / type it in / spreadsheet),
+// the one-card camera (/addone) and the Type it in form (/addtype). Adds go
+// through the same add_item outbox op as Recent scans → Add to case.
+// ════════════════════════════════════════════════════════════════════════════
+let _smAddedCount = 0;   // cards added on this visit to the one-card camera
+
+function smOpenAddSheet() { document.getElementById('smAddBackdrop')?.classList.add('open'); }
+function smCloseAddSheet() { document.getElementById('smAddBackdrop')?.classList.remove('open'); }
+
+// File pickers must open inside the tap, so the upload click comes before
+// anything else.
+function smAddChoose(kind) {
+  if (kind === 'upload') {
+    const input = document.querySelector('#uploadZone input[type="file"]');
+    if (input) input.click(); else showToast('Spreadsheet upload isn\'t available here', 'gold');
+    smCloseAddSheet();
+    return;
+  }
+  smCloseAddSheet();
+  if (kind === 'one') { _smAddedCount = 0; smGo('/addone'); }
+  else if (kind === 'case') smGo('/add/scan');
+  else if (kind === 'type') smStartAddType();
+}
+
+function _smAddFields(r) { return r.addFields || r.ident.fields; }
+
+function _smRenderAddResult() {
+  const sheet = document.getElementById('smResultSheet');
+  const r = _smLastResult;
+  const thumb = _smThumbUrls.get(r.capture.id);
+  const img = `<img class="sm-result-img" src="${smEsc(thumb || '')}" alt="">`;
+  if (!r.ident.fields) {
+    sheet.innerHTML = `
+      <div class="sm-sheet-card">
+        <div class="sm-result-top"><span class="sm-saved">${_smIcon('check')}Photo saved</span></div>
+        <div class="sm-result-main">${img}
+          <div><div class="sm-result-name">${r.ident.offline ? 'No signal — can\'t identify right now' : 'Couldn\'t read this card'}</div>
+          <div class="sm-row-meta">Try again, or type the details in.</div></div>
+        </div>
+        <button class="sm-primary" onclick="smRetryScan()">Try again</button>
+        <div class="sm-links"><button class="sm-link" onclick="smStartAddType(true)">Type it in</button></div>
+      </div>`;
+    _smAnnounce('Could not identify the card.');
+    return;
+  }
+  const f = _smAddFields(r);
+  const match = !r.forceNew && r.matches[0] && r.matches[0].card;
+  const meta = [f.year, f.cardSet, _smCardNum(f.number), f.grader ? `${f.grader} ${f.grade}`.trim() : 'Raw'].filter(Boolean).join(' · ');
+  if (match) {
+    sheet.innerHTML = `
+      <div class="sm-sheet-card">
+        <div class="sm-result-top">
+          <span class="sm-badge sm-badge--warn">Already in your case</span>
+          <span class="sm-saved">${_smIcon('check')}Photo saved</span>
+        </div>
+        <div class="sm-result-main">${img}
+          <div><div class="sm-result-name">${smEsc(match.Player || match['Card Title'] || 'Card')}</div>
+          <div class="sm-row-meta">${smEsc([match.Year, match['Set '], _smCardNum(match.Number), _smGradeLabel(match)].filter(Boolean).join(' · '))}</div>
+          <div class="sm-row-meta">Your price ${_smMoney(match.Price)}</div></div>
+        </div>
+        <button class="sm-primary" onclick="smAddScanNext()">Scan next card</button>
+        <div class="sm-links">
+          <button class="sm-link" onclick="smAddAnotherCopy()">Add another copy</button>
+          <button class="sm-link" onclick="smStartAddType(true)">It's a different card</button>
+        </div>
+      </div>`;
+    _smAnnounce('Already in your case: ' + (match.Player || 'card'));
+    return;
+  }
+  const cands = r.ident.candidates || [];
+  sheet.innerHTML = `
+    <div class="sm-sheet-card">
+      <div class="sm-result-top">
+        <span class="sm-badge sm-badge--ok">New card</span>
+        <span class="sm-saved">${_smIcon('check')}Photo saved</span>
+      </div>
+      <div class="sm-result-main">${img}
+        <div><div class="sm-result-name">${smEsc(f.player || f.cardSet || 'Unknown card')}</div>
+        <div class="sm-row-meta">${smEsc(meta)}</div>
+        <div class="sm-row-meta">Market <span id="smResultMarket">…</span></div></div>
+      </div>
+      <label class="sm-field">Your price
+        <input id="smAddPrice" type="text" inputmode="decimal" placeholder="0" autocomplete="off"
+          oninput="this.dataset.edited='1'">
+      </label>
+      <button class="sm-primary" id="smAddBtn" onclick="smAddToCase()">Add to case · live now</button>
+      <div class="sm-links">
+        ${cands.length ? '<button class="sm-link" onclick="smAddShowCandidates()">Wrong card?</button>' : ''}
+        <button class="sm-link" onclick="smStartAddType(true)">Edit details</button>
+        <button class="sm-link" onclick="smAddBackPhoto()">Add back photo</button>
+      </div>
+      <div id="smCandidates"></div>
+    </div>`;
+  _smAnnounce('New card: ' + (f.player || 'card'));
+  const capId = r.capture.id;
+  _smFillMarket(_smFieldsToCard(f), 'smResultMarket').then(v => {
+    const input = document.getElementById('smAddPrice');
+    if (v && input && !input.dataset.edited && _smLastResult && _smLastResult.capture.id === capId) input.value = String(Math.round(v));
+  });
+}
+
+function smAddShowCandidates() {
+  const r = _smLastResult, box = document.getElementById('smCandidates');
+  if (!r || !box) return;
+  box.innerHTML = `<div class="sm-section-label" style="margin-top:12px">Other matches</div><div class="sm-list">${
+    r.ident.candidates.map((c, i) => `
+      <button class="sm-row sm-row--button" onclick="smAddUseCandidate(${i})">
+        <span class="sm-row-body"><span class="sm-row-title">${smEsc(c.player || 'Unknown')}</span>
+        <span class="sm-row-meta">${smEsc([c.year, c.cardSet, _smCardNum(c.number), c.parallel].filter(Boolean).join(' · '))}</span></span>
+      </button>`).join('')}</div>`;
+}
+
+function smAddUseCandidate(i) {
+  const r = _smLastResult;
+  const c = r && r.ident.candidates[i];
+  if (!c) return;
+  const base = r.ident.fields || {};
+  r.addFields = Object.assign({}, base, c, { grader: c.grader || base.grader || '', grade: c.grade || base.grade || '', cert: c.cert || base.cert || '' });
+  ['source', 'confidence', 'catalogCardId'].forEach(k => delete r.addFields[k]);
+  r.matches = smMatchInventory(r.addFields);
+  _smRenderAddResult();
+}
+
+function smAddAnotherCopy() {
+  if (!_smLastResult) return;
+  _smLastResult.forceNew = true;
+  _smRenderAddResult();
+}
+
+function smAddScanNext() {
+  _smLastResult = null;
+  const sheet = document.getElementById('smResultSheet');
+  if (sheet) sheet.innerHTML = '';
+  const shutter = document.getElementById('smShutter');
+  if (shutter) shutter.disabled = false;
+  const t = document.querySelector('.sm-sell-title');
+  if (t) t.innerHTML = 'Add a card' + (_smAddedCount ? ` <span class="sm-added-count">${_smAddedCount} added</span>` : '');
+}
+
+// A new inventory card from identification fields, queued like every other
+// Show Mode add, published to the show, with the capture as its photo.
+async function _smAddNewCard(f, price, captureId) {
+  const card = _smCardFromNewItem({
+    player: f.player || 'Unknown card', year: f.year, cardSet: f.cardSet, number: f.number, parallel: f.parallel,
+    grader: f.grader, grade: f.grade, cert: f.cert, asking: price,
+  });
+  card._dbId = _smUuid();
+  card._smPending = true;
+  if (captureId) { card._captureId = captureId; _smCaptureIndex.set(card._dbId, captureId); }
+  inventory.push(card);
+  if (captureId) await smUpdateCapture(captureId, { attachedTo: card._dbId });
+  await smEnqueue({ type: 'add_item', inventoryId: card._dbId, cardSnapshot: _smSnapshot(card), captureId: captureId || null, showId: _smShowId, source: 'show_mode' });
+  if (captureId) _smLogEvent('capture_attached', { entryPoint: 'add_card', attachType: 'new_item' });
+  _smLogEvent('card_added', { via: captureId ? 'scan' : 'typed' });
+  _smAfterInventoryChange();
+  return card;
+}
+
+function _smPriceValue(id) { return String(document.getElementById(id)?.value || '').replace(/[^0-9.]/g, ''); }
+
+async function smAddToCase() {
+  const r = _smLastResult;
+  if (!r || !r.ident.fields) return;
+  const btn = document.getElementById('smAddBtn');
+  if (btn) btn.disabled = true;
+  const card = await _smAddNewCard(_smAddFields(r), _smPriceValue('smAddPrice'), r.capture.id);
+  _smAddedCount++;
+  showToast(`✓ ${card.Player} added to your case`);
+  smAddScanNext();
+}
+
+// ── Type it in (/addtype) ──
+function smStartAddType(fromScan) {
+  const r = fromScan && _smLastResult;
+  const f = r && r.ident.fields ? _smAddFields(r) : {};
+  const draft = { fields: Object.assign({ player: '', year: '', cardSet: '', number: '', parallel: '', grader: '', grade: '', cert: '' }, f), captureId: r ? r.capture.id : null, price: _smPriceValue('smAddPrice') };
+  try { sessionStorage.setItem('smAddDraft', JSON.stringify(draft)); } catch (_) {}
+  smGo('/addtype');
+}
+
+function smRenderAddType() {
+  let d = null;
+  try { d = JSON.parse(sessionStorage.getItem('smAddDraft') || 'null'); } catch (_) {}
+  d = d || { fields: {}, captureId: null, price: '' };
+  const f = d.fields || {};
+  const thumb = d.captureId && _smThumbUrls.get(d.captureId);
+  _smView().innerHTML = `
+    <div class="sm-topbar">
+      <button class="sm-icon-btn" onclick="history.back()" aria-label="Back">${_smIcon('back')}</button>
+      <div class="sm-title">Add a card</div>
+      <span style="width:44px"></span>
+    </div>
+    ${thumb ? `<div class="sm-result-main" style="margin-bottom:6px"><img class="sm-result-img" src="${smEsc(thumb)}" alt=""><div class="sm-row-meta">Your photo is saved with this card.</div></div>` : ''}
+    <div class="sm-form-row">${_smField('Player or character', 'smAT_player', f.player)}</div>
+    <div class="sm-form-row">${_smField('Year', 'smAT_year', f.year, 'numeric')}${_smField('Card #', 'smAT_number', f.number)}</div>
+    <div class="sm-form-row">${_smField('Set', 'smAT_cardSet', f.cardSet)}</div>
+    <div class="sm-form-row">${_smField('Parallel', 'smAT_parallel', f.parallel)}</div>
+    <div class="sm-form-row">${_smField('Grader', 'smAT_grader', f.grader)}${_smField('Grade', 'smAT_grade', f.grade, 'decimal')}${_smField('Cert #', 'smAT_cert', f.cert, 'numeric')}</div>
+    <div class="sm-form-row">${_smField('Your price', 'smAT_price', d.price, 'decimal')}</div>
+    <button class="sm-primary" id="smATBtn" onclick="smAddTypeSubmit()">Add to case · live now</button>
+    <div class="sm-links"><button class="sm-link" onclick="smGoHome()">Done</button></div>`;
+  if (!f.player) setTimeout(() => document.getElementById('smAT_player')?.focus(), 50);
+}
+
+async function smAddTypeSubmit() {
+  const v = k => (document.getElementById('smAT_' + k)?.value || '').trim();
+  const f = { player: v('player'), year: v('year'), cardSet: v('cardSet'), number: v('number'), parallel: v('parallel'),
+    grader: _smNormGrader(v('grader')), grade: v('grade'), cert: v('cert') };
+  if (!f.player && !f.cardSet) { showToast('Add at least the player or the set', 'gold'); document.getElementById('smAT_player')?.focus(); return; }
+  let d = null;
+  try { d = JSON.parse(sessionStorage.getItem('smAddDraft') || 'null'); } catch (_) {}
+  const captureId = d && d.captureId;
+  if (captureId) {
+    const cap = await smStore.get('captures', captureId).catch(() => null);
+    if (cap && cap.attachedTo) { showToast('That photo is already on a card in your case', 'gold'); return; }
+  }
+  document.getElementById('smATBtn').disabled = true;
+  const card = await _smAddNewCard(f, _smPriceValue('smAT_price'), captureId || null);
+  try { sessionStorage.removeItem('smAddDraft'); } catch (_) {}
+  showToast(`✓ ${card.Player} added to your case`);
+  if (captureId) { _smAddedCount++; history.back(); return; }   // came from the camera: back to it
+  smRenderAddType();   // typing: a fresh form for the next card
 }
 
 // Test hooks (pure functions only).

@@ -12,6 +12,7 @@ node show-mode.e2e.mjs "iPhone 13"
 node show-mode.e2e.mjs "Pixel 7"
 node show-mode-legacy.e2e.mjs
 node case-scan.e2e.mjs "iPhone 13"           # Phase 3: case scan A–D (also "Pixel 7")
+node add-cards.e2e.mjs "iPhone 13"           # Add cards sheet: one card, type it in, spreadsheet
 ```
 Set `CHROMIUM_PATH` to use a specific Chromium (the cloud container has `/opt/pw-browsers/chromium`).
 Each line prints PASS or FAIL. The camera is Chromium's fake device.
