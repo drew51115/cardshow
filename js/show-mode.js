@@ -311,8 +311,10 @@ async function _smOpSale(op) {
       });
       await _insertShowTransaction(ledgerCard, p.showId);
     }
-    if (out.created && card !== op.cardSnapshot && typeof gtcrRegisterOnSale === 'function') gtcrRegisterOnSale(card);
   }
+  // record_sale() writes the sale server-side, bypassing updateCardInDB(), so
+  // schedule the GTCR reconcile here: it removes a sold card's registration.
+  if (out.status === 'completed' && typeof gtcrScheduleReconcile === 'function') gtcrScheduleReconcile();
   return 'done';
 }
 
@@ -361,6 +363,8 @@ async function _smOpVoid(op) {
   if (res.data && res.data.error === 'undo_window_expired') {
     showToast('Too late to undo — it\'s been more than 10 minutes', 'var(--danger)');
     if (card) _smRefetchCard(card);
+  } else if (typeof gtcrScheduleReconcile === 'function') {
+    gtcrScheduleReconcile(); // the card is back in the case: re-register it if the seller opted in
   }
   return 'done';
 }
@@ -385,6 +389,8 @@ async function _smOpAddItem(op) {
   if (card && card !== op.cardSnapshot) card._smPending = false;
   if (op.showId && card) _autoPublishCardToShow(card, op.inventoryId, op.showId);
   if (card && typeof gtcrCheckCard === 'function') gtcrCheckCard(card, op.inventoryId, 'insert');
+  // Added by upsert, not insertCardToDB(), so schedule the GTCR reconcile here.
+  if (typeof gtcrScheduleReconcile === 'function') gtcrScheduleReconcile();
   if (op.captureId && !_smCapturesMissing) {
     await db.from('card_captures').update({ inventory_id: op.inventoryId, status: 'attached' }).eq('id', op.captureId);
     await db.from('inventory').update({ primary_capture_id: op.captureId, image_source: 'seller' })

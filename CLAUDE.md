@@ -4780,6 +4780,14 @@ sign the seller out), "Log in" links on show.html / seller-browse.html, `sw.js` 
 - **Tests**: `tests/show-mode/` — 48 browser checks (iPhone 13 and Pixel 7), a 3-check fallback
   run, and the SQL file. See its README.
 
+### GTCR integration (after merging main, session 2026-10-26)
+Show Mode writes sales through `record_sale()`/`void_sale()` and adds items by upsert, so it bypasses
+`updateCardInDB()`/`insertCardToDB()`, which is where the GTCR reconcile is normally scheduled. `js/show-mode.js`
+now calls `gtcrScheduleReconcile()` itself after a completed sale (removes the sold card's registration),
+after a successful undo (re-registers it, if the seller opted in) and after `add_item` (registers a new
+graded card). It's a no-op for sellers without consent or registrations. The old `gtcrRegisterOnSale()`
+call (removed on main) is gone. The classic fallback path already goes through `updateCardInDB()`.
+
 ### Known gaps / deviations
 - Already-sold conflict: shows a toast and reloads the card instead of the spec's "undo the
   other sale or keep this one?" dialog.
