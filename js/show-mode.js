@@ -855,16 +855,25 @@ function _smDefaultShowId() {
   return today ? today.id : null;
 }
 
+// Shown to every seller: one who hasn't joined a show yet is taken to
+// "Join a show" first (Show Mode only opens for a show the seller is in).
 function smUpdateEntryPoints() {
   const btn = document.getElementById('navShowModeBtn');
   if (!btn) return;
-  btn.style.display = (smIsEnabled() && currentRole === 'seller' && _smAuthorizedShows().length) ? '' : 'none';
+  btn.style.display = (smIsEnabled() && currentRole === 'seller') ? '' : 'none';
 }
 
 function smOpenFromNav() {
-  const id = _smDefaultShowId() || (_smAuthorizedShows()[0] || {}).id;
-  if (id) openShowMode(id);
-  else showToast('You haven\'t been added to a show yet', 'gold');
+  const id = _smDefaultShowId();
+  if (id) return openShowMode(id);
+  // Not in a show that runs today: if one they could join runs today, ask
+  // them to join it; otherwise open their next show, or the join list.
+  const joinToday = typeof _joinableShows === 'function' && _joinableShows().some(s => _showIsToday(s));
+  const first = (_smAuthorizedShows()[0] || {}).id;
+  if (first && !joinToday) return openShowMode(first);
+  openJoinShow({ thenShowMode: true, reason: first
+    ? 'Add the show you\'re at today to open Show Mode. The organizer can still assign your table.'
+    : 'Add the show you\'re vending at to open Show Mode. The organizer can still assign your table.' });
 }
 
 // Runs once shows{} is loaded on seller login: reopens Show Mode after a
@@ -881,6 +890,7 @@ function smAfterShowsLoaded() {
     const id = decodeURIComponent(m[1]);
     if (_smAuthorizedShows().some(s => s.id === id)) { openShowMode(id, m[2] || ''); return; }
     _smClearHash();
+    if (shows[id]) { openShowMode(id); return; }   // not joined: asks them to join first
   }
   const id = _smDefaultShowId();
   if (id && _smExitedToday() !== id) openShowMode(id);
@@ -917,6 +927,14 @@ window.addEventListener('hashchange', () => {
 
 function openShowMode(showId, path) {
   if (!smIsEnabled() || !shows[showId]) return;
+  // Joining the show is required first. The seller is sent to "Join a show"
+  // with this show at the top, and Show Mode opens once they've joined.
+  if (currentRole === 'seller' && !_smAuthorizedShows().some(s => s.id === showId)) {
+    if (typeof openJoinShow === 'function') {
+      openJoinShow({ showId, thenShowMode: true, reason: 'Join ' + (shows[showId].name || 'this show') + ' to open Show Mode.' });
+    }
+    return;
+  }
   _smShowId = showId;
   try { localStorage.removeItem(_smExitKey()); } catch (_) {}
   history.replaceState(null, '', location.pathname + location.search + '#/sm/' + encodeURIComponent(showId) + (path || ''));

@@ -87,6 +87,24 @@
         if (a.p_capture_id) { const c = S.card_captures.find(x => x.id === a.p_capture_id); if (c) { Object.assign(c, { inventory_id:invId, sale_id:sale.id, status:'attached' }); const inv = S.inventory.find(r=>r.id===invId); if (inv && !inv.primary_capture_id) inv.primary_capture_id = a.p_capture_id; } }
         data = { created:true, sale_id:sale.id, inventory_id:invId, status:'completed', sold_at:sale.sold_at };
       }
+    } else if (name === 'join_show_as_seller') {
+      const show = S.shows.find(x => x.id === a.p_show_id);
+      if (!show) data = { error:'not_found' };
+      else if (S.show_sellers.some(r => r.show_id === show.id && r.seller_id === UID)) data = { ok:true, already:true };
+      else if (show.seller_self_join === false) data = { error:'closed' };
+      else if ((show.end_date || show.start_date) && (show.end_date || show.start_date) < today) data = { error:'ended' };
+      else { S.show_sellers.push({ show_id:show.id, seller_id:UID, table_number:null, self_joined:true }); data = { ok:true, already:false }; }
+    } else if (name === 'leave_show_as_seller') {
+      const row = S.show_sellers.find(r => r.show_id === a.p_show_id && r.seller_id === UID);
+      if (!row) data = { error:'not_joined' };
+      else if (!row.self_joined) data = { error:'organizer_added' };
+      else {
+        const mine = new Set(S.inventory.filter(r => r.seller_id === UID).map(r => r.id));
+        const before = S.show_inventory.length;
+        S.show_inventory = S.show_inventory.filter(r => !(r.show_id === a.p_show_id && mine.has(r.card_id)));
+        S.show_sellers = S.show_sellers.filter(r => r !== row);
+        data = { ok:true, cards_removed: before - S.show_inventory.length };
+      }
     } else if (name === 'void_sale') {
       const s = S.sales.find(x => x.client_sale_id === a.p_client_sale_id);
       if (s.status === 'voided') data = { voided:false, status:'voided' };

@@ -13,6 +13,7 @@ node show-mode.e2e.mjs "Pixel 7"
 node show-mode-legacy.e2e.mjs
 node case-scan.e2e.mjs "iPhone 13"           # Phase 3: case scan A–D (also "Pixel 7")
 node add-cards.e2e.mjs "iPhone 13"           # Add cards sheet: one card, type it in, spreadsheet
+node join-show.e2e.mjs "iPhone 13"           # Seller self-join + the Show Mode gate
 ```
 Set `CHROMIUM_PATH` to use a specific Chromium (the cloud container has `/opt/pw-browsers/chromium`).
 Each line prints PASS or FAIL. The camera is Chromium's fake device.
@@ -24,4 +25,6 @@ createdb cs_test
 psql -d cs_test -f supabase-stub.sql
 psql -d cs_test -f ../../supabase/migrations/20261023120000_show_mode_sales.sql
 psql -d cs_test -f sales.test.sql
+psql -d cs_test -f ../../supabase/migrations/20261027120000_seller_self_join.sql
+psql -d cs_test -f self-join.test.sql
 ```

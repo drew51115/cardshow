@@ -42,6 +42,7 @@ supabase/migrations/20260825120000_trade_zone.sql → Trade Zone schema, storage
 js/show-mode.js                   → Show Mode v2 (flag show_mode_v2): routing, outbox, captures, identification, all Show Mode screens — loaded by app.html before its main script (bump its ?v= on change)
 js/show-mode-scan.js              → Show Mode case scan (screens A–D): per-photo queue, review, commit — loaded right after js/show-mode.js
 netlify/functions/cardsight-identify.js → Serverless: POST {image_base64, media_type} → CardSight catalog identification (Show Mode; runs beside scan-card.js)
+supabase/migrations/20261027120000_seller_self_join.sql → show_sellers.self_joined/joined_at, shows.seller_self_join, join_show_as_seller()/leave_show_as_seller() — see "Seller Self-Join"
 supabase/migrations/20261023120000_show_mode_sales.sql → sales + card_captures tables, private card-captures bucket, record_sale()/void_sale() — see "Show Mode v2"
 tests/show-mode/                  → Playwright + SQL tests for Show Mode (see its README)
 sw.js                             → Service worker: offline app shell (network-first app.html, cached scripts/fonts); never caches Supabase or functions — see "Show Mode v2"
@@ -64,7 +65,8 @@ shows         — id (text), name, date, location, status, access_code, publishe
                 start_date (date), end_date (date), floor_plan_url (text)
                 — see "Pending DB Migrations"
 show_sellers  — show_id, seller_id (uuid → sellers.id), table_number,
-                x_pct (numeric(5,2)), y_pct (numeric(5,2)) — see "Pending DB Migrations"
+                x_pct (numeric(5,2)), y_pct (numeric(5,2)) — see "Pending DB Migrations",
+                self_joined (bool), joined_at — see "Seller Self-Join"
                 (junction)
 inventory     — id (uuid), seller_id (uuid → sellers.id), card_title, player, year,
                 card_set, parallel, grader, grade, cert_number, condition, price,
@@ -242,6 +244,11 @@ Required for Show Mode v2 sales and saved photos (see "Show Mode v2" below):
 to the classic writes (`updateCardInDB()` + `recordShowTransaction()`, not atomic, no offline
 dedup) and photos stay on the device only.
 
+Required for seller self-join (see "Seller Self-Join" below):
+`supabase/migrations/20261027120000_seller_self_join.sql`. Until it runs, Join a show falls back
+to a plain `show_sellers` insert (no "joined themselves" tag, no organizer switch, no end-date
+check, no Leave show).
+
 Required to save the post-removal Trust Check result (diagnostic, see "Trust Check via GTCR"):
 `supabase/migrations/20261026120000_gtcr_post_removal_check.sql` adds `post_removal_card_status`,
 `post_removal_checked_at` and `post_removal_error` to `gtcr_registrations`.
@@ -289,7 +296,7 @@ _acItemType          // 'card' | 'sealed' | 'lot' — active item type in Add Ca
 Fonts: Bebas Neue (headlines), DM Sans (body), DM Mono (labels/badges), Barlow Condensed (CTAs), Instrument Serif italic (subheadlines)
 
 ## Three User Roles
-- **Seller** — email + password login → inventory management → profile (display name, WhatsApp, Instagram) → joins shows → QR code for table
+- **Seller** — email + password login → inventory management → profile (display name, WhatsApp, Instagram) → joins shows themselves ("+ Join a show") or is added by the organizer → QR code for table
 - **Admin** — Supabase Auth + admins table gate → Shows dashboard (default) → All Inventory tab → create/manage shows, authorize sellers, assign tables, publish, share
 - **Buyer** — guest → show picker → MLP Card Show demo (no code needed) → browse by sport/search → contact seller via WhatsApp or Instagram
 
@@ -2409,6 +2416,10 @@ migration, no new external library.
   imported as Raw. `readXLSX()`/`openMapper()` now keep every column; a re-upload repairs the
   raw cards in place via a raw-twin match in `loadInventory()`. See "XLSX Import Dropped Grade
   Columns".
+
+- **Seller self-join (session 2026-10-27)** — sellers add themselves to a show with
+  "+ Join a show"; organizers see a "joined themselves" tag and can switch it off per show;
+  Show Mode requires joining first. See "Seller Self-Join".
 
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`
@@ -4692,6 +4703,53 @@ immutable (UPDATE blocked by RLS).
 Insert one `show_floor_transactions` row from the inventory row, joining `shows`/`sellers` for the
 snapshot fields, for `inventory.id = '480b0b72-166f-46d5-8bd2-4827f3251c7f'` and
 `show_id = 'show_mv2j09jb67yk'`. Also add its `show_inventory` row if missing.
+
+## Seller Self-Join (session 2026-10-27)
+
+Sellers add themselves to a show they're vending at instead of waiting for the organizer
+(user's choice: option 3, "open shows", with a "joined themselves" tag). The organizer can
+still add sellers, assign tables and remove anyone.
+
+- **Who can join what:** any seller can join any show that isn't over and whose organizer left
+  **Let sellers add themselves** on (`shows.seller_self_join`, default `true`, a checkbox
+  `#smSelfJoin` in the Create/Edit Show modal). "Over" = last day (end date, else start date)
+  before today; the server allows one extra day because its clock is UTC. A show with no dates
+  is over only when its status is `past`.
+- **Server:** `join_show_as_seller(p_show_id)` (SECURITY DEFINER) checks signed in → seller row →
+  show exists → already joined (`{ok, already:true}`) → switch → end date, then inserts
+  `show_sellers` with `self_joined = true`. `leave_show_as_seller(p_show_id)` only works on a
+  self-joined row; it removes the seller's `show_inventory` rows for that show, then the
+  `show_sellers` row. An organizer-added seller gets `organizer_added` and must ask the
+  organizer. Errors come back as `{error: '...'}`, mapped by `JOIN_SHOW_ERRORS`. Tested in
+  `tests/show-mode/self-join.test.sql`.
+- **Seller UI (app.html):** **+ Join a show** in the My Shows panel header opens
+  `#joinShowOverlay` (`openJoinShow(opts)` / `renderJoinShowList()` / `joinShowAsSeller()`):
+  shows from `_joinableShows()`, today's first (with a Today tag), then by date, searchable by
+  name/city. After joining: toast pointing to ⚡ Add My Cards (joining doesn't publish cards).
+  Self-joined shows get a **Leave show** button (`leaveShowAsSeller()`); the old "Remove" button
+  is now "Remove cards" (it only ever unpublished cards). The checklist's show step, the
+  onboarding tour and the Feature guide now say "Join the show".
+- **The overlay markup sits before the scripts / `initPage()`** on purpose: a restored session
+  can open it during page load, before markup further down is parsed.
+- **Show Mode gate (js/show-mode.js):** Show Mode only opens for a show the seller is in.
+  `openShowMode()` for any other show opens Join a show with that show at the top and opens
+  Show Mode once they join (`thenShowMode`). The nav Show Mode button now shows for every seller
+  (`smUpdateEntryPoints()`); `smOpenFromNav()` opens today's joined show, else asks them to join
+  a show running today if there is one, else opens their first show or the join list. A
+  `#/sm/<show>` link to an unjoined show goes through the same gate.
+- **Organizer UI:** `shows[id].selfJoined` (Set of handles, from `show_sellers.self_joined` in
+  `loadShowsFromDB()`) puts a "joined themselves" tag (`.chip-selfjoined`) on the seller's chip
+  in the show modal and on their row in the Shows dashboard.
+- **Analytics:** `show_events` row `seller_self_join` per join.
+- **Before the migration runs:** the RPC is missing (PGRST202), so `_joinShowFallback()` inserts
+  the `show_sellers` row directly (RLS is still permissive). `loadShowsFromDB()` retries its
+  `show_sellers` select without `self_joined`, and `upsertShowToDB()` drops `seller_self_join`
+  on a missing-column error.
+- **Tests:** `tests/show-mode/join-show.e2e.mjs` (gate, list filtering, join, leave, tag, switch,
+  fallback) and `self-join.test.sql`.
+- **Open:** anyone with a seller account can join an open show, including people who didn't pay
+  for a table. The organizer sees them tagged and can remove them; switch the show off to stop
+  self-joins. No organizer notification of new joins yet.
 
 ## Show Mode v2 (in progress — Phases 1–3 shipped, sessions 2026-10-23/24)
 

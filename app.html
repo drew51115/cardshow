@@ -1791,6 +1791,41 @@
   }
   .seller-chip button:hover { color: var(--text); }
   .chip-username { white-space: nowrap; }
+  .chip-selfjoined {
+    font-family: 'DM Mono', monospace; font-size: 0.56rem; letter-spacing: 0.06em;
+    text-transform: uppercase; white-space: nowrap; flex-shrink: 0;
+    color: var(--accent); border: 1px solid var(--accent); border-radius: 4px;
+    padding: 0.08rem 0.3rem; line-height: 1.3;
+  }
+  .join-show-modal { max-width: 480px; padding: 1.4rem; }
+  .join-show-sub { font-size: 0.82rem; color: var(--muted); margin-bottom: 0.8rem; line-height: 1.45; }
+  .join-show-reason {
+    font-size: 0.85rem; color: var(--text); background: rgba(245,200,66,0.08);
+    border: 1px solid rgba(245,200,66,0.35); border-radius: 8px; padding: 0.55rem 0.7rem; margin-bottom: 0.6rem;
+  }
+  .join-show-list { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.7rem; max-height: 55vh; overflow-y: auto; }
+  .join-show-row {
+    display: flex; align-items: center; gap: 0.7rem; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 10px; padding: 0.7rem 0.8rem;
+  }
+  .join-show-row.focus { border-color: var(--accent); }
+  .join-show-info { flex: 1; min-width: 0; }
+  .join-show-name { font-weight: 700; font-size: 0.95rem; color: var(--text); }
+  .join-show-meta { font-size: 0.78rem; color: var(--muted); margin-top: 0.15rem; overflow-wrap: anywhere; }
+  .join-show-blocked { font-size: 0.75rem; color: var(--muted); margin-top: 0.3rem; font-style: italic; }
+  .join-show-today {
+    font-family: 'DM Mono', monospace; font-size: 0.58rem; letter-spacing: 0.08em; text-transform: uppercase;
+    background: var(--accent); color: #07080c; border-radius: 4px; padding: 0.08rem 0.35rem; vertical-align: middle;
+  }
+  .join-show-btn { width: auto !important; min-height: 44px; min-width: 76px; padding: 0 1rem; flex: 0 0 auto; margin: 0; border: none; border-radius: 8px; font-weight: 700; font-size: 0.95rem; cursor: pointer; }
+  .join-show-empty { font-size: 0.85rem; color: var(--muted); text-align: center; padding: 1.2rem 0.5rem; line-height: 1.5; }
+  .sm-selfjoin-toggle {
+    display: flex; gap: 0.6rem; align-items: flex-start; cursor: pointer;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 0.6rem 0.7rem; font-size: 0.78rem; color: var(--muted); line-height: 1.4;
+  }
+  .sm-selfjoin-toggle strong { color: var(--text); font-weight: 600; }
+  .sm-selfjoin-toggle input { margin-top: 0.15rem; accent-color: var(--accent); width: 18px; height: 18px; flex-shrink: 0; }
   .chip-table-input {
     width: 56px; background: var(--surface); border: 1px solid var(--border);
     border-radius: 4px; color: var(--text); font-size: 0.68rem;
@@ -4930,7 +4965,10 @@
 
       <!-- Seller: Show selector -->
       <div id="sellerShowsPanel" style="display:none">
-        <div class="section-label" style="margin-bottom:0.6rem">My Shows</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:0.5rem;margin-bottom:0.6rem">
+          <div class="section-label" style="margin:0">My Shows</div>
+          <button class="btn-xs primary" id="joinShowBtn" onclick="openJoinShow()">+ Join a show</button>
+        </div>
         <div id="sellerShowsList" style="display:flex;flex-direction:column;gap:0.5rem"></div>
       </div>
 
@@ -6798,6 +6836,10 @@
           </div>
         </div>
       </div>
+      <label class="sm-selfjoin-toggle">
+        <input type="checkbox" id="smSelfJoin" checked>
+        <span><strong>Let sellers add themselves</strong><br>Any CardShow seller can join this show from their own account. You can still remove them and assign tables.</span>
+      </label>
       <div>
         <div class="section-label" style="margin-bottom:0.5rem">Authorized Sellers</div>
         <div class="seller-combobox" id="smSellerCombobox">
@@ -7048,9 +7090,24 @@
   </div>
 </div>
 
+<!-- ── JOIN A SHOW (seller self-join). Must come before initPage(): a
+     restored session can open it during page load. ── -->
+<div class="modal-overlay" id="joinShowOverlay" onclick="if(event.target===this)closeJoinShow()">
+  <div class="modal join-show-modal" role="dialog" aria-labelledby="joinShowTitle">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.4rem">
+      <div id="joinShowTitle" style="font-family:'Bebas Neue',sans-serif;font-size:1.6rem;letter-spacing:0.04em;color:var(--text)">Join a show</div>
+      <button class="btn-modal-close" onclick="closeJoinShow()" aria-label="Close">✕</button>
+    </div>
+    <div id="joinShowReason" class="join-show-reason" style="display:none"></div>
+    <div class="join-show-sub" id="joinShowSub">Add the show you're vending at. The organizer can still assign your table.</div>
+    <input class="show-input" id="joinShowSearch" type="search" placeholder="Search shows by name or city" oninput="renderJoinShowList()" autocomplete="off">
+    <div id="joinShowList" class="join-show-list"></div>
+  </div>
+</div>
+
 <!-- Show Mode v2 (flag show_mode_v2). Bump ?v= when it changes: the service worker caches by URL. -->
-<script src="/js/show-mode.js?v=20261026b"></script>
-<script src="/js/show-mode-scan.js?v=20261026b"></script>
+<script src="/js/show-mode.js?v=20261027a"></script>
+<script src="/js/show-mode-scan.js?v=20261027a"></script>
 <script>
 // ── STATE ──
 let inventory = [];
@@ -13538,6 +13595,7 @@ function openCreateShowModal(showId) {
     document.getElementById('smLocation').value  = s.location || '';
     document.getElementById('smStatus').value    = s.status || 'upcoming';
     document.getElementById('smCode').value      = s.accessCode || '';
+    document.getElementById('smSelfJoin').checked = s.sellerSelfJoin !== false;
   } else {
     title.textContent = 'Create Show';
     document.getElementById('smName').value      = '';
@@ -13545,6 +13603,7 @@ function openCreateShowModal(showId) {
     document.getElementById('smEndDate').value   = '';
     document.getElementById('smLocation').value = '';
     document.getElementById('smStatus').value   = 'upcoming';
+    document.getElementById('smSelfJoin').checked = true;
     genAccessCode();
   }
 
@@ -13592,6 +13651,11 @@ function _smResetSellerSearchUI() {
   _smCloseSellerDropdown();
 }
 
+function _smSellerJoinedThemselves(handle) {
+  const show = editingShowId && shows[editingShowId];
+  return !!(show && show.selfJoined instanceof Set && show.selfJoined.has(handle));
+}
+
 function _smRenderSellerChips() {
   const chipRow = document.getElementById('smSellerChipRow');
   const input = document.getElementById('smSellerSearchInput');
@@ -13603,6 +13667,7 @@ function _smRenderSellerChips() {
     chip.dataset.handle = handle;
     chip.innerHTML = `
       <span class="chip-username">${_escHtml(handle)}</span>
+      ${_smSellerJoinedThemselves(handle) ? '<span class="chip-selfjoined" title="This seller added themselves to the show">joined themselves</span>' : ''}
       <input type="text" class="chip-table-input" placeholder="Table #"
         value="${_escHtml(tableNumber || '')}" aria-label="Table number for ${_escHtml(handle)}">
       <button type="button" aria-label="Remove ${_escHtml(handle)}">×</button>`;
@@ -13819,6 +13884,8 @@ async function saveShow() {
   shows[id] = { id, name, date, startDate, endDate: endDate || startDate, location, status, accessCode: code, sellers: newSellers,
                 tables: newTables,
                 publishedAt: (shows[id] && shows[id].publishedAt) || null,
+                selfJoined: (shows[id] && shows[id].selfJoined) || new Set(),
+                sellerSelfJoin: document.getElementById('smSelfJoin').checked,
                 city, state, venue };
 
   closeShowModal();
@@ -14327,7 +14394,7 @@ function renderSellerShowsList() {
   const available = Object.values(shows).filter(s => s.sellers.has(handle));
 
   if (!available.length) {
-    el.innerHTML = '<div style="font-size:0.78rem;color:var(--muted);padding:0.3rem 0">No shows available yet.<br>The admin will grant you access.</div>';
+    el.innerHTML = '<div style="font-size:0.78rem;color:var(--muted);padding:0.3rem 0">You haven\'t joined a show yet.<br>Tap <strong style="color:var(--text)">+ Join a show</strong> to add the show you\'re vending at.</div>';
     return;
   }
 
@@ -14353,7 +14420,8 @@ function renderSellerShowsList() {
       </div>
       <div class="show-card-actions">
         <button class="btn-xs primary" onclick="sellerPublishToShow('${s.id}')">⚡ Add My Cards</button>
-        <button class="btn-xs" onclick="sellerRemoveFromShow('${s.id}')">Remove</button>
+        <button class="btn-xs" onclick="sellerRemoveFromShow('${s.id}')">Remove cards</button>
+        ${s.selfJoined instanceof Set && s.selfJoined.has(handle) ? `<button class="btn-xs" onclick="leaveShowAsSeller('${s.id}')">Leave show</button>` : ''}
         ${smIsEnabled() ? `<button class="btn-xs" onclick="openShowMode('${s.id}')">▶ Show Mode</button>` : ''}
       </div>
     </div>`;
@@ -14451,6 +14519,175 @@ function sellerRemoveFromShow(showId) {
     dbDeleteIn(ids => db.from('show_inventory').delete().eq('show_id', showId).in('card_id', ids), dbIds)
       .then(({ error }) => { if (error) console.warn('sellerRemoveFromShow DB cleanup failed:', error.message); });
   }
+}
+
+// ── Seller self-join ─────────────────────────────────────────────
+// A seller adds themselves to a show they're vending at (any show whose
+// organizer left "Let sellers add themselves" on). The server function
+// join_show_as_seller() checks the rules; see "Seller Self-Join" in CLAUDE.md.
+// Joining is required before Show Mode opens for a show.
+
+// Last day of a show as 'YYYY-MM-DD', or null when it has no usable date.
+function _showLastDayISO(show) {
+  if (!show) return null;
+  if (show.startDate) return show.endDate || show.startDate;
+  const start = _parseShowDate(show.date || '');
+  if (!start) return null;
+  const m = (show.date || '').match(/\d{1,2}\s*-\s*(\d{1,2})\s*,/);
+  if (m) start.setDate(parseInt(m[1], 10));
+  return start.toLocaleDateString('en-CA');
+}
+function _showHasEnded(show) {
+  const last = _showLastDayISO(show);
+  if (last) return last < _todayISO();
+  return show.status === 'past';
+}
+function _showSortKey(show) { return show.startDate || _showDateISO(show) || '9999'; }
+
+// Shows the current seller could join right now: open to self-join, not over,
+// not already joined. Shows running today come first, then by date.
+function _joinableShows() {
+  return Object.values(shows)
+    .filter(s => !(s.sellers instanceof Set && s.sellers.has(currentSeller)))
+    .filter(s => s.sellerSelfJoin !== false && !_showHasEnded(s))
+    .sort((a, b) => (_showIsToday(b) - _showIsToday(a)) || _showSortKey(a).localeCompare(_showSortKey(b)));
+}
+
+let _joinShowOpts = {};
+// opts: { showId, thenShowMode, reason }
+function openJoinShow(opts) {
+  _joinShowOpts = opts || {};
+  if (typeof closeHelpMenu === 'function') closeHelpMenu();
+  const reason = document.getElementById('joinShowReason');
+  reason.textContent = _joinShowOpts.reason || '';
+  reason.style.display = _joinShowOpts.reason ? '' : 'none';
+  document.getElementById('joinShowSub').style.display = _joinShowOpts.reason ? 'none' : '';
+  document.getElementById('joinShowSearch').value = '';
+  document.getElementById('joinShowOverlay').classList.add('open');
+  renderJoinShowList();
+  // Refresh the list in the background in case shows were added since login.
+  loadShowsFromDB().then(ok => { if (ok && document.getElementById('joinShowOverlay').classList.contains('open')) renderJoinShowList(); });
+}
+function closeJoinShow() {
+  document.getElementById('joinShowOverlay').classList.remove('open');
+  _joinShowOpts = {};
+}
+
+function renderJoinShowList() {
+  const el = document.getElementById('joinShowList');
+  if (!el) return;
+  const q = (document.getElementById('joinShowSearch').value || '').trim().toLowerCase();
+  let list = _joinableShows();
+  const focus = _joinShowOpts.showId && shows[_joinShowOpts.showId];
+  // A show the seller tried to open goes first, even if it isn't joinable,
+  // so the reason it can't be joined is shown next to it.
+  if (focus && !list.includes(focus) && !(focus.sellers instanceof Set && focus.sellers.has(currentSeller))) list = [focus, ...list];
+  else if (focus) list = [focus, ...list.filter(s => s !== focus)];
+  if (q) list = list.filter(s => [s.name, s.location, s.city, s.state, s.venue, s.date].filter(Boolean).join(' ').toLowerCase().includes(q));
+  if (!list.length) {
+    el.innerHTML = `<div class="join-show-empty">${q ? 'No shows match your search.' : 'No upcoming shows are open to join right now.<br>If your show isn\'t listed, ask the organizer to add you.'}</div>`;
+    return;
+  }
+  el.innerHTML = list.map(s => {
+    const closed = s.sellerSelfJoin === false, ended = _showHasEnded(s);
+    const blocked = closed ? 'The organizer adds sellers to this show' : ended ? 'This show is over' : '';
+    const today = _showIsToday(s) ? '<span class="join-show-today">Today</span>' : '';
+    return `
+      <div class="join-show-row${s === focus ? ' focus' : ''}">
+        <div class="join-show-info">
+          <div class="join-show-name">${_escHtml(s.name || 'Show')} ${today}</div>
+          <div class="join-show-meta">${_escHtml([s.date, s.location].filter(Boolean).join(' · '))}</div>
+          ${blocked ? `<div class="join-show-blocked">${blocked}</div>` : ''}
+        </div>
+        ${blocked ? '' : `<button class="btn-primary join-show-btn" onclick="joinShowAsSeller('${s.id}', this)">Join</button>`}
+      </div>`;
+  }).join('');
+}
+
+const JOIN_SHOW_ERRORS = {
+  not_signed_in: 'Sign in again to join a show',
+  no_seller:     'Your seller profile isn\'t set up yet',
+  not_found:     'That show no longer exists',
+  closed:        'The organizer adds sellers to this show',
+  ended:         'This show is over',
+};
+
+async function joinShowAsSeller(showId, btn) {
+  const show = shows[showId];
+  if (!show || typeof db === 'undefined') return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Joining…'; }
+  let result = null, err = null;
+  try {
+    const r = await db.rpc('join_show_as_seller', { p_show_id: showId });
+    if (r.error && (r.error.code === 'PGRST202' || /join_show_as_seller/.test(r.error.message || ''))) {
+      result = await _joinShowFallback(showId);   // migration not run yet
+    } else if (r.error) err = r.error.message;
+    else result = r.data;
+  } catch (e) { err = e.message; }
+  if (!err && result && result.error) err = JOIN_SHOW_ERRORS[result.error] || result.error;
+  if (err || !result) {
+    if (btn) { btn.disabled = false; btn.textContent = 'Join'; }
+    showToast(err ? (/fetch|network/i.test(err) ? 'No connection — try again' : err) : 'Couldn\'t join the show', '#ef4444');
+    return;
+  }
+
+  if (!(show.sellers instanceof Set)) show.sellers = new Set(show.sellers || []);
+  show.sellers.add(currentSeller);
+  if (!result.already) {
+    if (!(show.selfJoined instanceof Set)) show.selfJoined = new Set();
+    show.selfJoined.add(currentSeller);
+  }
+  const thenShowMode = _joinShowOpts.thenShowMode && typeof smIsEnabled === 'function' && smIsEnabled();
+  closeJoinShow();
+  renderSellerShowsList();
+  if (typeof populateReportShowSelector === 'function') populateReportShowSelector();
+  if (typeof smUpdateEntryPoints === 'function') smUpdateEntryPoints();
+  db.from('show_events').insert({ show_id: showId, event_type: 'seller_self_join', event_data: {} })
+    .then(({ error }) => { if (error) console.warn('[show_events]', error.message); });
+  if (thenShowMode) {
+    showToast(`You're in ${show.name}`);
+    openShowMode(showId);
+  } else {
+    showToast(`You're in ${show.name}. Tap ⚡ Add My Cards to put your cards on it.`);
+    if (typeof _helpShowSidebar === 'function' && window.innerWidth <= 599) _helpShowSidebar('sellerShowsPanel');
+  }
+  loadShowsFromDB().then(ok => { if (ok) { renderSellerShowsList(); if (typeof smUpdateEntryPoints === 'function') smUpdateEntryPoints(); } });
+}
+
+// Before the self-join migration runs: plain insert (show_sellers RLS is
+// still permissive). No organizer switch or end-date check on this path.
+async function _joinShowFallback(showId) {
+  const { data: seller } = await db.from('sellers').select('id').eq('handle', currentSeller).maybeSingle();
+  if (!seller) return { error: 'no_seller' };
+  const { data: existing } = await db.from('show_sellers').select('show_id').eq('show_id', showId).eq('seller_id', seller.id).maybeSingle();
+  if (existing) return { ok: true, already: true };
+  const { error } = await db.from('show_sellers').insert({ show_id: showId, seller_id: seller.id });
+  if (error) throw new Error(error.message);
+  return { ok: true, already: false };
+}
+
+async function leaveShowAsSeller(showId) {
+  const show = shows[showId];
+  if (!show || typeof db === 'undefined') return;
+  if (!confirm(`Leave ${show.name}? Your cards come off the show, and you'll need to join again to sell there.`)) return;
+  let result = null, err = null;
+  try {
+    const r = await db.rpc('leave_show_as_seller', { p_show_id: showId });
+    if (r.error) err = r.error.message; else result = r.data;
+  } catch (e) { err = e.message; }
+  if (!err && result && result.error) {
+    err = result.error === 'organizer_added' ? 'The organizer added you to this show — ask them to remove you' : 'You\'re not in this show';
+  }
+  if (err) { showToast(err, '#ef4444'); return; }
+  show.sellers.delete(currentSeller);
+  if (show.selfJoined instanceof Set) show.selfJoined.delete(currentSeller);
+  getSellerInventory().forEach(card => { if (card._shows) card._shows.delete(showId); });
+  if (activeShowId === showId) { activeShowId = null; _persistActiveShowId(currentSeller, null); buildSellerQrPanel(); }
+  if (typeof _smShowId !== 'undefined' && _smShowId === showId) closeShowMode();
+  renderSellerShowsList();
+  updateStats();
+  if (typeof smUpdateEntryPoints === 'function') smUpdateEntryPoints();
+  showToast(`You left ${show.name}`);
 }
 
 // ── Buyer: Show picker ──
@@ -17241,6 +17478,7 @@ function renderAdminShowsDashboard() {
                 <div class="asc-seller-row ${tbl ? 'has-table' : ''}" id="asc-row-${s.id}-${h}">
                   <div class="asc-seller-avatar">${av}</div>
                   <div class="asc-seller-handle" title="@${h}">@${h}</div>
+                  ${s.selfJoined instanceof Set && s.selfJoined.has(h) ? '<span class="chip-selfjoined" title="This seller added themselves to the show">joined themselves</span>' : ''}
                   <input class="asc-table-input ${tbl ? 'filled' : ''}"
                     value="${tbl}" placeholder="Table #"
                     title="Assign table number for @${h}"
@@ -18877,9 +19115,9 @@ function _gsSteps() {
     { id: 'show', label: 'Put your cards in a show',
       hint: hasShowAccess
         ? 'Under My Shows, tap ⚡ Add My Cards.'
-        : 'Ask the show organizer to add you. Then tap ⚡ Add My Cards under My Shows.',
+        : 'Join the show you\'re vending at, then tap ⚡ Add My Cards under My Shows.',
       done: live,
-      go: 'Show me', action: () => _helpShowSidebar('sellerShowsPanel') },
+      go: hasShowAccess ? 'Show me' : 'Join', action: () => hasShowAccess ? _helpShowSidebar('sellerShowsPanel') : openJoinShow() },
     { id: 'qr', label: 'Get your table QR code',
       hint: 'Buyers scan it at your table. Save it or open it full screen.',
       done: !!st.qr,
@@ -19045,7 +19283,8 @@ const FEATURE_GUIDE = [
     { icon: '📊', name: 'Upload a spreadsheet', desc: 'CSV or Excel. Columns are matched automatically, including Shopify, Ludex and Flipwise exports.', action: () => document.querySelector('#uploadZone input[type="file"]')?.click() },
   ]},
   { group: 'At the show', items: [
-    { icon: '⚡', name: 'Go live at a show', desc: 'Once an organizer adds you, the show appears under My Shows. Tap Add My Cards to put your cards in front of buyers there.', action: () => _helpShowSidebar('sellerShowsList') },
+    { icon: '🎪', name: 'Join a show', desc: 'Add yourself to a show you\'re vending at. It then appears under My Shows, and you can open Show Mode for it.', action: () => openJoinShow() },
+    { icon: '⚡', name: 'Go live at a show', desc: 'Under My Shows, tap Add My Cards to put your cards in front of buyers at that show.', action: () => _helpShowSidebar('sellerShowsList') },
     { icon: '📲', name: 'Your QR code', desc: 'Buyers scan it at your table to browse your cards. Download or print it.', action: () => openSellerQRModal() },
   ]},
   { group: 'Sell', items: [
@@ -19202,6 +19441,9 @@ function showToDbRow(show) {
     state,
     venue,
   };
+  // Organizer switch for seller self-join (see "Seller Self-Join" in CLAUDE.md).
+  // Left out when unknown so an upsert never changes it by accident.
+  if (typeof show.sellerSelfJoin === 'boolean') row.seller_self_join = show.sellerSelfJoin;
   // Stamp created_by so each admin only sees their own shows.
   if (window._currentAdminUid) row.created_by = window._currentAdminUid;
   return row;
@@ -19219,7 +19461,13 @@ async function upsertShowToDB(show) {
     // Degrade gracefully if start_date/end_date haven't been migrated yet —
     // same PGRST204 "missing column" pattern as _isMissingScanColumnError()
     // on the inventory table (see CLAUDE.md).
+    // seller_self_join is newer still (20261027120000_seller_self_join.sql).
+    if (error && 'seller_self_join' in row && /seller_self_join/.test(error.message || '')) {
+      delete row.seller_self_join;
+      ({ error } = await db.from('shows').upsert(row, { onConflict: 'id' }));
+    }
     if (error && (error.code === 'PGRST204' || /schema cache/i.test(error.message || ''))) {
+      delete row.seller_self_join;
       delete row.start_date;
       delete row.end_date;
       ({ error } = await db.from('shows').upsert(row, { onConflict: 'id' }));
@@ -19481,9 +19729,16 @@ async function loadShowsFromDB() {
     if (!showRows || !showRows.length) return false;
 
     // Fetch show_sellers — two separate queries avoids FK join resolution issues
-    const { data: ssRows, error: ssErr } = await db
+    // self_joined comes from the seller self-join migration; retry without it
+    // on a project that hasn't run that yet.
+    let { data: ssRows, error: ssErr } = await db
       .from('show_sellers')
-      .select('show_id, seller_id, table_number');
+      .select('show_id, seller_id, table_number, self_joined');
+    if (ssErr && /self_joined/.test(ssErr.message || '')) {
+      ({ data: ssRows, error: ssErr } = await db
+        .from('show_sellers')
+        .select('show_id, seller_id, table_number'));
+    }
     if (ssErr) console.warn('loadShowsFromDB: show_sellers fetch failed:', ssErr.message);
 
     // Fetch all seller id→handle mappings needed for the shows we loaded
@@ -19499,11 +19754,13 @@ async function loadShowsFromDB() {
     // Build sellers Set and tables map per show
     const sellersByShow = {};
     const tablesByShow  = {};
+    const selfJoinedByShow = {};
     (ssRows || []).forEach(row => {
       const handle = sellerIdToHandle[row.seller_id];
       if (!handle) return;
       if (!sellersByShow[row.show_id]) sellersByShow[row.show_id] = new Set();
       sellersByShow[row.show_id].add(handle);
+      if (row.self_joined) (selfJoinedByShow[row.show_id] = selfJoinedByShow[row.show_id] || new Set()).add(handle);
       if (row.table_number) {
         if (!tablesByShow[row.show_id]) tablesByShow[row.show_id] = {};
         tablesByShow[row.show_id][handle] = row.table_number;
@@ -19528,6 +19785,8 @@ async function loadShowsFromDB() {
         venue:       row.venue       || null,
         sellers:     sellersByShow[row.id] || new Set(),
         tables:      tablesByShow[row.id]  || {},
+        selfJoined:  selfJoinedByShow[row.id] || new Set(),   // handles that joined themselves
+        sellerSelfJoin: row.seller_self_join !== false,       // organizer switch, on by default
       };
     });
 
@@ -21803,7 +22062,7 @@ async function submitPasswordReset() {
       <div class="ob-title">Go Live at a Show</div>
       <div class="ob-subtitle">Buyers at a show only see your cards after this step.</div>
       <ol class="ob-steps">
-        <li><strong>The organizer adds you.</strong> Once they do, the show appears under <em>My Shows</em>. You don't need a code.</li>
+        <li><strong>Join the show.</strong> Under <em>My Shows</em>, tap <em>+ Join a show</em> and pick the show you're vending at. If the organizer already added you, it's there already.</li>
         <li><strong>Tap ⚡ Add My Cards</strong> on that show. Your cards go live for buyers there, and your sales count toward the show.</li>
         <li><strong>Put your QR code on your table.</strong> Open <em>My QR Code</em>, then download or print it. Buyers scan it to see your cards.</li>
       </ol>
