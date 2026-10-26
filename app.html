@@ -20567,6 +20567,7 @@ async function gtcrReconcile(onProgress) {
   if (_gtcrReconciling) { _gtcrReconcileAgain = true; return null; }
   _gtcrReconciling = true;
   const totals = { registered: 0, removed: 0, failed: 0, unlinked: false, authError: false };
+  const removedIds = [];
   try {
     await _gtcrRefreshChecksForRegistration();
     for (let i = 0; i < 100; i++) {
@@ -20578,10 +20579,12 @@ async function gtcrReconcile(onProgress) {
       totals.failed     += data.failed || 0;
       totals.unlinked    = totals.unlinked || !!data.unlinked;
       totals.authError   = totals.authError || !!data.auth_error;
+      if (Array.isArray(data.removed_ids)) removedIds.push(...data.removed_ids);
       if (onProgress) onProgress(totals, data.remaining || 0);
       if (!data.remaining || data.auth_error || (!data.registered && !data.removed)) break;
     }
     if (totals.failed) console.warn('[gtcr] some registrations did not go through:', totals);
+    if (removedIds.length) setTimeout(() => _gtcrVerifyRemovals(removedIds), GTCR_VERIFY_REMOVAL_DELAY_MS);
     await gtcrHydrateRegistrations();
     if (_gtcrConsentState?.consented) {
       if (totals.unlinked) showTipOnce('gtcrClaim');
@@ -20592,6 +20595,32 @@ async function gtcrReconcile(onProgress) {
     if (_gtcrReconcileAgain) { _gtcrReconcileAgain = false; gtcrScheduleReconcile(500); }
   }
   return totals;
+}
+
+// Diagnostic: after GTCR confirms a removal, run a Trust Check on the cert and
+// log the card_status GTCR reports. The server also saves it on the
+// registration row (post_removal_card_status). "Still registered" can also
+// mean someone else registered the slab, e.g. the buyer.
+const GTCR_VERIFY_REMOVAL_DELAY_MS = 3000;
+async function _gtcrVerifyRemovals(ids) {
+  for (let i = 0; i < ids.length; i += 20) {
+    try {
+      const res = await fetch('/.netlify/functions/gtcr-trust-check', {
+        method: 'POST',
+        headers: await _gtcrHeaders(),
+        body: JSON.stringify({ action: 'verify_removal', registration_ids: ids.slice(i, i + 20) }),
+      });
+      const data = await res.json();
+      if (!data.success) { console.warn('[gtcr] post-removal check failed:', data.error); continue; }
+      for (const r of data.results || []) {
+        if (r.error) console.warn('[gtcr] post-removal check did not complete:', r.registration_number, r.cert_number, r.error);
+        else if (r.still_registered) console.warn('[gtcr] GTCR still reports this card as', r.card_status, 'after removal:', r.registration_number, r.cert_number);
+        else console.info('[gtcr] removal confirmed by Trust Check:', r.registration_number, r.cert_number, r.card_status);
+      }
+    } catch (err) {
+      console.warn('[gtcr] post-removal check failed:', err.message);
+    }
+  }
 }
 
 // Marks cards with an active registration, for the "Registered with GTCR"
@@ -20667,6 +20696,7 @@ async function gtcrConsentToggleChanged(el) {
   try {
     const data = await _gtcrRegistryCall(turningOn ? 'grant' : 'revoke', { consent_copy_version: GTCR_CONSENT_COPY_VERSION });
     if (!data.success) throw new Error(data.error || 'failed');
+    if (data.removed_ids?.length) setTimeout(() => _gtcrVerifyRemovals(data.removed_ids), GTCR_VERIFY_REMOVAL_DELAY_MS);
     await gtcrLoadConsentState();
     _gtcrRenderConsent();
     clearTimeout(_gtcrReconcileTimer);

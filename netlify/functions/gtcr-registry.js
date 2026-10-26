@@ -242,7 +242,7 @@ async function removeOne(db, user, reg, reason) {
       remove_reason: reason,
       remove_gtcr_status: res.status === 404 ? 'not_found' : (res.body?.status || 'removed'),
     }).eq('id', reg.id);
-    return { ok: true };
+    return { ok: true, confirmed: res.status === 200 };
   }
   return { ok: false, status: res.status, error: res.body?.error || res.text.slice(0, 200) };
 }
@@ -353,6 +353,9 @@ async function reconcile(db, user) {
   }
 
   let registered = 0, removed = 0, failed = 0, unlinked = false, authError = false, done = 0;
+  // Registrations GTCR said it removed (200). The app re-checks these with a
+  // Trust Check to see what status GTCR reports afterwards.
+  const removedIds = [];
   const outOfTime = () => Date.now() - started > RECONCILE_BUDGET_MS;
 
   for (const { reg, reason } of toRemove) {
@@ -360,7 +363,7 @@ async function reconcile(db, user) {
     done++;
     try {
       const r = await removeOne(db, user, reg, reason);
-      if (r.ok) removed++;
+      if (r.ok) { removed++; if (r.confirmed) removedIds.push(reg.id); }
       else { failed++; if (r.status === 401) authError = true; console.warn('[gtcr-registry] remove non-ok:', r.status, r.error); }
     } catch (err) { failed++; console.warn('[gtcr-registry] remove failed:', err.message); }
   }
@@ -379,6 +382,7 @@ async function reconcile(db, user) {
     registered, removed, failed, unlinked,
     awaiting_check: awaitingCheck,
     auth_error: authError,
+    removed_ids: removedIds,
     remaining: Math.max(0, toRemove.length + toRegister.length - done),
   };
 }

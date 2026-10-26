@@ -230,6 +230,10 @@ Required for the Getting started checklist and first-use tips to sync across a s
 `loadOnboardingState()` gets a column error, logs it, and leaves syncing off. The checklist and
 tips then work exactly as before, saved per device in localStorage.
 
+Required to save the post-removal Trust Check result (diagnostic, see "Trust Check via GTCR"):
+`supabase/migrations/20261026120000_gtcr_post_removal_check.sql` adds `post_removal_card_status`,
+`post_removal_checked_at` and `post_removal_error` to `gtcr_registrations`.
+
 Required for GTCR registration (Phase 4, see "Trust Check via GTCR" below):
 `supabase/migrations/20260930120000_gtcr_registration_lifecycle.sql` — adds `owner_email`, GTCR's
 registration ids, `seller_linked`, and a `failed` status to `gtcr_registrations`. Run it after the
@@ -4245,6 +4249,21 @@ under the seller's email, which recorded the card as belonging to the person who
   is sent as `Other`. GTCR lists Beckett as "BGS (Beckett)"; we send `BGS` pending their confirmation.
 - **Endpoints:** `thegtcr.com/functions/*` and `true-safe-card-vault.base44.app/functions/*` answer
   identically (checked 2026-09-30). `GTCR_API_BASE` defaults to the first.
+- **Post-removal Trust Check (diagnostic, session 2026-10-26):** GTCR answers `removed` (HTTP 200)
+  but its site still lists the registration (seen for certs 0098765432, 12345678, 4455667788; raised
+  with GTCR). To get evidence from GTCR's own API:
+  - `reconcile` (and `revoke`) return `removed_ids`: the registrations GTCR confirmed with a 200.
+  - 3 seconds later the app calls `gtcr-trust-check` with `action: 'verify_removal'`
+    (`_gtcrVerifyRemovals()`). That runs a Trust Check on each cert, using the cert and grader from
+    the seller's own `removed` row, never from the request.
+  - The `card_status` is saved on the row as `post_removal_card_status` / `post_removal_checked_at` /
+    `post_removal_error`. The console logs `[gtcr] GTCR still reports this card as REGISTERED after
+    removal` or `[gtcr] removal confirmed by Trust Check`.
+  - `REGISTERED` after a removal is not proof GTCR failed: the buyer or someone else may have
+    registered the same slab.
+  - Needs `supabase/migrations/20261026120000_gtcr_post_removal_check.sql`. Without it the save fails
+    with a console warning and the console log still works.
+  - Uses the read key from `gtcr-trust-check.js`, so the one-key-per-function rule still holds.
 - **Testing the real endpoints:** `GTCR_WRITE_API_KEY=... node scripts/gtcr-write-roundtrip.js`
   registers a `TEST-CARDSHOW-<timestamp>` cert, checks `already_registered`, checks that another
   email can't remove it, removes it, checks the 404 on a second remove, and checks the 403 without
