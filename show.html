@@ -935,6 +935,34 @@ async function fetchSellerProfiles(handles) {
   }
 }
 
+// Supabase rejects a request URL much over ~25KB with a bare 400, and an
+// .in('id', [...]) filter puts every UUID in the URL (~39 chars each once
+// encoded). A show with ~650+ published cards crossed that line and loaded 0
+// cards. _sbSelectIn() splits the id list into batches and merges the rows.
+// build(ids) must return a fresh query each call (query builders are single-use).
+const SB_IN_CHUNK = 150;
+async function _sbSelectIn(build, ids) {
+  const chunks = [];
+  for (let i = 0; i < ids.length; i += SB_IN_CHUNK) chunks.push(ids.slice(i, i + SB_IN_CHUNK));
+  const results = await Promise.all(chunks.map(c => build(c)));
+  const failed = results.find(r => r.error);
+  if (failed) return { data: null, error: failed.error };
+  return { data: results.flatMap(r => r.data || []), error: null };
+}
+
+// Supabase also caps a response at 1000 rows by default. Pages through with
+// .range() until a short page comes back. build() must apply a stable .order().
+const SB_PAGE = 1000;
+async function _sbSelectAllPages(build) {
+  const rows = [];
+  for (let from = 0; ; from += SB_PAGE) {
+    const { data, error } = await build().range(from, from + SB_PAGE - 1);
+    if (error) return { data: null, error };
+    rows.push(...(data || []));
+    if (!data || data.length < SB_PAGE) return { data: rows, error: null };
+  }
+}
+
 // Fetch all show inventory from Supabase and re-render if more cards are available.
 // Called after decoding the hash so the page renders immediately, then upgrades with full data.
 async function fetchInventoryFromDB(showId) {
@@ -947,39 +975,42 @@ async function fetchInventoryFromDB(showId) {
     // failure is row-by-row, not all-or-nothing, so it shows up exactly like
     // "only some published cards appear" rather than a clean empty result —
     // the two-step form is the established, proven-reliable pattern here.
-    const { data: siRows, error: siErr } = await _sb
+    const { data: siRows, error: siErr } = await _sbSelectAllPages(() => _sb
       .from('show_inventory')
       .select('card_id')
-      .eq('show_id', showId);
+      .eq('show_id', showId)
+      .order('card_id'));
+    if (siErr) console.warn('fetchInventoryFromDB show_inventory:', siErr.message);
     if (siErr || !siRows || !siRows.length) return;
 
     const cardIds = [...new Set(siRows.map(r => r.card_id).filter(Boolean))];
     if (!cardIds.length) return;
 
-    let { data: cards, error: invErr } = await _sb
+    let { data: cards, error: invErr } = await _sbSelectIn(ids => _sb
       .from('inventory')
       .select(`
         id, seller_id, card_title, player, year, card_set, card_number, parallel,
         grader, grade, condition, price, status,
         item_type, quantity, product_type, language, edition, sport, category, subcategory
       `)
-      .in('id', cardIds);
+      .in('id', ids), cardIds);
 
     // category/subcategory are the newest inventory columns (see CLAUDE.md's
     // "Category / Subcategory Taxonomy" migration) — a project that hasn't
     // run it yet gets a "column does not exist" error on this SELECT. Retry
     // once without the two new columns rather than showing no cards at all.
     if (invErr && /category|subcategory/i.test(invErr.message || '')) {
-      ({ data: cards, error: invErr } = await _sb
+      ({ data: cards, error: invErr } = await _sbSelectIn(ids => _sb
         .from('inventory')
         .select(`
           id, seller_id, card_title, player, year, card_set, card_number, parallel,
           grader, grade, condition, price, status,
           item_type, quantity, product_type, language, edition, sport
         `)
-        .in('id', cardIds));
+        .in('id', ids), cardIds));
     }
 
+    if (invErr) console.warn('fetchInventoryFromDB inventory:', invErr.message);
     if (invErr || !cards || !cards.length) return;
 
     const available = cards.filter(c => c.status !== 'Sold');
@@ -990,10 +1021,10 @@ async function fetchInventoryFromDB(showId) {
     const sellerIds = [...new Set(available.map(c => c.seller_id).filter(Boolean))];
     let handleById = {};
     if (sellerIds.length) {
-      const { data: sellerRows } = await _sb
+      const { data: sellerRows } = await _sbSelectIn(ids => _sb
         .from('sellers')
         .select('id, handle')
-        .in('id', sellerIds);
+        .in('id', ids), sellerIds);
       (sellerRows || []).forEach(s => { handleById[s.id] = s.handle; });
     }
 
@@ -1031,8 +1062,15 @@ async function fetchInventoryFromDB(showId) {
       // share-link time; it goes stale whenever sellers are added/removed after
       // the link was generated. Rebuilding from card data fixes the seller
       // filter dropdown and seller roster without requiring a new share link.
+      // A short link (?id=) already loaded the full authorized roster from
+      // show_sellers, so keep it and only add any seller missing from it —
+      // replacing it would drop authorized sellers who haven't published yet.
       const dbSellers = [...new Set(dbCards.map(c => c.Seller).filter(Boolean))];
-      if (dbSellers.length > 0) showMeta.sellers = dbSellers;
+      if (showMeta.fromDB) {
+        showMeta.sellers = [...new Set([...(showMeta.sellers || []), ...dbSellers])];
+      } else if (dbSellers.length > 0) {
+        showMeta.sellers = dbSellers;
+      }
       // Fetch display names for tooltip hover cards (non-blocking)
       fetchSellerProfiles(showMeta.sellers).catch(() => {});
     }
@@ -1067,7 +1105,7 @@ async function loadShowMetaFromDB(id) {
       .eq('show_id', id);
     const ids = [...new Set((ss || []).map(r => r.seller_id).filter(Boolean))];
     if (ids.length) {
-      const { data: srows } = await _sb.from('sellers').select('id, handle').in('id', ids);
+      const { data: srows } = await _sbSelectIn(c => _sb.from('sellers').select('id, handle').in('id', c), ids);
       const handleById = {};
       (srows || []).forEach(r => { handleById[r.id] = r.handle; });
       (ss || []).forEach(r => {
@@ -1087,6 +1125,7 @@ async function loadShowMetaFromDB(id) {
       tables,
       sellers,
       totalCards: 0,
+      fromDB: true,
     };
     inventory = [];
     return true;

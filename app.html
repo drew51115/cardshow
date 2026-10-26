@@ -11,11 +11,36 @@
 <!-- XLSX library — self-hosted to avoid CDN dependency -->
 <script src="/xlsx.full.min.js" defer></script>
 <script>
+  // Password-reset links. Must run BEFORE createClient(): supabase-js reads the
+  // recovery tokens out of the URL hash and then clears it during init, so this
+  // is the only point where the raw link is still visible. Implicit flow (pinned
+  // below) delivers recovery as #access_token=…&type=recovery, or as
+  // #error=…&error_code=otp_expired&error_description=… for a stale/used link.
+  // Read by initPage(), which skips its sign-out for a recovery link.
+  window._authRedirect = (function () {
+    try {
+      const h = new URLSearchParams((window.location.hash || '').replace(/^#/, ''));
+      const q = new URLSearchParams(window.location.search);
+      if (h.get('error_code') || h.get('error_description') || q.get('error_code')) {
+        return { mode: 'error', message: h.get('error_description') || h.get('error_code') || q.get('error_description') || q.get('error_code') };
+      }
+      if (h.get('type') === 'recovery' && h.get('access_token')) return { mode: 'recovery' };
+      // Custom email templates link straight to the site with ?token_hash=…&type=recovery
+      // instead of going through Supabase's /verify. Exchanged via verifyOtp() later.
+      if (q.get('token_hash') && q.get('type') === 'recovery') return { mode: 'recovery', tokenHash: q.get('token_hash') };
+      if (q.get('type') === 'recovery') return { mode: 'recovery' };
+    } catch (e) {}
+    return null;
+  })();
+
   const { createClient } = supabase;
   const SUPABASE_URL = 'SUPABASE_URL_PLACEHOLDER';
   const db = createClient(
     SUPABASE_URL,
-    'SUPABASE_ANON_KEY_PLACEHOLDER'
+    'SUPABASE_ANON_KEY_PLACEHOLDER',
+    // Pinned to supabase-js v2's own default. PKCE would deliver auth links as
+    // ?code=…, the same param the buyer show-join deep link (initPage) uses.
+    { auth: { flowType: 'implicit' } }
   );
 </script>
 <style>
@@ -469,6 +494,9 @@
     .toast { bottom: 5.5rem; }
     /* room under the inventory list so the FAB never hides the last row */
     #view-seller { padding-bottom: 5rem; }
+    /* The FAB (z-index 490) sits above the card modals (z-index 200) and
+       landed on top of the Add to Inventory button. Hide it while one is open. */
+    body:has(.card-edit-overlay.open) .fab-add { display: none; }
   }
 
   /* ── BUYER VIEW ── */
@@ -1547,6 +1575,21 @@
     font-family: 'DM Mono', monospace;
   }
 
+  .auth-forgot-row { text-align: right; margin: -0.35rem 0 0.6rem; }
+  .auth-link {
+    background: none; border: none; padding: 0; cursor: pointer;
+    color: var(--muted); font-family: 'DM Sans', sans-serif; font-size: 0.8rem;
+    text-decoration: underline; text-underline-offset: 2px;
+  }
+  .auth-link:hover { color: var(--accent); }
+
+  /* Set-new-password view (password-reset link landing) — sits above #authOverlay */
+  #pwResetOverlay { z-index: 950; }
+  .pw-reset-title {
+    font-family: 'Bebas Neue', sans-serif; font-size: 1.5rem;
+    letter-spacing: 0.06em; color: var(--text); margin-bottom: 0.4rem;
+  }
+
   /* Nav user badge */
   .nav-user {
     display: flex; align-items: center; gap: 0.45rem;
@@ -2316,16 +2359,29 @@
     display: none; position: fixed; inset: 0;
     background: rgba(0,0,0,0.72); backdrop-filter: blur(4px);
     align-items: flex-start; justify-content: center;
-    z-index: 200; padding: 3rem 1rem 1rem;
+    z-index: 200; padding: 3rem 1rem calc(1rem + env(safe-area-inset-bottom, 0px));
   }
   .card-edit-overlay.open { display: flex; }
 
+  /* 100vh on iOS Safari is the viewport with its toolbars collapsed, so a
+     100vh-based height pushes the modal's bottom under Safari's bottom bar.
+     100dvh tracks the visible viewport; the 100vh line is the fallback for
+     browsers without dvh. */
   .card-edit-modal {
     background: var(--card); border: 1px solid var(--border);
     border-radius: 16px; width: 100%; max-width: 520px;
-    max-height: calc(100vh - 120px); overflow-y: auto;
+    max-height: calc(100vh - 120px);
+    max-height: calc(100dvh - 4rem - env(safe-area-inset-bottom, 0px));
+    overflow-y: auto; overscroll-behavior: contain;
     box-shadow: 0 24px 64px rgba(0,0,0,0.5);
     animation: cemIn 0.2s ease both;
+  }
+  /* Keep Add to Inventory / Save Changes visible while the form scrolls,
+     instead of only at the very end of a long form. */
+  .card-edit-modal > .modal-actions {
+    position: sticky; bottom: 0; z-index: 2;
+    background: var(--card); border-top: 1px solid var(--border);
+    padding-top: 0.9rem; margin-top: 0.5rem;
   }
   @keyframes cemIn {
     from { opacity:0; transform: translateY(-12px); }
@@ -4349,6 +4405,7 @@
     <div class="auth-logo">Card<span>Show</span></div>
     <div class="auth-tagline">Unified Inventory Platform</div>
 
+    <div id="authMainPanel">
     <div class="auth-role-tabs">
       <button class="auth-role-tab active" onclick="setAuthRole('seller')">Seller</button>
       <button class="auth-role-tab" onclick="setAuthRole('admin')">Show Admin</button>
@@ -4376,12 +4433,44 @@
       <div class="auth-hint">Show organizer access — manage shows, sellers, and publish inventory.</div>
     </div>
 
+    <div class="auth-forgot-row" id="authForgotLinkRow">
+      <button type="button" class="auth-link" onclick="openForgotPassword()">Forgot password?</button>
+    </div>
     <div class="auth-error" id="authError"></div>
     <button class="btn btn-primary" style="width:100%" onclick="submitAuth()">Enter →</button>
 
     <div style="margin-top:1.2rem">
       <button class="btn btn-ghost" style="width:100%;justify-content:center" onclick="enterAsBuyer()">Browse as Buyer →</button>
     </div>
+    </div>
+
+    <!-- Forgot password. After the Enter button on purpose: submitAuth() finds its
+         button with querySelector('.auth-box .btn-primary'), which must match Enter first. -->
+    <div id="authForgotPanel" style="display:none">
+      <div class="pw-reset-title">Reset Your Password</div>
+      <div class="auth-hint">Enter the email you sign in with. We'll email you a link to set a new password.</div>
+      <input class="auth-field" id="authForgotEmail" type="email" placeholder="Email address" autocomplete="email" onkeydown="if(event.key==='Enter')sendPasswordResetLink()">
+      <div class="auth-error" id="authForgotMsg"></div>
+      <button class="btn btn-primary" id="authForgotSubmit" style="width:100%" onclick="sendPasswordResetLink()">Send Reset Link →</button>
+      <div style="margin-top:1rem">
+        <button type="button" class="auth-link" onclick="closeForgotPassword()">← Back to sign in</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ SET NEW PASSWORD (password-reset link) ═══════════════ -->
+<!-- After #authOverlay on purpose: submitAuth() finds its button with
+     querySelector('.auth-box .btn-primary'), which must match the sign-in box first. -->
+<div class="auth-overlay hidden" id="pwResetOverlay">
+  <div class="auth-box">
+    <div class="auth-logo">Card<span>Show</span></div>
+    <div class="pw-reset-title">Set a New Password</div>
+    <div class="auth-hint">Choose a new password for your account. At least 8 characters.</div>
+    <input class="auth-field" id="pwResetNew" type="password" placeholder="New password" autocomplete="new-password" oninput="pwResetValidate()">
+    <input class="auth-field" id="pwResetConfirm" type="password" placeholder="Confirm new password" autocomplete="new-password" oninput="pwResetValidate()" onkeydown="if(event.key==='Enter')submitPasswordReset()">
+    <div class="auth-error" id="pwResetError"></div>
+    <button class="btn btn-primary" id="pwResetSubmit" style="width:100%" onclick="submitPasswordReset()" disabled>Save New Password →</button>
   </div>
 </div>
 
@@ -4438,7 +4527,7 @@
     <div class="tc-dropdown-item" role="menuitem" onclick="gsShowAgain()">☑ Getting started list</div>
     <div class="tc-dropdown-item" role="menuitem" onclick="tipsReset()">💡 Show tips again</div>
     <a class="tc-dropdown-item" role="menuitem" href="/downloads/CardShow_Inventory_Template.xlsx" download onclick="closeHelpMenu()">⬇ Spreadsheet template</a>
-    <a class="tc-dropdown-item" role="menuitem" href="mailto:info@getcardshow.com?subject=CardShow%20help" onclick="closeHelpMenu()">✉ Contact support</a>
+    <a class="tc-dropdown-item" role="menuitem" href="mailto:support@getcardshow.com?subject=CardShow%20help" onclick="closeHelpMenu()">✉ Contact support</a>
   </div>
 
 <!-- First-use tip: one short card, shown once per feature per device (showTipOnce) -->
@@ -5732,6 +5821,12 @@
           </div>
         </div>
       </div>
+      <div id="sdShowWrap" style="display:none">
+        <div class="drawer-field-label">Show</div>
+        <select id="sdShow" class="filter-select" style="width:100%;margin-bottom:0">
+          <option value="">Off-show / no show</option>
+        </select>
+      </div>
       <div>
         <div class="drawer-field-label">Notes (optional)</div>
         <textarea class="sale-notes-input" id="sdNotes"
@@ -6575,6 +6670,40 @@
 let inventory = [];
 let sellerSearch = '';
 
+// ── SUPABASE LARGE-LIST HELPERS ──
+// Supabase rejects a request URL much over ~25KB with a bare 400, and an
+// .in('id', [...]) filter puts every UUID in the URL (~39 chars each once
+// encoded). A show with ~650+ published cards crossed that line and loaded 0
+// cards. dbSelectIn() splits the id list into batches and merges the rows;
+// dbDeleteIn() does the same for deletes. build(ids) must return a fresh
+// query each call (query builders are single-use).
+const DB_IN_CHUNK = 150;
+function _dbChunks(ids) {
+  const out = [];
+  for (let i = 0; i < ids.length; i += DB_IN_CHUNK) out.push(ids.slice(i, i + DB_IN_CHUNK));
+  return out;
+}
+async function dbSelectIn(build, ids) {
+  const results = await Promise.all(_dbChunks(ids).map(c => build(c)));
+  const failed = results.find(r => r.error);
+  if (failed) return { data: null, error: failed.error };
+  return { data: results.flatMap(r => r.data || []), error: null };
+}
+const dbDeleteIn = dbSelectIn;
+
+// Supabase also caps a response at 1000 rows by default. Pages through with
+// .range() until a short page comes back. build() must apply a stable .order().
+const DB_PAGE = 1000;
+async function dbSelectAllPages(build) {
+  const rows = [];
+  for (let from = 0; ; from += DB_PAGE) {
+    const { data, error } = await build().range(from, from + DB_PAGE - 1);
+    if (error) return { data: null, error };
+    rows.push(...(data || []));
+    if (!data || data.length < DB_PAGE) return { data: rows, error: null };
+  }
+}
+
 // ── TRADING CARD API PROXY HELPER ──
 // path is a full Trading Card API path + querystring, e.g. '/v1/players?full_name=paul+skenes'.
 // Routed through netlify/functions/tcapi.js so TRADING_CARD_API_KEY never reaches the browser.
@@ -6763,6 +6892,57 @@ function setAuthRole(role) {
   if (sf) sf.style.display = role === 'seller' ? 'block' : 'none';
   if (af) af.style.display = role === 'admin'  ? 'block' : 'none';
   if (er) er.textContent = '';
+  const forgotRow = document.getElementById('authForgotLinkRow');
+  if (forgotRow) forgotRow.style.display = (role === 'seller' && authMode === 'signup') ? 'none' : '';
+}
+
+// ── FORGOT PASSWORD (self-service reset email) ──
+// The emailed link lands on app.html, where _startPasswordRecovery() shows the
+// set-new-password form. If the redirect URL isn't on Supabase's Redirect URLs
+// allow-list, Supabase falls back to the Site URL and index.html forwards it here.
+function openForgotPassword() {
+  const typed = authRoleSelected === 'admin'
+    ? document.getElementById('authAdminEmail').value
+    : document.getElementById('authEmail').value;
+  document.getElementById('authForgotEmail').value = (typed || '').trim();
+  const msg = document.getElementById('authForgotMsg');
+  msg.textContent = ''; msg.style.color = '';
+  const btn = document.getElementById('authForgotSubmit');
+  btn.disabled = false; btn.textContent = 'Send Reset Link →';
+  document.getElementById('authMainPanel').style.display = 'none';
+  document.getElementById('authForgotPanel').style.display = 'block';
+  document.getElementById('authForgotEmail').focus();
+}
+
+function closeForgotPassword() {
+  document.getElementById('authForgotPanel').style.display = 'none';
+  document.getElementById('authMainPanel').style.display = '';
+}
+
+async function sendPasswordResetLink() {
+  const email = (document.getElementById('authForgotEmail').value || '').trim();
+  const msg = document.getElementById('authForgotMsg');
+  const btn = document.getElementById('authForgotSubmit');
+  msg.style.color = '';
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    msg.textContent = 'Enter a valid email address.';
+    return;
+  }
+  btn.disabled = true; btn.textContent = 'Sending…';
+  try {
+    const { error } = await db.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin + '/app.html',
+    });
+    if (error) throw error;
+    // Same message whether or not the account exists, so this can't be used to probe emails.
+    msg.style.color = '#4ade80';
+    msg.textContent = `✓ If an account exists for ${email}, a reset link is on its way. Check your inbox and spam folder.`;
+    btn.textContent = 'Resend Link →';
+  } catch (e) {
+    msg.textContent = (e && e.message) || 'Could not send the reset email. Please try again.';
+    btn.textContent = 'Send Reset Link →';
+  }
+  btn.disabled = false;
 }
 
 function toggleAuthMode() {
@@ -6771,6 +6951,8 @@ function toggleAuthMode() {
   const signUp  = document.getElementById('authSignUpFields');
   const toggle  = document.getElementById('authToggleMode');
   const btn     = document.querySelector('.auth-box .btn-primary');
+  const forgotRow = document.getElementById('authForgotLinkRow');
+  if (forgotRow) forgotRow.style.display = authMode === 'signup' ? 'none' : '';
   if (authMode === 'signup') {
     if (signIn)  signIn.style.display  = 'none';
     if (signUp)  signUp.style.display  = 'block';
@@ -8557,8 +8739,12 @@ function readXLSX(file) {
         if (KNOWN_COLS.some(col => cells.includes(col))) { headerRowIdx = i; break; }
       }
 
-      // Parse with the real header row as the starting point
-      const rows = XLSX.utils.sheet_to_json(ws, { range: headerRowIdx });
+      // Parse with the real header row as the starting point.
+      // defval: '' gives every row every header. Without it SheetJS omits keys
+      // for empty cells, and openMapper() used to build its column list from
+      // the first data row alone — so a column blank in that row (e.g. Grade on
+      // a raw card) was dropped for the whole file.
+      const rows = XLSX.utils.sheet_to_json(ws, { range: headerRowIdx, defval: '' });
 
       // Skip any description/hint row immediately after the headers.
       // These rows have a non-numeric Year value (e.g. "4-digit year e.g. 2024").
@@ -8567,6 +8753,18 @@ function readXLSX(file) {
         if (year && !/^\d{4}(-\d{2})?$/.test(year) && isNaN(Number(year))) return false;
         return true;
       });
+
+      // defval also fills unnamed columns inside the sheet's declared range
+      // (both templates declare columns out to W). Drop an unnamed __EMPTY
+      // column only when it is empty in every row — keep it if it has data.
+      const emptyUnnamed = new Set();
+      filtered.forEach(row => Object.keys(row).forEach(k => {
+        if (/^__EMPTY(_\d+)?$/.test(k)) emptyUnnamed.add(k);
+      }));
+      filtered.forEach(row => Object.keys(row).forEach(k => {
+        if (emptyUnnamed.has(k) && String(row[k] ?? '').trim() !== '') emptyUnnamed.delete(k);
+      }));
+      if (emptyUnnamed.size) filtered.forEach(row => emptyUnnamed.forEach(k => { delete row[k]; }));
 
       if (!filtered.length) { showToast('No data rows found in this file', 'var(--danger)'); return; }
       openMapper(filtered);
@@ -9590,11 +9788,58 @@ function loadInventory(rows) {
   // Cards already in inventory but NOT in this upload are kept as-is (append mode)
   let added = 0, updated = 0;
 
+  // ── Raw-twin repair (re-upload after the XLSX grade-column bug) ──
+  // An XLSX import used to drop Grade/Grader/Cert # whenever those columns
+  // were blank in the file's first data row, saving graded cards as Raw.
+  // Re-uploading the same file should repair those cards in place, not add
+  // a graded duplicate next to each one. cardFingerprint() includes Grader,
+  // so a graded incoming card never exact-matches its raw twin — this is a
+  // fallback, used only when the exact match finds nothing.
+  //
+  // Exact matches are claimed first, so a twin is never an existing card
+  // that another incoming row in this same upload already matched exactly.
+  const claimed = new Set();
+  deduped.forEach(r => {
+    const ex = existingMap[cardFingerprint(r)];
+    if (ex) claimed.add(ex);
+  });
+  const twinKey = r => cardFingerprint({ ...r, Grader: '' });
+  const rawTwins = {}; // twinKey → existing raw cards with a DB row
+  inventory.forEach(card => {
+    const noGrade  = card.Grade === null || card.Grade === undefined || String(card.Grade).trim() === '';
+    const noGrader = !String(card.Grader || '').trim();
+    if (!noGrade || !noGrader || !card._dbId) return;
+    const k = twinKey(card);
+    (rawTwins[k] = rawTwins[k] || []).push(card);
+  });
+  const repaired = [];             // existing cards repaired in place
+  const absorbed = new Set();      // incoming rows consumed by a repair
+
   deduped.forEach(incoming => {
     const fp = cardFingerprint(incoming);
     const existing = existingMap[fp];
+    const incomingGraded = incoming.Grade !== null && incoming.Grade !== undefined
+      && String(incoming.Grade).trim() !== '' && !isNaN(Number(incoming.Grade));
+    const twin = (!existing && incomingGraded)
+      ? (rawTwins[twinKey(incoming)] || []).find(c => !claimed.has(c))
+      : null;
+    if (twin) {
+      claimed.add(twin);
+      twin.Grade    = incoming.Grade;
+      twin.Grader   = incoming.Grader;
+      twin['Cert #'] = incoming['Cert #'] || twin['Cert #'] || null;
+      if (incoming.Price !== undefined && incoming.Price !== null && String(incoming.Price).trim() !== '') twin.Price = incoming.Price;
+      if (incoming.Condition && String(incoming.Condition).trim()) twin.Condition = incoming.Condition;
+      // Status deliberately untouched — a Sold twin stays Sold.
+      repaired.push(twin);
+      absorbed.add(incoming);
+      updated++;
+      return;
+    }
     if (existing) {
-      const priceChanged = Number(existing.Price) !== Number(incoming.Price);
+      // Blank and 0 compare equal: a raw row with no price in the file would
+      // otherwise count as "updated" (NaN !== 0) on every re-upload.
+      const priceChanged = (Number(existing.Price) || 0) !== (Number(incoming.Price) || 0);
       const gradeChanged = String(existing.Grade) !== String(incoming.Grade);
       existing.Price         = incoming.Price;
       existing.Grade         = incoming.Grade;
@@ -9622,9 +9867,15 @@ function loadInventory(rows) {
     if (badge) badge.textContent = `${showInventory.filter(r => r.Status !== 'Sold').length} cards live`;
   }
 
-  // Persist to Supabase — only for logged-in sellers, not sample/demo data
+  // Persist to Supabase — only for logged-in sellers, not sample/demo data.
+  // Repaired raw twins are updated in place by id (same row, no insert) and
+  // left out of the upsert batch, whose own grade+grader match would miss
+  // them and insert a duplicate.
   if (currentRole === 'seller' && currentSeller) {
-    upsertCardsToDB(deduped);
+    upsertCardsToDB(deduped.filter(r => !absorbed.has(r)));
+    repaired.forEach(card => updateCardInDB(card));
+    // They now carry a cert # and have never been trust-checked.
+    if (repaired.length) _gtcrQueueChecks(repaired);
   }
 
   // Summary toast
@@ -10712,6 +10963,7 @@ function openSellDrawer(realIdx) {
   document.getElementById('sdPrice').value = '';
   document.getElementById('sdNotes').value = '';
   document.querySelectorAll('.pay-opt').forEach(b => b.classList.remove('pay-selected'));
+  _sdPopulateShowSelector(card);
 
   const ask = Number(card.Price || 0);
   const prices = [ask, Math.round(ask * 0.95), Math.round(ask * 0.9)];
@@ -10726,6 +10978,78 @@ function openSellDrawer(realIdx) {
 
   document.getElementById('sellDrawerOverlay').classList.add('open');
   setTimeout(() => document.getElementById('sdPrice').focus(), 350);
+}
+
+// ── Which show a sale belongs to ──
+// show_floor_transactions needs a show for every sale. activeShowId is only
+// set after "Add My Cards" on this device, so it is often null (new device,
+// cleared storage). A Scan-to-Sell card is also brand new, so it has no
+// show membership yet either. Without a fallback, recordShowTransaction()
+// skipped those sales silently. Order:
+//   1. activeShowId
+//   2. the card's only show
+//   3. a show the card is in that is running today
+//   4. a show the seller is authorized for that is running today
+// Returns null when none applies. The Sell Drawer's Show field lets the
+// seller correct or pick it either way.
+function _showIsToday(show) {
+  if (!show) return false;
+  const today = _todayISO();
+  if (show.startDate) return show.startDate <= today && today <= (show.endDate || show.startDate);
+  const start = _parseShowDate(show.date || '');
+  if (!start) return false;
+  // Freeform "Aug 29-30, 2026" → end day 30; otherwise a single-day show.
+  const m = (show.date || '').match(/\d{1,2}\s*-\s*(\d{1,2})\s*,/);
+  const end = new Date(start);
+  if (m) end.setDate(parseInt(m[1], 10));
+  const iso = d => d.toLocaleDateString('en-CA');
+  return iso(start) <= today && today <= iso(end);
+}
+
+// show_floor_transactions.show_date is a Postgres date. show.date is display
+// text ("Oct 9-11, 2026"), which Postgres misreads (as 2011-10-09) instead of
+// rejecting. Send the real start date as 'YYYY-MM-DD'.
+function _showDateISO(show) {
+  if (!show) return null;
+  if (show.startDate) return show.startDate;
+  const d = _parseShowDate(show.date || '');
+  return d ? d.toLocaleDateString('en-CA') : null;
+}
+
+function _sellerShowIds() {
+  return Object.values(shows)
+    .filter(s => s.sellers instanceof Set && s.sellers.has(currentSeller))
+    .map(s => s.id);
+}
+
+function _resolveSaleShowId(card) {
+  if (activeShowId && shows[activeShowId]) return activeShowId;
+  const cardShows = card && card._shows instanceof Set ? [...card._shows].filter(id => shows[id]) : [];
+  if (cardShows.length === 1) return cardShows[0];
+  const cardToday = cardShows.filter(id => _showIsToday(shows[id]));
+  if (cardToday.length) return cardToday[0];
+  const sellerToday = _sellerShowIds().filter(id => _showIsToday(shows[id]));
+  if (sellerToday.length) return sellerToday[0];
+  return null;
+}
+
+function _sdPopulateShowSelector(card) {
+  const wrap = document.getElementById('sdShowWrap');
+  const sel  = document.getElementById('sdShow');
+  if (!wrap || !sel) return;
+  while (sel.options.length > 1) sel.remove(1);   // keep "Off-show"
+  const ids = new Set(_sellerShowIds());
+  if (card && card._shows instanceof Set) card._shows.forEach(id => { if (shows[id]) ids.add(id); });
+  [...ids].map(id => shows[id])
+    .sort((a, b) => (b.startDate || b.date || '').localeCompare(a.startDate || a.date || ''))
+    .forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s.id;
+      opt.text  = s.name + (s.date ? ' · ' + s.date : '');
+      sel.appendChild(opt);
+    });
+  sel.value = _resolveSaleShowId(card) || '';
+  wrap.style.display = ids.size ? '' : 'none';
 }
 
 function sdSetPrice(p) {
@@ -10766,6 +11090,10 @@ function sdConfirm() {
   if (!sdSelectedPayment)   { showToast('⚠️ Select a payment method', 'var(--danger)'); return; }
 
   const card = inventory[sdActiveIdx];
+  // Read before closeSellDrawer(). Empty = seller chose Off-show.
+  const saleShowId = document.getElementById('sdShowWrap')?.style.display === 'none'
+    ? _resolveSaleShowId(card)
+    : (document.getElementById('sdShow')?.value || null);
   card.Status        = 'Sold';
   card.SoldPrice     = price;
   card.PaymentMethod = sdSelectedPayment;
@@ -10775,7 +11103,14 @@ function sdConfirm() {
 
   closeSellDrawer();
   updateCardInDB(card); // also schedules a GTCR reconcile, which removes this card's registration
-  recordShowTransaction(card);   // ← fire-and-forget, no await
+  // A card sold at a show it isn't published to (e.g. a Scan-to-Sell card
+  // when activeShowId was unset) gets its show_inventory row now, so the
+  // sale also counts in organizer analytics. Duplicate-safe — see
+  // _autoPublishCardToShow().
+  if (saleShowId && card._dbId && !(card._shows instanceof Set && card._shows.has(saleShowId))) {
+    _autoPublishCardToShow(card, card._dbId, saleShowId);
+  }
+  recordShowTransaction(card, saleShowId);   // ← fire-and-forget, no await
   syncBuyerView();
   updateStats();
   updateReport();
@@ -10791,7 +11126,7 @@ function sdConfirm() {
   // Never fires for 'never' from this path.
   const dropPref = getDropPromptPref();
   if (dropPref === 'always' || (dropPref === 'manual_only' && card._posOrigin)) {
-    showDropPrompt(card, activeShowId);
+    showDropPrompt(card, saleShowId);
   }
 }
 
@@ -12016,59 +12351,44 @@ function selectQRSeller(seller) {
   buildQRPanel();
 }
 
-// Minimal QR code renderer using qrcode-generator approach
-// We'll use the qrcodejs CDN library loaded dynamically
+// QR library (qrcodejs 1.0.0). Self-hosted at /qrcode.min.js, with cdnjs as a
+// backup. Before this, cdnjs was the only source: when it was blocked or
+// unreachable (show-floor wifi, ad/content blockers), every QR stayed a blank
+// white box. Callbacks that arrive while the script is loading are queued, so
+// the panel and the modal never append duplicate <script> tags.
+const QR_LIB_SOURCES = [
+  '/qrcode.min.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js'
+];
+let _qrLibWaiters = null; // null = not loading; array of {cb, onErr} while loading
+
 function loadQRLib(cb, onErr) {
   if (window.QRCode) { cb(); return; }
-  const s = document.createElement('script');
-  s.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
-  s.onload = cb;
-  s.onerror = onErr || (() => { renderQRFallback('qrCanvas', activeQRSeller); });
-  document.head.appendChild(s);
-}
+  const waiter = { cb, onErr };
+  if (_qrLibWaiters) { _qrLibWaiters.push(waiter); return; }
+  _qrLibWaiters = [waiter];
 
-function renderQR(canvasId, seller, size) {
-  const url = getSellerShowURL(seller);
-  const canvas = document.getElementById(canvasId);
-  if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#fff';
-  ctx.fillRect(0,0,canvas.width,canvas.height);
-
-  loadQRLib(() => {
-    // QRCode lib works with divs; we'll use a temp div then copy to canvas
-    const tmp = document.createElement('div');
-    tmp.style.cssText = 'position:absolute;left:-9999px;top:-9999px';
-    document.body.appendChild(tmp);
-    try {
-      new QRCode(tmp, {
-        text: url, width: size, height: size,
-        colorDark: '#0a0a0a', colorLight: '#ffffff',
-        correctLevel: QRCode.CorrectLevel.M
-      });
-      setTimeout(() => {
-        const img = tmp.querySelector('img') || tmp.querySelector('canvas');
-        if (img) {
-          const c = document.getElementById(canvasId);
-          if (!c) return;
-          const cx = c.getContext('2d');
-          if (img.tagName === 'CANVAS') {
-            cx.drawImage(img, 0, 0, c.width, c.height);
-          } else {
-            const i2 = new Image();
-            i2.onload = () => cx.drawImage(i2, 0, 0, c.width, c.height);
-            i2.src = img.src;
-          }
-        }
-        document.body.removeChild(tmp);
-        // Draw small CardShow logo overlay in center
-        overlayQRLogo(canvasId, size);
-      }, 100);
-    } catch(e) {
-      document.body.removeChild(tmp);
-      renderQRFallback(canvasId, seller);
+  const finish = ok => {
+    const waiters = _qrLibWaiters || [];
+    _qrLibWaiters = null; // a later call retries from scratch after a failure
+    waiters.forEach(w => {
+      try { ok ? w.cb() : (w.onErr && w.onErr()); }
+      catch (e) { console.warn('QR render failed:', e); }
+    });
+  };
+  const trySource = i => {
+    if (i >= QR_LIB_SOURCES.length) {
+      console.warn('QR library failed to load from every source');
+      finish(false);
+      return;
     }
-  });
+    const s = document.createElement('script');
+    s.src = QR_LIB_SOURCES[i];
+    s.onload = () => window.QRCode ? finish(true) : trySource(i + 1);
+    s.onerror = () => { s.remove(); trySource(i + 1); };
+    document.head.appendChild(s);
+  };
+  trySource(0);
 }
 
 async function overlayQRLogo(canvasId, size) {
@@ -12107,17 +12427,19 @@ async function overlayQRLogo(canvasId, size) {
 }
 
 function renderQRFallback(canvasId, seller) {
-  // Simple pixel pattern fallback if CDN fails
+  // Shown when the QR library can't load or render: a visible message instead
+  // of a blank white box. The link text under the QR still works via Copy.
   const canvas = document.getElementById(canvasId);
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#fff'; ctx.fillRect(0,0,canvas.width,canvas.height);
-  ctx.fillStyle = '#0a0a0a';
-  ctx.font = 'bold 11px monospace'; ctx.textAlign = 'center';
-  ctx.fillText('Scan at show:', canvas.width/2, 50);
-  ctx.font = '9px monospace';
-  ctx.fillText('@' + seller, canvas.width/2, 70);
-  ctx.fillText(activeShow ? activeShow.name : '', canvas.width/2, 88);
+  const w = canvas.width, h = canvas.height;
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = '#0a0a0a'; ctx.textAlign = 'center';
+  ctx.font = `bold ${Math.round(w * 0.075)}px sans-serif`;
+  ctx.fillText('QR code didn\u2019t load', w / 2, h * 0.42);
+  ctx.font = `${Math.round(w * 0.06)}px sans-serif`;
+  ctx.fillText('Reload the page to try again', w / 2, h * 0.56);
+  if (seller) ctx.fillText('@' + seller, w / 2, h * 0.68);
 }
 
 // ── "Powered by CardShow" footer — shared by every downloadable/printable
@@ -12709,8 +13031,13 @@ async function downloadSellerQRModal() {
   gsMark('qr');
 }
 
-// Override renderQR to accept an explicit URL parameter
-const _origRenderQR = renderQR;
+// Draws a QR for `overrideUrl` (or the seller's show URL) onto canvasId.
+// Copies from the library's own <canvas>, which qrcodejs paints synchronously
+// inside `new QRCode()`. The <img> it also creates only gets its src after an
+// async data-URI support test, so reading the img on a timer could draw
+// nothing on a slow phone. If the library can't load or throws, the fallback
+// is drawn on this same canvas (it used to go to the buyer modal's
+// #qrCanvas, which left the seller's canvas silently blank).
 function renderQR(canvasId, seller, size, overrideUrl) {
   const url = overrideUrl || getSellerShowURL(seller);
   const canvas = document.getElementById(canvasId);
@@ -12719,6 +13046,7 @@ function renderQR(canvasId, seller, size, overrideUrl) {
   ctx.fillStyle = '#fff';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+  const fallback = () => renderQRFallback(canvasId, seller);
   loadQRLib(() => {
     const tmp = document.createElement('div');
     tmp.style.cssText = 'position:absolute;left:-9999px;top:-9999px';
@@ -12729,28 +13057,21 @@ function renderQR(canvasId, seller, size, overrideUrl) {
         colorDark: '#0a0a0a', colorLight: '#ffffff',
         correctLevel: QRCode.CorrectLevel.M
       });
-      setTimeout(() => {
-        const img = tmp.querySelector('img') || tmp.querySelector('canvas');
-        if (img) {
-          const c = document.getElementById(canvasId);
-          if (!c) { document.body.removeChild(tmp); return; }
-          const cx = c.getContext('2d');
-          if (img.tagName === 'CANVAS') {
-            cx.drawImage(img, 0, 0, c.width, c.height);
-          } else {
-            const i2 = new Image();
-            i2.onload = () => { cx.drawImage(i2, 0, 0, c.width, c.height); overlayQRLogo(canvasId, size); };
-            i2.src = img.src;
-          }
-        }
-        document.body.removeChild(tmp);
-        overlayQRLogo(canvasId, size);
-      }, 120);
-    } catch(e) {
-      document.body.removeChild(tmp);
-      renderQRFallback(canvasId, seller);
+      const src = tmp.querySelector('canvas');
+      const c = document.getElementById(canvasId);
+      if (!src || !c) throw new Error('QR canvas unavailable');
+      const cx = c.getContext('2d');
+      cx.fillStyle = '#fff';
+      cx.fillRect(0, 0, c.width, c.height);
+      cx.drawImage(src, 0, 0, c.width, c.height);
+      overlayQRLogo(canvasId, size);
+    } catch (e) {
+      console.warn('QR render failed:', e);
+      fallback();
+    } finally {
+      tmp.remove();
     }
-  });
+  }, fallback);
 }
 
 // Keyboard close for seller modal
@@ -13705,7 +14026,7 @@ function sellerRemoveFromShow(showId) {
   // show on the seller's next login (hydrateCardShowMembership() would
   // otherwise re-tag it from a DB row this button never actually deleted).
   if (dbIds.length && typeof db !== 'undefined') {
-    db.from('show_inventory').delete().eq('show_id', showId).in('card_id', dbIds)
+    dbDeleteIn(ids => db.from('show_inventory').delete().eq('show_id', showId).in('card_id', ids), dbIds)
       .then(({ error }) => { if (error) console.warn('sellerRemoveFromShow DB cleanup failed:', error.message); });
   }
 }
@@ -13970,24 +14291,25 @@ async function loadBuyerInventoryFromDB(showId, show) {
     // here. Fixed as a prerequisite for live-sync (below): this function now
     // re-runs on every Realtime event, so it can't afford the intermittent
     // flakiness the embedded-join form was already known to have.
-    const { data: siRows, error: siErr } = await db
+    const { data: siRows, error: siErr } = await dbSelectAllPages(() => db
       .from('show_inventory')
       .select('card_id')
-      .eq('show_id', showId);
+      .eq('show_id', showId)
+      .order('card_id'));
     if (siErr) { console.error('loadBuyerInventoryFromDB failed:', siErr.message); return; }
     if (!siRows || !siRows.length) return;
 
     const cardIds = [...new Set(siRows.map(r => r.card_id).filter(Boolean))];
     if (!cardIds.length) return;
 
-    let { data, error } = await db
+    let { data, error } = await dbSelectIn(ids => db
       .from('inventory')
       .select(`
         id, seller_id, card_title, player, year, card_set, card_number, parallel,
         grader, grade, condition, price, status, location,
         item_type, quantity, product_type, language, edition, category, subcategory
       `)
-      .in('id', cardIds);
+      .in('id', ids), cardIds);
 
     // category/subcategory are the newest inventory columns (see CLAUDE.md's
     // "Category / Subcategory Taxonomy" migration) — a project that hasn't run
@@ -13997,14 +14319,14 @@ async function loadBuyerInventoryFromDB(showId, show) {
     // two new columns rather than letting the whole buyer grid go blank over
     // two not-yet-persisted filter fields.
     if (error && /category|subcategory/i.test(error.message || '')) {
-      ({ data, error } = await db
+      ({ data, error } = await dbSelectIn(ids => db
         .from('inventory')
         .select(`
           id, seller_id, card_title, player, year, card_set, card_number, parallel,
           grader, grade, condition, price, status, location,
           item_type, quantity, product_type, language, edition
         `)
-        .in('id', cardIds));
+        .in('id', ids), cardIds));
     }
 
     if (error) { console.error('loadBuyerInventoryFromDB failed:', error.message); return; }
@@ -14627,7 +14949,11 @@ let mapperMappings  = {};   // { sourceHeader: csKey }
 
 function openMapper(rawRows) {
   mapperRawRows  = rawRows;
-  mapperHeaders  = Object.keys(rawRows[0] || {});
+  // Union of keys across ALL rows, in first-seen order — not just rawRows[0],
+  // whose keys can be missing any column that row happens to leave blank.
+  const headerSet = new Set();
+  rawRows.forEach(row => Object.keys(row || {}).forEach(k => headerSet.add(k)));
+  mapperHeaders  = [...headerSet];
   mapperMappings = {};
 
   const source   = detectSource(mapperHeaders);
@@ -14648,12 +14974,17 @@ function openMapper(rawRows) {
 
   // Build mapping rows
   const container = document.getElementById('mapperRows');
-  const sampleRow = rawRows[0] || {};
+  // Sample = first non-empty value in each column, not the first row's value
+  // (which is blank for any column that row leaves empty).
+  const firstNonEmpty = header => {
+    const row = rawRows.find(r => r && r[header] !== undefined && r[header] !== null && String(r[header]).trim() !== '');
+    return row ? row[header] : '';
+  };
 
   container.innerHTML = mapperHeaders.map(header => {
     const { csKey, confidence } = autoMatch(header);
     mapperMappings[header] = csKey;
-    const sample = String(sampleRow[header] || '').slice(0, 30);
+    const sample = String(firstNonEmpty(header)).slice(0, 30);
     const confLabel = csKey === '__SKIP__' ? 'skip' : confidence;
     const confText  = csKey === '__SKIP__' ? '—' : confidence === 'high' ? '✓ Auto' : confidence === 'medium' ? '~ Maybe' : '? Low';
     const selectClass = csKey === '__SKIP__' ? '' : confidence === 'high' ? 'auto-matched' : confidence === 'medium' ? '' : 'unmatched';
@@ -17101,16 +17432,17 @@ async function _orgFetchAndRender(showId) {
 // schema cache (see loadShowSellersAndTables()); the two-step form is the
 // established, proven-reliable pattern here.
 async function _orgFetchInventory(showId) {
-  const { data: siRows, error: siErr } = await db
+  const { data: siRows, error: siErr } = await dbSelectAllPages(() => db
     .from('show_inventory')
     .select('card_id')
-    .eq('show_id', showId);
+    .eq('show_id', showId)
+    .order('card_id'));
   if (siErr) throw new Error(`Inventory fetch: ${siErr.message}`);
 
   const cardIds = [...new Set((siRows || []).map(r => r.card_id).filter(Boolean))];
   if (!cardIds.length) return [];
 
-  const { data: cards, error: invErr } = await db
+  const { data: cards, error: invErr } = await dbSelectIn(ids => db
     .from('inventory')
     .select(`
       id, seller_id, card_title, player, year,
@@ -17118,7 +17450,7 @@ async function _orgFetchInventory(showId) {
       price, status, sold_price, payment_method,
       sale_notes, sold_time, item_type
     `)
-    .in('id', cardIds);
+    .in('id', ids), cardIds);
   if (invErr) throw new Error(`Inventory fetch: ${invErr.message}`);
   return cards || [];
 }
@@ -18558,13 +18890,13 @@ async function removeShowSellerFromDB(showId, handle) {
     // seller is removed. Mirrors sellerRemoveFromShow()'s own cleanup for
     // the seller-self-service removal path (see "activeShowId resilience"
     // in CLAUDE.md) — this is the missing organizer-side counterpart.
-    const { data: sellerCards, error: cardsError } = await db
-      .from('inventory').select('id').eq('seller_id', seller.id);
+    const { data: sellerCards, error: cardsError } = await dbSelectAllPages(() => db
+      .from('inventory').select('id').eq('seller_id', seller.id).order('id'));
     if (cardsError) { console.warn('removeShowSellerFromDB card lookup failed:', cardsError.message); return; }
     const cardIds = (sellerCards || []).map(r => r.id);
     if (cardIds.length) {
-      const { error: cleanupError } = await db
-        .from('show_inventory').delete().eq('show_id', showId).in('card_id', cardIds);
+      const { error: cleanupError } = await dbDeleteIn(ids => db
+        .from('show_inventory').delete().eq('show_id', showId).in('card_id', ids), cardIds);
       if (cleanupError) console.warn('removeShowSellerFromDB show_inventory cleanup failed:', cleanupError.message);
     }
   } catch(e) { console.warn('removeShowSellerFromDB error:', e.message); }
@@ -18606,15 +18938,17 @@ async function publishShowInventoryToDB(showId) {
     // Fetch all non-sold card IDs for those sellers. GTCR-flagged cards
     // (trust_flag = 'flagged') are excluded until the seller acts. Falls back to
     // the unfiltered select if the trust_flag migration hasn't run yet.
-    let { data: cards, error: cardErr } = await db
+    let { data: cards, error: cardErr } = await dbSelectAllPages(() => db
       .from('inventory').select('id, trust_flag')
       .in('seller_id', sellerIds)
-      .neq('status', 'Sold');
+      .neq('status', 'Sold')
+      .order('id'));
     if (cardErr && /trust_flag/i.test(cardErr.message || '')) {
-      ({ data: cards, error: cardErr } = await db
+      ({ data: cards, error: cardErr } = await dbSelectAllPages(() => db
         .from('inventory').select('id')
         .in('seller_id', sellerIds)
-        .neq('status', 'Sold'));
+        .neq('status', 'Sold')
+        .order('id')));
     }
     if (cardErr) { console.error('publishShowInventoryToDB fetch failed:', cardErr.message); return 0; }
     cards = (cards || []).filter(c => c.trust_flag !== 'flagged');
@@ -19319,10 +19653,10 @@ async function hydrateCardShowMembership(sellerHandle) {
     // some rows on embedded joins under a stale schema cache (see
     // _orgFetchInventory(), show.html's fetchInventoryFromDB()); the
     // two-step form is the established, proven-reliable pattern here.
-    const { data: rows, error } = await db
+    const { data: rows, error } = await dbSelectIn(ids => db
       .from('show_inventory')
       .select('show_id, card_id')
-      .in('card_id', myCards.map(c => c._dbId));
+      .in('card_id', ids), myCards.map(c => c._dbId));
 
     if (error || !rows) {
       console.warn('hydrateCardShowMembership failed:', error?.message);
@@ -19813,7 +20147,7 @@ async function recordManualSaleTransaction(card, showId) {
       // Show snapshot — denormalised so record is self-describing
       show_id:        showId,
       show_name:      show.name,
-      show_date:      show.date     || null,
+      show_date:      _showDateISO(show),
       show_location:  show.location || null,
       show_city:      city,
       show_state:     state,
@@ -20360,16 +20694,25 @@ async function gtcrConsentToggleChanged(el) {
 // A flagged card is never published. A GTCR outage fails open.
 function _autoPublishCardToShow(card, dbId, showId) {
   if (!showId || !dbId || typeof db === 'undefined') return;
+  // Skip a publish already in flight for this card+show. A second upsert of
+  // an existing row is an UPDATE, which show_inventory's RLS rejects (401).
+  if (!card._publishing) card._publishing = new Set();
+  if (card._publishing.has(showId)) return;
+  card._publishing.add(showId);
 
   _gtcrClearForPublish(card, dbId).then(cleared => {
-    if (!cleared) { console.info('[auto-publish] skipped — GTCR flag on', card['Cert #']); return; }
+    if (!cleared) {
+      card._publishing.delete(showId);
+      console.info('[auto-publish] skipped — GTCR flag on', card['Cert #']);
+      return;
+    }
     db.from('show_inventory')
       .upsert(
         { show_id: showId, card_id: dbId },
         { onConflict: 'show_id,card_id' }
       )
       .then(({ error }) => {
-        if (error) { console.warn('[auto-publish]', error.message); return; }
+        if (error) { card._publishing.delete(showId); console.warn('[auto-publish]', error.message); return; }
         if (!card._shows) card._shows = new Set();
         card._shows.add(showId);
         showCardCounts[showId] = (showCardCounts[showId] || 0) + 1;
@@ -20499,13 +20842,20 @@ async function updateCardInDB(card) {
 // The sold confirmation UI must complete instantly regardless of
 // Supabase write latency. Failures are logged but never surfaced.
 //
-// Fires when activeShowId is set, or falls back to the card's own single
-// show membership (see comment inside the function for why).
+// Show: the explicit showIdOverride from the Sell Drawer, else
+// _resolveSaleShowId() (activeShowId → card's show → a show running today).
 // Uses detectCardSport() (API routing) not detectSport() (UI only).
 
-async function recordShowTransaction(card) {
+async function recordShowTransaction(card, showIdOverride) {
   if (typeof db === 'undefined') return;
   if (!currentSeller) return;
+
+  // sdConfirm() passes the show picked in the Sell Drawer (pre-filled by
+  // _resolveSaleShowId()). null there means the seller chose Off-show.
+  if (showIdOverride !== undefined) {
+    if (!showIdOverride) { console.info('[transaction] off-show sale — not logged to show_floor_transactions'); return; }
+    return _insertShowTransaction(card, showIdOverride);
+  }
 
   // Prefer the live activeShowId (explicit session context), but fall back
   // to the card's own show membership when it's unset. activeShowId is a
@@ -20518,14 +20868,16 @@ async function recordShowTransaction(card) {
   // rehydrated from the DB on login (see hydrateCardShowMembership()), so
   // a card belonging to exactly one show is an unambiguous, reload-proof
   // source of truth for which show this sale belongs to. A card in zero or
-  // multiple shows still requires the explicit activeShowId context.
-  const showId = activeShowId ||
-    (card._shows instanceof Set && card._shows.size === 1 ? [...card._shows][0] : null);
-  if (!showId) return;
+  // several shows falls back to a show running today (_resolveSaleShowId).
+  const showId = _resolveSaleShowId(card);
+  if (!showId) { console.warn('[transaction] no show for this sale — not logged'); return; }
+  return _insertShowTransaction(card, showId);
+}
 
+async function _insertShowTransaction(card, showId) {
   try {
     const show = shows[showId];
-    if (!show) return;
+    if (!show) { console.warn('[transaction] show not loaded:', showId); return; }
 
     // Prefer DB-populated city/state; fall back to parsing location
     let city  = show.city  || null;
@@ -20591,7 +20943,7 @@ async function recordShowTransaction(card) {
       // Show snapshot — denormalised so record is self-describing
       show_id:       showId,
       show_name:     show.name,
-      show_date:     show.date     || null,
+      show_date:     _showDateISO(show),
       show_location: show.location || null,
       show_city:     city,
       show_state:    state,
@@ -20745,16 +21097,126 @@ async function upsertCardsToDB(cards) {
   }
 }
 
+// ── PASSWORD RESET (landing from a recovery email link) ──
+// Only the landing side. Resets are sent from the Supabase dashboard; there is
+// no self-service "Forgot password?" in the app yet.
+const PW_RESET_MIN_LENGTH = 8;
+
+function _clearAuthRedirectUrl() {
+  window.history.replaceState({}, '', window.location.pathname);
+  window._authRedirect = null;
+}
+
+async function _startPasswordRecovery() {
+  // getSession() waits for supabase-js to finish reading the link.
+  let session = null;
+  const tokenHash = window._authRedirect && window._authRedirect.tokenHash;
+  try {
+    if (tokenHash) {
+      ({ data: { session } } = await db.auth.verifyOtp({ token_hash: tokenHash, type: 'recovery' }));
+    } else {
+      ({ data: { session } } = await db.auth.getSession());
+    }
+  } catch (e) {}
+  _clearAuthRedirectUrl();
+  if (!session) {
+    await db.auth.signOut().catch(() => {});
+    const errEl = document.getElementById('authError');
+    if (errEl) errEl.textContent = 'That password reset link is invalid or has expired. Ask for a new one.';
+    return;
+  }
+  document.getElementById('pwResetOverlay').classList.remove('hidden');
+  pwResetValidate();
+  const el = document.getElementById('pwResetNew');
+  if (el) el.focus();
+}
+
+// Live check: enables Save only when both fields match and meet the minimum.
+function pwResetValidate() {
+  const pass = document.getElementById('pwResetNew').value || '';
+  const conf = document.getElementById('pwResetConfirm').value || '';
+  const err  = document.getElementById('pwResetError');
+  const btn  = document.getElementById('pwResetSubmit');
+  let msg = '';
+  if (pass && pass.length < PW_RESET_MIN_LENGTH) msg = `Password must be at least ${PW_RESET_MIN_LENGTH} characters.`;
+  else if (conf && pass !== conf) msg = 'Passwords don\'t match.';
+  if (err) err.textContent = msg;
+  const ok = pass.length >= PW_RESET_MIN_LENGTH && pass === conf;
+  if (btn) btn.disabled = !ok;
+  return ok;
+}
+
+async function submitPasswordReset() {
+  if (!pwResetValidate()) return;
+  const btn = document.getElementById('pwResetSubmit');
+  const err = document.getElementById('pwResetError');
+  const pass = document.getElementById('pwResetNew').value;
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    const { data, error } = await db.auth.updateUser({ password: pass });
+    if (error) throw error;
+    // Recovery leaves a valid session — go straight into the app.
+    const uid = data.user.id;
+    const { data: seller } = await db.from('sellers').select('handle').eq('id', uid).maybeSingle();
+    let adminRow = null;
+    if (!seller) ({ data: adminRow } = await db.from('admins').select('id').eq('id', uid).maybeSingle());
+    document.getElementById('pwResetOverlay').classList.add('hidden');
+    document.getElementById('pwResetNew').value = '';
+    document.getElementById('pwResetConfirm').value = '';
+    btn.textContent = 'Save New Password →';
+    if (seller) {
+      loginAsSeller(seller.handle);
+      showToast('✓ Password updated');
+    } else if (adminRow) {
+      window._currentAdminUid = uid;
+      loginAsAdmin();
+      showToast('✓ Password updated');
+    } else {
+      await db.auth.signOut().catch(() => {});
+      const errEl = document.getElementById('authError');
+      if (errEl) { errEl.style.color = '#4ade80'; errEl.textContent = '✓ Password updated — sign in with your new password.'; }
+    }
+  } catch (e) {
+    // Fields are left as typed so the seller can retry without retyping.
+    if (err) err.textContent = (e && e.message) || 'Could not update your password. Please try again.';
+    btn.disabled = false; btn.textContent = 'Save New Password →';
+  }
+}
+
 // Always show the login page on fresh navigation — clear any lingering Supabase session.
 // Deep-link: ?code=XXXX → skip login, enter buyer mode, join show directly.
 // Awaits signOut so the Supabase client is in a clean anon state before querying.
 (async function initPage() {
   window.scrollTo(0, 0); // ensure page starts at top on mobile
+
+  // Password-reset link: supabase-js has already turned it into a short-lived
+  // recovery session. Signing out here would destroy it, so branch off first.
+  if (window._authRedirect && window._authRedirect.mode === 'recovery') {
+    _startPasswordRecovery();
+    return;
+  }
+
   await db.auth.signOut().catch(() => {});
+
+  if (window._authRedirect && window._authRedirect.mode === 'error') {
+    _clearAuthRedirectUrl();
+    const errEl = document.getElementById('authError');
+    if (errEl) errEl.textContent = 'That email link is invalid or has expired. Ask for a new one.';
+    return;
+  }
 
   const params = new URLSearchParams(window.location.search);
   const code = params.get('code');
+  // Landing-page entry points: ?signup=1 opens the auth box in sign-up mode,
+  // ?buyer=1 goes straight to the buyer show picker.
+  if (!code && (params.get('signup') || params.get('buyer'))) {
+    window.history.replaceState({}, '', window.location.pathname);
+    if (params.get('buyer')) { enterAsBuyer(); return; }
+    if (authMode !== 'signup') toggleAuthMode();
+    return;
+  }
   if (!code) return; // normal login page — nothing more to do
+  if (params.get('type') === 'recovery') return; // an auth link, not a show access code
 
   window.history.replaceState({}, '', window.location.pathname);
 

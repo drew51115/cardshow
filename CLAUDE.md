@@ -11,8 +11,9 @@ CardShow is a sports card show inventory platform connecting buyers, sellers, an
 
 ## File Structure
 ```
-index.html                        → Landing/marketing page (formerly landing.html)
+index.html                        → Landing/marketing page (formerly landing.html); forwards password-reset link hashes to app.html; CTAs link to app.html?signup=1 / ?buyer=1
 app.html                          → Main platform — seller/admin/buyer views (formerly index.html)
+privacy.html                      → Privacy policy (effective 2026-10-25); served at /privacy via _redirects; #data-deletion anchor for data-deletion requests; linked from index.html footer
 show.html                         → Public show page (short link show.html?id=<showId>, loads from the DB; old hash-encoded links still open)
 seller-browse.html                → Buyer-facing seller storefront (QR scan destination)
 _redirects                        → Netlify routing rules
@@ -38,6 +39,7 @@ js/trade-zone.js                         → Guest auth, post/board/propose/conf
 js/trade-board.js                        → Realtime board rendering + report aggregation for trade-board.html
 js/trade-share.js                        → Phase 4 canvas compositor + Web Share API for the branded trade graphic
 supabase/migrations/20260825120000_trade_zone.sql → Trade Zone schema, storage buckets, RLS, and RPC functions — run in Supabase SQL editor
+qrcode.min.js                     → Self-hosted qrcodejs 1.0.0 (all QR codes); cdnjs is only a backup — see "Seller QR blank"
 CLAUDE.md                         → This file
 ```
 
@@ -446,6 +448,27 @@ remaining document* needs to stay the same, or a later, unrelated container can 
 closing. A `<div>`/`</div>` count check (or a real DOM inspection of a distant, unrelated
 container) is worth running after any tag-balance fix here, not just the one screenshot that
 prompted it.
+
+### Add to Inventory button unreachable on iPhone (session 2026-10-16)
+Seller video (iPhone Safari): at the bottom of the Add Card form, the "Add to Inventory" button
+showed only while the seller held a drag past the end of the scroll. It snapped back under
+Safari's bottom toolbar on release, and the "+ Sell / Add" FAB covered it. The button couldn't
+be tapped. Three causes:
+1. `.card-edit-modal` used `max-height: calc(100vh - 120px)`. On iOS Safari `100vh` is the
+   viewport height with the toolbars collapsed, so the modal's bottom sat under the toolbar.
+2. The FAB (`.fab-add`, z-index 490) stacks above `.card-edit-overlay` (z-index 200) and sat
+   right on the button.
+3. The action row came at the very end of a long form, so it was only ever reachable by
+   scrolling to the bottom.
+
+Fix (CSS only): the modal height now uses `100dvh` (with `100vh` kept as the fallback) plus
+`overscroll-behavior: contain`, and the overlay pads for `env(safe-area-inset-bottom)`. The
+direct `.modal-actions` child of `.card-edit-modal` is `position: sticky; bottom: 0`, so the
+Save button stays visible while the form scrolls. This applies to Add Card, Edit Card and
+Comp Results. `body:has(.card-edit-overlay.open) .fab-add { display: none }` hides the FAB
+while one of these modals is open (needs iOS 15.4+). Checked in headless Chromium at iPhone 13
+size: the button is visible without scrolling, a tap lands on it, and the FAB is hidden while
+the modal is open and returns after it closes.
 
 ## Sport Classification — imported Sport field override (session 2026-09-14)
 
@@ -2365,6 +2388,11 @@ migration, no new external library.
   Phase 4) + deregister on sale/delete/revoke. Registration is built but **dark**
   (`GTCR_CONSENT_UI_LAUNCHED=false` client-side, `?gtcr_consent=1` test switch, `GTCR_REGISTRATION_ENABLED` server-side) until
   pricing is decided. Transfer-on-resale (Phase 5) not built — open decision. See "Trust Check via GTCR".
+- **XLSX import grade-column fix (session 2026-10-02)** — columns blank in the first data row
+  (Grade/Grader/Cert # on a raw card) were dropped for the whole XLSX file, so graded cards
+  imported as Raw. `readXLSX()`/`openMapper()` now keep every column; a re-upload repairs the
+  raw cards in place via a raw-twin match in `loadInventory()`. See "XLSX Import Dropped Grade
+  Columns".
 
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`
@@ -2394,6 +2422,70 @@ migration, no new external library.
 ### Immediate actions outside the platform
 - Beta test at organizer's next show — respond with concrete proposal
 - Card Ladder partnership outreach — co-marketing deal for comp data access
+
+## Landing Page Consolidation (session 2026-10-08)
+`index.html` was rebuilt around the current feature set and cut from ~2,670 to ~2,290 lines.
+The As Seen At section (`#social-proof`) was left exactly as it was.
+
+**Section order now:** Hero → marquee → The Problem → Which One Is You? → How It Works →
+For Buyers (`#buyers`) → For Sellers · ShowVision (`#sellers`) → For Sellers · Price & Sell →
+Every Category (`#tcg`) → Import + template → For Organizers (`#organizers`) → Show floor
+record → Try It Now → As Seen At → Final CTA → footer. The hero pills and nav CTAs
+were replaced on 2026-10-16; see "Landing Page CTA Streamlining" below.
+
+**Merged or removed:** the three-column "One Platform, Three Audiences" block (it repeated
+Which One Is You?), the stats strip, the standalone Table Numbers, Seller Profile, Shareable
+Show Page and QR sections (folded into the Buyers, Sellers and Organizers sections), two of
+the four inline CTAs, and the separate Integrations and Template sections (now one). Their
+CSS (`.triptych*`, `.panel-*`, `.stat-*`, `.qr-section`, `.qr-mock`) and the QR demo canvas
+script were removed.
+
+**Stale claims fixed:** barcode cert scanning (removed from the app 2026-09-06), "comps from
+eBay" (comps come from Card Hedge, CardSight and PriceCharting, high-confidence only), the
+admin "All Inventory" tab (removed 2026-09-12), and the `show.html#…` hash link (now
+`?id=`).
+
+**Newly covered:** bulk case scan, guided search, the GTCR lost/stolen check, the
++ Sell / Add menu, manual sales, multi-day sale dates, share cards, export, category and
+subcategory filters, 8 graders plus "Other", serial number/print run/features, live
+inventory sync, Find a Table plus floor map, organizer floor map, analytics, heatmap, and QR
+engagement.
+
+**Also fixed:** the page scrolled sideways on phones. `.final-cta` now has
+`overflow: hidden` (its 800px glow overflowed), and the footer stacks at ≤600px.
+
+## Landing Page CTA Streamlining (session 2026-10-16)
+Mobile feedback: the top of `index.html` showed four competing buttons. Open Demo and Start for
+Free both went to `/app` under different names. Get in Touch (a `mailto:`) had the gold
+primary style. Start for Free landed on a **Sign In** form. Returning sellers had no "Sign in"
+link at all.
+
+**One meaning per CTA type now:**
+- **Gold button = "Get started — it's free"** → `/app?signup=1`. Used in the hero, inline CTA 1,
+  the Try It Now seller panel, the final CTA, the mobile sticky bar, and the desktop nav.
+- **Text link = "Just browsing? See a live show"** → `/app?buyer=1`. Used in the hero and the final
+  CTA. The Which One Is You? buyer card and the Try It Now buyer panel (outline button) go to the
+  same place.
+- **"Sign in"** → `/app`. Shown in the nav, the sticky bar, and the footer (replaces "Demo").
+- **Organizers** keep "Request Organizer Access" / "Get in touch" (`mailto:`), inside the
+  organizer sections only.
+
+**Removed:** the nav's Open Demo and Get in Touch buttons, the hero's See How It Works button and
+its four audience pills (plus their `.hero-pills`/`.pill*` CSS), inline CTA 2, the organizer
+panel's Open Demo button, and the final CTA's Browse a Seller button.
+
+**Mobile (≤600px):** the nav shows only "Sign in" (`.nav-get-started` is hidden). A sticky bar
+(`#mobileCtaBar`) with Sign in plus the gold button slides up once the hero leaves the screen,
+and hides again while `.final-cta` is on screen. Both are driven by IntersectionObservers in the
+page script. `body > footer` gets bottom padding so the bar never covers the footer links.
+
+**app.html entry params** (handled in the init block just before the `?code=` show deep link,
+skipped when `code` is present):
+- `?signup=1` switches the auth box to sign-up mode (`toggleAuthMode()`).
+- `?buyer=1` calls `enterAsBuyer()`.
+
+Both clear the query string with `history.replaceState`. Netlify's `/app → /app.html 200`
+rewrite keeps the query string.
 
 ## Social Proof Section (#social-proof)
 Location: index.html, between the CSV-format stat row and the Final CTA / footer.
@@ -2430,6 +2522,27 @@ Current entries (as of September 2026):
   and West Coast Hobby Expo. Content unchanged from its original featured-badge copy (Hobby
   Tech Pitch Competition, NSCC 2026, Dr. James Beckett/Scott Lock/Jeremy Lee judges) — still
   uses `assets/enter-the-inferno-promo.png`, which was never removed from the repo.
+- Global Trading Card Registry (GTCR) — integration partner, featured badge + logo tile, added
+  October 2026. Stacked second, right after CTCA (CTCA runs the GTCR). `assets/gtcr-logo.png` is
+  the user-supplied seal, trimmed and kept as a transparent PNG (~87KB), and uses
+  `.sp-featured-img--logo`. Tagline "Register. Verify. Protect. Transfer." comes from thegtcr.com.
+  The body copy, as the user asked for it, says vendors can register graded cards with the GTCR
+  when adding them to inventory, and are alerted about lost/stolen cards. **The second claim is
+  live (Trust Check, see "Trust Check via GTCR"). The first is ahead of the product:**
+  registration is built but dark (`GTCR_CONSENT_UI_LAUNCHED=false`, `GTCR_REGISTRATION_ENABLED`
+  off), and it registers a card on sale with seller consent, not when the card is added.
+  Revisit the wording if registration launches differently.
+- The Monster Collectibles Show — featured sponsor, featured badge + logo tile, added October
+  2026. Stacked third (after CTCA and GTCR, before West Coast Hobby Expo) as the newest sponsorship.
+  `assets/monster-show-logo.png` is the show's own logo, trimmed to its content and kept as a
+  transparent PNG (palette-quantized, ~118KB) so it sits directly on the dark card. The source
+  has a transparent background, and a JPEG would put it in a white box. Its `<img>` adds
+  `.sp-featured-img--logo` (`object-fit: contain`, vertically centered) so the non-square logo
+  isn't cropped. Copy comes from monstershowusa.com: Cal Expo, Sacramento, CA, October 9-11,
+  2026, 300+ vendor tables, 10,000+ expected attendees, sports cards/Pokémon/TCG/comics/coins/
+  toys/memorabilia. "Featured sponsor, live on the show floor all weekend" is per the user, the
+  same sourcing as WCHE. **The copy is in present tense ("is a featured sponsor"). Switch it to
+  past tense after the show ends Oct 11.**
 - The National Sports Collectors Convention (logo tile)
 - InfernoRed Technology (logo tile)
 - Sports Cards Live / Jeremy Lee (logo tile)
@@ -4306,6 +4419,248 @@ reloaded the live cards from the DB on open, so the card data in the link was on
   page was opened from an old long link.
 - **Unchanged:** old hash links keep working. Table numbers show exactly as before, since the
   old hash carried them too.
+
+## Seller Password Reset — landing side (session 2026-10-01)
+
+Before this, a reset link sent from the Supabase dashboard dropped the seller on the landing
+page with no way to set a new password. There was no recovery handling at all: no
+`updateUser()`, no `onAuthStateChange`, and `initPage()` signed out every session on load.
+
+### Link shape (from the live supabase-js v2 bundle; confirmed with a real email)
+- `createClient()` had no options, and v2's default `flowType` is `implicit`. It is now pinned
+  explicitly: `{ auth: { flowType: 'implicit' } }`. PKCE would deliver auth links as `?code=…`,
+  the same param the buyer show-join deep link uses.
+- Implicit recovery arrives as `#access_token=…&refresh_token=…&type=recovery`. An expired or
+  used link arrives as `#error=access_denied&error_code=otp_expired&error_description=…`.
+- supabase-js reads the hash during init, saves a recovery session, then **clears the hash**.
+  So the head script captures the raw link into `window._authRedirect` *before*
+  `createClient()` runs (`{mode:'recovery'}` / `{mode:'error', message}` / `null`).
+- Custom email templates can skip `/verify` and link straight to the site as
+  `?token_hash=…&type=recovery`. That shape is also captured (`{mode:'recovery', tokenHash}`),
+  and `_startPasswordRecovery()` exchanges it with `db.auth.verifyOtp({ token_hash, type:
+  'recovery' })`. Errors can also arrive as query params (`?error_code=…`).
+- **Tested and validated with a real email (2026-10-02).** After PR #66 merged, a reset sent
+  from the Supabase dashboard (Authentication → Users → Send password recovery) was clicked on
+  production: it landed on the set-new-password form, the new password saved, and the seller
+  was signed in.
+
+### Flow
+- **`index.html`** — a reset sent from the dashboard goes to the Site URL, which is the landing
+  page. A tiny `<head>` script forwards any `type=recovery` or `error_code=` link (hash or
+  query string) to `/app.html` with both intact. No dashboard redirect change is required for this path.
+- **`initPage()`**:
+  - Recovery link: calls `_startPasswordRecovery()` and returns **before** `signOut()`.
+  - Error link: signs out as usual, clears the URL, shows "That email link is invalid or has
+    expired" in `#authError`.
+  - `?code=` with `type=recovery` is never treated as a show access code.
+  - Every other load is unchanged.
+- **`_startPasswordRecovery()`** awaits `getSession()`, which waits for supabase-js to finish
+  reading the link. It then clears the URL (`_clearAuthRedirectUrl()`) and opens
+  `#pwResetOverlay`. With no session, it shows the expired message instead.
+- **`#pwResetOverlay`** reuses `.auth-overlay`/`.auth-box`/`.auth-field` and has z-index 950,
+  above `#authOverlay`. It must stay *after* `#authOverlay` in the DOM, because `submitAuth()`
+  finds its button with `querySelector('.auth-box .btn-primary')`.
+  - `pwResetValidate()` enables Save only when the two fields match and are at least
+    `PW_RESET_MIN_LENGTH` (8) characters.
+- **`submitPasswordReset()`** calls `db.auth.updateUser({ password })`. Recovery leaves a valid
+  session, so it then:
+  - looks up `sellers` by uid → `loginAsSeller(handle)`;
+  - otherwise looks up `admins` → `loginAsAdmin()`;
+  - otherwise signs out and asks the user to sign in.
+  On error, the message shows inline and both fields keep their values.
+- **Refresh after a reset:** the URL was already cleaned, so the page loads normally (login
+  page). Nothing re-shows.
+
+### Open
+- **8-character minimum:** sign-up still allows 6. Confirm the rule, and the Supabase
+  project's own minimum.
+
+### Self-service "Forgot password?" (session 2026-10-02)
+- A **Forgot password?** link sits under the password field in the sign-in box (seller sign-in
+  and Show Admin; hidden in seller sign-up mode via `toggleAuthMode()`/`setAuthRole()`).
+- `openForgotPassword()` hides `#authMainPanel` (role tabs, fields, Enter, Browse as Buyer) and
+  shows `#authForgotPanel`, prefilled with whatever email was already typed.
+  `closeForgotPassword()` goes back.
+- `sendPasswordResetLink()` checks the email format, then calls
+  `db.auth.resetPasswordForEmail(email, { redirectTo: location.origin + '/app.html' })`.
+  - On success it always shows the same message ("If an account exists for …"), so the form
+    can't be used to find out which emails have accounts.
+  - Supabase errors (e.g. the "only request this after N seconds" rate limit) show inline.
+- `#authForgotPanel` sits after the Enter button in the DOM, for the same `submitAuth()`
+  `querySelector('.auth-box .btn-primary')` reason as `#pwResetOverlay`.
+- The emailed link lands on the existing set-new-password flow above. **Recommended Supabase
+  setting:** add `https://getcardshow.com/app.html` under Authentication → URL Configuration →
+  Redirect URLs. Without it Supabase sends the link to the Site URL instead, and the
+  `index.html` forward still gets it to the form (one extra redirect).
+- Sign-up still allows 6-character passwords while a reset requires 8 (open decision above).
+
+## XLSX Import Dropped Grade Columns (session 2026-10-02)
+
+Real seller report: graded cards imported from an XLSX came in as Raw.
+
+### Root cause
+`readXLSX()` called `sheet_to_json(ws, { range: headerRowIdx })` without `defval`, so SheetJS
+left out the key for every empty cell. `openMapper()` then built its column list from
+`Object.keys(rawRows[0])`, the first data row only. Any column blank in that row never reached
+the mapper and was dropped for the whole file. The seller's first row was a raw card, so Grade,
+Grader and Cert # were lost, and `validateAndNormalizeCard()` saved every card as Raw.
+CSV was not affected (`parseCSV()` gives every row every header). The stock template was:
+its first example row has no Condition, so Condition, Seller, Image URL and Notes were dropped on
+every XLSX upload.
+
+### Fix 1: import (`readXLSX()`, `openMapper()`)
+- `readXLSX()` parses with `defval: ''`, so every row has every header.
+- It then drops unnamed `__EMPTY` / `__EMPTY_N` columns that are empty in every row. Both
+  templates declare a range out to column W, so `defval` alone added 7 / 2 blank unnamed columns
+  to the mapper. An unnamed column with data in any row is kept.
+- `openMapper()` builds `mapperHeaders` from the union of keys across all rows, in first-seen
+  order, and shows the first non-empty value in each column as the sample.
+
+### Fix 2: repair on re-upload (`loadInventory()`)
+Re-uploading the same file repairs the raw cards in place instead of adding a graded duplicate.
+Used only when the exact `cardFingerprint()` match finds nothing. An existing card is the
+incoming card's **raw twin** when:
+- the incoming card has a numeric Grade;
+- it matches on seller, Card Title, Year, Set, Number and Parallel/Variant (the fingerprint with
+  Grader blank);
+- the existing card has no Grade, no Grader, and a `_dbId`;
+- no other incoming row in this upload has claimed it. Exact matches claim their card first.
+
+On a twin match:
+- Grade, Grader and Cert # are copied onto the existing card. Price and Condition are copied
+  only when the file has a value. Status is never changed, so a Sold twin stays Sold.
+- The incoming row is not added and is left out of `upsertCardsToDB()`. The existing row is saved
+  by id with `updateCardInDB()` (same row, no insert).
+- It counts as "updated" in the toast.
+- Repaired cards go to `_gtcrQueueChecks()`, which checks the non-sold ones with a cert #.
+
+Also fixed in `loadInventory()`'s exact-match branch: blank and 0 prices now compare equal.
+Before, a raw row with no price counted as "updated" on every re-upload (`NaN !== 0`).
+
+### Known gaps (not fixed)
+- **Parallel blank in the first row:** if the broken import also dropped Parallel/Variant, the
+  saved raw card has no parallel and won't match its twin. A re-upload then adds the graded card
+  as new, next to the raw one. The seller deletes the raw copy by hand.
+- **Cert # is not in the dedupe key.** Two copies of the same graded card with different cert
+  numbers collapse into one on import.
+- **Sold-status reset on re-upload.** `upsertCardsToDB()`'s update path writes the full row,
+  `status` included, from the file. Re-uploading a file containing a Sold card sets it back to
+  Available in the DB. A repaired Sold twin stays Sold after the first re-upload, but a second
+  re-upload resets it like any other Sold card.
+- No grade parsing from Card Title, and no SQL backfill. Repair only happens through a re-upload.
+
+## Seller QR Code Blank (session 2026-10-05)
+
+Seller report: the My QR Code panel showed a blank white box, while the URL text under it was
+correct.
+
+### Root cause
+- The QR library (qrcodejs) was loaded only from cdnjs.
+- When that request fails, the error handler drew its fallback onto `#qrCanvas` (the buyer
+  modal's canvas), not the seller's canvas. So the seller's canvas stayed blank white, with no
+  message and no console error.
+- Reproduced in a headless phone viewport: with cdnjs blocked, `#sellerQrCanvas` stays all
+  white. With the library available, the same seller/show URL (127 chars) renders fine, so the
+  URL length is not the cause.
+- A second, smaller risk: `renderQR()` drew from the library's `<img>` after a 120ms timer.
+  That img gets its src only after an async data-URI test, so a slow phone could read an
+  empty img and draw nothing.
+
+### Fix
+- `qrcode.min.js` is now self-hosted at the repo root, like `xlsx.full.min.js`.
+- `loadQRLib()` tries `/qrcode.min.js` first, then cdnjs. Callers that arrive while the script
+  is loading are queued, so there are no duplicate `<script>` tags. After a failure, the next
+  call tries again.
+- `renderQR()` copies from the library's `<canvas>`, which is drawn synchronously, so there is
+  no timer. If loading or drawing fails, the fallback goes to the same canvas and says "QR code
+  didn't load — Reload the page to try again".
+- The first (dead, overridden) `renderQR()` definition was removed.
+- `js/trade-board.js`'s `_tbLoadQRLib()` uses the same self-hosted-first order.
+
+## Large Shows Loaded 0 Cards (session 2026-10-09)
+
+Organizer report: the Monster Collectible Show page (`show.html?id=show_mugg9qyevlxx`) showed
+0 cards, even though all 665 cards were published to `show_inventory`.
+
+### Root cause
+`fetchInventoryFromDB()` loaded the cards in one `inventory.in('id', cardIds)` call, and every
+UUID goes into the request URL. With 665 IDs the URL was ~26KB, and Supabase rejected it with
+a bare HTTP 400. The function returned without logging anything. Shows under ~600 cards fit,
+which is why this is the first show to break. The in-app buyer view (`loadBuyerInventoryFromDB`)
+and organizer analytics (`_orgFetchInventory`) had the same problem.
+
+Supabase also returns at most 1000 rows per request (confirmed: `content-range: 0-999/2870`).
+So a show with more than 1000 published cards would be cut off even after the URL fix.
+
+### Fix
+- New helpers:
+  - `dbSelectIn(build, ids)` (app.html) / `_sbSelectIn()` (show.html) split an ID list into
+    batches of 150, run them in parallel, and merge the rows. `build(ids)` must return a new
+    query each call. `dbDeleteIn` is the same helper, used for deletes.
+  - `dbSelectAllPages(build)` / `_sbSelectAllPages()` page through with `.range()` in 1000-row
+    steps. `build()` must include a stable `.order()`.
+- Used in:
+  - show.html: `fetchInventoryFromDB()` and `loadShowMetaFromDB()`'s sellers lookup.
+  - app.html: `loadBuyerInventoryFromDB()`, `_orgFetchInventory()`,
+    `hydrateCardShowMembership()`, `publishShowInventoryToDB()`'s card query, and the
+    `show_inventory` deletes in `sellerRemoveFromShow()` / `removeShowSellerFromDB()`.
+- `fetchInventoryFromDB()` now logs query errors to the console instead of failing silently.
+- On a short link, `fetchInventoryFromDB()` no longer replaces the full authorized seller list
+  (`showMeta.fromDB`) with only the sellers who have published cards. That replacement is
+  only needed for old hash links, whose seller list can be stale.
+
+### Not changed
+- `fetchSellerInventoryFromDB()` (a seller's own inventory on login) still reads one page. A
+  seller with more than 1000 cards would be cut off.
+- `buildShowPageUrlFromDB()` still reads one page.
+
+## Scan-to-Sell Sales Missing from show_floor_transactions (session 2026-10-12)
+
+Real report: a card sold through **Sell / Add → Sell a card → It's not in my inventory** (photo,
+identify, Sell Drawer) was saved to `inventory` (`480b0b72-…`) but never reached
+`show_floor_transactions` for its show (`show_mv2j09jb67yk`).
+
+### Root cause
+`recordShowTransaction()` needs a show. It used `activeShowId`, else the card's own show when the
+card belongs to exactly one. Both were empty for this sale:
+- `activeShowId` is set only by tapping **⚡ Add My Cards** on this device (restored from
+  localStorage). A seller on a new device, or with cleared storage, has none.
+- A Scan-to-Sell card is brand new, so `card._shows` is empty. `posInsertAndOpenDrawer()` only
+  publishes it when `activeShowId` is set.
+
+So the function returned silently. Any pre-existing card in zero or several shows hit the same gap.
+
+### Fix (app.html)
+- `_resolveSaleShowId(card)`: `activeShowId` → the card's only show → a show the card is in that
+  runs today → a show the seller is authorized for that runs today → `null`. `_showIsToday(show)`
+  uses `startDate`/`endDate`, else parses the freeform `date` (handles "Aug 29-30, 2026").
+- The Sell Drawer has a **Show** field (`#sdShow`, filled by `_sdPopulateShowSelector()`), listing
+  the seller's shows plus "Off-show / no show", pre-selected from `_resolveSaleShowId()`. Hidden
+  when the seller has no shows.
+- `sdConfirm()` passes that show to `recordShowTransaction(card, showId)`. If the card isn't in that
+  show yet, it calls `_autoPublishCardToShow()` so the sale also counts in organizer analytics.
+  Choosing Off-show skips the transaction (logged to the console).
+- `recordShowTransaction()` without an override uses `_resolveSaleShowId()`. The insert itself moved
+  to `_insertShowTransaction(card, showId)`, unchanged.
+- `_autoPublishCardToShow()` skips a publish already in flight for the same card+show
+  (`card._publishing`), since a second upsert is an UPDATE that `show_inventory` RLS rejects.
+
+Verified headless: a Scan-to-Sell sale with `activeShowId = null` and a show running today now
+writes `inventory` insert → update, `show_inventory` upsert, and `show_floor_transactions` insert
+with the right `show_id` and `inventory_id`.
+
+### Also fixed: wrong `show_date` on multi-day shows
+`show_floor_transactions.show_date` is a Postgres `date`, but both `recordShowTransaction()` and
+`recordManualSaleTransaction()` sent `show.date`, the display text. Postgres doesn't reject
+"Oct 9-11, 2026"; it reads it as **2011-10-09** ("Aug 29-30, 2026" → 2030-08-29), so every
+multi-day show's rows got a wrong date. Both now send `_showDateISO(show)`: `startDate`, else
+`_parseShowDate(date)` as 'YYYY-MM-DD', else null. Existing rows are not corrected; the table is
+immutable (UPDATE blocked by RLS).
+
+### Backfill for the reported sale (run by hand in the SQL editor)
+Insert one `show_floor_transactions` row from the inventory row, joining `shows`/`sellers` for the
+snapshot fields, for `inventory.id = '480b0b72-166f-46d5-8bd2-4827f3251c7f'` and
+`show_id = 'show_mv2j09jb67yk'`. Also add its `show_inventory` row if missing.
 
 ## Show Configuration (Demo Data)
 - **MLP Card Show** — Oct 17-18, 2026 · Grand Hyatt Tampa Bay, FL · Code: MLPTPA (primary demo, shown to buyers without code)
