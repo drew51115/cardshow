@@ -29,6 +29,8 @@ netlify/functions/gtcr-registry.js       → Serverless: GTCR consent + registra
 scripts/gtcr-write-roundtrip.js          → Local test of GTCR's register/remove endpoints with a fake cert (needs GTCR_WRITE_API_KEY in the shell)
 supabase/migrations/20260925120000_gtcr_trust_check.sql → inventory.trust_flag + cert_trust_checks / gtcr_consent_events / gtcr_registrations (RLS: read-own, no client writes)
 netlify/functions/expire-trade-posts.js  → Scheduled (hourly, see netlify.toml): calls expire_stale_trade_posts() RPC to hide stale trade_posts from the live board
+netlify/functions/refresh-show-statuses.js → Scheduled (hourly): calls refresh_show_statuses() so shows.status follows the dates — see "Automatic Show Status"
+supabase/migrations/20261029120000_show_auto_status.sql → refresh_show_statuses() (service_role only); fixes every show once when run
 .env.example                             → Placeholder env vars for all keys
 downloads/                               → Static file downloads served by Netlify
 downloads/CardShow_Inventory_Template.xlsx → Pre-filled inventory template (13 example rows); linked from landing page and footer
@@ -256,6 +258,11 @@ Required for the Show Directory (see "Show Directory" below), after the self-joi
 `insert into public.platform_admins (id) values ('<your auth.users id>');`. **Every existing show
 starts unlisted**, so sellers see no shows to join until you list them. Before it runs, every
 show counts as listed and the directory tab doesn't appear.
+
+Required for automatic show status in the database (see "Automatic Show Status"), after the
+self-join migration: `supabase/migrations/20261029120000_show_auto_status.sql`. Until it runs, the
+admin dashboard and show.html still show the right status (both work it out from the dates), but
+the stored `shows.status` only changes when a show is saved.
 
 Required to save the post-removal Trust Check result (diagnostic, see "Trust Check via GTCR"):
 `supabase/migrations/20261026120000_gtcr_post_removal_check.sql` adds `post_removal_card_status`,
@@ -4762,6 +4769,33 @@ still add sellers, assign tables and remove anyone.
 - **Open:** anyone with a seller account can join an open show, including people who didn't pay
   for a table. The organizer sees them tagged and can remove them; switch the show off to stop
   self-joins. No organizer notification of new joins yet.
+
+## Automatic Show Status (session 2026-10-26)
+
+A show's status is no longer picked by hand. It follows the dates:
+- **Upcoming** before the start date.
+- **Active (Live)** from the start date through the end date.
+- **Past** after the end date.
+
+How it's set:
+- **app.html:**
+  - `_showStatusFromDates(show)` works the status out from `startDate`/`endDate`, or from the freeform
+    `date` text ("Oct 9-11, 2026"). It uses the show's `timezone` when one is set, else the device's date.
+  - It returns null when the show has no usable date. The stored status then stands.
+  - `_showStatusForRow(row)` is used wherever a `shows` row is loaded (`loadShowsFromDB()` and the two
+    access-code lookups).
+  - `renderAdminShowsDashboard()` calls `_refreshShowStatuses()`, so a tab left open picks up the next day.
+- **Show modal:** the Status dropdown is gone. `#smStatusAuto` shows the status the dates give
+  (`smUpdateStatusPreview()`). `saveShow()` saves that status, and so does the Directory's `saveDirEdit()`.
+- **Dashboard:** each show card has a status label (`.asc-status`) next to the name.
+- **show.html:** `_statusFromDateText()` works it out from the date text in `loadShowMetaFromDB()`.
+- **Database:** `refresh_show_statuses()` updates `shows.status` for shows that have a `start_date`.
+  "Today" is in `shows.timezone`, else America/Los_Angeles, so a US show never turns Past early.
+  `netlify/functions/refresh-show-statuses.js` runs it hourly (uses `SUPABASE_SERVICE_KEY`).
+- **Known gap:** a show without a time zone can read differently for up to 3 hours around midnight. In
+  that window the app (device date) and the database job (Pacific date) may disagree. Setting the
+  show's time zone in the Directory removes the gap.
+- **Tests:** `tests/show-mode/show-status.e2e.mjs`, `show-status.test.sql`.
 
 ## Show Directory (session 2026-10-27)
 

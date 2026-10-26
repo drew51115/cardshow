@@ -1122,7 +1122,7 @@ async function loadShowMetaFromDB(id) {
       name: row.name || 'Card Show',
       date: row.date || '',
       location: row.location || '',
-      status: row.status || 'upcoming',
+      status: _statusFromDateText(row.date, row.status),
       tables,
       sellers,
       totalCards: 0,
@@ -1567,6 +1567,23 @@ function renderSportBreakdown() {
 // embedded day-range hyphen as part of the year — new Date("August 29-30,
 // 2026") silently resolves to August 2030, four years off — so strip a
 // trailing "-N" day-range down to just the start day before parsing.
+// Status from the display date ("Oct 9-11, 2026"): Upcoming before the first
+// day, Active through the last, Past after. Mirrors app.html's
+// _showStatusFromDates(); the hourly refresh-show-statuses job keeps the stored
+// value in step too. Falls back to the stored status when the date won't parse.
+function _statusFromDateText(dateStr, stored) {
+  const start = dateStr ? _parseShowStartDate(dateStr) : null;
+  if (!start) return stored || 'upcoming';
+  const end = new Date(start);
+  const m = dateStr.match(/\d{1,2}\s*-\s*(\d{1,2})\s*,/);
+  if (m) end.setDate(parseInt(m[1], 10));
+  const iso = d => d.toLocaleDateString('en-CA');
+  const today = iso(new Date());
+  if (today < iso(start)) return 'upcoming';
+  if (today > iso(end))   return 'past';
+  return 'active';
+}
+
 function _parseShowStartDate(dateStr) {
   const cleaned = dateStr.replace(/(\d{1,2})\s*-\s*\d{1,2}(\s*,)/, '$1$2');
   const d = new Date(cleaned + (cleaned.includes(':') ? '' : ' 09:00:00'));

@@ -1884,6 +1884,13 @@
     font-family: 'DM Mono', monospace; font-size: 0.6rem; letter-spacing: 0.06em; text-transform: uppercase;
     color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 0.05rem 0.3rem;
   }
+  .asc-status {
+    font-family: 'DM Mono', monospace; font-size: 0.6rem; letter-spacing: 0.06em; text-transform: uppercase;
+    padding: 0.1rem 0.4rem; border-radius: 4px; border: 1px solid var(--border); color: var(--muted);
+    margin-left: 0.35rem; vertical-align: middle; white-space: nowrap;
+  }
+  .asc-status.active   { color: var(--success); border-color: rgba(34,197,94,0.4); }
+  .asc-status.upcoming { color: var(--accent);  border-color: rgba(245,200,66,0.4); }
   .asc-listed.yes { color: #22c55e; border-color: rgba(34,197,94,0.4); }
   .join-show-empty { font-size: 0.85rem; color: var(--muted); text-align: center; padding: 1.2rem 0.5rem; line-height: 1.5; }
   .sm-selfjoin-toggle {
@@ -6898,22 +6905,18 @@
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.65rem">
         <div>
           <div class="section-label" style="margin-bottom:0.35rem">Start Date</div>
-          <input class="show-input" id="smStartDate" type="date" style="margin:0">
+          <input class="show-input" id="smStartDate" type="date" style="margin:0" oninput="smUpdateStatusPreview()">
         </div>
         <div>
           <div class="section-label" style="margin-bottom:0.35rem">End Date <span style="color:var(--muted);font-weight:400;text-transform:none">(optional)</span></div>
-          <input class="show-input" id="smEndDate" type="date" style="margin:0">
+          <input class="show-input" id="smEndDate" type="date" style="margin:0" oninput="smUpdateStatusPreview()">
         </div>
       </div>
       <input class="show-input" id="smLocation" placeholder="Location (e.g. Grand Hyatt Tampa Bay, FL)" style="margin:0">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.65rem">
         <div>
-          <div class="section-label" style="margin-bottom:0.35rem">Status</div>
-          <select class="show-input" id="smStatus" style="margin:0">
-            <option value="upcoming">Upcoming</option>
-            <option value="active">Active (Live)</option>
-            <option value="past">Past</option>
-          </select>
+          <div class="section-label" style="margin-bottom:0.35rem">Status <span style="color:var(--muted);font-weight:400;text-transform:none">(automatic)</span></div>
+          <div class="show-input" id="smStatusAuto" style="margin:0;display:flex;align-items:center;gap:0.4rem" title="Upcoming before the start date, Active (Live) through the end date, Past after it"></div>
         </div>
         <div>
           <div class="section-label" style="margin-bottom:0.35rem">Access Code</div>
@@ -13758,7 +13761,6 @@ function openCreateShowModal(showId) {
     document.getElementById('smStartDate').value = s.startDate || '';
     document.getElementById('smEndDate').value   = s.endDate   || '';
     document.getElementById('smLocation').value  = s.location || '';
-    document.getElementById('smStatus').value    = s.status || 'upcoming';
     document.getElementById('smCode').value      = s.accessCode || '';
     document.getElementById('smSelfJoin').checked = s.sellerSelfJoin !== false;
   } else {
@@ -13767,7 +13769,6 @@ function openCreateShowModal(showId) {
     document.getElementById('smStartDate').value = '';
     document.getElementById('smEndDate').value   = '';
     document.getElementById('smLocation').value = '';
-    document.getElementById('smStatus').value   = 'upcoming';
     document.getElementById('smSelfJoin').checked = true;
     genAccessCode();
   }
@@ -13784,6 +13785,7 @@ function openCreateShowModal(showId) {
   _smResetSellerSearchUI();
   _smRenderSellerChips();
 
+  smUpdateStatusPreview();
   modal.classList.add('open');
   document.body.style.overflow = 'hidden';
 
@@ -14009,7 +14011,8 @@ async function saveShow() {
   const date      = _formatShowDateRange(startDate, endDate);
   const location  = document.getElementById('smLocation').value.trim();
   const { city, state, venue } = parseShowLocation(location);
-  const status   = document.getElementById('smStatus').value;
+  const existingTz = editingShowId && shows[editingShowId] ? shows[editingShowId].timezone : null;
+  const status   = _showStatusFromDates({ startDate, endDate: endDate || startDate, timezone: existingTz }) || 'upcoming';
   const code     = document.getElementById('smCode').value.trim().toUpperCase();
 
   if (!name) { showToast('Show name is required', 'var(--danger)'); return; }
@@ -14702,6 +14705,46 @@ function _showLastDayISO(show) {
   if (m) start.setDate(parseInt(m[1], 10));
   return start.toLocaleDateString('en-CA');
 }
+// Show status follows the show's dates: 'upcoming' before the first day,
+// 'active' (live) from the first through the last day, 'past' after it. Uses the
+// show's own time zone when one is set, else this device's date. Returns null
+// when the show has no usable date, so its stored status stands.
+function _showTodayISO(show) {
+  if (show && show.timezone) {
+    try { return new Date().toLocaleDateString('en-CA', { timeZone: show.timezone }); } catch (e) {}
+  }
+  return _todayISO();
+}
+function _showStatusFromDates(show) {
+  const first = _showDateISO(show), last = _showLastDayISO(show);
+  if (!first || !last) return null;
+  const today = _showTodayISO(show);
+  if (today < first) return 'upcoming';
+  if (today > last)  return 'past';
+  return 'active';
+}
+// Same, for a raw shows row from the DB.
+function _showStatusForRow(row) {
+  return _showStatusFromDates({ startDate: row.start_date, endDate: row.end_date, date: row.date, timezone: row.timezone })
+    || row.status || 'upcoming';
+}
+// Re-derive every in-memory show's status (dates roll over while a tab stays open).
+function _refreshShowStatuses() {
+  Object.values(shows).forEach(s => { const st = _showStatusFromDates(s); if (st) s.status = st; });
+}
+const SHOW_STATUS_LABEL = { upcoming: 'Upcoming', active: 'Active (Live)', past: 'Past' };
+function smUpdateStatusPreview() {
+  const el = document.getElementById('smStatusAuto');
+  if (!el) return;
+  const startDate = document.getElementById('smStartDate').value;
+  const endDate   = document.getElementById('smEndDate').value;
+  const tz = editingShowId && shows[editingShowId] ? shows[editingShowId].timezone : null;
+  const st = startDate ? _showStatusFromDates({ startDate, endDate: endDate || startDate, timezone: tz }) : null;
+  el.innerHTML = st
+    ? `<span class="show-status-dot ${st}"></span>${SHOW_STATUS_LABEL[st]}`
+    : '<span style="color:var(--muted)">Set from the dates</span>';
+}
+
 function _showHasEnded(show) {
   const last = _showLastDayISO(show);
   if (last) return last < _todayISO();
@@ -15031,7 +15074,7 @@ async function joinShowByCode() {
           name:        showRow.name,
           date:        showRow.date        || '',
           location:    showRow.location    || '',
-          status:      showRow.status      || 'upcoming',
+          status:      _showStatusForRow(showRow),
           accessCode:  showRow.access_code || '',
           publishedAt: showRow.published_at || null,
           sellers:     new Set(),
@@ -17878,6 +17921,8 @@ async function saveDirEdit() {
     date: f.start_date ? _formatShowDateRange(f.start_date, f.end_date) : null,
     location: _dirLocation(f) || null,
   };
+  const autoStatus = _showStatusFromDates({ startDate: f.start_date, endDate: f.end_date || f.start_date, timezone: f.timezone });
+  if (autoStatus) row.status = autoStatus;
   const btn = document.getElementById('dirSaveBtn');
   btn.disabled = true;
   let id = _dirEditId, error;
@@ -17886,7 +17931,7 @@ async function saveDirEdit() {
   } else {
     id = genShowId();
     ({ error } = await db.from('shows').insert({
-      id, ...row, status: 'upcoming', access_code: _dirGenAccessCode(),
+      id, status: 'upcoming', ...row, access_code: _dirGenAccessCode(),
       created_by: window._currentAdminUid || null, seller_self_join: true,
     }));
   }
@@ -17983,6 +18028,7 @@ async function dirResolveRequest(requestId, action, showId, note) {
 function renderAdminShowsDashboard() {
   const el = document.getElementById('adminShowsGrid');
   if (!el) return;
+  _refreshShowStatuses();
   const list = Object.values(shows);
 
   if (!list.length) {
@@ -18011,7 +18057,7 @@ function renderAdminShowsDashboard() {
     const needsTable   = sellerArr.length - assignedCnt;
     const dotClass     = s.status === 'active' ? 'active' : s.status === 'past' ? 'past' : 'upcoming';
 
-    const statusLabel  = {active:'🟢 Active', upcoming:'⏳ Upcoming', past:'⚫ Past'}[s.status] || s.status;
+    const statusLabel  = SHOW_STATUS_LABEL[dotClass];
     const setupLabel   = sellerArr.length === 0
       ? `<span style="color:var(--muted)">No sellers</span>`
       : needsTable === 0
@@ -18037,6 +18083,7 @@ function renderAdminShowsDashboard() {
           <div class="asc-name">
             <span class="show-status-dot ${dotClass}"></span>
             ${s.name}
+            <span class="asc-status ${dotClass}" title="Set automatically from the show's dates">${statusLabel}</span>
           </div>
           <div class="asc-meta">
             ${[s.date, s.location].filter(Boolean).join(' · ')}
@@ -20404,7 +20451,7 @@ async function loadShowsFromDB() {
         startDate:   row.start_date  || null,
         endDate:     row.end_date    || null,
         location:    row.location    || '',
-        status:      row.status      || 'upcoming',
+        status:      _showStatusForRow(row),
         accessCode:  row.access_code || '',
         publishedAt: row.published_at || null,
         city:        row.city        || null,
@@ -22592,7 +22639,7 @@ async function submitPasswordReset() {
       if (showRow) {
         shows[showRow.id] = {
           id: showRow.id, name: showRow.name, date: showRow.date || '',
-          location: showRow.location || '', status: showRow.status || 'upcoming',
+          location: showRow.location || '', status: _showStatusForRow(showRow),
           accessCode: showRow.access_code || '', publishedAt: showRow.published_at || null,
           sellers: new Set(), tables: {},
         };
