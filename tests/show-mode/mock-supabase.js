@@ -28,7 +28,7 @@
       in(c,vs){ filters.push(r=>vs.map(String).includes(String(r[c]))); return b; },
       is(c,v){ filters.push(r=> v===null ? (r[c]==null) : r[c]===v); return b; },
       gte(c,v){ filters.push(r=> String(r[c]) >= String(v)); return b; },
-      not(){ return b; }, lte(){ return b; }, ilike(){ return b; }, or(){ return b; }, filter(){ return b; },
+      not(c,o,v){ if (o==='is' && v===null) filters.push(r=>r[c]!=null); return b; }, lte(){ return b; }, ilike(){ return b; }, or(){ return b; }, filter(){ return b; },
       maybeSingle(){ single=true; return b; }, single(){ single=true; return b; },
       insert(p){ op='insert'; payload=p; return b; },
       upsert(p,o){ op='upsert'; payload=p; opts=o||{}; return b; },
@@ -184,6 +184,7 @@
     storage: { from(){ return {
       upload: async (key)=>{ if (offline()) return { error:{ message:'Failed to fetch' } }; S.storage.push(key); save(); return { error:null }; },
       createSignedUrl: async ()=>({ data:{ signedUrl:'' } }),
+      createSignedUrls: async (keys)=>({ data: keys.map(k=>({ path:k, signedUrl: location.origin + '/__signed/' + k, error:null })), error:null }),
       getPublicUrl: ()=>({ data:{ publicUrl:'' } }),
     }; } },
     auth: {

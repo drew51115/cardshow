@@ -374,10 +374,11 @@ async function _smOpAddItem(op) {
   const uid = await _smGetUid();
   if (!uid) return 'retry';
   let row = Object.assign({}, cardToDbRow(card), { id: op.inventoryId, seller_id: uid, source: op.source || 'show_mode' });
+  if (card && card.CatalogCardId) row.catalog_card_id = card.CatalogCardId;
   let res = await db.from('inventory').upsert(row, { onConflict: 'id', ignoreDuplicates: true });
   if (res.error && _isMissingScanColumnError(res.error)) {
     ['fingerprint', 'detected_confidence', 'sport', 'serial_number', 'print_run_size', 'features',
-     'category', 'subcategory', 'source'].forEach(k => delete row[k]);
+     'category', 'subcategory', 'source', 'catalog_card_id'].forEach(k => delete row[k]);
     res = await db.from('inventory').upsert(row, { onConflict: 'id', ignoreDuplicates: true });
   }
   if (res.error) {
@@ -571,8 +572,13 @@ function smThumbUrl(captureId, blob) {
   return url;
 }
 
-// Thumbnails for cards scanned on this device (seller photos from other
-// devices and stock images arrive in Phase 4).
+// Card images (Phase 4), first available wins:
+//   1. a photo saved on this device (IndexedDB blob URL)
+//   2. the seller's photo saved from another device (card_captures crop,
+//      private bucket → signed URL, refreshed before it expires)
+//   3. the CardSight stock image for the card's catalog id
+//      (netlify/functions/card-image.js, cached by Netlify's CDN)
+//   4. a blank tile
 let _smCaptureIndex = new Map();   // inventory _dbId → captureId
 async function _smLoadCaptureIndex() {
   try {
@@ -585,12 +591,117 @@ async function _smLoadCaptureIndex() {
     });
   } catch (_) {}
 }
+const SM_SIGNED_URL_TTL = 3600;          // seconds
+const _smRemoteExpiry = new Map();      // captureId → ms when its signed URL expires
+const _smRemoteTried  = new Map();      // captureId → ms of the last lookup that found nothing
+const _smStockMissing = new Set();      // catalog ids CardSight has no image for
+
+function smStockImageUrl(catalogId) {
+  if (!catalogId || _smStockMissing.has(catalogId) || !CATALOG_ID_RE.test(catalogId)) return null;
+  return '/.netlify/functions/card-image?id=' + encodeURIComponent(catalogId);
+}
+// { url, source: 'seller' | 'stock' } or null.
+function smCardImage(card) {
+  if (!card) return null;
+  const capId = card._captureId || _smCaptureIndex.get(card._dbId) || card._primaryCaptureId;
+  const own = capId && _smThumbUrls.get(capId);
+  if (own) return { url: own, source: 'seller' };
+  const stock = smStockImageUrl(card.CatalogCardId);
+  return stock ? { url: stock, source: 'stock' } : null;
+}
 function _smCardThumb(card) {
+  const img = smCardImage(card);
+  if (!img) return '<div class="sm-thumb" aria-hidden="true"></div>';
+  const cat = img.source === 'stock' ? ` data-catalog="${smEsc(card.CatalogCardId)}"` : '';
+  return `<img class="sm-thumb${img.source === 'stock' ? ' sm-thumb--stock' : ''}" src="${smEsc(img.url)}" alt="" loading="lazy"${cat} onerror="_smThumbFailed(this)">`;
+}
+function _smThumbFailed(img) {
+  if (img.dataset.catalog && navigator.onLine) _smStockMissing.add(img.dataset.catalog);   // offline: try again later
+  const d = document.createElement('div');
+  d.className = 'sm-thumb';
+  d.setAttribute('aria-hidden', 'true');
+  img.replaceWith(d);
+}
+
+// Signed URLs for the seller's photos taken on other devices. Only looks up
+// cards whose photo isn't on this device, or whose signed URL is about to
+// expire; a photo still uploading is retried after 10 minutes. Returns true
+// when new URLs arrived (the caller re-renders).
+let _smRemoteLoading = null;
+function _smLoadRemoteThumbs() {
+  if (!_smRemoteLoading) _smRemoteLoading = _smLoadRemoteThumbsNow().finally(() => { _smRemoteLoading = null; });
+  return _smRemoteLoading;
+}
+async function _smLoadRemoteThumbsNow() {
+  if (_smCapturesMissing || typeof db === 'undefined' || !navigator.onLine || typeof dbSelectIn !== 'function') return false;
+  const now = Date.now();
+  const ids = [...new Set(inventory
+    .filter(c => c.Seller === currentSeller && c._primaryCaptureId)
+    .map(c => c._primaryCaptureId))]
+    .filter(id => {
+      if (_smRemoteExpiry.has(id)) return _smRemoteExpiry.get(id) - now < 5 * 60 * 1000;
+      if (_smThumbUrls.has(id)) return false;                       // photo is on this device
+      return !(_smRemoteTried.get(id) > now - 10 * 60 * 1000);
+    });
+  if (!ids.length) return false;
+  ids.forEach(id => _smRemoteTried.set(id, now));
+  const { data: rows, error } = await dbSelectIn(c => db.from('card_captures').select('id, crop_key')
+    .in('id', c).is('deleted_at', null).not('uploaded_at', 'is', null), ids);
+  if (error || !rows || !rows.length) return false;
+  const byKey = new Map(rows.filter(r => r.crop_key).map(r => [r.crop_key, r.id]));
+  const keys = [...byKey.keys()];
+  let changed = false;
+  for (let i = 0; i < keys.length; i += 100) {
+    const { data, error: e } = await db.storage.from('card-captures').createSignedUrls(keys.slice(i, i + 100), SM_SIGNED_URL_TTL);
+    if (e || !data) continue;
+    data.forEach(x => {
+      const id = byKey.get(x.path);
+      if (!id || x.error || !x.signedUrl) return;
+      _smThumbUrls.set(id, x.signedUrl);
+      _smRemoteExpiry.set(id, Date.now() + SM_SIGNED_URL_TTL * 1000);
+      _smRemoteTried.delete(id);
+      changed = true;
+    });
+  }
+  return changed;
+}
+
+// How the seller's available cards are pictured, logged once per Show Mode open.
+let _smImagesLogged = false;
+function _smLogImageCoverage() {
+  if (_smImagesLogged) return;
+  _smImagesLogged = true;
+  const counts = { seller: 0, stock: 0, none: 0 };
+  _smAvailable().forEach(c => { const img = smCardImage(c); counts[img ? img.source : 'none']++; });
+  _smLogEvent('images_shown', counts);
+}
+
+// The card's best photo as a data URL, for the share card (a data URL keeps
+// the canvas exportable). { dataUrl, source: 'seller' | 'stock' } or null.
+async function smCardPhotoDataUrl(card) {
+  if (!card) return null;
   const capId = card._captureId || _smCaptureIndex.get(card._dbId);
-  const url = capId && _smThumbUrls.get(capId);
-  return url
-    ? `<img class="sm-thumb" src="${smEsc(url)}" alt="">`
-    : '<div class="sm-thumb" aria-hidden="true"></div>';
+  if (capId) {
+    const cap = await smStore.get('captures', capId).catch(() => null);
+    if (cap && cap.crop) return { dataUrl: await _smBlobToDataUrl(cap.crop), source: 'seller' };
+  }
+  const fetchAsDataUrl = async (url) => {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) return null;
+      const blob = await res.blob();
+      return /^image\//.test(blob.type) ? await _smBlobToDataUrl(blob) : null;
+    } catch (_) { return null; }
+  };
+  if (card._primaryCaptureId) {
+    await _smLoadRemoteThumbs();
+    const url = _smThumbUrls.get(card._primaryCaptureId);
+    const dataUrl = url && await fetchAsDataUrl(url);
+    if (dataUrl) return { dataUrl, source: 'seller' };
+  }
+  const stock = smStockImageUrl(card.CatalogCardId);
+  const dataUrl = stock && await fetchAsDataUrl(stock);
+  return dataUrl ? { dataUrl, source: 'stock' } : null;
 }
 
 let _smUploading = false;
@@ -942,7 +1053,10 @@ function openShowMode(showId, path) {
   document.body.classList.add('sm-open');
   if (typeof closeHelpMenu === 'function') closeHelpMenu();
   _smGetUid();
-  _smLoadCaptureIndex().then(() => { smRefresh(); if (_smScreen === 'confirm') smRenderConfirm(); });
+  _smImagesLogged = false;
+  _smLoadCaptureIndex().then(() => { smRefresh(); if (_smScreen === 'confirm') smRenderConfirm(); })
+    .then(() => _smLoadRemoteThumbs())
+    .then(changed => { if (changed) smRefresh(); _smLogImageCoverage(); });
   _smLoadRecentSaleIds();
   smRoute();
   _smLogEvent('show_mode_opened', {});
@@ -980,6 +1094,7 @@ function _smIsCameraScreen(screen) { return screen === 'sell' || screen === 'log
 // and after the outbox drains). The camera screen is left alone.
 function smRefresh() {
   if (!_smShowId) return;
+  _smLoadRemoteThumbs().then(changed => { if (changed) smRefresh(); });
   if (_smScreen === 'home') smRenderHome();
   else if (_smScreen === 'inventory') smRenderInventoryList();
   else if (_smScreen === 'sold') smRenderSold();
@@ -1550,7 +1665,10 @@ const _smMarketCache = new Map();
 async function _smMarketFor(card) {
   const key = cardFingerprint(card);
   if (_smMarketCache.has(key)) return _smMarketCache.get(key);
-  const p = fetchBuyerComp(card).then(r => (r && r.compPrice ? Number(r.compPrice) : null)).catch(() => null);
+  const p = fetchBuyerComp(card).then(r => {
+    if (r && r.source === 'cardsight' && card._dbId) _saveCatalogCardId(card, r.cardId);
+    return r && r.compPrice ? Number(r.compPrice) : null;
+  }).catch(() => null);
   _smMarketCache.set(key, p);
   return p;
 }
@@ -1586,7 +1704,8 @@ function smUseScanAsNew(candidateIdx) {
     newItem: {
       player: f.player || '', year: f.year || '', cardSet: f.cardSet || '', number: f.number || '',
       parallel: f.parallel || '', grader: f.grader || '', grade: f.grade || '', cert: f.cert || '', asking: '',
-      catalogCardId: (r && r.ident.catalogCardId) || null,
+      catalogCardId: (r && (candidateIdx != null && r.ident.candidates[candidateIdx]
+        ? r.ident.candidates[candidateIdx].catalogCardId : r.ident.catalogCardId)) || null,
     },
     captureId: r ? r.capture.id : null, chip: 'other', otherPrice: '', payment: _smLastPayment(), buyerHandle: '',
     identifiedVia: 'scan',
@@ -1765,10 +1884,14 @@ function smDraftInput() {
   if (!d) return;
   const v = id => (document.getElementById(id)?.value ?? '').trim();
   if (d.newItem) {
+    // A different player, year, set or number is a different card: drop its catalog id.
+    const ident = n => [n.player, n.year, n.cardSet, n.number].map(x => String(x || '').trim().toLowerCase()).join('|');
+    const before = ident(d.newItem);
     Object.assign(d.newItem, {
       player: v('smNPlayer'), year: v('smNYear'), number: v('smNNumber'), cardSet: v('smNSet'),
       parallel: v('smNParallel'), grader: v('smNGrader'), grade: v('smNGrade'), cert: v('smNCert'), asking: v('smNAsking'),
     });
+    if (d.newItem.catalogCardId && ident(d.newItem) !== before) d.newItem.catalogCardId = null;
     const nameEl = document.getElementById('smConfirmName');
     if (nameEl) nameEl.textContent = d.newItem.player || 'New card';
     _smEnableChips();
@@ -1826,6 +1949,7 @@ function _smCardFromNewItem(n) {
     || [raw.Year, raw['Set '], raw.Player].filter(Boolean).join(' ');
   const card = validateAndNormalizeCard(raw);
   card.Seller = currentSeller;
+  if (n.catalogCardId && CATALOG_ID_RE.test(n.catalogCardId)) card.CatalogCardId = n.catalogCardId;
   return card;
 }
 
@@ -1877,6 +2001,7 @@ async function smMarkSold() {
   card._shows.add(_smShowId);
 
   const newItem = isNew ? Object.assign({}, cardToDbRow(card), { id: card._dbId }) : null;
+  if (newItem && card.CatalogCardId) newItem.catalog_card_id = card.CatalogCardId;   // record_sale skips unknown columns
   if (newItem) { delete newItem.status; }
   const snapshot = _smSnapshot(card);
   await smEnqueue({
@@ -2013,15 +2138,11 @@ function _smShowUndoToast(clientSaleId) {
 }
 
 // Share sale reuses "The Drop" share card, with the scan as its photo.
+// The modal fills in the card's photo itself (smCardPhotoDataUrl()).
 async function smShareSale(clientSaleId) {
   const card = _smFindCardBySale(clientSaleId);
   if (!card) return;
-  const capId = card._captureId || _smCaptureIndex.get(card._dbId);
-  if (capId && !card._dropPhotoDataUrl) {
-    const cap = await smStore.get('captures', capId).catch(() => null);
-    if (cap && cap.crop) card._dropPhotoDataUrl = await _smBlobToDataUrl(cap.crop);
-  }
-  openShareCardModal(card, _smShowId);
+  openShareCardModal(card, _smShowId, 'show_mode');
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -2148,6 +2269,10 @@ function _smScanFields(id) {
   const it = _smScanItems.find(i => i.id === id);
   return (it && it.ident && it.ident.fields) || {};
 }
+function _smScanCatalogId(id) {
+  const it = _smScanItems.find(i => i.id === id);
+  return (it && it.ident && it.ident.catalogCardId) || null;
+}
 
 function smScanSell(id) {
   const f = _smScanFields(id);
@@ -2155,7 +2280,7 @@ function smScanSell(id) {
   if (match) return smPickCard(match.card._dbId, 'scan', id);
   _smDraft = {
     showId: _smShowId, mode: 'sell', itemKey: null,
-    newItem: { player: f.player || '', year: f.year || '', cardSet: f.cardSet || '', number: f.number || '', parallel: f.parallel || '', grader: f.grader || '', grade: f.grade || '', cert: f.cert || '', asking: '' },
+    newItem: { player: f.player || '', year: f.year || '', cardSet: f.cardSet || '', number: f.number || '', parallel: f.parallel || '', grader: f.grader || '', grade: f.grade || '', cert: f.cert || '', asking: '', catalogCardId: _smScanCatalogId(id) },
     captureId: id, chip: 'other', otherPrice: '', payment: _smLastPayment(), buyerHandle: '',
   };
   _smSaveDraft();
@@ -2166,7 +2291,7 @@ async function smScanAddToCase(id) {
   const f = _smScanFields(id);
   const askingRaw = prompt('Asking price for this card?', '');
   if (askingRaw === null) return;
-  const card = _smCardFromNewItem({ player: f.player || 'Unknown card', year: f.year, cardSet: f.cardSet, number: f.number, parallel: f.parallel, grader: f.grader, grade: f.grade, cert: f.cert, asking: askingRaw });
+  const card = _smCardFromNewItem({ player: f.player || 'Unknown card', year: f.year, cardSet: f.cardSet, number: f.number, parallel: f.parallel, grader: f.grader, grade: f.grade, cert: f.cert, asking: askingRaw, catalogCardId: _smScanCatalogId(id) });
   card._dbId = _smUuid();
   card._captureId = id;
   card._smPending = true;
@@ -2307,6 +2432,7 @@ function smAddUseCandidate(i) {
   if (!c) return;
   const base = r.ident.fields || {};
   r.addFields = Object.assign({}, base, c, { grader: c.grader || base.grader || '', grade: c.grade || base.grade || '', cert: c.cert || base.cert || '' });
+  r.addCatalogId = c.catalogCardId || null;
   ['source', 'confidence', 'catalogCardId'].forEach(k => delete r.addFields[k]);
   r.matches = smMatchInventory(r.addFields);
   _smRenderAddResult();
@@ -2330,10 +2456,10 @@ function smAddScanNext() {
 
 // A new inventory card from identification fields, queued like every other
 // Show Mode add, published to the show, with the capture as its photo.
-async function _smAddNewCard(f, price, captureId) {
+async function _smAddNewCard(f, price, captureId, catalogCardId) {
   const card = _smCardFromNewItem({
     player: f.player || 'Unknown card', year: f.year, cardSet: f.cardSet, number: f.number, parallel: f.parallel,
-    grader: f.grader, grade: f.grade, cert: f.cert, asking: price,
+    grader: f.grader, grade: f.grade, cert: f.cert, asking: price, catalogCardId: catalogCardId || null,
   });
   card._dbId = _smUuid();
   card._smPending = true;
@@ -2354,7 +2480,8 @@ async function smAddToCase() {
   if (!r || !r.ident.fields) return;
   const btn = document.getElementById('smAddBtn');
   if (btn) btn.disabled = true;
-  const card = await _smAddNewCard(_smAddFields(r), _smPriceValue('smAddPrice'), r.capture.id);
+  const card = await _smAddNewCard(_smAddFields(r), _smPriceValue('smAddPrice'), r.capture.id,
+    r.addFields ? r.addCatalogId : r.ident.catalogCardId);
   _smAddedCount++;
   showToast(`✓ ${card.Player} added to your case`);
   smAddScanNext();

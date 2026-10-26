@@ -44,6 +44,8 @@ supabase/migrations/20260825120000_trade_zone.sql → Trade Zone schema, storage
 js/show-mode.js                   → Show Mode v2 (flag show_mode_v2): routing, outbox, captures, identification, all Show Mode screens — loaded by app.html before its main script (bump its ?v= on change)
 js/show-mode-scan.js              → Show Mode case scan (screens A–D): per-photo queue, review, commit — loaded right after js/show-mode.js
 netlify/functions/cardsight-identify.js → Serverless: POST {image_base64, media_type} → CardSight catalog identification (Show Mode; runs beside scan-card.js)
+netlify/functions/card-image.js   → Serverless: GET ?id=<CardSight catalog id> → stock card image, CDN-cached 30 days (Show Mode Phase 4)
+supabase/migrations/20261030120000_show_mode_images.sql → inventory.catalog_card_id, sellers.share_handle, backfill of existing photos — see "Phase 4"
 supabase/migrations/20261027120000_seller_self_join.sql → show_sellers.self_joined/joined_at, shows.seller_self_join, join_show_as_seller()/leave_show_as_seller() — see "Seller Self-Join"
 supabase/migrations/20261028120000_show_directory.sql → shows.listed/slug/timezone/website/merged_into, platform_admins, show_requests, set_show_listed()/submit_show_request()/resolve_show_request()/merge_shows() — see "Show Directory"
 supabase/migrations/20261023120000_show_mode_sales.sql → sales + card_captures tables, private card-captures bucket, record_sale()/void_sale() — see "Show Mode v2"
@@ -263,6 +265,12 @@ Required for automatic show status in the database (see "Automatic Show Status")
 self-join migration: `supabase/migrations/20261029120000_show_auto_status.sql`. Until it runs, the
 admin dashboard and show.html still show the right status (both work it out from the dates), but
 the stored `shows.status` only changes when a show is saved.
+
+Required for Show Mode card images and the share-card handle opt-in (see "Phase 4" under Show
+Mode v2), after the Show Mode sales migration: `supabase/migrations/20261030120000_show_mode_images.sql`.
+Until it runs, stock images only show for cards added in the current session, and the handle choice
+is kept on the device only. Photos taken on other devices still show (they use `primary_capture_id`,
+from the sales migration).
 
 Required to save the post-removal Trust Check result (diagnostic, see "Trust Check via GTCR"):
 `supabase/migrations/20261026120000_gtcr_post_removal_check.sql` adds `post_removal_card_status`,
@@ -5089,8 +5097,73 @@ and estimates use simple counts (~6 cards per unprocessed photo).
 **To get per-card crops:** redeploy bulk-scan (`supabase functions deploy bulk-scan --project-ref
 qtnqawqlmttogwnjieky`). Without it everything works, but case-scan cards use the whole photo.
 
-**Remaining phase:** 4 — images (signed URLs, CardSight stock images, backfill), social assets
-(handle opt-in), remaining analytics, polish.
+### Phase 4 — images, share handle, analytics (session 2026-10-26)
+**Card images.** `smCardImage(card)` / `_smCardThumb(card)` (js/show-mode.js) pick, in order:
+1. A photo saved on this device (IndexedDB blob URL).
+2. The seller's photo from another device. `_smLoadRemoteThumbs()` reads `card_captures.crop_key`
+   for cards whose `primary_capture_id` photo isn't on this device, then gets signed URLs for the
+   private bucket (`createSignedUrls`, 1 hour).
+   - Runs when Show Mode opens and on every `smRefresh()`.
+   - Only looks up what's missing or within 5 minutes of expiring. A photo that hasn't finished
+     uploading is retried after 10 minutes.
+3. The CardSight stock image for `card.CatalogCardId`, through `netlify/functions/card-image.js`
+   (`GET /v1/images/cards/{id}?format=raw` from CardSight's SDK).
+   - Netlify's CDN caches each image for 30 days, and a missing one for a day.
+   - A stock image that fails to load becomes a blank tile and isn't requested again this session
+     (`_smStockMissing`). Stock tiles use `object-fit: contain`.
+4. A blank tile.
+
+**Catalog ids** (`inventory.catalog_card_id`; `card.CatalogCardId` via `dbRowToCard()`):
+- **New Show Mode cards:** taken from the identification, on one-card add, Add & sell, Recent
+  scans and case scan, for whichever candidate the seller picked.
+- **Confirm screen edits:** changing the player, year, set or number drops the id.
+- **Writes:** `record_sale` skips unknown columns, so the id goes in `p_new_item` as is.
+  `_smOpAddItem()` strips it on a missing-column error.
+- **Existing cards:** `_saveCatalogCardId()` saves the id from comp results when the match came
+  from CardSight. That covers the classic Check Comps (`runCompCheck()`) and Show Mode market
+  prices (`_smMarketFor()`). Those matches are high-confidence only and cost no extra quota.
+- Only real CardSight UUIDs are saved (`CATALOG_ID_RE`).
+
+**Backfill** (in the migration, idempotent):
+- A card gets its newest uploaded, non-deleted attached photo as `primary_capture_id`
+  (`image_source = 'seller'`), plus that photo's catalog id.
+- A card with only a catalog id gets `image_source = 'stock'`.
+- Other existing cards fill in as comp checks run.
+
+**Share card** (The Drop, used by Show Mode's Share sale and the Report tab):
+- **Photo:** `openShareCardModal()` fills the photo step from `smCardPhotoDataUrl(card)`: the
+  photo on this device, else the seller's photo from another device, else the stock image. It's
+  fetched as a data URL so the canvas still exports. A note says which photo it is ("Your photo
+  from when you scanned this card" / "Catalog image… Change Photo to use your own"). With nothing
+  found, the photo step stays required as before.
+- **Handle opt-in** (`#dropShowHandle`, off by default):
+  - The handle is the seller's Instagram (from the profile) or, if none, their CardShow handle.
+  - When on, it's drawn on the venue line ("Cal Expo, Sacramento, CA · @handle") and the caption
+    footer starts "Sold by @handle".
+  - The choice is saved on `sellers.share_handle` (localStorage before the migration) and reset on
+    sign-out.
+  - Payment method is still never shown.
+
+**Analytics** (`show_events`):
+- `sm_images_shown` (`{seller, stock, none}`), once per Show Mode open. "stock" means the card has
+  a catalog id, before the browser has tried loading the image.
+- `share_opened` (`{photo: seller|stock|upload|none, from}`), `share_handle` (`{on}`), and
+  `share_action` (`{action: copy_caption|download|native_share, handle}`), logged under the sale's
+  show (nothing for an off-show sale).
+
+**Tests:**
+- `tests/show-mode/images.e2e.mjs`: 24 checks on iPhone 13 and Pixel 7.
+- `card-image.test.mjs`: the function, with CardSight stubbed.
+- `show-mode-images.test.sql`: the backfill, run twice.
+
+**Not done in Phase 4:**
+- Images on the buyer pages (show.html, seller-browse.html) and in the classic inventory table.
+  Seller photos are in a private bucket, so buyers would need a server-signed URL. Stock images
+  could go on those pages as they are.
+- An "undo the other sale or keep this one?" dialog, "Sell several", and catalog search in manual
+  entry (see "Known gaps").
+- Whether CardSight counts image requests against the 750/month quota isn't documented. The 30-day
+  CDN cache keeps repeat requests low.
 
 ## Show Configuration (Demo Data)
 - **MLP Card Show** — Oct 17-18, 2026 · Grand Hyatt Tampa Bay, FL · Code: MLPTPA (primary demo, shown to buyers without code)

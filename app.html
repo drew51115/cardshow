@@ -2576,6 +2576,9 @@
     border: 1px solid var(--border); background: var(--surface);
   }
   .drop-style-picker { display: flex; gap: 0.5rem; }
+  .drop-handle-toggle { display: flex; align-items: flex-start; gap: 0.55rem; font-size: 0.85rem; color: var(--text); cursor: pointer; line-height: 1.35; }
+  .drop-handle-toggle input { width: 18px; height: 18px; margin-top: 1px; accent-color: var(--accent); flex-shrink: 0; }
+  .drop-photo-source { font-size: 0.78rem; color: var(--muted); text-align: center; margin-top: -0.4rem; }
   .drop-style-chip {
     flex: 1; border-radius: 8px; padding: 0.55rem 0; cursor: pointer;
     font-size: 0.75rem; font-weight: 600; font-family: 'DM Sans', sans-serif;
@@ -4631,6 +4634,8 @@
   #showModeRoot.sm-dark .sm-page { padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px)); }
   .sm-thumb { object-fit: cover; }
   img.sm-thumb { display: block; }
+  /* Catalog (stock) images are whole-card scans: show all of it, never crop. */
+  img.sm-thumb--stock { object-fit: contain; background: var(--sm-placeholder); }
   .sm-topbar { display: flex; align-items: center; justify-content: space-between; padding: calc(10px + env(safe-area-inset-top, 0px)) 0 12px; }
   .sm-title { font-family: var(--sm-display); font-weight: 800; font-size: 22px; letter-spacing: -0.3px; }
   .sm-title--page { margin: 4px 0 6px; }
@@ -6754,7 +6759,7 @@
           <button type="button" class="msl-photo-btn" onclick="_dropTriggerCamera()">📷 Take Photo</button>
           <button type="button" class="msl-photo-btn" onclick="_dropTriggerLibrary()">🖼 Choose from Library</button>
         </div>
-        <div class="profile-field-hint">A photo of the card makes the post — required before you can share</div>
+        <div class="profile-field-hint" id="dropPhotoHint">A photo of the card makes the post — required before you can share</div>
       </div>
       <input type="file" id="dropPhotoInput" accept="image/*" capture="environment"
         style="display:none" onchange="_dropHandlePhoto(this)">
@@ -6766,6 +6771,7 @@
 
         <canvas id="dropShareCanvas" class="drop-share-canvas" width="1080" height="1350"></canvas>
 
+        <div class="drop-photo-source" id="dropPhotoSource" style="display:none"></div>
         <button type="button" class="msl-photo-retake-btn" onclick="_dropChangePhoto()">Change Photo</button>
 
         <div class="drop-style-picker" id="dropStylePicker">
@@ -6773,6 +6779,12 @@
           <button type="button" class="drop-style-chip drop-style-light"   data-style="light"   onclick="_dropSetStyle('light')">Light</button>
           <button type="button" class="drop-style-chip drop-style-minimal" data-style="minimal" onclick="_dropSetStyle('minimal')">Minimal</button>
         </div>
+
+        <!-- Seller handle on the image + caption: opt-in, off by default. -->
+        <label class="drop-handle-toggle" id="dropHandleRow" style="display:none">
+          <input type="checkbox" id="dropShowHandle" onchange="_dropToggleHandle(this.checked)">
+          <span>Show my handle <strong id="dropHandleLabel"></strong> on the image and caption</span>
+        </label>
 
         <div>
           <div class="drawer-field-label">Caption</div>
@@ -7270,8 +7282,8 @@
 </div>
 
 <!-- Show Mode v2 (flag show_mode_v2). Bump ?v= when it changes: the service worker caches by URL. -->
-<script src="/js/show-mode.js?v=20261027a"></script>
-<script src="/js/show-mode-scan.js?v=20261027a"></script>
+<script src="/js/show-mode.js?v=20261030a"></script>
+<script src="/js/show-mode-scan.js?v=20261030a"></script>
 <script>
 // ── STATE ──
 let inventory = [];
@@ -10335,6 +10347,8 @@ async function runCompCheck(cards) {
         const result = data.results?.[0];
         if (result && !result.stub && result.compPrice) {
           results.push({ card, ...result });
+          // CardSight matches carry its catalog id (high-confidence only): keep it for the stock image.
+          if (result.source === 'cardsight') _saveCatalogCardId(card, result.cardId);
           fromCache = !!result.fromCache;
           if (fromCache) cacheHits++;
         }
@@ -11889,11 +11903,13 @@ async function renderShareCard(canvas, card, style, venueLabel) {
   const priceY = y + 150;
   ctx.fillText('$' + Number(card.SoldPrice || card.Price || 0).toLocaleString(), W / 2, priceY);
 
-  // Venue only — no payment method, ever.
-  if (venueLabel) {
+  // Venue (and the seller's handle, only if they opted in) — no payment method, ever.
+  const handle = _dropHandleShown();
+  const venueLine = [venueLabel, handle ? '@' + handle : ''].filter(Boolean).join(' · ');
+  if (venueLine) {
     ctx.font = '400 26px "DM Sans", sans-serif';
     ctx.fillStyle = t.muted;
-    ctx.fillText(venueLabel, W / 2, priceY + 55);
+    ctx.fillText(venueLine, W / 2, priceY + 55);
   }
 
   if (t.showLabel) {
@@ -11965,6 +11981,7 @@ async function _dropHandlePhoto(inputEl) {
   if (!_dropPending) return;
   try {
     _dropPending.card._dropPhotoDataUrl = await _readFileAsDataURL(file);
+    _dropPending.card._dropPhotoSource = 'upload';
     await _dropRenderReady();
   } catch (e) {
     console.error('[Drop photo]', e);
@@ -11975,6 +11992,7 @@ async function _dropHandlePhoto(inputEl) {
 function _dropChangePhoto() {
   if (!_dropPending) return;
   delete _dropPending.card._dropPhotoDataUrl;
+  delete _dropPending.card._dropPhotoSource;
   _dropShowPhotoStep();
 }
 
@@ -12012,6 +12030,14 @@ async function _dropRenderReady() {
 
   const nativeBtn = document.getElementById('dropNativeShareBtn');
   if (nativeBtn) nativeBtn.style.display = (navigator.share && navigator.canShare) ? 'block' : 'none';
+
+  const srcEl = document.getElementById('dropPhotoSource');
+  if (srcEl) {
+    const note = card._dropPhotoSource === 'stock' ? 'Catalog image of this card. Change Photo to use your own.'
+      : card._dropPhotoSource === 'seller' ? 'Your photo from when you scanned this card.' : '';
+    srcEl.textContent = note;
+    srcEl.style.display = note ? 'block' : 'none';
+  }
 }
 
 // ── Caption ──
@@ -12033,7 +12059,68 @@ function generateCaptionBody(card, venueLabel) {
 function generateCaptionFooter(card) {
   const hashtag  = '#' + (card.Player || card['Card Title'] || 'cardshow').toLowerCase().replace(/[^a-z0-9]/g, '');
   const graderTag = card.Grader === 'PSA' && card.Grade == 10 ? '#PSA10' : '#gradedcards';
-  return `Tracked on @cardshow.io\n${hashtag} #cardshowhobby ${graderTag} #cardshow`;
+  const handle = _dropHandleShown();
+  return `${handle ? `Sold by @${handle} · ` : ''}Tracked on @cardshow.io\n${hashtag} #cardshowhobby ${graderTag} #cardshow`;
+}
+
+// ── Seller handle on share images (opt-in, off by default) ──
+// The handle is the seller's Instagram if they've set one, else their
+// CardShow handle. The choice is saved on sellers.share_handle (synced across
+// devices); before that migration runs it's kept on this device only.
+let _dropShareHandle = null;          // null = not loaded yet
+let _dropHandleTouched = false;       // seller changed it this session: a late DB answer mustn't undo that
+function _dropHandleKey() { return 'dropShareHandle:' + (currentSeller || ''); }
+function _dropSellerHandle() {
+  if (currentRole !== 'seller' || !currentSeller) return '';
+  const ig = (typeof sellerProfiles !== 'undefined' && sellerProfiles[currentSeller] && sellerProfiles[currentSeller].instagram) || '';
+  return String(ig).replace(/^@/, '').trim() || currentSeller;
+}
+function _dropHandleShown() { return _dropShareHandle ? _dropSellerHandle() : ''; }
+async function _dropLoadHandlePref() {
+  if (_dropShareHandle !== null) return;
+  try { _dropShareHandle = localStorage.getItem(_dropHandleKey()) === '1'; } catch (_) { _dropShareHandle = false; }
+  if (typeof db === 'undefined' || !currentSeller) return;
+  const { data, error } = await db.from('sellers').select('share_handle').eq('handle', currentSeller).maybeSingle();
+  if (!error && data && typeof data.share_handle === 'boolean' && !_dropHandleTouched) {
+    _dropShareHandle = data.share_handle;
+    try { localStorage.setItem(_dropHandleKey(), data.share_handle ? '1' : '0'); } catch (_) {}
+  }
+}
+function _dropSyncHandleRow() {
+  const row = document.getElementById('dropHandleRow');
+  const handle = _dropSellerHandle();
+  if (!row) return;
+  row.style.display = handle ? 'flex' : 'none';
+  const label = document.getElementById('dropHandleLabel');
+  if (label) label.textContent = '@' + handle;
+  const box = document.getElementById('dropShowHandle');
+  if (box) box.checked = !!_dropShareHandle;
+}
+async function _dropToggleHandle(on) {
+  _dropShareHandle = !!on;
+  _dropHandleTouched = true;
+  try { localStorage.setItem(_dropHandleKey(), on ? '1' : '0'); } catch (_) {}
+  _dropLogEvent('handle', { on: !!on });
+  if (_dropPending && _dropPending.card._dropPhotoDataUrl) {
+    await renderShareCard(document.getElementById('dropShareCanvas'), _dropPending.card, _dropStyle, _dropVenueLabel(_dropPending.showId));
+    const footerEl = document.getElementById('dropCaptionFooter');
+    if (footerEl) footerEl.textContent = generateCaptionFooter(_dropPending.card);
+    _dropUpdateCounters();
+  }
+  if (typeof db !== 'undefined' && currentSeller) {
+    const { error } = await db.from('sellers').update({ share_handle: !!on }).eq('handle', currentSeller);
+    if (error && !/share_handle/.test(error.message || '')) console.warn('[share] handle setting not saved', error.message);
+  }
+}
+
+// Share-card events go to show_events under the sale's show (none for an off-show sale).
+function _dropLogEvent(type, data) {
+  const showId = _dropPending && _dropPending.showId;
+  if (typeof db === 'undefined' || !showId || !navigator.onLine) return;
+  db.from('show_events').insert({
+    show_id: showId, event_type: 'share_' + type,
+    event_data: Object.assign({ seller: currentSeller, from: (_dropPending && _dropPending.from) || 'classic' }, data || {}),
+  }).then(({ error }) => { if (error) console.warn('[share] event log failed', error.message); });
 }
 
 function _dropUpdateCounters() {
@@ -12054,21 +12141,38 @@ function _dropUpdateCounters() {
 }
 
 // ── Modal open/close ──
-function openShareCardModal(card, showId) {
+async function openShareCardModal(card, showId, from) {
   if (!card) return;
-  _dropPending = { card, showId: showId != null ? showId : (card._shows instanceof Set ? [...card._shows][0] : activeShowId) };
+  const pending = { card, from: from || 'classic', showId: showId != null ? showId : (card._shows instanceof Set ? [...card._shows][0] : activeShowId) };
+  _dropPending = pending;
   _dropStyle = 'dark';
 
   document.getElementById('shareCardOverlay')?.classList.add('open');
+  _dropLoadHandlePref().then(() => { if (_dropPending === pending) _dropSyncHandleRow(); });
+  _dropSyncHandleRow();
 
   // A photo already attached earlier this session (e.g. reopening from the
   // Report tab) skips straight to the share body; otherwise the photo step
-  // is required before anything else in the modal is reachable.
+  // is required before anything else in the modal is reachable. The card's
+  // saved photo (Show Mode) or its catalog image fills it in when there is one.
   if (card._dropPhotoDataUrl) {
     _dropRenderReady();
   } else {
     _dropShowPhotoStep();
+    if (typeof smCardPhotoDataUrl === 'function') {
+      const hint = document.getElementById('dropPhotoHint');
+      if (hint) hint.textContent = 'Looking for a photo of this card…';
+      const found = await smCardPhotoDataUrl(card).catch(() => null);
+      if (_dropPending !== pending) return;            // closed or reopened meanwhile
+      if (hint) hint.textContent = 'A photo of the card makes the post — required before you can share';
+      if (found && !card._dropPhotoDataUrl) {
+        card._dropPhotoDataUrl = found.dataUrl;
+        card._dropPhotoSource = found.source;
+        await _dropRenderReady();
+      }
+    }
   }
+  _dropLogEvent('opened', { photo: card._dropPhotoSource || (card._dropPhotoDataUrl ? 'upload' : 'none') });
 }
 
 function closeShareCardModal() {
@@ -12086,6 +12190,7 @@ async function _dropCopyCaption() {
   try {
     await navigator.clipboard.writeText(_dropFullCaption());
     showToast('Caption copied!');
+    _dropLogEvent('action', { action: 'copy_caption', handle: !!_dropShareHandle });
   } catch (e) {
     showToast('⚠️ Could not copy — select and copy manually', 'var(--danger)');
   }
@@ -12100,6 +12205,7 @@ function _dropDownloadImage() {
     const a = document.createElement('a');
     a.href = url;
     a.download = `cardshow-drop-${Date.now()}.png`;
+    _dropLogEvent('action', { action: 'download', handle: !!_dropShareHandle });
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -12119,6 +12225,7 @@ async function _dropNativeShare() {
       } else {
         await navigator.share({ text: _dropFullCaption() });
       }
+      _dropLogEvent('action', { action: 'native_share', handle: !!_dropShareHandle });
     } catch (err) {
       if (err.name !== 'AbortError') {
         console.error('[Drop share]', err);
@@ -13425,6 +13532,7 @@ async function _restoreSellerSession() {
 }
 
 async function signOut() {
+  _dropShareHandle = null; _dropHandleTouched = false;   // next seller loads their own share-handle choice
   if (_obStateTimer) _obSaveStateNow(); // flush a pending checklist/tips save while currentSeller is still set
   _obStateLoaded = false; _obStateSync = false;
   await db.auth.signOut().catch(() => {});
@@ -20858,7 +20966,7 @@ const CARD_TO_DB = Object.fromEntries(
 function _isMissingScanColumnError(error) {
   return !!error && (
     error.code === 'PGRST204' ||
-    /column .*(fingerprint|detected_confidence|sport|serial_number|print_run_size|features|category|subcategory).*schema cache/i.test(error.message || '')
+    /column .*(fingerprint|detected_confidence|sport|serial_number|print_run_size|features|category|subcategory|catalog_card_id).*schema cache/i.test(error.message || '')
   );
 }
 
@@ -20908,6 +21016,19 @@ function cardToDbRow(card) {
   };
 }
 
+// Saves a CardSight catalog id on a card that has none (from a comp check or
+// an identification), so Show Mode can show its stock image. Fire-and-forget;
+// a missing column (migration not run) just leaves it in memory.
+const CATALOG_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function _saveCatalogCardId(card, catalogId) {
+  if (!card || card.CatalogCardId || !catalogId || !CATALOG_ID_RE.test(catalogId)) return;
+  card.CatalogCardId = catalogId;
+  if (!card._dbId || typeof db === 'undefined') return;
+  db.from('inventory').update({ catalog_card_id: catalogId })
+    .eq('id', card._dbId).is('catalog_card_id', null)
+    .then(({ error }) => { if (error && !_isMissingScanColumnError(error)) console.warn('[images] catalog id save failed', error.message); });
+}
+
 function dbRowToCard(row) {
   const card = {
     _dbId:           row.id,
@@ -20937,6 +21058,9 @@ function dbRowToCard(row) {
     Category:           row.category             || '',
     Subcategory:         row.subcategory          || '',
     _trustFlag:         row.trust_flag           || null,
+    CatalogCardId:      row.catalog_card_id      || null,   // CardSight id → stock image (Show Mode)
+    _primaryCaptureId:  row.primary_capture_id   || null,   // seller photo (card_captures)
+    _imageSource:       row.image_source         || null,
     _shows:          new Set(),
   };
   if (row.sold_price     != null) card.SoldPrice     = row.sold_price;

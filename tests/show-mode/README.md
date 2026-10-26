@@ -16,6 +16,8 @@ node add-cards.e2e.mjs "iPhone 13"           # Add cards sheet: one card, type i
 node join-show.e2e.mjs "iPhone 13"           # Seller self-join + the Show Mode gate
 node show-directory.e2e.mjs "iPhone 13"      # Show Directory (platform owner) + seller show requests
 node show-status.e2e.mjs "iPhone 13"         # Show status follows the dates (Upcoming / Active / Past)
+node images.e2e.mjs "iPhone 13"              # Phase 4: card images, catalog ids, share-card photo + handle opt-in
+node card-image.test.mjs                     # netlify/functions/card-image.js with CardSight stubbed (no browser)
 ```
 Set `CHROMIUM_PATH` to use a specific Chromium (the cloud container has `/opt/pw-browsers/chromium`).
 Each line prints PASS or FAIL. The camera is Chromium's fake device.
@@ -32,4 +34,5 @@ psql -d cs_test -f self-join.test.sql
 psql -d cs_test -f ../../supabase/migrations/20261028120000_show_directory.sql
 psql -d cs_test -f show-directory.test.sql
 psql -d cs_test -f show-status.test.sql      # runs 20261029120000_show_auto_status.sql itself
+psql -d cs_test -f show-mode-images.test.sql # runs 20261030120000_show_mode_images.sql itself (twice)
 ```

@@ -812,7 +812,7 @@ async function scCommit(batchId) {
       } else {
         let card = inventory.find(c => c._dbId === it.inventoryId);
         if (!card) {
-          card = _smCardFromNewItem(Object.assign({}, f, { asking: it.price || '0' }));
+          card = _smCardFromNewItem(Object.assign({}, f, { asking: it.price || '0', catalogCardId: cand.catalogCardId || null }));
           card._dbId = it.inventoryId;
           card._smPending = true;
           if (captureId) card._captureId = captureId;
