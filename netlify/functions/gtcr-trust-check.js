@@ -4,7 +4,7 @@
 // CLAUDE.md). Uses the READ-ONLY key only (GTCR_READ_API_KEY). The partner write
 // key lives exclusively in gtcr-registry.js; do not use it here.
 //
-// POST { action: 'check', cert_number, grading_company?, inventory_id?, trigger? }
+// POST { action: 'check', cert_number, grading_company?, inventory_id?, trigger? ('insert' | 'publish' | 'register') }
 //   → { success, matched, active_count, has_stolen_report, has_lost_report,
 //       has_dispute_report, trust_flag }
 //   Calls trustCheckApi with partner_id. When a match is found, GTCR logs a
@@ -25,7 +25,17 @@
 //   deletes the card afterwards; this call only writes the audit row, which
 //   survives the delete (ON DELETE SET NULL).
 //
-// Both actions require `Authorization: Bearer <supabase access token>`, except
+// POST { action: 'verify_removal', registration_ids: [gtcr_registrations.id, ...] }
+//   → { success, results: [{ id, registration_number, cert_number, card_status, still_registered }] }
+//   Diagnostic. Runs a Trust Check on registrations CardShow just removed, and
+//   saves the card_status GTCR reports on the gtcr_registrations row
+//   (post_removal_*). Only the caller's own rows with status 'removed' are
+//   checked; cert and grader come from the row, not the request.
+//   still_registered = GTCR still reports REGISTERED or TRANSFER_PENDING. That
+//   is not proof the removal failed: someone else (e.g. the buyer) could have
+//   registered the same slab.
+//
+// All actions require `Authorization: Bearer <supabase access token>`, except
 // that 'check' without inventory_id is a bare lookup (no persistence).
 //
 // Env: GTCR_READ_API_KEY (required), GTCR_API_BASE (default
@@ -176,7 +186,7 @@ async function handleCheck(db, event, input) {
           cert_number: certNumber,
           grading_company: gradingCompany,
           source: 'gtcr',
-          trigger: input.trigger === 'publish' ? 'publish' : 'insert',
+          trigger: ['publish', 'register'].includes(input.trigger) ? input.trigger : 'insert',
           matched: result.matched,
           active_count: result.active_count,
           has_stolen_report: result.has_stolen_report,
@@ -231,6 +241,54 @@ async function handleResolve(db, event, input) {
   return json(200, { success: true, trust_flag: resolution === 'disputed' ? 'disputed' : 'flagged' });
 }
 
+const VERIFY_MAX_IDS = 20;
+const VERIFY_BUDGET_MS = 8000;
+async function handleVerifyRemoval(db, event, input) {
+  if (!db) return json(503, { success: false, error: 'persistence_unavailable' });
+  const user = await getUser(db, event);
+  if (!user) return json(401, { success: false, error: 'unauthorized' });
+  const ids = (Array.isArray(input.registration_ids) ? input.registration_ids : [])
+    .map(String).filter(Boolean).slice(0, VERIFY_MAX_IDS);
+  if (!ids.length) return json(200, { success: true, results: [] });
+
+  const { data: rows, error } = await db.from('gtcr_registrations')
+    .select('id, cert_number, grading_company, gtcr_registration_number, status')
+    .eq('seller_id', user.id).eq('status', 'removed').in('id', ids);
+  if (error) return json(500, { success: false, error: error.message });
+
+  const started = Date.now();
+  const results = [];
+  for (const row of rows || []) {
+    if (Date.now() - started > VERIFY_BUDGET_MS) break;
+    let cardStatus = null, lookupError = null;
+    try {
+      cardStatus = (await callTrustCheck(row.cert_number, row.grading_company)).card_status;
+    } catch (err) {
+      lookupError = err.reason || (err.name === 'AbortError' ? 'timeout' : 'network_error');
+    }
+    const stillRegistered = /^(REGISTERED|TRANSFER_PENDING)$/.test(cardStatus || '');
+    const { error: upErr } = await db.from('gtcr_registrations').update({
+      post_removal_card_status: cardStatus,
+      post_removal_checked_at: new Date().toISOString(),
+      post_removal_error: lookupError,
+    }).eq('id', row.id);
+    if (upErr) console.warn('[gtcr-trust-check] post-removal save failed (run the migration?):', upErr.message);
+    if (stillRegistered) {
+      console.warn('[gtcr-trust-check] still registered after removal:',
+        row.gtcr_registration_number, row.cert_number, row.grading_company, cardStatus);
+    }
+    results.push({
+      id: row.id,
+      registration_number: row.gtcr_registration_number,
+      cert_number: row.cert_number,
+      card_status: cardStatus,
+      still_registered: stillRegistered,
+      error: lookupError,
+    });
+  }
+  return json(200, { success: true, results });
+}
+
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') return json(405, { success: false, error: 'POST only' });
   let input;
@@ -238,6 +296,7 @@ exports.handler = async (event) => {
   const db = getDb();
   try {
     if (input.action === 'resolve') return await handleResolve(db, event, input);
+    if (input.action === 'verify_removal') return await handleVerifyRemoval(db, event, input);
     return await handleCheck(db, event, input);
   } catch (err) {
     console.error('[gtcr-trust-check] error:', err.message);
