@@ -24,7 +24,7 @@ netlify/functions/scan-card.js           → Serverless: POST {image_base64, med
 netlify/functions/trading-card-lookup.js → Serverless: POST {query, sport?} → card search results from Trading Card API (Sprint 3); write-through cache via card_search_cache table (7-day TTL)
 netlify/functions/invalidate-search-cache.js → Serverless: POST {query} → deletes matching rows from card_search_cache; protected by x-invalidate-secret header
 netlify/functions/trade-og.js            → Serverless: GET /trade/:id → OG-tagged HTML for social crawlers, redirects humans into trade-zone.html (Trade Zone Phase 5)
-netlify/functions/gtcr-trust-check.js    → Serverless: GTCR Trust Check (READ key) — POST {action:'check'|'resolve'} → stolen/lost cert lookup, sets inventory.trust_flag, logs cert_trust_checks (see "Trust Check via GTCR")
+netlify/functions/gtcr-trust-check.js    → Serverless: GTCR Trust Check (READ key) — POST {action:'check'|'resolve'|'verify_removal'} → stolen/lost cert lookup, sets inventory.trust_flag, logs cert_trust_checks (see "Trust Check via GTCR")
 netlify/functions/gtcr-registry.js       → Serverless: GTCR consent + registration (WRITE key) — POST {action:'status'|'grant'|'revoke'|'reconcile'}
 scripts/gtcr-write-roundtrip.js          → Local test of GTCR's register/remove endpoints with a fake cert (needs GTCR_WRITE_API_KEY in the shell)
 supabase/migrations/20260925120000_gtcr_trust_check.sql → inventory.trust_flag + cert_trust_checks / gtcr_consent_events / gtcr_registrations (RLS: read-own, no client writes)
@@ -2392,6 +2392,11 @@ migration, no new external library.
   Phase 4) + deregister on sale/delete/revoke. Registration is built but **dark**
   (`GTCR_CONSENT_UI_LAUNCHED=false` client-side, `?gtcr_consent=1` test switch, `GTCR_REGISTRATION_ENABLED` server-side) until
   pricing is decided. Transfer-on-resale (Phase 5) not built — open decision. See "Trust Check via GTCR".
+- **GTCR registration lifecycle merged to main (PR #65, session 2026-10-26)** — Option A
+  registration (register while owned, remove on sale/delete/flag/opt-out), consent tied to the
+  current consent wording, 24h clean Trust Check before registering, removals on any device, and a
+  post-removal Trust Check. Still dark in production. Testing showed GTCR's site keeps listing
+  removed registrations as active; raised with GTCR, blocks launch. See "Trust Check via GTCR".
 - **XLSX import grade-column fix (session 2026-10-02)** — columns blank in the first data row
   (Grade/Grader/Cert # on a raw card) were dropped for the whole XLSX file, so graded cards
   imported as Raw. `readXLSX()`/`openMapper()` now keep every column; a re-upload repairs the
@@ -2534,8 +2539,8 @@ Current entries (as of September 2026):
   when adding them to inventory, and are alerted about lost/stolen cards. **The second claim is
   live (Trust Check, see "Trust Check via GTCR"). The first is ahead of the product:**
   registration is built but dark (`GTCR_CONSENT_UI_LAUNCHED=false`, `GTCR_REGISTRATION_ENABLED`
-  off), and it registers a card on sale with seller consent, not when the card is added.
-  Revisit the wording if registration launches differently.
+  off). With seller consent it registers graded cards while the seller owns them (on add, import
+  or opt-in) and removes them on sale or delete, which roughly matches the copy once launched.
 - The Monster Collectibles Show — featured sponsor, featured badge + logo tile, added October
   2026. Stacked third (after CTCA and GTCR, before West Coast Hobby Expo) as the newest sponsorship.
   `assets/monster-show-logo.png` is the show's own logo, trimmed to its content and kept as a
@@ -4264,6 +4269,15 @@ under the seller's email, which recorded the card as belonging to the person who
   - Needs `supabase/migrations/20261026120000_gtcr_post_removal_check.sql`. Without it the save fails
     with a console warning and the console log still works.
   - Uses the read key from `gtcr-trust-check.js`, so the one-key-per-function rule still holds.
+  - **Result (tested on the preview, 2026-10-26):** selling TEST_CARDSHOW-003 removed
+    GTCR-REG-PKK9XELWL6, and GTCR's Trust Check right after returned `UNREGISTERED`. GTCR's
+    "Your Registered Cards" page still showed it as "Level 1 — Registered" with Transfer and Report
+    Lost/Stolen buttons. Registrations removed on Sep 30 and Oct 2 (OQTSX5ITEL, 0QTRKN7F82,
+    OQTU5HVONR, OQ7J20NGWE, OHA6VLHYOR) still showed there weeks later, so it isn't a sync delay.
+    GTCR's lookup and its seller page disagree; sent to GTCR. CardShow's side works.
+  - Testing gotcha: an already-open tab, or a Netlify per-deploy URL (`<hash>--card-show…`), keeps
+    the old code. Check with `typeof _gtcrVerifyRemovals` in the console, and use
+    `deploy-preview-<PR#>--card-show.netlify.app` after a hard reload.
 - **Testing the real endpoints:** `GTCR_WRITE_API_KEY=... node scripts/gtcr-write-roundtrip.js`
   registers a `TEST-CARDSHOW-<timestamp>` cert, checks `already_registered`, checks that another
   email can't remove it, removes it, checks the 404 on a second remove, and checks the 403 without
@@ -4273,14 +4287,22 @@ under the seller's email, which recorded the card as belonging to the person who
   GTCR ids, `failed` status).
 - **Launch checklist:** add `GTCR_WRITE_API_KEY` in Netlify (deploy previews first), run the round-trip
   script, test on a preview with `?gtcr_consent=1` and `GTCR_REGISTRATION_ENABLED=true`, finish legal
-  review of the copy, decide pricing, then turn on `GTCR_REGISTRATION_ENABLED=true` in production and
-  `GTCR_CONSENT_UI_LAUNCHED=true` together.
+  review of the copy, decide pricing, get GTCR's fix or answer for removed registrations still showing
+  as active on their site (see the post-removal result above), confirm the Beckett value, then turn on
+  `GTCR_REGISTRATION_ENABLED=true` in production and `GTCR_CONSENT_UI_LAUNCHED=true` together.
+- **Status (2026-10-26):** merged to main (PR #65). Production stays dark: `GTCR_REGISTRATION_ENABLED`
+  is not set there. `GTCR_WRITE_API_KEY` on production is optional; without it, removals for any
+  registrations left over from preview testing can't run there (harmless, they log a key error).
 
 ### Still open (not built)
 - **Decision A — Phase 5 transfer-on-resale** (`transferOnSaleApi`): not built. Today a sold card's
   registration is removed, so the card is left unregistered rather than registered to the wrong person.
   Transferring it to the buyer would need the buyer's email, which CardShow doesn't capture at sale.
 - **Decision B — pricing/packaging** blocks turning consent on for real sellers.
+- **GTCR display of removed registrations** (raised 2026-10-26): their seller page lists removed
+  registrations as active. Also asked whether `removeRegistrationApi` can take a `registration_id`;
+  if it can, `removeOne()` should send the stored `gtcr_registration_id` (don't send it before GTCR
+  confirms the field).
 - **Integrity caveat:** `inventory` still has permissive RLS, so a seller could in principle clear their
   own `trust_flag` by writing to the table directly. The audit tables themselves are protected. This
   closes when inventory RLS is tightened (Tier 1).
@@ -4656,7 +4678,8 @@ So the function returned silently. Any pre-existing card in zero or several show
 - The Sell Drawer has a **Show** field (`#sdShow`, filled by `_sdPopulateShowSelector()`), listing
   the seller's shows plus "Off-show / no show", pre-selected from `_resolveSaleShowId()`. Hidden
   when the seller has no shows.
-- `sdConfirm()` passes that show to `recordShowTransaction(card, showId)`. If the card isn't in that
+- `sdConfirm()` passes that show to `recordShowTransaction(card, showId)`. (When PR #65 merged in, its
+  old `gtcrRegisterOnSale()` call here was dropped; `updateCardInDB()` schedules the GTCR reconcile.) If the card isn't in that
   show yet, it calls `_autoPublishCardToShow()` so the sale also counts in organizer analytics.
   Choosing Off-show skips the transaction (logged to the console).
 - `recordShowTransaction()` without an override uses `_resolveSaleShowId()`. The insert itself moved
