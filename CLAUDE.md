@@ -4727,6 +4727,23 @@ photos may be stored in a private bucket; table number from `show_sellers.table_
 sales out of scope; social assets show the seller's handle only by opt-in; use both Claude vision
 and CardSight identify.
 
+### Fix: Sell → Search rows showed no player name (session 2026-10-26)
+Seller screenshot: search results on the dark Sell screen showed only "2024 · Bowman Chrome ·
+##CPA-JP · PSA 9", with no player name, and the rows ran off the right edge.
+- **Name invisible:** it was in the markup but white on white. `#showModeRoot button { color:
+  inherit }` (id selector) beat `.sm-list--light .sm-row { color: ink }`, so the row buttons
+  inherited the dark screen's white text. Fixed with `#showModeRoot .sm-list--light .sm-row,
+  #showModeRoot .sm-row--button { color: var(--sm-ink) }`.
+- **Rows wider than the screen:** grid items default to `min-width: auto`, so a no-wrap title
+  widened the column. `.sm-list > * { min-width: 0 }`, `.sm-row-meta { overflow-wrap: anywhere }`,
+  and `.sm-scroll { overflow-x: hidden }`.
+- **"##CPA-JP":** card numbers stored with their own "#" got a second one. Every Show Mode
+  display now goes through `_smCardNum()`.
+- **Dark bars on the search box:** the auto-focused input drew its focus outline inside the
+  rounded box. The ring is now on `.sm-search:focus-within` (yellow on dark, ink on light).
+- Tests: 4 new checks in `show-mode.e2e.mjs` (name text is ink, no sideways scroll, single "#",
+  a very long card number doesn't widen the screen) — 52/52 on iPhone 13 and Pixel 7.
+
 ### Phase 3 — case scan, screens A–D (done, session 2026-10-24)
 Replaces the classic one-request Bulk Scan inside Show Mode (Home → **Add cards**). All code is in
 `js/show-mode-scan.js` (`sc*` names). **No migration and no server job.** The phone drives the work

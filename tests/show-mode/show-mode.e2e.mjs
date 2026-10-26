@@ -82,6 +82,19 @@ await page.click('#smSegSearch'); await wait(200);
 await page.fill('#smSearchInput', 'elly');
 await wait(100);
 await tapCheck('search');
+const rowLook = await page.evaluate(() => {
+  const t = document.querySelector('#smSearchResults .sm-row-title');
+  const sc = document.getElementById('smScroll');
+  return { text: t && t.textContent, color: t && getComputedStyle(t).color, wide: sc.scrollWidth > sc.clientWidth + 1,
+    num: [_smCardNum('##CPA-JP'), _smCardNum('451'), _smCardNum('')] };
+});
+check('search row shows the player name in dark text', rowLook.text === 'Elly De La Cruz' && rowLook.color === 'rgb(18, 18, 18)', JSON.stringify(rowLook));
+check('search screen has no sideways scroll', !rowLook.wide);
+check('card numbers show one #', JSON.stringify(rowLook.num) === '["#CPA-JP","#451",""]');
+// Long unbroken values must not widen the list
+await page.evaluate(() => { const c = inventory.find(x => x._dbId === 'c2'); c.Number = '#BOWMANCHROMEPROSPECTAUTOGRAPHVARIATION-123456'; smRenderSearchResults(); });
+check('long card number does not widen the screen', await page.evaluate(() => { const sc = document.getElementById('smScroll'); return sc.scrollWidth <= sc.clientWidth + 1; }));
+await page.evaluate(() => { inventory.find(x => x._dbId === 'c2').Number = null; smRenderSearchResults(); });
 await page.click('#smSearchResults .sm-row--button');
 await wait(300);
 check('search pick → confirm, last payment Venmo preselected', (await page.getAttribute('[data-pay=Venmo]', 'aria-pressed')) === 'true');

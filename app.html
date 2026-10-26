@@ -4432,7 +4432,7 @@
   #showModeRoot button { font-family: inherit; color: inherit; cursor: pointer; }
   #showModeRoot :focus-visible { outline: 2px solid var(--sm-ink); outline-offset: 2px; }
   .sm-icon { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
-  .sm-scroll { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+  .sm-scroll { flex: 1; overflow-x: hidden; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
   .sm-page { max-width: 480px; margin: 0 auto; padding: 0 16px calc(120px + env(safe-area-inset-bottom, 0px)); }
   .sm-header {
     display: flex; align-items: center; justify-content: space-between;
@@ -4485,11 +4485,12 @@
   .sm-notice-btn { margin-top: 10px; min-height: 44px; padding: 0 16px; border-radius: 14px; border: 2px solid var(--sm-ink); background: var(--sm-accent); font-weight: 800; font-size: 14px; }
   .sm-section-label { font-weight: 800; font-size: 13px; letter-spacing: 1px; text-transform: uppercase; color: var(--sm-muted); margin: 4px 0 8px; }
   .sm-list { display: grid; gap: 8px; }
+  .sm-list > * { min-width: 0; }   /* long names/numbers wrap or truncate instead of widening the page */
   .sm-row { display: flex; align-items: center; gap: 12px; background: var(--sm-surface); border: 1px solid var(--sm-line); border-radius: 14px; padding: 10px 12px; min-height: 60px; }
   .sm-thumb { width: 36px; height: 50px; border-radius: 6px; background: var(--sm-placeholder); border: 1px solid var(--sm-placeholder-line); flex-shrink: 0; }
   .sm-row-body { min-width: 0; flex: 1; }
   .sm-row-title { font-weight: 800; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .sm-row-meta { font-weight: 600; font-size: 13px; color: var(--sm-muted); margin-top: 2px; }
+  .sm-row-meta { font-weight: 600; font-size: 13px; color: var(--sm-muted); margin-top: 2px; overflow-wrap: anywhere; }
   .sm-empty { font-weight: 600; font-size: 14px; color: var(--sm-muted); padding: 14px; text-align: center; background: var(--sm-surface); border: 1px dashed var(--sm-line); border-radius: 14px; }
   .sm-bottom-nav {
     position: absolute; left: 0; right: 0; bottom: 0;
@@ -4572,12 +4573,18 @@
   .sm-search { display: flex; align-items: center; gap: 8px; min-height: 52px; padding: 0 14px; border-radius: 14px; background: var(--sm-surface); color: var(--sm-ink); border: 1px solid var(--sm-line); }
   .sm-search input { flex: 1; min-height: 48px; border: 0; outline: 0; background: transparent; font: 600 16px var(--sm-body); color: var(--sm-ink); min-width: 0; }
   .sm-search--light { margin-bottom: 10px; }
+  /* Focus ring on the whole box; on the bare input it showed as two dark bars. */
+  #showModeRoot .sm-search input:focus-visible { outline: none; }
+  .sm-search:focus-within { outline: 2px solid var(--sm-accent); outline-offset: 2px; }
+  .sm-search--light:focus-within { outline-color: var(--sm-ink); }
   .sm-chips { display: flex; gap: 8px; flex-wrap: wrap; }
   .sm-chip { min-height: 44px; padding: 0 16px; border-radius: 14px; border: 2px solid var(--sm-line); background: var(--sm-surface); color: var(--sm-ink) !important; font-weight: 800; font-size: 15px; }
   .sm-chip[aria-pressed="true"] { background: var(--sm-accent); border-color: var(--sm-ink); }
   .sm-chip:disabled { opacity: 0.45; }
   .sm-chip--big { min-height: 52px; }
-  .sm-list--light .sm-row { color: var(--sm-ink); }
+  /* Rows are white even on the dark Sell screen. The id selector beats
+     "#showModeRoot button { color: inherit }", which made the name white on white. */
+  #showModeRoot .sm-list--light .sm-row, #showModeRoot .sm-row--button { color: var(--sm-ink); }
   .sm-dark .sm-empty { background: var(--sm-dark-raised); border-color: var(--sm-dark-raised); color: var(--sm-muted-on-dark); }
   .sm-sec-btn--dark { background: var(--sm-dark-raised); border-color: var(--sm-dark-raised); color: #fff !important; }
 
@@ -7027,8 +7034,8 @@
 </div>
 
 <!-- Show Mode v2 (flag show_mode_v2). Bump ?v= when it changes: the service worker caches by URL. -->
-<script src="/js/show-mode.js?v=20261024a"></script>
-<script src="/js/show-mode-scan.js?v=20261024a"></script>
+<script src="/js/show-mode.js?v=20261026a"></script>
+<script src="/js/show-mode-scan.js?v=20261026a"></script>
 <script>
 // ── STATE ──
 let inventory = [];

@@ -685,7 +685,7 @@ async function scRetryPhoto(photoId) {
 // ── C. Review matches ───────────────────────────────────────────────────────
 function _scItemName(f) { return f.player || f.cardSet || 'Unknown card'; }
 function _scItemMeta(f) {
-  return [f.year, f.cardSet, f.number ? '#' + f.number : '', f.grader ? `${f.grader} ${f.grade}`.trim() : 'Raw'].filter(Boolean).join(' · ');
+  return [f.year, f.cardSet, _smCardNum(f.number), f.grader ? `${f.grader} ${f.grade}`.trim() : 'Raw'].filter(Boolean).join(' · ');
 }
 
 async function scRenderReview(batchId, quiet) {
@@ -877,7 +877,7 @@ function _scRenderFixBody(photo, item) {
     const f = c.fields;
     return `<button class="sc-tile" aria-pressed="${i === item.selected}" onclick="scSelectCandidate(${i})">
       <span class="sc-tile-name">${smEsc(_scItemName(f))}${f.parallel ? ' · ' + smEsc(f.parallel) : ''}</span>
-      <span class="sm-row-meta">${smEsc([f.year, f.cardSet, f.number ? '#' + f.number : ''].filter(Boolean).join(' · '))}</span>
+      <span class="sm-row-meta">${smEsc([f.year, f.cardSet, _smCardNum(f.number)].filter(Boolean).join(' · '))}</span>
       <span class="sm-row-meta">${smEsc(f.grader ? `${f.grader} ${f.grade}`.trim() : 'Raw')}</span>
     </button>`;
   }).join('');

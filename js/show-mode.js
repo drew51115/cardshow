@@ -689,6 +689,8 @@ function _smNamesAgree(a, b) {
   if (!ta.length || !tb.length) return false;
   return ta[ta.length - 1] === tb[tb.length - 1];
 }
+// "#12" for display; card numbers stored with their own "#" don't get a second one.
+function _smCardNum(n) { const v = String(n ?? '').trim().replace(/^#+\s*/, ''); return v ? '#' + v : ''; }
 function _smNormNumber(n) { return String(n || '').replace(/^#/, '').replace(/^0+(?=\d)/, '').trim().toLowerCase(); }
 
 async function _smFetchJson(url, body, ms) {
@@ -1285,7 +1287,7 @@ function smRenderSearchResults() {
       ${_smCardThumb(r)}
       <span class="sm-row-body">
         <span class="sm-row-title">${smEsc(r.Player || r['Card Title'] || 'Card')}</span>
-        <span class="sm-row-meta">${smEsc([r.Year, r['Set '], r.Number ? '#' + r.Number : '', _smGradeLabel(r)].filter(Boolean).join(' · '))}</span>
+        <span class="sm-row-meta">${smEsc([r.Year, r['Set '], _smCardNum(r.Number), _smGradeLabel(r)].filter(Boolean).join(' · '))}</span>
       </span>
       <span class="sm-row-price">${_smMoney(r.Price)}</span>
     </button>`).join('') + (res.length > 50 ? `<div class="sm-empty">${res.length - 50} more — keep typing to narrow it down</div>` : '')
@@ -1474,8 +1476,8 @@ function _smRenderResult() {
   const show = match || null;
   const name = show ? (show.Player || show['Card Title']) : f.player;
   const meta = show
-    ? [show['Set '], show.Number ? '#' + show.Number : '', _smGradeLabel(show)].filter(Boolean).join(' · ')
-    : [f.cardSet, f.number ? '#' + f.number : '', f.grader ? `${f.grader} ${f.grade}`.trim() : 'Raw'].filter(Boolean).join(' · ');
+    ? [show['Set '], _smCardNum(show.Number), _smGradeLabel(show)].filter(Boolean).join(' · ')
+    : [f.cardSet, _smCardNum(f.number), f.grader ? `${f.grader} ${f.grade}`.trim() : 'Raw'].filter(Boolean).join(' · ');
   const primaryLabel = manual ? 'Log this sale →' : (inCase ? 'Sell this card →' : 'Add & sell →');
   sheet.innerHTML = `
     <div class="sm-sheet-card">
@@ -1571,7 +1573,7 @@ function smShowCandidates() {
   r.ident.candidates.forEach((c, i) => rows.push(`
     <button class="sm-row sm-row--button" onclick="smUseScanAsNew(${i})">
       <span class="sm-row-body"><span class="sm-row-title">${smEsc(c.player || 'Unknown')}</span>
-      <span class="sm-row-meta">${smEsc([c.year, c.cardSet, c.number ? '#' + c.number : '', c.parallel].filter(Boolean).join(' · '))}</span></span>
+      <span class="sm-row-meta">${smEsc([c.year, c.cardSet, _smCardNum(c.number), c.parallel].filter(Boolean).join(' · '))}</span></span>
     </button>`));
   if (r.matches[0]) rows.push(`<button class="sm-row sm-row--button" onclick="smUseScanAsNew()"><span class="sm-row-body"><span class="sm-row-title">It's not in my case</span><span class="sm-row-meta">Add it and sell it</span></span></button>`);
   rows.push(`<button class="sm-row sm-row--button" onclick="smSetSellMode('search')"><span class="sm-row-body"><span class="sm-row-title">Search instead</span></span></button>`);
@@ -1645,8 +1647,8 @@ function smRenderConfirm() {
   const n = d.newItem || {};
   const name = card ? (card.Player || card['Card Title']) : (n.player || 'New card');
   const meta = card
-    ? [card['Set '], card.Number ? '#' + card.Number : '', _smGradeLabel(card)].filter(Boolean).join(' · ')
-    : [n.cardSet, n.number ? '#' + n.number : '', n.grader ? `${n.grader} ${n.grade}`.trim() : 'Raw'].filter(Boolean).join(' · ');
+    ? [card['Set '], _smCardNum(card.Number), _smGradeLabel(card)].filter(Boolean).join(' · ')
+    : [n.cardSet, _smCardNum(n.number), n.grader ? `${n.grader} ${n.grade}`.trim() : 'Raw'].filter(Boolean).join(' · ');
   const graderOpts = ['', ...(typeof VALID_GRADERS !== 'undefined' ? VALID_GRADERS : ['PSA', 'BGS', 'CGC', 'SGC'])];
   const details = card ? '' : `
     <details class="sm-details" ${n.player ? '' : 'open'}>
