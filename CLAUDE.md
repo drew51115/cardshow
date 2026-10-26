@@ -4788,6 +4788,8 @@ How it's set:
 - **Show modal:** the Status dropdown is gone. `#smStatusAuto` shows the status the dates give
   (`smUpdateStatusPreview()`). `saveShow()` saves that status, and so does the Directory's `saveDirEdit()`.
 - **Dashboard:** each show card has a status label (`.asc-status`) next to the name.
+- **Dashboard order** (`_sortShowsForDashboard()`): Active (Live) first, then Upcoming (soonest first),
+  then Past (most recent first). Shows with no date go last in their group.
 - **show.html:** `_statusFromDateText()` works it out from the date text in `loadShowMetaFromDB()`.
 - **Database:** `refresh_show_statuses()` updates `shows.status` for shows that have a `start_date`.
   "Today" is in `shows.timezone`, else America/Los_Angeles, so a US show never turns Past early.

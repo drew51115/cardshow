@@ -14750,6 +14750,18 @@ function _showHasEnded(show) {
   if (last) return last < _todayISO();
   return show.status === 'past';
 }
+// Show Management order: Active (Live) first, then Upcoming (soonest first),
+// then Past (most recent first). Shows with no date go last in their group.
+const SHOW_STATUS_ORDER = { active: 0, upcoming: 1, past: 2 };
+function _sortShowsForDashboard(list) {
+  return list.slice().sort((a, b) => {
+    const ga = SHOW_STATUS_ORDER[a.status] ?? 1, gb = SHOW_STATUS_ORDER[b.status] ?? 1;
+    if (ga !== gb) return ga - gb;
+    const da = _showDateISO(a), dbb = _showDateISO(b);
+    if (!da || !dbb) return (da ? 0 : 1) - (dbb ? 0 : 1) || (a.name || '').localeCompare(b.name || '');
+    return ga === 2 ? dbb.localeCompare(da) : da.localeCompare(dbb);
+  });
+}
 function _showSortKey(show) { return show.startDate || _showDateISO(show) || '9999'; }
 
 // Shows the current seller could join right now: open to self-join, not over,
@@ -18029,7 +18041,7 @@ function renderAdminShowsDashboard() {
   const el = document.getElementById('adminShowsGrid');
   if (!el) return;
   _refreshShowStatuses();
-  const list = Object.values(shows);
+  const list = _sortShowsForDashboard(Object.values(shows));
 
   if (!list.length) {
     el.innerHTML = `

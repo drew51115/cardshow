@@ -51,6 +51,9 @@ check('no date → stored status kept', st.show_none === 'active', st.show_none)
 const grid = await page.textContent('#adminShowsGrid');
 check('dashboard shows the derived labels', await page.evaluate(() => ['show_past','show_live','show_future'].map(id => document.querySelector('#asc-' + id + ' .asc-status')?.textContent).join('/')) === 'Past/Active (Live)/Upcoming');
 
+const order = await page.evaluate(() => [...document.querySelectorAll('#adminShowsGrid .admin-show-card')].map(e => e.dataset.showid).join(','));
+check('dashboard order: active, upcoming, past (newest first)', order === 'show_live,show_none,show_future,show_past,show_text', order);
+
 // Modal: no manual status; preview follows the dates.
 await page.evaluate(() => openCreateShowModal('show_future'));
 await page.waitForTimeout(300);
