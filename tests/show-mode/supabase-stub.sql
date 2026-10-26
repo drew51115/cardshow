@@ -10,7 +10,7 @@ create function storage.foldername(name text) returns text[] language sql immuta
 grant usage on schema storage to authenticated; grant all on storage.objects to authenticated; grant execute on function storage.foldername(text) to authenticated;
 
 create table public.sellers (id uuid primary key, handle text);
-create table public.shows (id text primary key, name text, date text, start_date date, end_date date, status text);
+create table public.shows (id text primary key, name text, date text, start_date date, end_date date, status text, location text, venue text, city text, state text);
 create table public.show_sellers (show_id text references shows(id), seller_id uuid, table_number text);
 create table public.inventory (
   id uuid primary key default gen_random_uuid(), seller_id uuid, card_title text, player text, year int,

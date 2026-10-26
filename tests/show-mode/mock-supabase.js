@@ -91,6 +91,7 @@
       const show = S.shows.find(x => x.id === a.p_show_id);
       if (!show) data = { error:'not_found' };
       else if (S.show_sellers.some(r => r.show_id === show.id && r.seller_id === UID)) data = { ok:true, already:true };
+      else if (show.listed === false) data = { error:'not_listed' };
       else if (show.seller_self_join === false) data = { error:'closed' };
       else if ((show.end_date || show.start_date) && (show.end_date || show.start_date) < today) data = { error:'ended' };
       else { S.show_sellers.push({ show_id:show.id, seller_id:UID, table_number:null, self_joined:true }); data = { ok:true, already:false }; }
@@ -105,6 +106,62 @@
         S.show_sellers = S.show_sellers.filter(r => r !== row);
         data = { ok:true, cards_removed: before - S.show_inventory.length };
       }
+    } else if (name === 'is_platform_admin') {
+      data = (S.platform_admins || []).some(r => r.id === UID);
+    } else if (name === 'set_show_listed') {
+      const show = S.shows.find(x => x.id === a.p_show_id);
+      if (!(S.platform_admins || []).some(r => r.id === UID)) data = { error:'forbidden' };
+      else if (!show) data = { error:'not_found' };
+      else if (!a.p_listed) { show.listed = false; data = { ok:true, listed:false }; }
+      else {
+        const miss = [];
+        if (!show.name) miss.push('name'); if (!show.start_date) miss.push('start_date');
+        if (!show.venue) miss.push('venue'); if (!show.city) miss.push('city');
+        if (!/^[A-Z]{2}$/.test(show.state || '')) miss.push('state'); if (show.merged_into) miss.push('merged');
+        if (miss.length) data = { error:'missing_fields', fields: miss };
+        else {
+          show.slug = show.slug || (show.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-' + show.start_date.slice(0, 7));
+          Object.assign(show, { listed:true, listed_at:new Date().toISOString() });
+          data = { ok:true, listed:true, slug:show.slug };
+        }
+      }
+    } else if (name === 'submit_show_request') {
+      S.show_requests = S.show_requests || [];
+      const p = a.p;
+      if (!p.name || !p.start_date) data = { error:'missing_fields' };
+      else {
+        const ex = S.show_requests.find(r => r.seller_id === UID && r.status === 'pending' && r.name.toLowerCase() === p.name.toLowerCase() && r.start_date === p.start_date);
+        if (ex) data = { ok:true, id:ex.id, already:true };
+        else {
+          const row = { id:'req_' + S.show_requests.length, seller_id:UID, status:'pending', created_at:new Date().toISOString(),
+            name:p.name, start_date:p.start_date, end_date:p.end_date || null, venue:p.venue || null, city:p.city || null,
+            state:p.state || null, website:p.website || null, notes:p.notes || null };
+          S.show_requests.push(row); data = { ok:true, id:row.id, already:false };
+        }
+      }
+    } else if (name === 'resolve_show_request') {
+      const req = (S.show_requests || []).find(r => r.id === a.p_request_id);
+      if (!(S.platform_admins || []).some(r => r.id === UID)) data = { error:'forbidden' };
+      else if (!req) data = { error:'not_found' };
+      else if (a.p_action === 'listed' && !S.shows.some(x => x.id === a.p_show_id && x.listed)) data = { error:'show_not_listed' };
+      else {
+        if (a.p_action === 'listed' && !S.show_sellers.some(r => r.show_id === a.p_show_id && r.seller_id === req.seller_id))
+          S.show_sellers.push({ show_id:a.p_show_id, seller_id:req.seller_id, table_number:null, self_joined:true });
+        Object.assign(req, { status:a.p_action, show_id:a.p_action === 'listed' ? a.p_show_id : null, review_note:a.p_note });
+        data = { ok:true };
+      }
+    } else if (name === 'merge_shows') {
+      let moved = 0, cards = 0;
+      S.show_sellers.filter(r => r.show_id === a.p_from).forEach(r => {
+        if (!S.show_sellers.some(t => t.show_id === a.p_into && t.seller_id === r.seller_id)) { S.show_sellers.push(Object.assign({}, r, { show_id:a.p_into })); moved++; }
+      });
+      S.show_inventory.filter(r => r.show_id === a.p_from).forEach(r => {
+        if (!S.show_inventory.some(t => t.show_id === a.p_into && t.card_id === r.card_id)) { S.show_inventory.push({ show_id:a.p_into, card_id:r.card_id }); cards++; }
+      });
+      S.show_sellers = S.show_sellers.filter(r => r.show_id !== a.p_from);
+      S.show_inventory = S.show_inventory.filter(r => r.show_id !== a.p_from);
+      Object.assign(S.shows.find(x => x.id === a.p_from), { listed:false, seller_self_join:false, merged_into:a.p_into });
+      data = { ok:true, sellers_moved:moved, cards_moved:cards };
     } else if (name === 'void_sale') {
       const s = S.sales.find(x => x.client_sale_id === a.p_client_sale_id);
       if (s.status === 'voided') data = { voided:false, status:'voided' };

@@ -43,6 +43,7 @@ js/show-mode.js                   → Show Mode v2 (flag show_mode_v2): routing,
 js/show-mode-scan.js              → Show Mode case scan (screens A–D): per-photo queue, review, commit — loaded right after js/show-mode.js
 netlify/functions/cardsight-identify.js → Serverless: POST {image_base64, media_type} → CardSight catalog identification (Show Mode; runs beside scan-card.js)
 supabase/migrations/20261027120000_seller_self_join.sql → show_sellers.self_joined/joined_at, shows.seller_self_join, join_show_as_seller()/leave_show_as_seller() — see "Seller Self-Join"
+supabase/migrations/20261028120000_show_directory.sql → shows.listed/slug/timezone/website/merged_into, platform_admins, show_requests, set_show_listed()/submit_show_request()/resolve_show_request()/merge_shows() — see "Show Directory"
 supabase/migrations/20261023120000_show_mode_sales.sql → sales + card_captures tables, private card-captures bucket, record_sale()/void_sale() — see "Show Mode v2"
 tests/show-mode/                  → Playwright + SQL tests for Show Mode (see its README)
 sw.js                             → Service worker: offline app shell (network-first app.html, cached scripts/fonts); never caches Supabase or functions — see "Show Mode v2"
@@ -63,7 +64,8 @@ sellers       — id (uuid PRIMARY KEY = auth.uid()), handle, display_name, what
 shows         — id (text), name, date, location, status, access_code, published_at, created_at,
                 city (text), state (text), venue (text),
                 start_date (date), end_date (date), floor_plan_url (text)
-                — see "Pending DB Migrations"
+                — see "Pending DB Migrations"; seller_self_join, listed, listed_at,
+                listed_by, slug (unique), timezone, website, merged_into — see "Show Directory"
 show_sellers  — show_id, seller_id (uuid → sellers.id), table_number,
                 x_pct (numeric(5,2)), y_pct (numeric(5,2)) — see "Pending DB Migrations",
                 self_joined (bool), joined_at — see "Seller Self-Join"
@@ -248,6 +250,12 @@ Required for seller self-join (see "Seller Self-Join" below):
 `supabase/migrations/20261027120000_seller_self_join.sql`. Until it runs, Join a show falls back
 to a plain `show_sellers` insert (no "joined themselves" tag, no organizer switch, no end-date
 check, no Leave show).
+
+Required for the Show Directory (see "Show Directory" below), after the self-join migration:
+`supabase/migrations/20261028120000_show_directory.sql`. Then add yourself as platform owner:
+`insert into public.platform_admins (id) values ('<your auth.users id>');`. **Every existing show
+starts unlisted**, so sellers see no shows to join until you list them. Before it runs, every
+show counts as listed and the directory tab doesn't appear.
 
 Required to save the post-removal Trust Check result (diagnostic, see "Trust Check via GTCR"):
 `supabase/migrations/20261026120000_gtcr_post_removal_check.sql` adds `post_removal_card_status`,
@@ -2417,6 +2425,9 @@ migration, no new external library.
   raw cards in place via a raw-twin match in `loadInventory()`. See "XLSX Import Dropped Grade
   Columns".
 
+- **Show Directory (session 2026-10-27)** — the platform owner lists which shows sellers can join,
+  edits their structured details, merges duplicates and handles seller show requests. See "Show
+  Directory".
 - **Seller self-join (session 2026-10-27)** — sellers add themselves to a show with
   "+ Join a show"; organizers see a "joined themselves" tag and can switch it off per show;
   Show Mode requires joining first. See "Seller Self-Join".
@@ -4710,7 +4721,8 @@ Sellers add themselves to a show they're vending at instead of waiting for the o
 (user's choice: option 3, "open shows", with a "joined themselves" tag). The organizer can
 still add sellers, assign tables and remove anyone.
 
-- **Who can join what:** any seller can join any show that isn't over and whose organizer left
+- **Who can join what (updated by "Show Directory"):** the show must also be listed by the
+  platform owner. Otherwise, any seller can join any show that isn't over and whose organizer left
   **Let sellers add themselves** on (`shows.seller_self_join`, default `true`, a checkbox
   `#smSelfJoin` in the Create/Edit Show modal). "Over" = last day (end date, else start date)
   before today; the server allows one extra day because its clock is UTC. A show with no dates
@@ -4750,6 +4762,60 @@ still add sellers, assign tables and remove anyone.
 - **Open:** anyone with a seller account can join an open show, including people who didn't pay
   for a table. The organizer sees them tagged and can remove them; switch the show off to stop
   self-joins. No organizer notification of new joins yet.
+
+## Show Directory (session 2026-10-27)
+
+The platform owner curates which shows sellers can join (user's decision: every show needs their
+approval; seller requests included; recurring series not built).
+
+- **Listing:** `shows.listed` (default `false`). Only listed shows appear in a seller's Join a show
+  list (`_joinableShows()`), and `join_show_as_seller()` returns `not_listed` for the rest.
+  `set_show_listed(id, listed)` is platform-owner-only and refuses to list a show missing a start
+  date, venue, city or 2-letter state (or one that was merged). Listing sets `slug`
+  (`monster-show-2026-10`, numbered if taken; unique index). Organizers can still add sellers to
+  any of their shows by hand; listing only controls self-join.
+- **Platform owner:** `platform_admins` (one row per auth user id, added by hand in SQL).
+  `is_platform_admin()` decides; `checkPlatformAdmin()` runs in `loginAsAdmin()` and shows the
+  **🗂 Show Directory** tab (`#adminTabDirectory`, badge = pending requests). Regular organizers
+  never see it. Sign-out resets `_isPlatformAdmin`.
+- **Directory screen (`#showDirectoryPanel`, `loadShowDirectory()` / `renderShowDirectory()`):**
+  every show from every organizer (`dbSelectAllPages` over `shows`), with seller counts. Filters:
+  Requests · Needs info (unlisted, missing fields) · Ready to list · Listed · All. Each row shows
+  dates, venue/city/state, sellers, who created it, slug, what's missing, and a "Possible duplicate"
+  warning (`_dirPossibleDuplicates()`: same city + state, overlapping dates). Actions:
+  - **Edit / + Add show** (`#dirEditOverlay`, `saveDirEdit()`): name, dates, venue, city, state,
+    time zone (pre-filled from the state via `DIR_STATE_TZ`), website, "List for sellers". Writes
+    the structured columns and regenerates `date` (`_formatShowDateRange()`) and `location`
+    ("Venue, City, ST"), so display text is never typed by hand. A new show gets
+    `created_by` = you, a unique 6-character access code and `seller_self_join = true`. Warns
+    (confirm) on a likely duplicate.
+  - **List / Unlist** (`dirSetListed()`): missing fields open the edit form instead.
+  - **Merge…** (`#dirMergeOverlay`, `merge_shows(from, into)`): moves sellers (with table numbers,
+    skipping ones already in the target) and published cards, repoints requests, then unlists the
+    duplicate, closes it to self-join and sets `merged_into`. The duplicate row is kept because
+    `show_floor_transactions` (immutable) points at it, so its recorded sales stay with it.
+- **Requests (`show_requests`):** sellers tap **Can't find your show? Request it** in Join a show
+  (`openShowRequestForm()` / `submitShowRequest()` → `submit_show_request()`; name + start date
+  required; same name + date returns the existing request; max 10 pending per seller). The
+  seller's last 10 requests and their status show under the list (`loadMyShowRequests()`). In the
+  directory each request offers **Create & list** (edit form pre-filled; saving lists the show and
+  resolves the request), **Link to a show…** (or one-click "Link to X" for likely matches,
+  `_dirRequestMatches()`), and **Decline** (optional note shown to the seller).
+  `resolve_show_request()` with `listed` requires a listed show and adds the requesting seller to
+  it (`self_joined = true`).
+- **Time zone:** when `shows.timezone` is set, `join_show_as_seller()` uses the show's local date
+  for "ended" instead of UTC minus a day.
+- **Organizer view:** each show card says "Listed for sellers" or "Not listed yet · CardShow
+  reviews new shows", and the "Let sellers add themselves" text says it applies once listed.
+- **Before the migration:** `listed` is missing, so every show counts as listed
+  (`row.listed !== false`); `submit_show_request` is missing and the form says requests aren't set
+  up yet; no directory tab.
+- **Tests:** `tests/show-mode/show-directory.e2e.mjs` (owner flow, regular organizer, seller
+  requests, unlisted gate, fallback) and `show-directory.test.sql` (permissions, required fields,
+  slugs, requests, time zone, merge).
+- **Not built:** recurring series grouping; notifying sellers or the owner by email (sellers see
+  request status in Join a show; the owner sees the tab badge); editing a request's details before
+  linking.
 
 ## Show Mode v2 (in progress — Phases 1–3 shipped, sessions 2026-10-23/24)
 

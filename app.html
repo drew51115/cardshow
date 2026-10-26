@@ -1818,6 +1818,73 @@
     background: var(--accent); color: #07080c; border-radius: 4px; padding: 0.08rem 0.35rem; vertical-align: middle;
   }
   .join-show-btn { width: auto !important; min-height: 44px; min-width: 76px; padding: 0 1rem; flex: 0 0 auto; margin: 0; border: none; border-radius: 8px; font-weight: 700; font-size: 0.95rem; cursor: pointer; }
+  .dir-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.8rem; flex-wrap: wrap; margin-bottom: 0.9rem; }
+  .dir-title { font-family: 'Bebas Neue', sans-serif; font-size: 1.6rem; letter-spacing: 0.06em; color: var(--text); line-height: 1; }
+  .dir-sub { font-size: 0.82rem; color: var(--muted); margin-top: 0.3rem; }
+  .dir-head-actions { display: flex; gap: 0.5rem; }
+  .dir-filters { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.7rem; }
+  .dir-filter {
+    background: var(--surface); border: 1px solid var(--border); color: var(--muted); border-radius: 999px;
+    padding: 0.4rem 0.8rem; font-size: 0.8rem; cursor: pointer; min-height: 36px;
+  }
+  .dir-filter span { font-family: 'DM Mono', monospace; font-size: 0.7rem; margin-left: 0.2rem; }
+  .dir-filter.active { border-color: var(--accent); color: var(--accent); }
+  #dirSearch { width: 100%; margin: 0 0 0.8rem; }
+  .dir-list { display: flex; flex-direction: column; gap: 0.6rem; }
+  .dir-row {
+    display: flex; gap: 0.8rem; justify-content: space-between; align-items: flex-start; flex-wrap: wrap;
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 0.8rem 0.9rem;
+  }
+  .dir-req { border-color: rgba(245,200,66,0.4); }
+  .dir-row-main { flex: 1 1 280px; min-width: 0; }
+  .dir-row-name { font-weight: 700; color: var(--text); font-size: 0.95rem; }
+  .dir-row-meta { font-size: 0.78rem; color: var(--muted); margin-top: 0.2rem; overflow-wrap: anywhere; }
+  .dir-row-meta a { color: var(--accent); }
+  .dir-warn { font-size: 0.76rem; color: #f59e0b; margin-top: 0.3rem; }
+  .dir-matches { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; margin-top: 0.45rem; font-size: 0.78rem; color: var(--muted); }
+  .dir-row-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
+  .dir-btn { width: auto !important; min-height: 40px; padding: 0 0.8rem; font-size: 0.8rem; }
+  .dir-badge {
+    font-family: 'DM Mono', monospace; font-size: 0.58rem; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 0.06rem 0.32rem; vertical-align: middle;
+  }
+  .dir-badge.listed { color: #22c55e; border-color: rgba(34,197,94,0.4); }
+  .dir-badge.req { color: var(--accent); border-color: var(--accent); }
+  .dir-empty { color: var(--muted); font-size: 0.85rem; padding: 1.5rem 0.5rem; text-align: center; }
+  .dir-tab-badge {
+    background: var(--accent); color: #07080c; border-radius: 999px; font-size: 0.65rem; font-weight: 700;
+    padding: 0.05rem 0.4rem; margin-left: 0.25rem;
+  }
+  .dir-modal-title { font-family: 'Bebas Neue', sans-serif; font-size: 1.5rem; letter-spacing: 0.04em; color: var(--text); }
+  .join-show-request-cta {
+    display: flex; align-items: center; justify-content: space-between; gap: 0.6rem;
+    margin-top: 0.8rem; padding-top: 0.8rem; border-top: 1px solid var(--border);
+    font-size: 0.85rem; color: var(--muted);
+  }
+  .join-show-request-btn { min-height: 44px; padding: 0 1rem; font-size: 0.85rem; }
+  .join-show-myreq-title {
+    font-family: 'DM Mono', monospace; font-size: 0.62rem; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--muted); margin: 0.9rem 0 0.4rem;
+  }
+  .join-show-myreq {
+    display: flex; align-items: center; justify-content: space-between; gap: 0.6rem;
+    padding: 0.5rem 0; border-bottom: 1px solid var(--border);
+  }
+  .join-show-myreq-name { font-size: 0.88rem; font-weight: 600; color: var(--text); }
+  .join-show-myreq-status { font-size: 0.72rem; color: var(--muted); white-space: nowrap; flex-shrink: 0; }
+  .join-show-myreq-status.listed { color: #22c55e; }
+  .req-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
+  .req-field { display: flex; flex-direction: column; gap: 0.25rem; min-width: 0; }
+  .req-field span { font-family: 'DM Mono', monospace; font-size: 0.62rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+  .req-field .show-input { margin: 0; width: 100%; }
+  .req-wide { grid-column: 1 / -1; }
+  .req-actions { display: flex; gap: 0.6rem; margin-top: 1rem; }
+  .req-actions .btn { flex: 1; min-height: 44px; justify-content: center; }
+  .asc-listed {
+    font-family: 'DM Mono', monospace; font-size: 0.6rem; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 0.05rem 0.3rem;
+  }
+  .asc-listed.yes { color: #22c55e; border-color: rgba(34,197,94,0.4); }
   .join-show-empty { font-size: 0.85rem; color: var(--muted); text-align: center; padding: 1.2rem 0.5rem; line-height: 1.5; }
   .sm-selfjoin-toggle {
     display: flex; gap: 0.6rem; align-items: flex-start; cursor: pointer;
@@ -5035,10 +5102,30 @@
           <button class="admin-tab active" id="adminTabShows" onclick="switchAdminTab('shows')">
             🎪 Shows
           </button>
+          <button class="admin-tab" id="adminTabDirectory" onclick="switchAdminTab('directory')" style="display:none">
+            🗂 Show Directory <span id="dirTabBadge" class="dir-tab-badge" style="display:none"></span>
+          </button>
           <button class="admin-tab" id="adminTabReport" onclick="switchAdminTab('report')" style="display:none">
             📊 Report
           </button>
         </div>
+      </div>
+
+      <!-- Platform owner: Show Directory (see "Show Directory" in CLAUDE.md) -->
+      <div id="showDirectoryPanel" style="display:none">
+        <div class="dir-head">
+          <div style="min-width:0">
+            <h2 class="dir-title">Show Directory</h2>
+            <div class="dir-sub">Every show on CardShow. Sellers can only join shows you list.</div>
+          </div>
+          <div class="dir-head-actions">
+            <button class="btn btn-ghost" onclick="loadShowDirectory()">↻ Refresh</button>
+            <button class="btn btn-primary" style="width:auto" onclick="openDirEdit(null)">+ Add show</button>
+          </div>
+        </div>
+        <div class="dir-filters" id="dirFilters"></div>
+        <input class="show-input" id="dirSearch" type="search" placeholder="Search by name, city or state" oninput="renderShowDirectory()" autocomplete="off">
+        <div id="dirList" class="dir-list"></div>
       </div>
 
       <!-- Admin: Shows Dashboard (default tab) -->
@@ -6838,7 +6925,7 @@
       </div>
       <label class="sm-selfjoin-toggle">
         <input type="checkbox" id="smSelfJoin" checked>
-        <span><strong>Let sellers add themselves</strong><br>Any CardShow seller can join this show from their own account. You can still remove them and assign tables.</span>
+        <span><strong>Let sellers add themselves</strong><br>Once CardShow lists the show, any CardShow seller can join it from their own account. You can still remove them and assign tables.</span>
       </label>
       <div>
         <div class="section-label" style="margin-bottom:0.5rem">Authorized Sellers</div>
@@ -7090,6 +7177,56 @@
   </div>
 </div>
 
+<!-- ── SHOW DIRECTORY modals (platform owner) ── -->
+<div class="modal-overlay" id="dirEditOverlay" onclick="if(event.target===this)closeDirEdit()">
+  <div class="modal join-show-modal" role="dialog" aria-labelledby="dirEditTitle">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.6rem">
+      <div id="dirEditTitle" class="dir-modal-title">Edit show</div>
+      <button class="btn-modal-close" onclick="closeDirEdit()" aria-label="Close">✕</button>
+    </div>
+    <div class="req-grid">
+      <label class="req-field req-wide"><span>Show name *</span><input class="show-input" id="dirName" maxlength="120"></label>
+      <label class="req-field"><span>Start date</span><input class="show-input" id="dirStart" type="date"></label>
+      <label class="req-field"><span>End date</span><input class="show-input" id="dirEnd" type="date"></label>
+      <label class="req-field req-wide"><span>Venue</span><input class="show-input" id="dirVenue" maxlength="120"></label>
+      <label class="req-field"><span>City</span><input class="show-input" id="dirCity" maxlength="80"></label>
+      <label class="req-field"><span>State</span><input class="show-input" id="dirState" maxlength="2" placeholder="CA" oninput="dirStateChanged(this)"></label>
+      <label class="req-field req-wide"><span>Time zone</span><select class="show-input" id="dirTimezone"></select></label>
+      <label class="req-field req-wide"><span>Website</span><input class="show-input" id="dirWebsite" maxlength="300" placeholder="Optional"></label>
+    </div>
+    <label class="sm-selfjoin-toggle" style="margin-top:0.8rem">
+      <input type="checkbox" id="dirListAfter">
+      <span><strong>List for sellers</strong><br>Needs a start date, venue, city and state.</span>
+    </label>
+    <div class="req-actions">
+      <button class="btn btn-ghost" onclick="closeDirEdit()">Cancel</button>
+      <button class="btn btn-primary" id="dirSaveBtn" onclick="saveDirEdit()">Save</button>
+    </div>
+  </div>
+</div>
+<div class="modal-overlay" id="dirMergeOverlay" onclick="if(event.target===this)closeDirMerge()">
+  <div class="modal join-show-modal" role="dialog" aria-label="Merge shows">
+    <div class="dir-modal-title" style="margin-bottom:0.5rem">Merge a duplicate</div>
+    <div class="join-show-sub">Merge <strong id="dirMergeFrom"></strong> into the show to keep. Its sellers (with table numbers) and published cards move over, and it's unlisted. Sales already recorded stay with the old show.</div>
+    <select class="show-input" id="dirMergeInto" style="width:100%;margin:0"></select>
+    <div class="req-actions">
+      <button class="btn btn-ghost" onclick="closeDirMerge()">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmDirMerge()">Merge</button>
+    </div>
+  </div>
+</div>
+<div class="modal-overlay" id="dirLinkOverlay" onclick="if(event.target===this)closeDirLink()">
+  <div class="modal join-show-modal" role="dialog" aria-label="Link request to a show">
+    <div class="dir-modal-title" style="margin-bottom:0.5rem">Link to a listed show</div>
+    <div class="join-show-sub">The seller who asked for <strong id="dirLinkReq"></strong> is added to the show you pick.</div>
+    <select class="show-input" id="dirLinkShow" style="width:100%;margin:0"></select>
+    <div class="req-actions">
+      <button class="btn btn-ghost" onclick="closeDirLink()">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmDirLink()">Link</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── JOIN A SHOW (seller self-join). Must come before initPage(): a
      restored session can open it during page load. ── -->
 <div class="modal-overlay" id="joinShowOverlay" onclick="if(event.target===this)closeJoinShow()">
@@ -7098,10 +7235,34 @@
       <div id="joinShowTitle" style="font-family:'Bebas Neue',sans-serif;font-size:1.6rem;letter-spacing:0.04em;color:var(--text)">Join a show</div>
       <button class="btn-modal-close" onclick="closeJoinShow()" aria-label="Close">✕</button>
     </div>
-    <div id="joinShowReason" class="join-show-reason" style="display:none"></div>
-    <div class="join-show-sub" id="joinShowSub">Add the show you're vending at. The organizer can still assign your table.</div>
-    <input class="show-input" id="joinShowSearch" type="search" placeholder="Search shows by name or city" oninput="renderJoinShowList()" autocomplete="off">
-    <div id="joinShowList" class="join-show-list"></div>
+    <div id="joinShowListView">
+      <div id="joinShowReason" class="join-show-reason" style="display:none"></div>
+      <div class="join-show-sub" id="joinShowSub">Add the show you're vending at. The organizer can still assign your table.</div>
+      <input class="show-input" id="joinShowSearch" type="search" placeholder="Search shows by name or city" oninput="renderJoinShowList()" autocomplete="off">
+      <div id="joinShowList" class="join-show-list"></div>
+      <div class="join-show-request-cta">
+        <span>Can't find your show?</span>
+        <button class="btn btn-ghost join-show-request-btn" onclick="openShowRequestForm()">Request it</button>
+      </div>
+      <div id="joinShowMyRequests"></div>
+    </div>
+    <div id="joinShowRequestView" style="display:none">
+      <div class="join-show-sub">Tell us which show you're vending at. CardShow checks the details and lists it, then adds you to it.</div>
+      <div class="req-grid">
+        <label class="req-field req-wide"><span>Show name *</span><input class="show-input" id="reqName" maxlength="120" placeholder="e.g. Fresno Card Expo"></label>
+        <label class="req-field"><span>Start date *</span><input class="show-input" id="reqStart" type="date"></label>
+        <label class="req-field"><span>End date</span><input class="show-input" id="reqEnd" type="date"></label>
+        <label class="req-field req-wide"><span>Venue</span><input class="show-input" id="reqVenue" maxlength="120" placeholder="e.g. Fresno Fairgrounds"></label>
+        <label class="req-field"><span>City</span><input class="show-input" id="reqCity" maxlength="80"></label>
+        <label class="req-field"><span>State</span><input class="show-input" id="reqState" maxlength="2" placeholder="CA" style="text-transform:uppercase"></label>
+        <label class="req-field req-wide"><span>Website or event page</span><input class="show-input" id="reqWebsite" maxlength="300" placeholder="Optional"></label>
+        <label class="req-field req-wide"><span>Anything else</span><textarea class="show-input" id="reqNotes" maxlength="1000" rows="2" placeholder="Optional"></textarea></label>
+      </div>
+      <div class="req-actions">
+        <button class="btn btn-ghost" onclick="closeShowRequestForm()">Back</button>
+        <button class="btn btn-primary" id="reqSubmitBtn" onclick="submitShowRequest()">Send request</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -13173,6 +13334,7 @@ function loginAsAdmin() {
   // Show admin-only UI elements; hide seller-only sidebar modules
   document.getElementById('adminTabBar').style.display          = 'block';
   document.getElementById('adminShowsPanel').style.display      = 'block';
+  checkPlatformAdmin();
   document.getElementById('sellerQrPanel').classList.remove('visible');
   document.getElementById('sellerShowsPanel').style.display     = 'none';
   document.getElementById('sellerUploadSection').style.display  = 'none';
@@ -13277,6 +13439,9 @@ async function signOut() {
   buyerShowId   = null;
   _unsubscribeBuyerShowLive();
   _adminTab     = 'shows';
+  _isPlatformAdmin = false;
+  const dirTabOut = document.getElementById('adminTabDirectory');
+  if (dirTabOut) dirTabOut.style.display = 'none';
 
   document.getElementById('navTabSeller').style.display = '';
   document.getElementById('navTabSeller').textContent   = '⬡ Seller';
@@ -14549,7 +14714,7 @@ function _showSortKey(show) { return show.startDate || _showDateISO(show) || '99
 function _joinableShows() {
   return Object.values(shows)
     .filter(s => !(s.sellers instanceof Set && s.sellers.has(currentSeller)))
-    .filter(s => s.sellerSelfJoin !== false && !_showHasEnded(s))
+    .filter(s => s.listed !== false && !s.mergedInto && s.sellerSelfJoin !== false && !_showHasEnded(s))
     .sort((a, b) => (_showIsToday(b) - _showIsToday(a)) || _showSortKey(a).localeCompare(_showSortKey(b)));
 }
 
@@ -14563,8 +14728,10 @@ function openJoinShow(opts) {
   reason.style.display = _joinShowOpts.reason ? '' : 'none';
   document.getElementById('joinShowSub').style.display = _joinShowOpts.reason ? 'none' : '';
   document.getElementById('joinShowSearch').value = '';
+  closeShowRequestForm();
   document.getElementById('joinShowOverlay').classList.add('open');
   renderJoinShowList();
+  loadMyShowRequests();
   // Refresh the list in the background in case shows were added since login.
   loadShowsFromDB().then(ok => { if (ok && document.getElementById('joinShowOverlay').classList.contains('open')) renderJoinShowList(); });
 }
@@ -14585,12 +14752,14 @@ function renderJoinShowList() {
   else if (focus) list = [focus, ...list.filter(s => s !== focus)];
   if (q) list = list.filter(s => [s.name, s.location, s.city, s.state, s.venue, s.date].filter(Boolean).join(' ').toLowerCase().includes(q));
   if (!list.length) {
-    el.innerHTML = `<div class="join-show-empty">${q ? 'No shows match your search.' : 'No upcoming shows are open to join right now.<br>If your show isn\'t listed, ask the organizer to add you.'}</div>`;
+    el.innerHTML = `<div class="join-show-empty">${q ? 'No shows match your search.' : 'No upcoming shows are open to join right now.'}</div>`;
     return;
   }
   el.innerHTML = list.map(s => {
     const closed = s.sellerSelfJoin === false, ended = _showHasEnded(s);
-    const blocked = closed ? 'The organizer adds sellers to this show' : ended ? 'This show is over' : '';
+    const unlisted = s.listed === false || !!s.mergedInto;
+    const blocked = unlisted ? 'Not open to sellers yet. CardShow reviews each show first.'
+      : closed ? 'The organizer adds sellers to this show' : ended ? 'This show is over' : '';
     const today = _showIsToday(s) ? '<span class="join-show-today">Today</span>' : '';
     return `
       <div class="join-show-row${s === focus ? ' focus' : ''}">
@@ -14609,6 +14778,7 @@ const JOIN_SHOW_ERRORS = {
   no_seller:     'Your seller profile isn\'t set up yet',
   not_found:     'That show no longer exists',
   closed:        'The organizer adds sellers to this show',
+  not_listed:    'Not open to sellers yet. CardShow reviews each show first.',
   ended:         'This show is over',
 };
 
@@ -14652,6 +14822,79 @@ async function joinShowAsSeller(showId, btn) {
     if (typeof _helpShowSidebar === 'function' && window.innerWidth <= 599) _helpShowSidebar('sellerShowsPanel');
   }
   loadShowsFromDB().then(ok => { if (ok) { renderSellerShowsList(); if (typeof smUpdateEntryPoints === 'function') smUpdateEntryPoints(); } });
+}
+
+// ── Show requests (seller side) ── A seller asks for a show that isn't listed.
+// submit_show_request() files it; the platform owner lists the show from the
+// Show Directory, which also adds the seller to it.
+function openShowRequestForm() {
+  ['reqName','reqStart','reqEnd','reqVenue','reqCity','reqState','reqWebsite','reqNotes']
+    .forEach(id => { document.getElementById(id).value = ''; });
+  const q = (document.getElementById('joinShowSearch').value || '').trim();
+  if (q) document.getElementById('reqName').value = q;
+  document.getElementById('joinShowListView').style.display = 'none';
+  document.getElementById('joinShowRequestView').style.display = '';
+  document.getElementById('joinShowTitle').textContent = 'Request a show';
+  document.getElementById('reqName').focus();
+}
+function closeShowRequestForm() {
+  document.getElementById('joinShowRequestView').style.display = 'none';
+  document.getElementById('joinShowListView').style.display = '';
+  document.getElementById('joinShowTitle').textContent = 'Join a show';
+}
+
+const SHOW_REQUEST_ERRORS = {
+  not_signed_in:  'Sign in again to send a request',
+  no_seller:      'Your seller profile isn\'t set up yet',
+  missing_fields: 'Add the show name and start date',
+  too_many:       'You have 10 requests waiting already. We\'ll get to them soon.',
+};
+
+async function submitShowRequest() {
+  const v = id => document.getElementById(id).value.trim();
+  const req = {
+    name: v('reqName'), start_date: v('reqStart'), end_date: v('reqEnd'),
+    venue: v('reqVenue'), city: v('reqCity'), state: v('reqState').toUpperCase(),
+    website: v('reqWebsite'), notes: v('reqNotes'),
+  };
+  if (!req.name || !req.start_date) { showToast('Add the show name and start date', '#ef4444'); return; }
+  if (req.end_date && req.end_date < req.start_date) { showToast('End date must be on or after the start date', '#ef4444'); return; }
+  if (req.state && !/^[A-Z]{2}$/.test(req.state)) { showToast('Use the 2-letter state code, like CA', '#ef4444'); return; }
+  const btn = document.getElementById('reqSubmitBtn');
+  btn.disabled = true; btn.textContent = 'Sending…';
+  let err = null, data = null;
+  try {
+    const r = await db.rpc('submit_show_request', { p: req });
+    if (r.error) err = (r.error.code === 'PGRST202' || /submit_show_request/.test(r.error.message || ''))
+      ? 'Show requests aren\'t set up yet. Email support@getcardshow.com with the show details.'
+      : r.error.message;
+    else data = r.data;
+  } catch (e) { err = e.message; }
+  btn.disabled = false; btn.textContent = 'Send request';
+  if (!err && data && data.error) err = SHOW_REQUEST_ERRORS[data.error] || data.error;
+  if (err) { showToast(/fetch|network/i.test(err) ? 'No connection — try again' : err, '#ef4444'); return; }
+  showToast(data.already ? 'You already asked for this show. We\'ll add you once it\'s listed.'
+                         : 'Request sent. We\'ll add you to the show once it\'s listed.');
+  closeShowRequestForm();
+  loadMyShowRequests();
+}
+
+async function loadMyShowRequests() {
+  const el = document.getElementById('joinShowMyRequests');
+  if (!el || typeof db === 'undefined') return;
+  const { data, error } = await db.from('show_requests')
+    .select('id, name, start_date, status, show_id, review_note, created_at')
+    .order('created_at', { ascending: false }).limit(10);
+  if (error || !data || !data.length) { el.innerHTML = ''; return; }
+  const label = { pending: 'Waiting for review', listed: 'Listed · you\'re in', declined: 'Not listed' };
+  el.innerHTML = `<div class="join-show-myreq-title">Your requests</div>` + data.map(r => `
+    <div class="join-show-myreq">
+      <div style="min-width:0">
+        <div class="join-show-myreq-name">${_escHtml(r.name)}</div>
+        <div class="join-show-meta">${_escHtml(_formatShowDateRange(r.start_date, null))}${r.review_note ? ' · ' + _escHtml(r.review_note) : ''}</div>
+      </div>
+      <span class="join-show-myreq-status ${r.status}">${label[r.status] || r.status}</span>
+    </div>`).join('');
 }
 
 // Before the self-join migration runs: plain insert (show_sellers RLS is
@@ -17324,6 +17567,10 @@ function switchAdminTab(tab) {
 
   const showsTab    = document.getElementById('adminTabShows');
   const reportTab   = document.getElementById('adminTabReport');
+  const dirTab      = document.getElementById('adminTabDirectory');
+  const dirPanel    = document.getElementById('showDirectoryPanel');
+  if (dirTab) dirTab.classList.remove('active');
+  if (dirPanel) dirPanel.style.display = 'none';
   const dashboard   = document.getElementById('adminShowsDashboard');
   const invPanel    = document.getElementById('adminInventoryPanel');
   const reportPanel = document.getElementById('adminReportPanel');
@@ -17332,7 +17579,11 @@ function switchAdminTab(tab) {
   [showsTab, reportTab].forEach(t => t && t.classList.remove('active'));
   [dashboard, invPanel, reportPanel].forEach(p => p && (p.style.display = 'none'));
 
-  if (tab === 'report') {
+  if (tab === 'directory') {
+    dirTab && dirTab.classList.add('active');
+    if (dirPanel) dirPanel.style.display = 'block';
+    loadShowDirectory();
+  } else if (tab === 'report') {
     reportTab && reportTab.classList.add('active');
     if (invPanel) {
       invPanel.style.display = 'block';
@@ -17353,6 +17604,379 @@ function switchAdminTab(tab) {
     if (dashboard) dashboard.style.display = 'block';
     renderAdminShowsDashboard();
   }
+}
+
+// ── SHOW DIRECTORY (platform owner) ─────────────────────────────────
+// The platform owner curates which shows sellers can join: list/unlist,
+// edit the structured fields, merge duplicates, and work through seller
+// requests. Server rules live in 20261028120000_show_directory.sql; only an
+// account in platform_admins gets the tab (is_platform_admin()).
+let _isPlatformAdmin = false;
+let _dirShows = [];          // raw shows rows, every organizer's
+let _dirSellerCounts = {};   // show_id → number of sellers
+let _dirRequests = [];       // pending show_requests
+let _dirHandles = {};        // seller uuid → handle
+let _dirFilter = null;       // 'requests' | 'needs' | 'unlisted' | 'listed' | 'all'
+let _dirEditId = null;       // show being edited, null = new
+let _dirEditRequestId = null;
+let _dirMergeFrom = null;
+let _dirLinkRequestId = null;
+
+const DIR_TIMEZONES = [
+  ['America/New_York', 'Eastern'], ['America/Chicago', 'Central'], ['America/Denver', 'Mountain'],
+  ['America/Phoenix', 'Arizona'], ['America/Los_Angeles', 'Pacific'], ['America/Anchorage', 'Alaska'],
+  ['Pacific/Honolulu', 'Hawaii'], ['America/Puerto_Rico', 'Puerto Rico'], ['America/Toronto', 'Toronto'],
+  ['America/Vancouver', 'Vancouver'],
+];
+// Best guess from the state, used only to pre-fill an empty time zone.
+const DIR_STATE_TZ = (() => {
+  const m = {};
+  'CA WA OR NV'.split(' ').forEach(s => m[s] = 'America/Los_Angeles');
+  'CO UT NM MT WY ID'.split(' ').forEach(s => m[s] = 'America/Denver');
+  'TX IL MN WI MO LA OK KS NE IA AR MS AL TN SD ND'.split(' ').forEach(s => m[s] = 'America/Chicago');
+  'NY NJ PA MA CT RI VT NH ME MD DE DC VA WV NC SC GA FL OH MI IN KY'.split(' ').forEach(s => m[s] = 'America/New_York');
+  m.AZ = 'America/Phoenix'; m.HI = 'Pacific/Honolulu'; m.AK = 'America/Anchorage'; m.PR = 'America/Puerto_Rico';
+  return m;
+})();
+
+async function checkPlatformAdmin() {
+  _isPlatformAdmin = false;
+  const tab = document.getElementById('adminTabDirectory');
+  if (tab) tab.style.display = 'none';
+  if (typeof db === 'undefined') return;
+  try {
+    const { data, error } = await db.rpc('is_platform_admin');
+    if (error || data !== true || currentRole !== 'admin') return;
+    _isPlatformAdmin = true;
+    if (tab) tab.style.display = '';
+    _dirRefreshBadge();
+  } catch (_) { /* migration not run: no directory */ }
+}
+
+async function _dirRefreshBadge() {
+  const badge = document.getElementById('dirTabBadge');
+  if (!badge) return;
+  const { data } = await db.from('show_requests').select('id').eq('status', 'pending');
+  const n = (data || []).length;
+  badge.textContent = n;
+  badge.style.display = n ? '' : 'none';
+}
+
+// Same rules as set_show_listed() on the server.
+function _dirMissing(r) {
+  const miss = [];
+  if (!String(r.name || '').trim()) miss.push('name');
+  if (!r.start_date) miss.push('start date');
+  if (!String(r.venue || '').trim()) miss.push('venue');
+  if (!String(r.city || '').trim()) miss.push('city');
+  if (!/^[A-Z]{2}$/.test(r.state || '')) miss.push('state');
+  return miss;
+}
+function _dirBucket(r) {
+  if (r.merged_into) return 'merged';
+  if (r.listed) return 'listed';
+  return _dirMissing(r).length ? 'needs' : 'unlisted';
+}
+function _dirLocation(r) { return [r.venue, r.city, r.state].filter(Boolean).join(', '); }
+function _dirDates(r) { return r.start_date ? _formatShowDateRange(r.start_date, r.end_date) : (r.date || 'No dates'); }
+function _dirOverlaps(a, b) {
+  if (!a.start_date || !b.start_date) return false;
+  return a.start_date <= (b.end_date || b.start_date) && b.start_date <= (a.end_date || a.start_date);
+}
+// Other non-merged shows in the same city and state with overlapping dates.
+function _dirPossibleDuplicates(r) {
+  const city = String(r.city || '').trim().toLowerCase();
+  if (!city) return [];
+  return _dirShows.filter(o => o.id !== r.id && !o.merged_into
+    && String(o.city || '').trim().toLowerCase() === city && (o.state || '') === (r.state || '')
+    && _dirOverlaps(o, r));
+}
+
+async function loadShowDirectory() {
+  const list = document.getElementById('dirList');
+  if (!list || !_isPlatformAdmin) return;
+  list.innerHTML = '<div class="dir-empty">Loading shows…</div>';
+  try {
+    const [showsRes, ssRes, reqRes] = await Promise.all([
+      dbSelectAllPages(() => db.from('shows').select('*').order('id')),
+      dbSelectAllPages(() => db.from('show_sellers').select('show_id, seller_id').order('show_id')),
+      db.from('show_requests').select('*').eq('status', 'pending').order('created_at'),
+    ]);
+    if (showsRes.error) throw new Error(showsRes.error.message);
+    _dirShows = showsRes.data || [];
+    _dirSellerCounts = {};
+    (ssRes.data || []).forEach(r => { _dirSellerCounts[r.show_id] = (_dirSellerCounts[r.show_id] || 0) + 1; });
+    _dirRequests = reqRes.data || [];
+    const ids = [...new Set(_dirRequests.map(r => r.seller_id))];
+    _dirHandles = {};
+    if (ids.length) {
+      const { data } = await db.from('sellers').select('id, handle').in('id', ids);
+      (data || []).forEach(r => { _dirHandles[r.id] = r.handle; });
+    }
+  } catch (e) {
+    list.innerHTML = `<div class="dir-empty">Couldn't load the directory: ${_escHtml(e.message || 'error')}</div>`;
+    return;
+  }
+  if (!_dirFilter) _dirFilter = _dirRequests.length ? 'requests' : 'unlisted';
+  _dirRefreshBadge();
+  renderShowDirectory();
+}
+
+function setDirFilter(f) { _dirFilter = f; renderShowDirectory(); }
+
+function renderShowDirectory() {
+  const list = document.getElementById('dirList');
+  if (!list) return;
+  const counts = { requests: _dirRequests.length, needs: 0, unlisted: 0, listed: 0, all: _dirShows.length };
+  _dirShows.forEach(r => { const b = _dirBucket(r); if (counts[b] !== undefined) counts[b]++; });
+  const labels = { requests: 'Requests', needs: 'Needs info', unlisted: 'Ready to list', listed: 'Listed', all: 'All' };
+  document.getElementById('dirFilters').innerHTML = Object.keys(labels).map(k =>
+    `<button class="dir-filter${_dirFilter === k ? ' active' : ''}" onclick="setDirFilter('${k}')">${labels[k]} <span>${counts[k]}</span></button>`).join('');
+
+  const q = (document.getElementById('dirSearch').value || '').trim().toLowerCase();
+  const match = (...parts) => !q || parts.filter(Boolean).join(' ').toLowerCase().includes(q);
+
+  if (_dirFilter === 'requests') {
+    const reqs = _dirRequests.filter(r => match(r.name, r.city, r.state, r.venue));
+    list.innerHTML = reqs.length ? reqs.map(_dirRequestHTML).join('')
+      : '<div class="dir-empty">No requests waiting.</div>';
+    return;
+  }
+  const rows = _dirShows
+    .filter(r => _dirFilter === 'all' || _dirBucket(r) === _dirFilter)
+    .filter(r => match(r.name, r.city, r.state, r.venue, r.slug))
+    .sort((a, b) => (a.start_date || '9999').localeCompare(b.start_date || '9999') || String(a.name).localeCompare(String(b.name)));
+  list.innerHTML = rows.length ? rows.map(_dirShowHTML).join('')
+    : `<div class="dir-empty">${_dirFilter === 'needs' ? 'Every unlisted show has its details filled in.' : 'No shows here.'}</div>`;
+}
+
+function _dirShowHTML(r) {
+  const bucket = _dirBucket(r);
+  const miss = _dirMissing(r);
+  const dups = bucket === 'merged' ? [] : _dirPossibleDuplicates(r);
+  const target = r.merged_into && _dirShows.find(o => o.id === r.merged_into);
+  const badge = bucket === 'listed' ? '<span class="dir-badge listed">Listed</span>'
+    : bucket === 'merged' ? '<span class="dir-badge">Merged</span>'
+    : '<span class="dir-badge">Not listed</span>';
+  const owner = r.created_by && r.created_by === window._currentAdminUid ? 'You' : 'Another organizer';
+  return `
+    <div class="dir-row" data-show-id="${_escHtml(r.id)}">
+      <div class="dir-row-main">
+        <div class="dir-row-name">${_escHtml(r.name || 'Untitled show')} ${badge}</div>
+        <div class="dir-row-meta">${_escHtml(_dirDates(r))}${_dirLocation(r) ? ' · ' + _escHtml(_dirLocation(r)) : ''}</div>
+        <div class="dir-row-meta">${_dirSellerCounts[r.id] || 0} sellers · created by ${owner}${r.slug ? ' · ' + _escHtml(r.slug) : ''}</div>
+        ${miss.length && bucket !== 'merged' ? `<div class="dir-warn">Needs: ${miss.join(', ')}</div>` : ''}
+        ${dups.length ? `<div class="dir-warn">Possible duplicate of ${dups.map(d => _escHtml(d.name)).join(', ')} (same city, same dates)</div>` : ''}
+        ${target ? `<div class="dir-row-meta">Merged into ${_escHtml(target.name)}</div>` : ''}
+      </div>
+      <div class="dir-row-actions">
+        ${bucket === 'merged' ? '' : `
+          <button class="btn btn-ghost dir-btn" onclick="openDirEdit('${r.id}')">Edit</button>
+          ${r.listed
+            ? `<button class="btn btn-ghost dir-btn" onclick="dirSetListed('${r.id}', false)">Unlist</button>`
+            : `<button class="btn btn-primary dir-btn" onclick="dirSetListed('${r.id}', true)">List</button>`}
+          <button class="btn btn-ghost dir-btn" onclick="openDirMerge('${r.id}')">Merge…</button>`}
+      </div>
+    </div>`;
+}
+
+// Listed shows that look like the requested one: shared name words, or the
+// same city on overlapping dates.
+function _dirRequestMatches(req) {
+  const words = String(req.name).toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 2 && !['show', 'card', 'cards', 'the'].includes(w));
+  return _dirShows.filter(s => s.listed && !s.merged_into).filter(s => {
+    const name = String(s.name || '').toLowerCase();
+    const nameHit = words.length && words.filter(w => name.includes(w)).length >= Math.min(2, words.length);
+    const placeHit = req.city && String(s.city || '').toLowerCase() === String(req.city).toLowerCase() && _dirOverlaps(s, req);
+    return nameHit || placeHit;
+  }).slice(0, 3);
+}
+
+function _dirRequestHTML(req) {
+  const handle = _dirHandles[req.seller_id];
+  const loc = [req.venue, req.city, req.state].filter(Boolean).join(', ');
+  const matches = _dirRequestMatches(req);
+  const site = req.website && /^https?:\/\//i.test(req.website)
+    ? `<a href="${_escHtml(req.website)}" target="_blank" rel="noopener">${_escHtml(req.website)}</a>` : _escHtml(req.website || '');
+  return `
+    <div class="dir-row dir-req" data-request-id="${req.id}">
+      <div class="dir-row-main">
+        <div class="dir-row-name">${_escHtml(req.name)} <span class="dir-badge req">Request</span></div>
+        <div class="dir-row-meta">${_escHtml(_formatShowDateRange(req.start_date, req.end_date))}${loc ? ' · ' + _escHtml(loc) : ''}</div>
+        ${site ? `<div class="dir-row-meta">${site}</div>` : ''}
+        ${req.notes ? `<div class="dir-row-meta">“${_escHtml(req.notes)}”</div>` : ''}
+        <div class="dir-row-meta">From ${handle ? '@' + _escHtml(handle) : 'a seller'} · ${_escHtml(new Date(req.created_at).toLocaleString())}</div>
+        ${matches.length ? `<div class="dir-matches">Already listed? ${matches.map(m =>
+          `<button class="btn btn-ghost dir-btn" onclick="dirResolveRequest('${req.id}', 'listed', '${m.id}')">Link to ${_escHtml(m.name)} (${_escHtml(_dirDates(m))})</button>`).join('')}</div>` : ''}
+      </div>
+      <div class="dir-row-actions">
+        <button class="btn btn-primary dir-btn" onclick="openDirEdit(null, '${req.id}')">Create &amp; list</button>
+        <button class="btn btn-ghost dir-btn" onclick="openDirLink('${req.id}')">Link to a show…</button>
+        <button class="btn btn-ghost dir-btn" onclick="dirDeclineRequest('${req.id}')">Decline</button>
+      </div>
+    </div>`;
+}
+
+// ── Edit / create ──
+function openDirEdit(showId, requestId) {
+  _dirEditId = showId || null;
+  _dirEditRequestId = requestId || null;
+  const r = showId ? (_dirShows.find(s => s.id === showId) || {}) : {};
+  const req = requestId ? (_dirRequests.find(x => x.id === requestId) || {}) : {};
+  const src = showId ? r : req;
+  const set = (id, v) => { document.getElementById(id).value = v || ''; };
+  set('dirName', src.name); set('dirStart', src.start_date); set('dirEnd', src.end_date);
+  set('dirVenue', src.venue); set('dirCity', src.city); set('dirState', src.state);
+  set('dirWebsite', src.website);
+  const tz = document.getElementById('dirTimezone');
+  tz.innerHTML = '<option value="">Time zone…</option>' + DIR_TIMEZONES.map(([v, l]) => `<option value="${v}">${l} (${v})</option>`).join('')
+    + (r.timezone && !DIR_TIMEZONES.some(([v]) => v === r.timezone) ? `<option value="${_escHtml(r.timezone)}">${_escHtml(r.timezone)}</option>` : '');
+  tz.value = r.timezone || DIR_STATE_TZ[(src.state || '').toUpperCase()] || '';
+  const listBox = document.getElementById('dirListAfter');
+  listBox.checked = !!requestId || !showId || !!r.listed;
+  document.getElementById('dirEditTitle').textContent = requestId ? 'Create show from request' : showId ? 'Edit show' : 'Add show';
+  document.getElementById('dirEditOverlay').classList.add('open');
+  document.getElementById('dirName').focus();
+}
+function closeDirEdit() { document.getElementById('dirEditOverlay').classList.remove('open'); }
+function dirStateChanged(el) {
+  el.value = el.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 2);
+  const tz = document.getElementById('dirTimezone');
+  if (!tz.value && DIR_STATE_TZ[el.value]) tz.value = DIR_STATE_TZ[el.value];
+}
+
+function _dirGenAccessCode() {
+  const used = new Set(_dirShows.map(s => s.access_code));
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code;
+  do { code = Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join(''); } while (used.has(code));
+  return code;
+}
+
+async function saveDirEdit() {
+  const v = id => document.getElementById(id).value.trim();
+  const f = {
+    name: v('dirName'), start_date: v('dirStart') || null, end_date: v('dirEnd') || null,
+    venue: v('dirVenue'), city: v('dirCity'), state: v('dirState').toUpperCase(),
+    timezone: v('dirTimezone') || null, website: v('dirWebsite') || null,
+  };
+  if (!f.name) { showToast('Show name is required', '#ef4444'); return; }
+  if (f.end_date && f.start_date && f.end_date < f.start_date) { showToast('End date must be on or after the start date', '#ef4444'); return; }
+  if (f.state && !/^[A-Z]{2}$/.test(f.state)) { showToast('Use the 2-letter state code, like CA', '#ef4444'); return; }
+  if (!f.end_date) f.end_date = f.start_date;
+  const listAfter = document.getElementById('dirListAfter').checked;
+  if (listAfter) {
+    const miss = _dirMissing(f);
+    if (miss.length) { showToast(`To list it, fill in: ${miss.join(', ')}`, '#ef4444'); return; }
+  }
+  const dups = _dirPossibleDuplicates({ ...f, id: _dirEditId });
+  if (dups.length && !confirm(`This looks like ${dups.map(d => `${d.name} (${_dirDates(d)})`).join(', ')}, same city and dates.\n\nSave it anyway? Use Merge if it's the same show.`)) return;
+
+  const row = {
+    ...f,
+    venue: f.venue || null, city: f.city || null, state: f.state || null,
+    date: f.start_date ? _formatShowDateRange(f.start_date, f.end_date) : null,
+    location: _dirLocation(f) || null,
+  };
+  const btn = document.getElementById('dirSaveBtn');
+  btn.disabled = true;
+  let id = _dirEditId, error;
+  if (id) {
+    ({ error } = await db.from('shows').update(row).eq('id', id));
+  } else {
+    id = genShowId();
+    ({ error } = await db.from('shows').insert({
+      id, ...row, status: 'upcoming', access_code: _dirGenAccessCode(),
+      created_by: window._currentAdminUid || null, seller_self_join: true,
+    }));
+  }
+  if (!error && listAfter) {
+    const r = await db.rpc('set_show_listed', { p_show_id: id, p_listed: true });
+    error = r.error || (r.data && r.data.error ? { message: r.data.error === 'missing_fields' ? 'Fill in: ' + r.data.fields.join(', ') : r.data.error } : null);
+  }
+  if (!error && _dirEditRequestId) {
+    const r = await db.rpc('resolve_show_request', { p_request_id: _dirEditRequestId, p_action: 'listed', p_show_id: id, p_note: null });
+    error = r.error || (r.data && r.data.error ? { message: r.data.error } : null);
+  }
+  btn.disabled = false;
+  if (error) { showToast('Couldn\'t save: ' + error.message, '#ef4444'); return; }
+  showToast(_dirEditRequestId ? `${f.name} is listed and the seller was added` : listAfter ? `${f.name} is listed` : `${f.name} saved`);
+  closeDirEdit();
+  await loadShowDirectory();
+  loadShowsFromDB().then(() => renderAdminShowsDashboard());
+}
+
+async function dirSetListed(showId, listed) {
+  const r0 = _dirShows.find(s => s.id === showId);
+  if (listed && r0) {
+    const miss = _dirMissing(r0);
+    if (miss.length) { showToast(`Fill in ${miss.join(', ')} first`, '#ef4444'); openDirEdit(showId); return; }
+    const dups = _dirPossibleDuplicates(r0).filter(d => d.listed);
+    if (dups.length && !confirm(`${dups.map(d => d.name).join(', ')} is already listed for the same city and dates.\n\nList this one too? Use Merge if it's the same show.`)) return;
+  }
+  if (!listed && !confirm(`Unlist ${r0 ? r0.name : 'this show'}? Sellers already in it stay in it, but no one new can join.`)) return;
+  const { data, error } = await db.rpc('set_show_listed', { p_show_id: showId, p_listed: listed });
+  const err = error ? error.message : data && data.error ? (data.error === 'missing_fields' ? 'Fill in: ' + data.fields.join(', ') : data.error) : null;
+  if (err) { showToast('Couldn\'t update: ' + err, '#ef4444'); return; }
+  showToast(listed ? 'Listed. Sellers can join it now.' : 'Unlisted');
+  loadShowDirectory();
+}
+
+// ── Merge ──
+function openDirMerge(fromId) {
+  _dirMergeFrom = fromId;
+  const from = _dirShows.find(s => s.id === fromId);
+  const options = _dirShows.filter(s => s.id !== fromId && !s.merged_into)
+    .sort((a, b) => (b.listed - a.listed) || (a.start_date || '9999').localeCompare(b.start_date || '9999'));
+  const dups = new Set(_dirPossibleDuplicates(from).map(d => d.id));
+  document.getElementById('dirMergeFrom').textContent = `${from.name} (${_dirDates(from)})`;
+  document.getElementById('dirMergeInto').innerHTML = '<option value="">Choose the show to keep…</option>' + options.map(s =>
+    `<option value="${_escHtml(s.id)}"${dups.has(s.id) ? ' selected' : ''}>${_escHtml(s.name)} · ${_escHtml(_dirDates(s))}${s.city ? ' · ' + _escHtml(s.city) : ''}${s.listed ? ' · listed' : ''}</option>`).join('');
+  document.getElementById('dirMergeOverlay').classList.add('open');
+}
+function closeDirMerge() { document.getElementById('dirMergeOverlay').classList.remove('open'); }
+async function confirmDirMerge() {
+  const into = document.getElementById('dirMergeInto').value;
+  if (!into) { showToast('Choose the show to keep', '#ef4444'); return; }
+  const { data, error } = await db.rpc('merge_shows', { p_from: _dirMergeFrom, p_into: into });
+  const err = error ? error.message : data && data.error;
+  if (err) { showToast('Couldn\'t merge: ' + err, '#ef4444'); return; }
+  showToast(`Merged · ${data.sellers_moved} sellers and ${data.cards_moved} cards moved`);
+  closeDirMerge();
+  await loadShowDirectory();
+  loadShowsFromDB().then(() => renderAdminShowsDashboard());
+}
+
+// ── Requests ──
+function openDirLink(requestId) {
+  _dirLinkRequestId = requestId;
+  const req = _dirRequests.find(r => r.id === requestId);
+  const matches = new Set(_dirRequestMatches(req).map(m => m.id));
+  const listed = _dirShows.filter(s => s.listed && !s.merged_into)
+    .sort((a, b) => (matches.has(b.id) - matches.has(a.id)) || (a.start_date || '9999').localeCompare(b.start_date || '9999'));
+  document.getElementById('dirLinkReq').textContent = `${req.name} (${_formatShowDateRange(req.start_date, req.end_date)})`;
+  document.getElementById('dirLinkShow').innerHTML = '<option value="">Choose a listed show…</option>' + listed.map(s =>
+    `<option value="${_escHtml(s.id)}">${_escHtml(s.name)} · ${_escHtml(_dirDates(s))}${s.city ? ' · ' + _escHtml(s.city) : ''}</option>`).join('');
+  document.getElementById('dirLinkOverlay').classList.add('open');
+}
+function closeDirLink() { document.getElementById('dirLinkOverlay').classList.remove('open'); }
+function confirmDirLink() {
+  const showId = document.getElementById('dirLinkShow').value;
+  if (!showId) { showToast('Choose a listed show', '#ef4444'); return; }
+  closeDirLink();
+  dirResolveRequest(_dirLinkRequestId, 'listed', showId);
+}
+function dirDeclineRequest(requestId) {
+  const note = prompt('Decline this request? Optional note for the seller (e.g. "Not a card show"):', '');
+  if (note === null) return;
+  dirResolveRequest(requestId, 'declined', null, note);
+}
+async function dirResolveRequest(requestId, action, showId, note) {
+  const { data, error } = await db.rpc('resolve_show_request', { p_request_id: requestId, p_action: action, p_show_id: showId, p_note: note || null });
+  const err = error ? error.message : data && data.error;
+  if (err) { showToast('Couldn\'t update the request: ' + err, '#ef4444'); return; }
+  showToast(action === 'listed' ? 'Linked. The seller was added to the show.' : 'Request declined');
+  loadShowDirectory();
 }
 
 // ── ADMIN SHOWS DASHBOARD ──
@@ -17418,6 +18042,9 @@ function renderAdminShowsDashboard() {
             ${[s.date, s.location].filter(Boolean).join(' · ')}
             &nbsp;·&nbsp; 🔑 <strong>${s.accessCode}</strong>
             &nbsp;·&nbsp; ${setupLabel}
+            &nbsp;·&nbsp; ${s.listed !== false
+              ? '<span class="asc-listed yes" title="Sellers can find and join this show">Listed for sellers</span>'
+              : '<span class="asc-listed" title="CardShow reviews new shows before sellers can join them. You can still add sellers yourself.">Not listed yet · CardShow reviews new shows</span>'}
           </div>
         </div>
         <div class="asc-stats">
@@ -19787,6 +20414,13 @@ async function loadShowsFromDB() {
         tables:      tablesByShow[row.id]  || {},
         selfJoined:  selfJoinedByShow[row.id] || new Set(),   // handles that joined themselves
         sellerSelfJoin: row.seller_self_join !== false,       // organizer switch, on by default
+        // Show directory: only listed shows can be joined by sellers. Before the
+        // directory migration the column doesn't exist, so every show counts as listed.
+        listed:      row.listed !== false,
+        slug:        row.slug        || null,
+        timezone:    row.timezone    || null,
+        website:     row.website     || null,
+        mergedInto:  row.merged_into || null,
       };
     });
 
