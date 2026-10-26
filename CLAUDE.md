@@ -4790,6 +4790,7 @@ How it's set:
 - **Dashboard:** each show card has a status label (`.asc-status`) next to the name.
 - **Dashboard order** (`_sortShowsForDashboard()`): Active (Live) first, then Upcoming (soonest first),
   then Past (most recent first). Shows with no date go last in their group.
+  The Show Directory list uses the same order (status worked out per row with `_showStatusForRow()`).
 - **show.html:** `_statusFromDateText()` works it out from the date text in `loadShowMetaFromDB()`.
 - **Database:** `refresh_show_statuses()` updates `shows.status` for shows that have a `start_date`.
   "Today" is in `shows.timezone`, else America/Los_Angeles, so a US show never turns Past early.

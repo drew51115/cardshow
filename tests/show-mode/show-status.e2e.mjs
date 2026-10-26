@@ -24,6 +24,7 @@ await page.waitForTimeout(400);
 await page.evaluate(d => {
   const S = window.__srv;
   S.admins = [{ id: 'u1' }];
+  S.platform_admins = [{ id: 'u1' }];
   // Stored statuses are all wrong on purpose.
   S.shows = [
     { id: 'show_past',   name: 'Past Show',   start_date: d.m10, end_date: d.m8, status: 'active',   access_code: 'PST', created_by: 'u1' },
@@ -53,6 +54,12 @@ check('dashboard shows the derived labels', await page.evaluate(() => ['show_pas
 
 const order = await page.evaluate(() => [...document.querySelectorAll('#adminShowsGrid .admin-show-card')].map(e => e.dataset.showid).join(','));
 check('dashboard order: active, upcoming, past (newest first)', order === 'show_live,show_none,show_future,show_past,show_text', order);
+
+await page.click('#adminTabDirectory'); await page.waitForTimeout(600);
+await page.click('.dir-filter:has-text("All")'); await page.waitForTimeout(200);
+const dirOrder = await page.evaluate(() => [...document.querySelectorAll('#dirList [data-show-id]')].map(e => e.dataset.showId).join(','));
+check('Show Directory order matches the dashboard', dirOrder === 'show_live,show_none,show_future,show_past,show_text', dirOrder);
+await page.evaluate(() => switchAdminTab('shows')); await page.waitForTimeout(300);
 
 // Modal: no manual status; preview follows the dates.
 await page.evaluate(() => openCreateShowModal('show_future'));

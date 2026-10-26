@@ -17799,9 +17799,12 @@ function renderShowDirectory() {
   }
   const rows = _dirShows
     .filter(r => _dirFilter === 'all' || _dirBucket(r) === _dirFilter)
-    .filter(r => match(r.name, r.city, r.state, r.venue, r.slug))
-    .sort((a, b) => (a.start_date || '9999').localeCompare(b.start_date || '9999') || String(a.name).localeCompare(String(b.name)));
-  list.innerHTML = rows.length ? rows.map(_dirShowHTML).join('')
+    .filter(r => match(r.name, r.city, r.state, r.venue, r.slug));
+  const sorted = _sortShowsForDashboard(rows.map(r => ({
+    row: r, name: r.name, status: _showStatusForRow(r),
+    startDate: r.start_date || null, endDate: r.end_date || null, date: r.date || '', timezone: r.timezone || null,
+  }))).map(x => x.row);
+  list.innerHTML = sorted.length ? sorted.map(_dirShowHTML).join('')
     : `<div class="dir-empty">${_dirFilter === 'needs' ? 'Every unlisted show has its details filled in.' : 'No shows here.'}</div>`;
 }
 
