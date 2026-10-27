@@ -40,7 +40,7 @@
         if (table==='card_captures') return Promise.resolve({data:null,error:{message:'relation "card_captures" does not exist',code:'42P01'},status:404}).then(res,rej); const T = (S[table] = S[table] || []);
         let out = { data: null, error: null, status: 200 };
         const match = r => filters.every(f => f(r));
-        if (op === 'select') { const d = T.filter(match); out.data = single ? (d[0]||null) : d; }
+        if (op === 'select') { const d = T.filter(match); out.data = single ? (d[0]||null) : d; out.count = d.length; }
         else if (op === 'insert' || op === 'upsert') {
           const list = Array.isArray(payload) ? payload : [payload];
           for (const p of list) {

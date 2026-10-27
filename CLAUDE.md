@@ -48,6 +48,7 @@ netlify/functions/card-image.js   → Serverless: GET ?id=<CardSight catalog id>
 supabase/migrations/20261030120000_show_mode_images.sql → inventory.catalog_card_id, sellers.share_handle, backfill of existing photos — see "Phase 4"
 supabase/migrations/20261027120000_seller_self_join.sql → show_sellers.self_joined/joined_at, shows.seller_self_join, join_show_as_seller()/leave_show_as_seller() — see "Seller Self-Join"
 supabase/migrations/20261028120000_show_directory.sql → shows.listed/slug/timezone/website/merged_into, platform_admins, show_requests, set_show_listed()/submit_show_request()/resolve_show_request()/merge_shows() — see "Show Directory"
+supabase/migrations/20261031120000_delete_show.sql → delete_show() for the Show Directory (platform owner; refuses shows with recorded sales)
 supabase/migrations/20261023120000_show_mode_sales.sql → sales + card_captures tables, private card-captures bucket, record_sale()/void_sale() — see "Show Mode v2"
 tests/show-mode/                  → Playwright + SQL tests for Show Mode (see its README)
 sw.js                             → Service worker: offline app shell (network-first app.html, cached scripts/fonts); never caches Supabase or functions — see "Show Mode v2"
@@ -260,6 +261,9 @@ Required for the Show Directory (see "Show Directory" below), after the self-joi
 `insert into public.platform_admins (id) values ('<your auth.users id>');`. **Every existing show
 starts unlisted**, so sellers see no shows to join until you list them. Before it runs, every
 show counts as listed and the directory tab doesn't appear.
+
+Required for deleting shows from the Show Directory: `supabase/migrations/20261031120000_delete_show.sql`.
+Until it runs, Delete still works from the client (same sales check, direct deletes).
 
 Required for automatic show status in the database (see "Automatic Show Status"), after the
 self-join migration: `supabase/migrations/20261029120000_show_auto_status.sql`. Until it runs, the
@@ -4839,6 +4843,14 @@ approval; seller requests included; recurring series not built).
     skipping ones already in the target) and published cards, repoints requests, then unlists the
     duplicate, closes it to self-join and sets `merged_into`. The duplicate row is kept because
     `show_floor_transactions` (immutable) points at it, so its recorded sales stay with it.
+  - **Delete** (`dirDeleteShow()` → `delete_show(id)`, migration `20261031120000_delete_show.sql`):
+    asks to confirm (says how many sellers are in it), then removes the show, its `show_sellers`
+    and `show_inventory` rows and its `show_events`. Sellers' cards stay in their inventory. A
+    request linked to it goes back to pending; a show merged into it is unlinked. **Refused for
+    a show with any `show_floor_transactions` row** (the ledger is immutable and points at it):
+    the toast says to unlist or merge it instead. Available on every row, merged ones included.
+    Before the migration, `_dirDeleteShowFallback()` does the same check and deletes from the
+    client.
 - **Requests (`show_requests`):** sellers tap **Can't find your show? Request it** in Join a show
   (`openShowRequestForm()` / `submitShowRequest()` → `submit_show_request()`; name + start date
   required; same name + date returns the existing request; max 10 pending per seller). The

@@ -1844,6 +1844,7 @@
   .dir-matches { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; margin-top: 0.45rem; font-size: 0.78rem; color: var(--muted); }
   .dir-row-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
   .dir-btn { width: auto !important; min-height: 40px; padding: 0 0.8rem; font-size: 0.8rem; }
+  .dir-btn-danger { color: #ef4444 !important; border-color: rgba(239,68,68,0.45) !important; }
   .dir-badge {
     font-family: 'DM Mono', monospace; font-size: 0.58rem; letter-spacing: 0.08em; text-transform: uppercase;
     color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 0.06rem 0.32rem; vertical-align: middle;
@@ -17942,6 +17943,7 @@ function _dirShowHTML(r) {
             ? `<button class="btn btn-ghost dir-btn" onclick="dirSetListed('${r.id}', false)">Unlist</button>`
             : `<button class="btn btn-primary dir-btn" onclick="dirSetListed('${r.id}', true)">List</button>`}
           <button class="btn btn-ghost dir-btn" onclick="openDirMerge('${r.id}')">Merge…</button>`}
+        <button class="btn btn-ghost dir-btn dir-btn-danger" onclick="dirDeleteShow('${r.id}')">Delete</button>
       </div>
     </div>`;
 }
@@ -18088,6 +18090,45 @@ async function dirSetListed(showId, listed) {
   if (err) { showToast('Couldn\'t update: ' + err, '#ef4444'); return; }
   showToast(listed ? 'Listed. Sellers can join it now.' : 'Unlisted');
   loadShowDirectory();
+}
+
+// ── Delete ──
+// delete_show() refuses a show with recorded sales (the sales ledger is
+// immutable and points at it); unlist or merge those instead.
+async function dirDeleteShow(showId) {
+  const r = _dirShows.find(s => s.id === showId);
+  const name = r ? (r.name || 'Untitled show') : 'this show';
+  const sellers = _dirSellerCounts[showId] || 0;
+  const note = sellers ? `\n\n${sellers} seller${sellers === 1 ? ' is' : 's are'} in it and will be removed from it. Their cards stay in their inventory.` : '';
+  if (!confirm(`Delete ${name}? This can't be undone.${note}`)) return;
+  let { data, error } = await db.rpc('delete_show', { p_show_id: showId });
+  if (error && (error.code === 'PGRST202' || /delete_show/.test(error.message || ''))) ({ data, error } = await _dirDeleteShowFallback(showId));
+  if (!error && data && data.error === 'has_sales') {
+    showToast(`${name} has ${data.sales} recorded sale${data.sales === 1 ? '' : 's'}, so it can't be deleted. Unlist it or merge it instead.`, '#ef4444');
+    return;
+  }
+  const err = error ? error.message : data && data.error ? data.error : null;
+  if (err) { showToast('Couldn\'t delete: ' + err, '#ef4444'); return; }
+  if (shows[showId]) {
+    inventory.forEach(c => { if (c._shows) c._shows.delete(showId); });
+    delete shows[showId];
+    if (activeShowId === showId) activeShowId = null;
+  }
+  showToast(`${name} deleted`);
+  loadShowDirectory();
+}
+// Before 20261031120000_delete_show.sql: the same checks and deletes from the
+// client (RLS is still permissive).
+async function _dirDeleteShowFallback(showId) {
+  const { count, error: cErr } = await db.from('show_floor_transactions').select('id', { count: 'exact', head: true }).eq('show_id', showId);
+  if (cErr) return { data: null, error: cErr };
+  if (count) return { data: { error: 'has_sales', sales: count }, error: null };
+  for (const t of ['show_inventory', 'show_sellers']) {
+    const { error } = await db.from(t).delete().eq('show_id', showId);
+    if (error) return { data: null, error };
+  }
+  const { error } = await db.from('shows').delete().eq('id', showId);
+  return { data: error ? null : { ok: true }, error };
 }
 
 // ── Merge ──

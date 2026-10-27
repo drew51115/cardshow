@@ -40,7 +40,7 @@
         const T = (S[table] = S[table] || []);
         let out = { data: null, error: null, status: 200 };
         const match = r => filters.every(f => f(r));
-        if (op === 'select') { const d = T.filter(match); out.data = single ? (d[0]||null) : d; }
+        if (op === 'select') { const d = T.filter(match); out.data = single ? (d[0]||null) : d; out.count = d.length; }
         else if (op === 'insert' || op === 'upsert') {
           const list = Array.isArray(payload) ? payload : [payload];
           for (const p of list) {
@@ -162,6 +162,16 @@
       S.show_inventory = S.show_inventory.filter(r => r.show_id !== a.p_from);
       Object.assign(S.shows.find(x => x.id === a.p_from), { listed:false, seller_self_join:false, merged_into:a.p_into });
       data = { ok:true, sellers_moved:moved, cards_moved:cards };
+    } else if (name === 'delete_show') {
+      const sales = (S.show_floor_transactions||[]).filter(t => t.show_id === a.p_show_id).length;
+      if (sales) data = { error:'has_sales', sales };
+      else {
+        S.show_inventory = (S.show_inventory||[]).filter(r => r.show_id !== a.p_show_id);
+        S.show_sellers = (S.show_sellers||[]).filter(r => r.show_id !== a.p_show_id);
+        (S.show_requests||[]).filter(r => r.show_id === a.p_show_id).forEach(r => Object.assign(r, { status:'pending', show_id:null }));
+        S.shows = S.shows.filter(r => r.id !== a.p_show_id);
+        data = { ok:true };
+      }
     } else if (name === 'void_sale') {
       const s = S.sales.find(x => x.client_sale_id === a.p_client_sale_id);
       if (s.status === 'voided') data = { voided:false, status:'voided' };

@@ -119,6 +119,15 @@ const srv = page => page.evaluate(() => window.__srv);
   check('decline with a note', s.show_requests.find(r => r.id === 'req_c').status === 'declined' && s.show_requests.find(r => r.id === 'req_c').review_note === 'Not a card show');
   check('no requests left', (await page.textContent('#dirList')).includes('No requests waiting') && !(await page.isVisible('#dirTabBadge')));
 
+  // Delete: refused for a show with sales, works otherwise.
+  await page.evaluate(() => { const S = window.__srv; S.show_floor_transactions = [{ id: 't1', show_id: 'show_a', sold_price: 10 }]; localStorage.setItem('__srv', JSON.stringify(S)); });
+  await page.click('.dir-filter:has-text("All")'); await page.waitForTimeout(150);
+  await page.click('[data-show-id="show_a"] button:has-text("Delete")'); await page.waitForTimeout(600);
+  check('delete refused for a show with sales', (await srv(page)).shows.some(x => x.id === 'show_a') && (await page.textContent('#toast')).includes("can't be deleted"));
+  await page.click('[data-show-id="show_b"] button:has-text("Delete")'); await page.waitForTimeout(700);
+  s = await srv(page);
+  check('merged duplicate deleted', !s.shows.some(x => x.id === 'show_b') && !(await page.$('[data-show-id="show_b"]')) && (await page.textContent('#toast')).includes('deleted'));
+
   await page.click('#adminTabShows'); await page.waitForTimeout(400);
   check('organizer card says Listed for sellers', (await page.textContent('#asc-show_a')).includes('Listed for sellers'));
   check('no page errors', errors.length === 0, JSON.stringify(errors));
@@ -182,6 +191,23 @@ const sellerSeed = today => {
   await page.fill('#reqName', 'Any Show'); await page.fill('#reqStart', '2027-01-10');
   await page.click('#reqSubmitBtn'); await page.waitForTimeout(500);
   check('fallback: explains requests are not set up', (await page.textContent('#toast')).includes("aren't set up"));
+  await ctx.close();
+}
+{ // Before the delete migration: the client deletes the show itself, still refusing one with sales.
+  const { ctx, page } = await setup(legacy, today => {
+    const S = window.__srv;
+    S.admins = [{ id: 'u1' }]; S.platform_admins = [{ id: 'u1' }];
+    S.shows = [{ id: 'show_x', name: 'Old Test', status: 'upcoming', access_code: 'OLD', listed: false, created_by: 'u1' },
+               { id: 'show_y', name: 'Sold Here', status: 'past', access_code: 'SLD', listed: false, created_by: 'u1' }];
+    S.show_sellers = [{ show_id: 'show_x', seller_id: 'u2' }];
+    S.show_floor_transactions = [{ id: 't1', show_id: 'show_y', sold_price: 5 }];
+    localStorage.setItem('__srv', JSON.stringify(S));
+  }, true);
+  await page.evaluate(async () => { _isPlatformAdmin = true; await loadShowDirectory(); await dirDeleteShow('show_y'); await dirDeleteShow('show_x'); });
+  await page.waitForTimeout(400);
+  const s = await srv(page);
+  check('fallback delete: show and its sellers removed', !s.shows.some(x => x.id === 'show_x') && !s.show_sellers.some(r => r.show_id === 'show_x'));
+  check('fallback delete: show with sales kept', s.shows.some(x => x.id === 'show_y'));
   await ctx.close();
 }
 await browser.close();
