@@ -99,13 +99,16 @@ function _smIdb() {
   _smDbPromise = new Promise((resolve, reject) => {
     if (!('indexedDB' in window)) { reject(new Error('no_indexeddb')); return; }
     // v2 (Phase 3): scanBatches + scanPhotos for case scans (js/show-mode-scan.js).
-    const req = indexedDB.open('cardshow-showmode', 2);
+    // v3: cache (inventory + shows for an offline reload) and conflicts (double sales).
+    const req = indexedDB.open('cardshow-showmode', 3);
     req.onupgradeneeded = () => {
       const d = req.result;
       if (!d.objectStoreNames.contains('captures')) d.createObjectStore('captures', { keyPath: 'id' });
       if (!d.objectStoreNames.contains('outbox')) d.createObjectStore('outbox', { keyPath: 'seq', autoIncrement: true });
       if (!d.objectStoreNames.contains('scanBatches')) d.createObjectStore('scanBatches', { keyPath: 'id' });
       if (!d.objectStoreNames.contains('scanPhotos')) d.createObjectStore('scanPhotos', { keyPath: 'id' });
+      if (!d.objectStoreNames.contains('cache')) d.createObjectStore('cache', { keyPath: 'key' });
+      if (!d.objectStoreNames.contains('conflicts')) d.createObjectStore('conflicts', { keyPath: 'clientSaleId' });
     };
     req.onsuccess = () => {
       const d = req.result;
@@ -292,7 +295,8 @@ async function _smOpSale(op) {
       card._saleConflict = true;
       _smRefetchCard(card);
     }
-    showToast('That card was already marked sold — this sale wasn\'t recorded', 'var(--danger)');
+    // Sold twice (another phone, or the classic view): ask which sale stands.
+    await smSaveConflict(op);
     return 'done';
   }
   if (card) {
@@ -441,6 +445,296 @@ async function smApplyPendingOps() {
     }
   });
   if (ops.length) { _smAfterInventoryChange(); smDrain(); }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Offline inventory: the seller's cards and shows are kept on the device, so a
+// reload with no signal still shows the case. Not behind the Show Mode flag:
+// the classic view uses it too. Cleared on sign-out.
+// ════════════════════════════════════════════════════════════════════════════
+let _smCacheTimer = null;
+let _smCacheReady = null;    // seller whose inventory has loaded (DB or cache) this session
+let _smOfflineSince = null;  // when the cached copy on screen was saved; null when live
+let _smOfflineRetry = null;
+
+function _smClock(ms) {
+  const d = new Date(ms);
+  const sameDay = d.toDateString() === new Date().toDateString();
+  const t = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  return sameDay ? t : d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ', ' + t;
+}
+
+function _smSerializeCard(c) {
+  const s = _smSnapshot(c);
+  delete s._dropPhotoDataUrl;   // a share-card photo can be several MB
+  if (c._shows instanceof Set) s._shows = [...c._shows];
+  return s;
+}
+function _smRestoreCard(s) {
+  const c = Object.assign({}, s);
+  c._shows = new Set(Array.isArray(s._shows) ? s._shows : []);
+  return c;
+}
+
+// Called once the seller's inventory has loaded from the database.
+function smInventoryLoaded(handle) {
+  _smCacheReady = handle || currentSeller;
+  _smOfflineSince = null;
+  clearTimeout(_smOfflineRetry);
+  smCacheInventoryNow();
+}
+
+// Debounced; called from updateStats(), which runs after every inventory change.
+function smCacheInventorySoon() {
+  if (currentRole !== 'seller' || !currentSeller || _smCacheReady !== currentSeller) return;
+  clearTimeout(_smCacheTimer);
+  _smCacheTimer = setTimeout(smCacheInventoryNow, 1500);
+}
+async function smCacheInventoryNow() {
+  clearTimeout(_smCacheTimer);
+  const handle = currentSeller;
+  if (currentRole !== 'seller' || !handle || _smCacheReady !== handle) return;
+  const cards = getSellerInventory().map(_smSerializeCard);
+  // "As of" stays at the last time the list came from the server.
+  await smStore.put('cache', { key: 'inv:' + handle, seller: handle, savedAt: _smOfflineSince || Date.now(), cards })
+    .catch(e => console.warn('[show-mode] inventory cache save failed', e));
+}
+
+async function smCacheShows(handle) {
+  handle = handle || currentSeller;
+  if (!handle) return;
+  const list = Object.values(shows)
+    .filter(s => s.sellers instanceof Set && s.sellers.has(handle))
+    .map(s => Object.assign({}, s, { sellers: [...s.sellers], selfJoined: [...(s.selfJoined || [])] }));
+  await smStore.put('cache', { key: 'shows:' + handle, seller: handle, savedAt: Date.now(), shows: list })
+    .catch(e => console.warn('[show-mode] shows cache save failed', e));
+}
+
+// Returns when the cached copy was saved, or 0 when there's none.
+async function smLoadCachedInventory(handle) {
+  const rec = await smStore.get('cache', 'inv:' + handle).catch(() => null);
+  if (!rec || !Array.isArray(rec.cards) || currentSeller !== handle) return 0;
+  const others = inventory.filter(c => (c.Seller || '').toLowerCase() !== handle);
+  inventory.length = 0;
+  others.forEach(c => inventory.push(c));
+  rec.cards.forEach(s => inventory.push(_smRestoreCard(s)));
+  _smCacheReady = handle;
+  _smOfflineSince = rec.savedAt || Date.now();
+  _smScheduleOfflineRetry();
+  console.info(`[show-mode] offline: ${rec.cards.length} cached cards for @${handle}`);
+  return _smOfflineSince;
+}
+
+async function smLoadCachedShows(handle) {
+  const rec = await smStore.get('cache', 'shows:' + handle).catch(() => null);
+  if (!rec || !Array.isArray(rec.shows) || currentSeller !== handle) return false;
+  rec.shows.forEach(s => {
+    if (shows[s.id]) return;
+    shows[s.id] = Object.assign({}, s, { sellers: new Set(s.sellers || []), selfJoined: new Set(s.selfJoined || []) });
+  });
+  return rec.shows.length > 0;
+}
+
+function smClearOfflineCache(handle) {
+  clearTimeout(_smCacheTimer);
+  clearTimeout(_smOfflineRetry);
+  _smCacheReady = null;
+  _smOfflineSince = null;
+  if (!handle) return;
+  smStore.del('cache', 'inv:' + handle).catch(() => {});
+  smStore.del('cache', 'shows:' + handle).catch(() => {});
+}
+
+// "online" fires when the phone reconnects, but venue wifi can be up with no
+// internet behind it, so also retry on a timer while the cached copy is shown.
+function _smScheduleOfflineRetry() {
+  clearTimeout(_smOfflineRetry);
+  _smOfflineRetry = setTimeout(smReloadAfterOffline, 30000);
+}
+async function smReloadAfterOffline() {
+  if (!_smOfflineSince || currentRole !== 'seller' || !currentSeller) return;
+  const handle = currentSeller;
+  const ok = await fetchSellerInventoryFromDB(handle).catch(() => false);
+  if (!ok || currentSeller !== handle) { _smScheduleOfflineRetry(); return; }
+  await hydrateCardShowMembership(handle);
+  smInventoryLoaded(handle);
+  await smApplyPendingOps();
+  _smAfterInventoryChange();
+  if (await loadShowsFromDB()) {
+    smCacheShows(handle);
+    if (typeof renderSellerShowsList === 'function') renderSellerShowsList();
+  }
+  if (_smShowId) smRefresh();
+  showToast('Back online — your inventory is up to date');
+}
+window.addEventListener('online', () => { if (_smOfflineSince) smReloadAfterOffline(); });
+
+// ════════════════════════════════════════════════════════════════════════════
+// Double sale: record_sale() found the card already sold (another phone, or the
+// classic view). The seller picks which sale stands. Kept in IndexedDB until
+// they decide, so it comes back after a reload.
+// ════════════════════════════════════════════════════════════════════════════
+let _smConflict = null;   // { record, earlier } on screen
+
+async function smSaveConflict(op) {
+  await smStore.put('conflicts', {
+    clientSaleId: op.clientSaleId, seller: op.seller || currentSeller,
+    payload: op.payload, cardSnapshot: op.cardSnapshot, at: Date.now(),
+  }).catch(e => console.warn('[show-mode] conflict save failed', e));
+  _smLogEvent('sale_conflict', { source: op.payload && op.payload.source });
+  smShowNextConflict();
+}
+
+async function smShowNextConflict() {
+  if (_smConflict || currentRole !== 'seller' || !currentSeller) return;
+  const list = (await smStore.all('conflicts').catch(() => []))
+    .filter(c => c.seller === currentSeller).sort((a, b) => a.at - b.at);
+  if (!list.length || _smConflict) return;
+  _smConflict = { record: list[0], earlier: null };
+  _smRenderConflict();
+  _smConflict.earlier = await _smEarlierSale(list[0].payload.inventoryId);
+  if (_smConflict && _smConflict.record === list[0]) _smRenderConflict();
+}
+
+// The sale that got there first: a Show Mode sale (undoable for 10 minutes),
+// else whatever the inventory row says.
+async function _smEarlierSale(inventoryId) {
+  const out = { loaded: true, clientSaleId: null, price: null, payment: null, at: null, when: '', undoable: false };
+  if (!inventoryId || typeof db === 'undefined') return out;
+  try {
+    const { data: sale } = await db.from('sales')
+      .select('client_sale_id, price, payment_method, sold_at')
+      .eq('inventory_id', inventoryId).eq('status', 'completed')
+      .order('sold_at', { ascending: false }).limit(1).maybeSingle();
+    if (sale) {
+      const at = Date.parse(sale.sold_at) || null;
+      return Object.assign(out, {
+        clientSaleId: sale.client_sale_id, price: sale.price, payment: sale.payment_method, at,
+        when: at ? _smClock(at) : '',
+        undoable: !!at && Date.now() - at < 10 * 60 * 1000 - 15000,   // server allows 10 min
+      });
+    }
+    const { data: row } = await db.from('inventory')
+      .select('sold_price, payment_method, sold_date, sold_time').eq('id', inventoryId).maybeSingle();
+    if (row) Object.assign(out, { price: row.sold_price, payment: row.payment_method, when: [row.sold_date, row.sold_time].filter(Boolean).join(' ') });
+  } catch (e) { console.warn('[show-mode] earlier sale lookup failed', e); }
+  return out;
+}
+
+function _smRenderConflict(note) {
+  const c = _smConflict;
+  if (!c) return;
+  const r = c.record, p = r.payload, snap = r.cardSnapshot || {};
+  const e = c.earlier;
+  const title = snap['Card Title'] || [snap.Year, snap['Set '], snap.Player].filter(Boolean).join(' ') || 'This card';
+  const mine = [_smMoney(p.price), p.payment, p.soldTime].filter(Boolean).map(smEsc).join(' · ');
+  const theirs = !e ? 'Checking…'
+    : ([e.price != null ? _smMoney(e.price) : '', e.payment, e.when].filter(Boolean).map(smEsc).join(' · ') || 'Marked sold');
+  const graded = !!(snap['Cert #'] && String(snap['Cert #']).trim());
+  const canReplace = !!(e && e.undoable && e.clientSaleId);
+  let el = document.getElementById('smConflictOverlay');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'smConflictOverlay';
+    el.className = 'modal-overlay open';
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-modal', 'true');
+    el.setAttribute('aria-labelledby', 'smConflictTitle');
+    document.body.appendChild(el);
+  }
+  el.innerHTML = `
+    <div class="modal sm-conflict">
+      <h2 id="smConflictTitle" class="sm-conflict-title">This card was already sold</h2>
+      <p class="sm-conflict-card">${smEsc(title)}</p>
+      <div class="sm-conflict-rows">
+        <div class="sm-conflict-row"><span>Earlier sale</span><b>${theirs}</b></div>
+        <div class="sm-conflict-row"><span>Your sale</span><b>${mine}</b></div>
+      </div>
+      <p class="sm-conflict-note">${note ? smEsc(note) : 'It was probably sold on another phone or in the classic view. Your sale hasn\'t been recorded yet.'}</p>
+      <div class="sm-conflict-actions">
+        <button class="btn btn-primary" data-act="keep" onclick="smResolveConflict('keep')">Keep the earlier sale</button>
+        ${canReplace ? `<button class="btn btn-ghost" data-act="replace" onclick="smResolveConflict('replace')">Undo the earlier sale, keep mine</button>` : ''}
+        ${graded ? '' : `<button class="btn btn-ghost" data-act="copy" onclick="smResolveConflict('copy')">It's a second copy, record mine too</button>`}
+        ${e && !canReplace && e.price != null ? '<p class="sm-conflict-hint">The earlier sale can\'t be undone here (it was more than 10 minutes ago, or recorded in the classic view).</p>' : ''}
+        <button class="sm-conflict-later" data-act="later" onclick="smResolveConflict('later')">Decide later</button>
+      </div>
+    </div>`;
+  const first = el.querySelector('[data-act="keep"]');
+  if (first) first.focus();
+}
+
+function _smCloseConflict() {
+  const el = document.getElementById('smConflictOverlay');
+  if (el) el.remove();
+  _smConflict = null;
+}
+
+async function smResolveConflict(action) {
+  const c = _smConflict;
+  if (!c) return;
+  const r = c.record;
+  if (action === 'later') {
+    _smCloseConflict();
+    showToast('Your sale is saved — we\'ll ask again next time you open CardShow', 'gold');
+    return;
+  }
+  const btns = document.querySelectorAll('#smConflictOverlay button');
+  btns.forEach(b => { b.disabled = true; });
+  if (action === 'replace') {
+    if (!navigator.onLine) {
+      btns.forEach(b => { b.disabled = false; });
+      showToast('You need a signal to undo the earlier sale', 'var(--danger)');
+      return;
+    }
+    const res = await db.rpc('void_sale', { p_client_sale_id: c.earlier.clientSaleId });
+    const err = res.error ? res.error.message : (res.data && res.data.error);
+    if (err) {
+      c.earlier.undoable = false;
+      _smRenderConflict(err === 'undo_window_expired'
+        ? 'Too late to undo the earlier sale: it was more than 10 minutes ago.'
+        : 'Couldn\'t undo the earlier sale (' + err + ').');
+      return;
+    }
+    _smRecordConflictSale(r, false);
+    showToast('Earlier sale undone — your sale is recorded');
+  } else if (action === 'copy') {
+    _smRecordConflictSale(r, true);
+    showToast('Recorded as a second copy');
+  } else {
+    showToast('Kept the earlier sale');
+  }
+  _smLogEvent('sale_conflict_resolved', { action });
+  await smStore.del('conflicts', r.clientSaleId).catch(() => {});
+  _smCloseConflict();
+  smShowNextConflict();
+}
+
+// Re-queue the seller's sale: on the same card (after the earlier sale was
+// undone), or on a new card with the same details (a second copy). record_sale
+// wrote nothing for the refused attempt, so the same client_sale_id is reused.
+function _smRecordConflictSale(r, asCopy) {
+  const p = Object.assign({}, r.payload);
+  let card;
+  if (asCopy) {
+    card = _smRestoreCard(Object.assign({}, r.cardSnapshot, { _dbId: _smUuid(), _captureId: null }));
+    card._shows = new Set(p.showId ? [p.showId] : []);
+    inventory.push(card);
+    const newItem = Object.assign({}, cardToDbRow(card), { id: card._dbId });
+    if (card.CatalogCardId) newItem.catalog_card_id = card.CatalogCardId;
+    delete newItem.status;
+    p.inventoryId = null;
+    p.newItem = newItem;
+  } else {
+    card = inventory.find(x => x._dbId === p.inventoryId);
+    if (!card) { card = _smRestoreCard(r.cardSnapshot || {}); inventory.push(card); }
+  }
+  Object.assign(card, {
+    Status: 'Sold', SoldPrice: p.price, PaymentMethod: p.payment, SoldTime: p.soldTime, SoldDate: p.soldDate,
+    _clientSaleId: r.clientSaleId, _saleAt: Date.now(), _smPending: true, _saleConflict: false,
+  });
+  if (p.showId) card._shows.add(p.showId);
+  smEnqueue({ type: 'sale', clientSaleId: r.clientSaleId, cardSnapshot: _smSnapshot(card), payload: p });
+  _smAfterInventoryChange();
 }
 
 function _smRevertCard(card, how) {
@@ -995,6 +1289,7 @@ function smAfterShowsLoaded() {
   smUpdateEntryPoints();
   if (!smIsEnabled() || currentRole !== 'seller') return;
   smDrain();
+  smShowNextConflict();
   if (typeof scResume === 'function') scResume();
   const m = location.hash.match(SM_HASH_RE);
   if (m) {
@@ -1205,6 +1500,10 @@ function smRenderHome() {
     </div>`;
   }).join('') : '<div class="sm-empty">No sales yet. Your sales show up here.</div>';
 
+  const offline = _smOfflineSince ? `
+    <div class="sm-notice sm-notice--offline" role="status">
+      No signal. Showing your cards as of ${smEsc(_smClock(_smOfflineSince))}. Sales you make are saved on this phone and sync when you're back online.
+    </div>` : '';
   const notice = (!onShow && available.length) ? `
     <div class="sm-notice">
       Your cards aren't on this show yet, so buyers can't see them.
@@ -1226,7 +1525,7 @@ function smRenderHome() {
       <div class="sm-stat"><div class="sm-stat-num">${_smMoney(salesTotal)}</div><div class="sm-stat-label">Sales</div></div>
       <div class="sm-stat"><div class="sm-stat-num">${available.length}</div><div class="sm-stat-label">In case</div></div>
     </div>
-    ${notice}
+    ${offline}${notice}
     <button class="sm-hero" onclick="smStartSell('home_cta')">
       <span class="sm-hero-tile">${_smIcon('scan')}</span>
       <span>

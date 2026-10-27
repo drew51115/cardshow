@@ -4970,14 +4970,12 @@ graded card). It's a no-op for sellers without consent or registrations. The old
 call (removed on main) is gone. The classic fallback path already goes through `updateCardInDB()`.
 
 ### Known gaps / deviations
-- Already-sold conflict: shows a toast and reloads the card instead of the spec's "undo the
-  other sale or keep this one?" dialog.
+- ~~Already-sold conflict toast~~ and ~~empty inventory on an offline reload~~: fixed, see
+  "Double-sale dialog + offline inventory" below.
 - Capture photos are saved on every shutter tap (not only on a successful match), so nothing is
   lost on a failed identification.
 - Thumbnails come only from captures on this device; seller photos from other devices and
   CardSight stock images are Phase 4.
-- Offline reload keeps the seller signed in but shows no inventory until the network returns
-  (inventory isn't cached on the device).
 - Catalog search in manual mode is "Type it in" (no catalog autocomplete yet).
 - The classic "first sale" tip is not shown from Show Mode (its text describes the classic UI).
 
@@ -5172,10 +5170,52 @@ qtnqawqlmttogwnjieky`). Without it everything works, but case-scan cards use the
 - Images on the buyer pages (show.html, seller-browse.html) and in the classic inventory table.
   Seller photos are in a private bucket, so buyers would need a server-signed URL. Stock images
   could go on those pages as they are.
-- An "undo the other sale or keep this one?" dialog, "Sell several", and catalog search in manual
-  entry (see "Known gaps").
+- "Sell several" and catalog search in manual entry (see "Known gaps"). The double-sale dialog
+  shipped later (see "Double-sale dialog + offline inventory").
 - Whether CardSight counts image requests against the 750/month quota isn't documented. The 30-day
   CDN cache keeps repeat requests low.
+
+### Double-sale dialog + offline inventory (session 2026-10-27)
+**Double sale.** When `record_sale()` returns `already_sold` (the card was sold on another phone or
+in the classic view), `_smOpSale()` saves the refused sale in IndexedDB (`conflicts` store, DB v3)
+and `smShowNextConflict()` opens a dialog (`#smConflictOverlay`, a `.modal-overlay` appended to
+`<body>`, so it shows on any screen, Show Mode or classic):
+- It shows both sales. The earlier one comes from `sales` (latest completed row for the card; RLS
+  is read-own), else from the inventory row's sold fields (a classic sale).
+- **Keep the earlier sale**: drops mine (the card already shows the earlier sale after
+  `_smRefetchCard()`).
+- **Undo the earlier sale, keep mine**: only when the earlier sale is a Show Mode sale under ~10
+  minutes old. Calls `void_sale()` on it (needs a signal), then re-queues my sale with the same
+  `client_sale_id` (`record_sale()` wrote nothing for the refused attempt). A late
+  `undo_window_expired` re-renders the dialog without this option.
+- **It's a second copy, record mine too**: hidden for a card with a cert # (a slab can't have a
+  twin). Creates a new card with the same details, sold through `record_sale()`'s `p_new_item`.
+- **Decide later**: closes; the dialog comes back on the next login / Show Mode open
+  (`smAfterShowsLoaded()`). Sign-out removes the open dialog but keeps the record.
+- Several conflicts show one after another. Analytics: `sale_conflict`, `sale_conflict_resolved`
+  (`{action}`).
+- The classic-path fallback (`_smLegacySale`, before the sales migration) doesn't detect conflicts.
+
+**Offline inventory** (not behind the Show Mode flag; the classic view uses it too):
+- **Saved:** after a good load (`smInventoryLoaded()`, from `loginAsSeller()`) and after every
+  change (`smCacheInventorySoon()`, debounced 1.5s, from `updateStats()`), the seller's cards go to
+  the `cache` store as `inv:<handle>` (Sets as arrays, share-card photos left out). Their shows go
+  in as `shows:<handle>` after `loadShowsFromDB()` succeeds.
+- **Used:** `fetchSellerInventoryFromDB()` returns false (no signal) → `smLoadCachedInventory()`,
+  then queued outbox ops are re-applied, so an unsynced sale still shows sold. `loadShowsFromDB()`
+  failing (`_showsLoadFailed`, distinct from "no shows") → `smLoadCachedShows()`, so Show Mode can
+  open. Toast "No signal — showing your cards as of 3:12 PM"; Show Mode home shows the same notice.
+- **Back online:** the `online` event, or a 30s retry timer (venue wifi can be up with no
+  internet), runs `smReloadAfterOffline()`: reloads cards and shows, re-applies the outbox,
+  toasts "Back online".
+- **Sign-out** deletes the seller's cached copy (`smClearOfflineCache()`), so it doesn't stay on a
+  shared phone. The outbox is untouched, as before.
+- Classic-view edits made offline still aren't queued (they fail as before); only Show Mode sales
+  and adds go through the outbox.
+
+Tests: `tests/show-mode/double-sale-offline.e2e.mjs` (33 checks: cache saved, offline reload with
+cards and shows, offline sale survives a reload and syncs, the three choices, decide later,
+sign-out clears the cache).
 
 ## Show Configuration (Demo Data)
 - **MLP Card Show** — Oct 17-18, 2026 · Grand Hyatt Tampa Bay, FL · Code: MLPTPA (primary demo, shown to buyers without code)

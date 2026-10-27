@@ -17,6 +17,7 @@ node join-show.e2e.mjs "iPhone 13"           # Seller self-join + the Show Mode 
 node show-directory.e2e.mjs "iPhone 13"      # Show Directory (platform owner) + seller show requests
 node show-status.e2e.mjs "iPhone 13"         # Show status follows the dates (Upcoming / Active / Past)
 node images.e2e.mjs "iPhone 13"              # Phase 4: card images, catalog ids, share-card photo + handle opt-in
+node double-sale-offline.e2e.mjs "iPhone 13" # double-sale dialog + offline inventory (cards and shows saved on the device)
 node card-image.test.mjs                     # netlify/functions/card-image.js with CardSight stubbed (no browser)
 ```
 Set `CHROMIUM_PATH` to use a specific Chromium (the cloud container has `/opt/pw-browsers/chromium`).

@@ -4594,6 +4594,20 @@
     padding: 0 14px; font-weight: 700; font-size: 15px;
   }
   .sm-sec-btn .sm-chev { margin-left: auto; color: var(--sm-muted); width: 18px; height: 18px; }
+  .sm-notice--offline { background: #eef1f6; border-color: #9aa3b5; }
+  /* Double-sale dialog (js/show-mode.js smResolveConflict): opens from any screen */
+  .sm-conflict { padding: 1.4rem; max-width: 440px; }
+  .sm-conflict-title { font-family: 'Bebas Neue', sans-serif; font-size: 1.7rem; letter-spacing: .02em; margin: 0 0 .3rem; color: var(--text); }
+  .sm-conflict-card { margin: 0 0 1rem; font-weight: 600; color: var(--text); }
+  .sm-conflict-rows { display: grid; gap: .5rem; margin-bottom: .9rem; }
+  .sm-conflict-row { display: flex; justify-content: space-between; gap: 1rem; padding: .7rem .85rem; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; font-size: .9rem; }
+  .sm-conflict-row span { color: var(--muted); }
+  .sm-conflict-row b { color: var(--text); text-align: right; overflow-wrap: anywhere; }
+  .sm-conflict-note, .sm-conflict-hint { color: var(--muted); font-size: .85rem; margin: 0 0 1rem; line-height: 1.45; }
+  .sm-conflict-hint { margin: 0; }
+  .sm-conflict-actions { display: grid; gap: .6rem; }
+  .sm-conflict-actions .btn { width: 100%; min-height: 48px; justify-content: center; }
+  .sm-conflict-later { background: none; border: 0; color: var(--muted); text-decoration: underline; min-height: 44px; font: inherit; cursor: pointer; }
   .sm-notice { background: var(--sm-accent-soft); border: 2px solid var(--sm-accent); border-radius: 14px; padding: 12px 14px; margin-bottom: 14px; font-weight: 600; font-size: 14px; }
   .sm-notice-btn { margin-top: 10px; min-height: 44px; padding: 0 16px; border-radius: 14px; border: 2px solid var(--sm-ink); background: var(--sm-accent); font-weight: 800; font-size: 14px; }
   .sm-section-label { font-weight: 800; font-size: 13px; letter-spacing: 1px; text-transform: uppercase; color: var(--sm-muted); margin: 4px 0 8px; }
@@ -7283,8 +7297,8 @@
 </div>
 
 <!-- Show Mode v2 (flag show_mode_v2). Bump ?v= when it changes: the service worker caches by URL. -->
-<script src="/js/show-mode.js?v=20261030a"></script>
-<script src="/js/show-mode-scan.js?v=20261030a"></script>
+<script src="/js/show-mode.js?v=20261031a"></script>
+<script src="/js/show-mode-scan.js?v=20261031a"></script>
 <script>
 // ── STATE ──
 let inventory = [];
@@ -10677,6 +10691,7 @@ function updateStats() {
   if (revBox)  revBox.style.display  = showActive ? '' : 'none';
   gsRender();
   if (_smShowId) smRefresh();
+  smCacheInventorySoon();   // keep the offline copy current
 }
 
 function renderBuyerGrid(rows) {
@@ -13355,6 +13370,21 @@ function loginAsSeller(handle, opts) {
 
   // Fetch from Supabase — loads only this seller's real cards
   fetchSellerInventoryFromDB(handle).then(async loaded => {
+    // No signal: show the copy saved on this device at the last good load.
+    if (!loaded && typeof smLoadCachedInventory === 'function' && currentSeller === handle) {
+      const savedAt = await smLoadCachedInventory(handle);
+      if (savedAt) {
+        renderSellerTable(getSellerInventory());
+        updateStats();
+        updateReport();
+        smApplyPendingOps();
+        if (_smShowId) smRefresh();
+        _gsDataReady = true;
+        gsRender();
+        showToast(`No signal — showing your cards as of ${_smClock(savedAt)}`, 'gold');
+        return;
+      }
+    }
     if (loaded) {
       renderSellerTable(getSellerInventory());
       updateStats();
@@ -13367,6 +13397,7 @@ function loginAsSeller(handle, opts) {
       // filter to work on anything but a never-refreshed session.
       await hydrateCardShowMembership(handle);
       updateReport(); // safe even if the seller isn't on the Report tab yet
+      smInventoryLoaded(handle); // saves a copy on this device for an offline reload
       smApplyPendingOps(); // Show Mode: re-apply sales still waiting in the offline queue
       if (_smShowId) smRefresh(); // "In case" depends on the card._shows just loaded
       gtcrHydrateLatestChecks(); // badges + "Registry clear" markers survive a reload
@@ -13378,7 +13409,9 @@ function loginAsSeller(handle, opts) {
   });
 
   // Load shows from Supabase so seller can see which shows they're authorized for
-  loadShowsFromDB().then(() => {
+  loadShowsFromDB().then(async ok => {
+    if (ok) smCacheShows(handle);
+    else if (_showsLoadFailed && currentSeller === handle) await smLoadCachedShows(handle); // no signal
     renderSellerShowsList();
     populateReportShowSelector();
     _restoreActiveShowId(handle); // survives a reload mid-show — see comment above the function
@@ -13536,6 +13569,8 @@ async function signOut() {
   _dropShareHandle = null; _dropHandleTouched = false;   // next seller loads their own share-handle choice
   if (_obStateTimer) _obSaveStateNow(); // flush a pending checklist/tips save while currentSeller is still set
   _obStateLoaded = false; _obStateSync = false;
+  if (currentRole === 'seller') smClearOfflineCache(currentSeller);   // don't leave a seller's cards on a shared phone
+  const conflictEl = document.getElementById('smConflictOverlay'); if (conflictEl) { conflictEl.remove(); _smConflict = null; }
   await db.auth.signOut().catch(() => {});
   currentRole          = null;
   currentSeller        = null;
@@ -20555,15 +20590,17 @@ async function buildShowPageUrlFromDB(showId) {
 }
 
 
+let _showsLoadFailed = false;   // last loadShowsFromDB() hit an error (vs. no shows)
 async function loadShowsFromDB() {
   if (typeof db === 'undefined') return false;
+  _showsLoadFailed = false;
   try {
     // Fetch shows — filtered to the current admin's own shows via created_by.
     // Falls back to unfiltered if created_by column doesn't exist yet (pre-migration).
     let showQuery = db.from('shows').select('*').order('created_at', { ascending: true });
     if (window._currentAdminUid) showQuery = showQuery.eq('created_by', window._currentAdminUid);
     const { data: showRows, error: showErr } = await showQuery;
-    if (showErr) { console.warn('loadShowsFromDB: shows fetch failed:', showErr.message); return false; }
+    if (showErr) { console.warn('loadShowsFromDB: shows fetch failed:', showErr.message); _showsLoadFailed = true; return false; }
     if (!showRows || !showRows.length) return false;
 
     // Fetch show_sellers — two separate queries avoids FK join resolution issues
@@ -20639,6 +20676,7 @@ async function loadShowsFromDB() {
     return true;
   } catch(e) {
     console.warn('loadShowsFromDB error:', e.message);
+    _showsLoadFailed = true;
     return false;
   }
 }
