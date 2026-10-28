@@ -2389,9 +2389,9 @@ migration, no new external library.
 - **Trust Check via GTCR — Phases 1, 3, 4 (session 2026-09-25)** — stolen/lost cert lookup on
   insert + re-check on publish (fails open), flag/dispute UI, consent-evidence log, and
   consent-gated registration (reworked 2026-09-30 to register while the seller owns the card; see
-  Phase 4) + deregister on sale/delete/revoke. Registration is built but **dark**
-  (`GTCR_CONSENT_UI_LAUNCHED=false` client-side, `?gtcr_consent=1` test switch, `GTCR_REGISTRATION_ENABLED` server-side) until
-  pricing is decided. Transfer-on-resale (Phase 5) not built — open decision. See "Trust Check via GTCR".
+  Phase 4) + deregister on sale/delete/revoke. Registration opt-in launched to all sellers
+  2026-10-28 (`GTCR_CONSENT_UI_LAUNCHED=true`, `GTCR_REGISTRATION_ENABLED=true` in production).
+  Transfer-on-resale (Phase 5) not built — open decision. See "Trust Check via GTCR".
 - **GTCR registration lifecycle merged to main (PR #65, session 2026-10-26)** — Option A
   registration (register while owned, remove on sale/delete/flag/opt-out), consent tied to the
   current consent wording, 24h clean Trust Check before registering, removals on any device, and a
@@ -2537,10 +2537,9 @@ Current entries (as of September 2026):
   `.sp-featured-img--logo`. Tagline "Register. Verify. Protect. Transfer." comes from thegtcr.com.
   The body copy, as the user asked for it, says vendors can register graded cards with the GTCR
   when adding them to inventory, and are alerted about lost/stolen cards. **The second claim is
-  live (Trust Check, see "Trust Check via GTCR"). The first is ahead of the product:**
-  registration is built but dark (`GTCR_CONSENT_UI_LAUNCHED=false`, `GTCR_REGISTRATION_ENABLED`
-  off). With seller consent it registers graded cards while the seller owns them (on add, import
-  or opt-in) and removes them on sale or delete, which roughly matches the copy once launched.
+  live (Trust Check, see "Trust Check via GTCR"). The first is live too since 2026-10-28,
+  for sellers who opt in:** with consent, graded cards are registered while the seller owns them
+  (on add, import or opt-in) and removed on sale or delete.
 - The Monster Collectibles Show — featured sponsor, featured badge + logo tile, added October
   2026. Stacked third (after CTCA and GTCR, before West Coast Hobby Expo) as the newest sponsorship.
   `assets/monster-show-logo.png` is the show's own logo, trimmed to its content and kept as a
@@ -4191,9 +4190,9 @@ the response has no `card_status` at all.
 - `trustCheckBulkApi` is not used, because its request/response shape isn't documented yet. The CSV
   import path would be the one to switch to it.
 
-### Phase 3 — Consent (built, dark)
-- The checkbox is in the Profile modal (`#gtcrConsentSection`), hidden until launch
-  (`GTCR_CONSENT_UI_LAUNCHED = false`). It is never pre-checked; it only shows checked when a stored
+### Phase 3 — Consent (launched 2026-10-28)
+- The checkbox is in the Profile modal (`#gtcrConsentSection`), shown to every seller since
+  `GTCR_CONSENT_UI_LAUNCHED = true` (set it back to `false` to hide it again). It is never pre-checked; it only shows checked when a stored
   `'granted'` event exists.
 - **Test switch:** open the app with `?gtcr_consent=1` to show the section on that browser (remembered
   in localStorage as `gtcrConsentTest`; `?gtcr_consent=0` clears it). The status line reads "· test mode".
@@ -4290,9 +4289,12 @@ under the seller's email, which recorded the card as belonging to the person who
   review of the copy, decide pricing, get GTCR's fix or answer for removed registrations still showing
   as active on their site (see the post-removal result above), confirm the Beckett value, then turn on
   `GTCR_REGISTRATION_ENABLED=true` in production and `GTCR_CONSENT_UI_LAUNCHED=true` together.
-- **Status (2026-10-26):** merged to main (PR #65). Production stays dark: `GTCR_REGISTRATION_ENABLED`
-  is not set there. `GTCR_WRITE_API_KEY` on production is optional; without it, removals for any
-  registrations left over from preview testing can't run there (harmless, they log a key error).
+- **Status (2026-10-28):** launched. `GTCR_REGISTRATION_ENABLED=true` in production and
+  `GTCR_CONSENT_UI_LAUNCHED=true`. Launched before legal review of the copy (still
+  `2026-09-30-draft2`), pricing, and GTCR's fix for removed registrations still showing as active on
+  their site. Production needs `GTCR_WRITE_API_KEY`, or every registration fails with `auth_error`.
+  Rollback: set `GTCR_REGISTRATION_ENABLED` to anything but `true` and redeploy (stops new
+  registrations, removals keep running), and/or set `GTCR_CONSENT_UI_LAUNCHED = false`.
 
 ### Still open (not built)
 - **Decision A — Phase 5 transfer-on-resale** (`transferOnSaleApi`): not built. Today a sold card's

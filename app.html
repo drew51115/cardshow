@@ -20194,10 +20194,10 @@ async function recordManualSaleTransaction(card, showId) {
 // and gtcr-registry.js (partner write key). See CLAUDE.md for the full spec.
 // ════════════════════════════════════════════════════════
 
-// Registration stays dark until pricing/packaging is decided (spec "Flagged
-// decision B"). Flip this, and GTCR_REGISTRATION_ENABLED=true in Netlify,
-// together. The Trust Check itself (Phase 1) doesn't depend on this flag.
-const GTCR_CONSENT_UI_LAUNCHED = false;
+// Launched 2026-10-28 (GTCR_REGISTRATION_ENABLED=true in production). Setting
+// this back to false hides the opt-in again; the Trust Check itself (Phase 1)
+// doesn't depend on this flag.
+const GTCR_CONSENT_UI_LAUNCHED = true;
 
 // Test switch: open the app with ?gtcr_consent=1 to show the consent section
 // on this browser before launch (?gtcr_consent=0 turns it back off). It's
