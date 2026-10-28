@@ -29,6 +29,8 @@ netlify/functions/gtcr-registry.js       → Serverless: GTCR consent + registra
 scripts/gtcr-write-roundtrip.js          → Local test of GTCR's register/remove endpoints with a fake cert (needs GTCR_WRITE_API_KEY in the shell)
 supabase/migrations/20260925120000_gtcr_trust_check.sql → inventory.trust_flag + cert_trust_checks / gtcr_consent_events / gtcr_registrations (RLS: read-own, no client writes)
 netlify/functions/expire-trade-posts.js  → Scheduled (hourly, see netlify.toml): calls expire_stale_trade_posts() RPC to hide stale trade_posts from the live board
+netlify/functions/refresh-show-statuses.js → Scheduled (hourly): calls refresh_show_statuses() so shows.status follows the dates — see "Automatic Show Status"
+supabase/migrations/20261029120000_show_auto_status.sql → refresh_show_statuses() (service_role only); fixes every show once when run
 .env.example                             → Placeholder env vars for all keys
 downloads/                               → Static file downloads served by Netlify
 downloads/CardShow_Inventory_Template.xlsx → Pre-filled inventory template (13 example rows); linked from landing page and footer
@@ -39,6 +41,18 @@ js/trade-zone.js                         → Guest auth, post/board/propose/conf
 js/trade-board.js                        → Realtime board rendering + report aggregation for trade-board.html
 js/trade-share.js                        → Phase 4 canvas compositor + Web Share API for the branded trade graphic
 supabase/migrations/20260825120000_trade_zone.sql → Trade Zone schema, storage buckets, RLS, and RPC functions — run in Supabase SQL editor
+js/show-mode.js                   → Show Mode v2 (flag show_mode_v2): routing, outbox, captures, identification, all Show Mode screens — loaded by app.html before its main script (bump its ?v= on change)
+js/show-mode-scan.js              → Show Mode case scan (screens A–D): per-photo queue, review, commit — loaded right after js/show-mode.js
+netlify/functions/cardsight-identify.js → Serverless: POST {image_base64, media_type} → CardSight catalog identification (Show Mode; runs beside scan-card.js)
+netlify/functions/card-image.js   → Serverless: GET ?id=<CardSight catalog id> → stock card image, CDN-cached 30 days (Show Mode Phase 4)
+supabase/migrations/20261030120000_show_mode_images.sql → inventory.catalog_card_id, sellers.share_handle, backfill of existing photos — see "Phase 4"
+supabase/migrations/20261027120000_seller_self_join.sql → show_sellers.self_joined/joined_at, shows.seller_self_join, join_show_as_seller()/leave_show_as_seller() — see "Seller Self-Join"
+supabase/migrations/20261028120000_show_directory.sql → shows.listed/slug/timezone/website/merged_into, platform_admins, show_requests, set_show_listed()/submit_show_request()/resolve_show_request()/merge_shows() — see "Show Directory"
+supabase/migrations/20261031120000_delete_show.sql → delete_show() for the Show Directory (platform owner; refuses shows with recorded sales)
+supabase/migrations/20261023120000_show_mode_sales.sql → sales + card_captures tables, private card-captures bucket, record_sale()/void_sale() — see "Show Mode v2"
+tests/show-mode/                  → Playwright + SQL tests for Show Mode (see its README)
+sw.js                             → Service worker: offline app shell (network-first app.html, cached scripts/fonts); never caches Supabase or functions — see "Show Mode v2"
+manifest.webmanifest              → Installable app manifest ("Add to Home Screen"); icons at assets/app-icon-192.png / -512.png
 qrcode.min.js                     → Self-hosted qrcodejs 1.0.0 (all QR codes); cdnjs is only a backup — see "Seller QR blank"
 CLAUDE.md                         → This file
 ```
@@ -55,9 +69,11 @@ sellers       — id (uuid PRIMARY KEY = auth.uid()), handle, display_name, what
 shows         — id (text), name, date, location, status, access_code, published_at, created_at,
                 city (text), state (text), venue (text),
                 start_date (date), end_date (date), floor_plan_url (text)
-                — see "Pending DB Migrations"
+                — see "Pending DB Migrations"; seller_self_join, listed, listed_at,
+                listed_by, slug (unique), timezone, website, merged_into — see "Show Directory"
 show_sellers  — show_id, seller_id (uuid → sellers.id), table_number,
-                x_pct (numeric(5,2)), y_pct (numeric(5,2)) — see "Pending DB Migrations"
+                x_pct (numeric(5,2)), y_pct (numeric(5,2)) — see "Pending DB Migrations",
+                self_joined (bool), joined_at — see "Seller Self-Join"
                 (junction)
 inventory     — id (uuid), seller_id (uuid → sellers.id), card_title, player, year,
                 card_set, parallel, grader, grade, cert_number, condition, price,
@@ -97,7 +113,7 @@ show_floor_transactions — id (uuid), created_at, sold_at (timestamptz),
 
 ## Auth Status — Phase 2 Deployed
 - **Current:** Supabase email + password auth via `supabase.auth.signUp()` / `signInWithPassword()`
-- **Session persistence:** Intentionally disabled — `db.auth.signOut()` runs on every page load so the login page always shows on fresh navigation. Sellers log in each visit.
+- **Session persistence:** sellers stay signed in across a refresh (session 2026-10-23). `initPage()` calls `_restoreSellerSession()`; admins and entry links (`?code=`, `?signup=`, `?buyer=`, auth-error links) still start from a clean sign-out. See "Show Mode v2".
 - **Seller records:** linked to `auth.uid()` in the sellers table
 - **⚠ RLS policies:** still using permissive `using (true)` — tightening to `auth.uid() = seller_id` is the next priority
 
@@ -230,6 +246,36 @@ Required for the Getting started checklist and first-use tips to sync across a s
 `loadOnboardingState()` gets a column error, logs it, and leaves syncing off. The checklist and
 tips then work exactly as before, saved per device in localStorage.
 
+Required for Show Mode v2 sales and saved photos (see "Show Mode v2" below):
+`supabase/migrations/20261023120000_show_mode_sales.sql`. Until it runs, Show Mode sales fall back
+to the classic writes (`updateCardInDB()` + `recordShowTransaction()`, not atomic, no offline
+dedup) and photos stay on the device only.
+
+Required for seller self-join (see "Seller Self-Join" below):
+`supabase/migrations/20261027120000_seller_self_join.sql`. Until it runs, Join a show falls back
+to a plain `show_sellers` insert (no "joined themselves" tag, no organizer switch, no end-date
+check, no Leave show).
+
+Required for the Show Directory (see "Show Directory" below), after the self-join migration:
+`supabase/migrations/20261028120000_show_directory.sql`. Then add yourself as platform owner:
+`insert into public.platform_admins (id) values ('<your auth.users id>');`. **Every existing show
+starts unlisted**, so sellers see no shows to join until you list them. Before it runs, every
+show counts as listed and the directory tab doesn't appear.
+
+Required for deleting shows from the Show Directory: `supabase/migrations/20261031120000_delete_show.sql`.
+Until it runs, Delete still works from the client (same sales check, direct deletes).
+
+Required for automatic show status in the database (see "Automatic Show Status"), after the
+self-join migration: `supabase/migrations/20261029120000_show_auto_status.sql`. Until it runs, the
+admin dashboard and show.html still show the right status (both work it out from the dates), but
+the stored `shows.status` only changes when a show is saved.
+
+Required for Show Mode card images and the share-card handle opt-in (see "Phase 4" under Show
+Mode v2), after the Show Mode sales migration: `supabase/migrations/20261030120000_show_mode_images.sql`.
+Until it runs, stock images only show for cards added in the current session, and the handle choice
+is kept on the device only. Photos taken on other devices still show (they use `primary_capture_id`,
+from the sales migration).
+
 Required to save the post-removal Trust Check result (diagnostic, see "Trust Check via GTCR"):
 `supabase/migrations/20261026120000_gtcr_post_removal_check.sql` adds `post_removal_card_status`,
 `post_removal_checked_at` and `post_removal_error` to `gtcr_registrations`.
@@ -277,7 +323,7 @@ _acItemType          // 'card' | 'sealed' | 'lot' — active item type in Add Ca
 Fonts: Bebas Neue (headlines), DM Sans (body), DM Mono (labels/badges), Barlow Condensed (CTAs), Instrument Serif italic (subheadlines)
 
 ## Three User Roles
-- **Seller** — email + password login → inventory management → profile (display name, WhatsApp, Instagram) → joins shows → QR code for table
+- **Seller** — email + password login → inventory management → profile (display name, WhatsApp, Instagram) → joins shows themselves ("+ Join a show") or is added by the organizer → QR code for table
 - **Admin** — Supabase Auth + admins table gate → Shows dashboard (default) → All Inventory tab → create/manage shows, authorize sellers, assign tables, publish, share
 - **Buyer** — guest → show picker → MLP Card Show demo (no code needed) → browse by sport/search → contact seller via WhatsApp or Instagram
 
@@ -332,7 +378,7 @@ Fonts: Bebas Neue (headlines), DM Sans (body), DM Mono (labels/badges), Barlow C
 7. **RLS currently permissive** — all policies use `using (true)`. Do not tighten until confirming auth.uid() is reliably set in all write paths.
 8. **Seller handle in DB** — inventory rows store seller_id (UUID), not handle. Always look up seller UUID by handle before querying inventory.
 9. **switchView() is async-safe** — guards `event?.target` so it can be called from async functions without throwing. Previously calling it after any `await` would throw a TypeError and halt the calling function silently.
-10. **No session restore on page load** — `db.auth.signOut()` runs on init. The login page always shows on fresh navigation. Do not re-add session restore without discussing UX implications first.
+10. **Seller session restore on page load (2026-10-23, user-approved)** — `initPage()` calls `_restoreSellerSession()`, which signs a saved seller back in via `loginAsSeller(handle, { restored: true })` (no welcome toast). Admin sessions, `?code=`/`?signup=`/`?buyer=` links and auth-error links still run `db.auth.signOut()` first, as before. Sign out is still explicit (`signOut()`).
 11. **Demo inventory is buyer-only** — `loadDemoInventory()` must only be called from `enterAsBuyer()`. Never call it on page load or from seller/admin login paths.
 12. **partnershipLink visibility** — hidden in `loginAsSeller()` and `loginAsAdmin()`, restored in `signOut()`. Seller Profile button occupies the same nav-right area.
 13. **Seller signup inserts sellers row immediately** — `signUp()` inserts the sellers row before checking `data.session`. When email confirmation is required, `data.session` is null and the code returns early; inserting first ensures the row exists by the time the user confirms and signs in. Unique violation (code 23505) is silently ignored.
@@ -2402,6 +2448,13 @@ migration, no new external library.
   imported as Raw. `readXLSX()`/`openMapper()` now keep every column; a re-upload repairs the
   raw cards in place via a raw-twin match in `loadInventory()`. See "XLSX Import Dropped Grade
   Columns".
+
+- **Show Directory (session 2026-10-27)** — the platform owner lists which shows sellers can join,
+  edits their structured details, merges duplicates and handles seller show requests. See "Show
+  Directory".
+- **Seller self-join (session 2026-10-27)** — sellers add themselves to a show with
+  "+ Join a show"; organizers see a "joined themselves" tag and can switch it off per show;
+  Show Mode requires joining first. See "Seller Self-Join".
 
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`
@@ -4705,6 +4758,489 @@ immutable (UPDATE blocked by RLS).
 Insert one `show_floor_transactions` row from the inventory row, joining `shows`/`sellers` for the
 snapshot fields, for `inventory.id = '480b0b72-166f-46d5-8bd2-4827f3251c7f'` and
 `show_id = 'show_mv2j09jb67yk'`. Also add its `show_inventory` row if missing.
+
+## Seller Self-Join (session 2026-10-27)
+
+Sellers add themselves to a show they're vending at instead of waiting for the organizer
+(user's choice: option 3, "open shows", with a "joined themselves" tag). The organizer can
+still add sellers, assign tables and remove anyone.
+
+- **Who can join what (updated by "Show Directory"):** the show must also be listed by the
+  platform owner. Otherwise, any seller can join any show that isn't over and whose organizer left
+  **Let sellers add themselves** on (`shows.seller_self_join`, default `true`, a checkbox
+  `#smSelfJoin` in the Create/Edit Show modal). "Over" = last day (end date, else start date)
+  before today; the server allows one extra day because its clock is UTC. A show with no dates
+  is over only when its status is `past`.
+- **Server:** `join_show_as_seller(p_show_id)` (SECURITY DEFINER) checks signed in → seller row →
+  show exists → already joined (`{ok, already:true}`) → switch → end date, then inserts
+  `show_sellers` with `self_joined = true`. `leave_show_as_seller(p_show_id)` only works on a
+  self-joined row; it removes the seller's `show_inventory` rows for that show, then the
+  `show_sellers` row. An organizer-added seller gets `organizer_added` and must ask the
+  organizer. Errors come back as `{error: '...'}`, mapped by `JOIN_SHOW_ERRORS`. Tested in
+  `tests/show-mode/self-join.test.sql`.
+- **Seller UI (app.html):** **+ Join a show** in the My Shows panel header opens
+  `#joinShowOverlay` (`openJoinShow(opts)` / `renderJoinShowList()` / `joinShowAsSeller()`):
+  shows from `_joinableShows()`, today's first (with a Today tag), then by date, searchable by
+  name/city. After joining: toast pointing to ⚡ Add My Cards (joining doesn't publish cards).
+  Self-joined shows get a **Leave show** button (`leaveShowAsSeller()`); the old "Remove" button
+  is now "Remove cards" (it only ever unpublished cards). The checklist's show step, the
+  onboarding tour and the Feature guide now say "Join the show".
+- **The overlay markup sits before the scripts / `initPage()`** on purpose: a restored session
+  can open it during page load, before markup further down is parsed.
+- **Show Mode gate (js/show-mode.js):** Show Mode only opens for a show the seller is in.
+  `openShowMode()` for any other show opens Join a show with that show at the top and opens
+  Show Mode once they join (`thenShowMode`). The nav Show Mode button now shows for every seller
+  (`smUpdateEntryPoints()`); `smOpenFromNav()` opens today's joined show, else asks them to join
+  a show running today if there is one, else opens their first show or the join list. A
+  `#/sm/<show>` link to an unjoined show goes through the same gate.
+- **Organizer UI:** `shows[id].selfJoined` (Set of handles, from `show_sellers.self_joined` in
+  `loadShowsFromDB()`) puts a "joined themselves" tag (`.chip-selfjoined`) on the seller's chip
+  in the show modal and on their row in the Shows dashboard.
+- **Analytics:** `show_events` row `seller_self_join` per join.
+- **Before the migration runs:** the RPC is missing (PGRST202), so `_joinShowFallback()` inserts
+  the `show_sellers` row directly (RLS is still permissive). `loadShowsFromDB()` retries its
+  `show_sellers` select without `self_joined`, and `upsertShowToDB()` drops `seller_self_join`
+  on a missing-column error.
+- **Tests:** `tests/show-mode/join-show.e2e.mjs` (gate, list filtering, join, leave, tag, switch,
+  fallback) and `self-join.test.sql`.
+- **Open:** anyone with a seller account can join an open show, including people who didn't pay
+  for a table. The organizer sees them tagged and can remove them; switch the show off to stop
+  self-joins. No organizer notification of new joins yet.
+
+## Automatic Show Status (session 2026-10-26)
+
+A show's status is no longer picked by hand. It follows the dates:
+- **Upcoming** before the start date.
+- **Active (Live)** from the start date through the end date.
+- **Past** after the end date.
+
+How it's set:
+- **app.html:**
+  - `_showStatusFromDates(show)` works the status out from `startDate`/`endDate`, or from the freeform
+    `date` text ("Oct 9-11, 2026"). It uses the show's `timezone` when one is set, else the device's date.
+  - It returns null when the show has no usable date. The stored status then stands.
+  - `_showStatusForRow(row)` is used wherever a `shows` row is loaded (`loadShowsFromDB()` and the two
+    access-code lookups).
+  - `renderAdminShowsDashboard()` calls `_refreshShowStatuses()`, so a tab left open picks up the next day.
+- **Show modal:** the Status dropdown is gone. `#smStatusAuto` shows the status the dates give
+  (`smUpdateStatusPreview()`). `saveShow()` saves that status, and so does the Directory's `saveDirEdit()`.
+- **Dashboard:** each show card has a status label (`.asc-status`) next to the name.
+- **Dashboard order** (`_sortShowsForDashboard()`): Active (Live) first, then Upcoming (soonest first),
+  then Past (most recent first). Shows with no date go last in their group.
+  The Show Directory list uses the same order (status worked out per row with `_showStatusForRow()`).
+- **show.html:** `_statusFromDateText()` works it out from the date text in `loadShowMetaFromDB()`.
+- **Database:** `refresh_show_statuses()` updates `shows.status` for shows that have a `start_date`.
+  "Today" is in `shows.timezone`, else America/Los_Angeles, so a US show never turns Past early.
+  `netlify/functions/refresh-show-statuses.js` runs it hourly (uses `SUPABASE_SERVICE_KEY`).
+- **Known gap:** a show without a time zone can read differently for up to 3 hours around midnight. In
+  that window the app (device date) and the database job (Pacific date) may disagree. Setting the
+  show's time zone in the Directory removes the gap.
+- **Tests:** `tests/show-mode/show-status.e2e.mjs`, `show-status.test.sql`.
+
+## Show Directory (session 2026-10-27)
+
+The platform owner curates which shows sellers can join (user's decision: every show needs their
+approval; seller requests included; recurring series not built).
+
+- **Listing:** `shows.listed` (default `false`). Only listed shows appear in a seller's Join a show
+  list (`_joinableShows()`), and `join_show_as_seller()` returns `not_listed` for the rest.
+  `set_show_listed(id, listed)` is platform-owner-only and refuses to list a show missing a start
+  date, venue, city or 2-letter state (or one that was merged). Listing sets `slug`
+  (`monster-show-2026-10`, numbered if taken; unique index). Organizers can still add sellers to
+  any of their shows by hand; listing only controls self-join.
+- **Platform owner:** `platform_admins` (one row per auth user id, added by hand in SQL).
+  `is_platform_admin()` decides; `checkPlatformAdmin()` runs in `loginAsAdmin()` and shows the
+  **🗂 Show Directory** tab (`#adminTabDirectory`, badge = pending requests). Regular organizers
+  never see it. Sign-out resets `_isPlatformAdmin`.
+- **Directory screen (`#showDirectoryPanel`, `loadShowDirectory()` / `renderShowDirectory()`):**
+  every show from every organizer (`dbSelectAllPages` over `shows`), with seller counts. Filters:
+  Requests · Needs info (unlisted, missing fields) · Ready to list · Listed · All. Each row shows
+  dates, venue/city/state, sellers, who created it, slug, what's missing, and a "Possible duplicate"
+  warning (`_dirPossibleDuplicates()`: same city + state, overlapping dates). Actions:
+  - **Edit / + Add show** (`#dirEditOverlay`, `saveDirEdit()`): name, dates, venue, city, state,
+    time zone (pre-filled from the state via `DIR_STATE_TZ`), website, "List for sellers". Writes
+    the structured columns and regenerates `date` (`_formatShowDateRange()`) and `location`
+    ("Venue, City, ST"), so display text is never typed by hand. A new show gets
+    `created_by` = you, a unique 6-character access code and `seller_self_join = true`. Warns
+    (confirm) on a likely duplicate.
+  - **List / Unlist** (`dirSetListed()`): missing fields open the edit form instead.
+  - **Merge…** (`#dirMergeOverlay`, `merge_shows(from, into)`): moves sellers (with table numbers,
+    skipping ones already in the target) and published cards, repoints requests, then unlists the
+    duplicate, closes it to self-join and sets `merged_into`. The duplicate row is kept because
+    `show_floor_transactions` (immutable) points at it, so its recorded sales stay with it.
+  - **Delete** (`dirDeleteShow()` → `delete_show(id)`, migration `20261031120000_delete_show.sql`):
+    asks to confirm (says how many sellers are in it), then removes the show, its `show_sellers`
+    and `show_inventory` rows and its `show_events`. Sellers' cards stay in their inventory. A
+    request linked to it goes back to pending; a show merged into it is unlinked. **Refused for
+    a show with any `show_floor_transactions` row** (the ledger is immutable and points at it):
+    the toast says to unlist or merge it instead. Available on every row, merged ones included.
+    Before the migration, `_dirDeleteShowFallback()` does the same check and deletes from the
+    client.
+- **Requests (`show_requests`):** sellers tap **Can't find your show? Request it** in Join a show
+  (`openShowRequestForm()` / `submitShowRequest()` → `submit_show_request()`; name + start date
+  required; same name + date returns the existing request; max 10 pending per seller). The
+  seller's last 10 requests and their status show under the list (`loadMyShowRequests()`). In the
+  directory each request offers **Create & list** (edit form pre-filled; saving lists the show and
+  resolves the request), **Link to a show…** (or one-click "Link to X" for likely matches,
+  `_dirRequestMatches()`), and **Decline** (optional note shown to the seller).
+  `resolve_show_request()` with `listed` requires a listed show and adds the requesting seller to
+  it (`self_joined = true`).
+- **Time zone:** when `shows.timezone` is set, `join_show_as_seller()` uses the show's local date
+  for "ended" instead of UTC minus a day.
+- **Organizer view:** each show card says "Listed for sellers" or "Not listed yet · CardShow
+  reviews new shows", and the "Let sellers add themselves" text says it applies once listed.
+- **Before the migration:** `listed` is missing, so every show counts as listed
+  (`row.listed !== false`); `submit_show_request` is missing and the form says requests aren't set
+  up yet; no directory tab.
+- **Tests:** `tests/show-mode/show-directory.e2e.mjs` (owner flow, regular organizer, seller
+  requests, unlisted gate, fallback) and `show-directory.test.sql` (permissions, required fields,
+  slugs, requests, time zone, merge).
+- **Not built:** recurring series grouping; notifying sellers or the owner by email (sellers see
+  request status in Join a show; the owner sees the tab badge); editing a request's details before
+  linking.
+
+## Show Mode v2 (in progress — Phases 1–3 shipped, sessions 2026-10-23/24)
+
+Mobile-first seller screens for a live show, built from the "Show Mode Seller Flow" spec
+(Monster Show feedback: hard-to-find mark-sold, refresh logged sellers out, case-scan timeouts).
+`#showModeRoot` in app.html is a fixed full-screen layer (z-index 150: above `<nav>` and the
+inventory table, below every modal at 200+, so Add Card, Profile, the Sell / Add menu, the share
+card etc. still open on top). All logic lives in **`js/show-mode.js`**, loaded right before
+app.html's main script (it must load first: app.html's `updateStats()` reads `_smShowId`). Its
+CSS (`--sm-*` tokens, scoped to `#showModeRoot`) stays in app.html.
+
+**Flag:** `SHOW_MODE_V2_ENABLED = false` (in js/show-mode.js). Test switch `?show_mode=1` (`=0`
+off; localStorage `showModeTest`; stripped from the URL). Session restore and the service worker
+are **not** flagged.
+
+**Routing:** hash routes `#/sm/<showId>[/inventory|/sell|/log|/confirm|/sold/<clientSaleId>|/scans|/addone|/addtype|/add/...]`
+(`/show/*` already rewrites to show.html). `smRoute()` on `hashchange`; `smGo(path, replace)`.
+`smAfterShowsLoaded()` (after `loadShowsFromDB()` in `loginAsSeller()`) drains the outbox and
+reopens the same screen after a refresh, or opens Show Mode itself for a show running today
+unless the seller chose classic view today (`smExited:<handle>`). The confirm screen's state
+(`_smDraft`) and the last sale are kept in sessionStorage so a refresh comes back to them.
+
+### Phase 1 (done)
+Home (live banner, Sold today / Sales / In case, Sell a card, Add cards, Log a manual sale,
+Refresh prices, recent sales), bottom nav, seller session restore (Critical Note 10; also uses a
+cached handle `sellerHandle:<uid>` when the network is down, so a reload with no signal doesn't
+sign the seller out), "Log in" links on show.html / seller-browse.html, `sw.js` +
+`manifest.webmanifest` (only `/app`/`/app.html` navigations, network-first with a 4s timeout).
+
+### Phase 2 (done)
+- **Sell (screen 2, `/sell`)**: dark camera screen (getUserMedia, 5:7 guide frame, tap shutter,
+  torch when supported, "Photo" file fallback) or Search over the seller's available inventory
+  (Graded/Raw/Sealed chips). A shutter tap saves the capture **first**, then identifies. The
+  result sheet shows In your case / Not in your case, "Photo saved", market price, and Sell this
+  card / Add & sell, Wrong card? (other inventory matches + identification candidates), Add back
+  photo, Sell several (stub).
+- **Log a sale (`/log`)**: the same screen in manual mode; search adds "Type it in". Manual
+  sales create the item **and** the sale together (`inventory.source = 'manual_sale'`, ledger
+  `source = 'manual'`).
+- **Confirm (screen 3)**: price chips Asking / −5% / −10% / Other (`smChipPrice()`, whole
+  dollars), payment Cash / Venmo / Card (last used per seller, `smLastPay:<handle>`; trade is out
+  of scope), optional buyer IG handle, editable card details for a new item (the market price
+  fills Asking). **Mark sold** is optimistic: it updates `inventory[]`, queues the sale, and goes
+  straight to Sold.
+- **Sold (screen 4)**: yellow screen, CSS confetti (off with reduced motion), haptic, 5s Undo
+  toast (back to confirm with the same values), Sell next card, Share sale (opens The Drop's
+  share card with the scan as its photo), Back to show. Home's Recent sales has Undo for 10
+  minutes (ids reloaded from `sales` on open) and a "Syncing" marker while queued.
+- **Inventory (screen 5, `/inventory`)**: search, In case / Sold / All tabs, one-tap Sell, renders
+  100 rows at a time ("Show more") instead of true virtualization.
+- **Recent scans (`/scans`, More → Recent scans, Search tab)**: captures not attached to an item
+  (on this device + `card_captures` rows, signed URLs for remote ones), with Sell / Add to case
+  (asks the asking price) / Delete (soft delete).
+- **Identification**: the phone calls `scan-card.js` (Claude) and `cardsight-identify.js`
+  (CardSight) in parallel; `smMergeIdentification()` — names + year agree → high confidence,
+  catalog set/number/parallel + Claude's slab label; disagree → the other read becomes a "Wrong
+  card?" candidate. Either can fail alone. CardSight endpoint confirmed from its SDK:
+  `POST https://api.cardsight.ai/v1/identify/card`, multipart `image`, `X-API-Key` (shares
+  `CARDSIGHT_API_KEY` and its quota with comp pricing).
+- **Matching** (`smScoreMatch()`): cert # = 100; else player last name 40 (+10 full), year 20,
+  card # 20, set tokens ≤15, grader+grade ±; ≥70 counts as "In your case". A slab whose cert
+  matches an item links to it — no duplicate.
+- **Server** (migration `20261023120000_show_mode_sales.sql`, tested on local Postgres 16 with
+  `tests/show-mode/sales.test.sql`): `sales` (mutable status; read-own RLS; no client writes),
+  `card_captures` (own rows; soft delete), private `card-captures` bucket (`<uid>/<capture>/
+  crop|original|back.jpg`, own-folder policies), `record_sale()` (idempotent on
+  `client_sale_id`; marks sold or creates the item from `p_new_item`, inserting only real
+  columns; publishes to the show; attaches the capture and sets `inventory.primary_capture_id`;
+  returns `{error:'already_sold'}` for a double sale) and `void_sale()` (10-minute window on the
+  server clock; item back to Available; reversing `show_floor_transactions` row with negative
+  `sold_price` and `voids_transaction_id`). The ledger row itself is still written by the
+  client's `_insertShowTransaction()`, now carrying `client_sale_id` (unique index) so it lands
+  exactly once.
+- **Outbox** (IndexedDB `cardshow-showmode`: `captures`, `outbox`): ops `capture_row`,
+  `capture_update`, `sale`, `void`, `add_item`, replayed in order by `smDrain()` on `online`,
+  after each enqueue, and with backoff. `smApplyPendingOps()` re-applies queued sales after the
+  inventory reloads. Undoing a sale that never left the phone cancels it (a new item becomes an
+  `add_item`). Photos upload separately (`_smUploadCaptures()`); the full original is dropped
+  from the device after upload, the crop is kept for thumbnails. Canvas re-encoding strips EXIF.
+- **Fallbacks**: no `record_sale` (PGRST202) → classic `updateCardInDB()`/`insertCardToDB()` +
+  `recordShowTransaction()`/`recordManualSaleTransaction()`; no `card_captures` → photos stay
+  on the device. Both tested.
+- **Analytics** (`show_events`, `sm_*`): show_mode_opened, sell_started, card_identified,
+  sale_confirmed, manual_sale_logged, sale_undone, capture_saved, capture_attached. Dropped when
+  offline.
+- **Tests**: `tests/show-mode/` — 48 browser checks (iPhone 13 and Pixel 7), a 3-check fallback
+  run, and the SQL file. See its README.
+
+### GTCR integration (after merging main, session 2026-10-26)
+Show Mode writes sales through `record_sale()`/`void_sale()` and adds items by upsert, so it bypasses
+`updateCardInDB()`/`insertCardToDB()`, which is where the GTCR reconcile is normally scheduled. `js/show-mode.js`
+now calls `gtcrScheduleReconcile()` itself after a completed sale (removes the sold card's registration),
+after a successful undo (re-registers it, if the seller opted in) and after `add_item` (registers a new
+graded card). It's a no-op for sellers without consent or registrations. The old `gtcrRegisterOnSale()`
+call (removed on main) is gone. The classic fallback path already goes through `updateCardInDB()`.
+
+### Known gaps / deviations
+- ~~Already-sold conflict toast~~ and ~~empty inventory on an offline reload~~: fixed, see
+  "Double-sale dialog + offline inventory" below.
+- Capture photos are saved on every shutter tap (not only on a successful match), so nothing is
+  lost on a failed identification.
+- Thumbnails come only from captures on this device; seller photos from other devices and
+  CardSight stock images are Phase 4.
+- Catalog search in manual mode is "Type it in" (no catalog autocomplete yet).
+- The classic "first sale" tip is not shown from Show Mode (its text describes the classic UI).
+
+**Decisions from the user (2026-10-23):** sellers stay signed in across refresh; seller card
+photos may be stored in a private bucket; table number from `show_sellers.table_number`; trade
+sales out of scope; social assets show the seller's handle only by opt-in; use both Claude vision
+and CardSight identify.
+
+### Add cards choice sheet + one-card add (session 2026-10-26)
+Seller feedback: **Add cards** went straight to the case scan, but at a table they usually add one
+or two cards. Home → **Add cards** now opens a bottom sheet (`#smAddBackdrop`, `smOpenAddSheet()` /
+`smAddChoose(kind)`, closed on any route change) with four options:
+- **One card** → `#/sm/<show>/addone`, the single-card camera from Sell (`smRenderSell('add')`,
+  camera only, no Scan/Search toggle). The photo is saved first (capture `entry_point =
+  'case_scan'`, since the DB check only allows sell_card / manual_sale / case_scan), then identified
+  with Claude + CardSight as in Sell. The result sheet (`_smRenderAddResult()`) has three states:
+  - **New card:** a "Your price" field, pre-filled with the rounded market price unless the seller
+    already typed one; **Add to case · live now** (`smAddToCase()`); Wrong card? (switches to a
+    CardSight candidate, `smAddUseCandidate()`); Edit details; Add back photo.
+  - **Already in your case** (`smMatchInventory`, e.g. a cert match): **Scan next card**, with
+    "Add another copy" and "It's a different card" links. Nothing is added unless asked.
+  - **Couldn't read:** Try again / Type it in.
+  After an add the sheet clears for the next card, and the title shows "N added".
+- **A whole case** → the Phase 3 case scan (`/add/scan`). Its "Other ways to add cards" link was
+  removed.
+- **Type it in** → `#/sm/<show>/addtype` (`smRenderAddType()`): player/character, year, card #,
+  set, parallel, grader, grade, cert #, price. It needs a player or set. Opened from a scan (Edit
+  details / It's a different card / Type it in), it is pre-filled, keeps the photo
+  (`sessionStorage.smAddDraft`) and returns to the camera after adding. From the sheet, the form
+  clears for the next card.
+- **Upload a spreadsheet** → clicks the classic `#uploadZone` file input inside the tap; the
+  column mapper (z-index 950) opens above Show Mode.
+- All adds go through `_smAddNewCard()` → the existing `add_item` outbox op (source `show_mode`,
+  published to the show, capture attached as the primary image).
+- Analytics: `sm_card_added` (`via: scan|typed`), plus `capture_attached` (`entryPoint: 'add_card'`).
+- Tests: `tests/show-mode/add-cards.e2e.mjs` covers the sheet, one card (new / wrong card /
+  already in case / another copy), Edit details, Type it in, the spreadsheet file picker and
+  Cancel. `case-scan.e2e.mjs` now enters through the sheet.
+
+### Fix: Sell → Search rows showed no player name (session 2026-10-26)
+Seller screenshot: search results on the dark Sell screen showed only "2024 · Bowman Chrome ·
+##CPA-JP · PSA 9", with no player name, and the rows ran off the right edge.
+- **Name invisible:** it was in the markup but white on white. `#showModeRoot button { color:
+  inherit }` (id selector) beat `.sm-list--light .sm-row { color: ink }`, so the row buttons
+  inherited the dark screen's white text. Fixed with `#showModeRoot .sm-list--light .sm-row,
+  #showModeRoot .sm-row--button { color: var(--sm-ink) }`.
+- **Rows wider than the screen:** grid items default to `min-width: auto`, so a no-wrap title
+  widened the column. `.sm-list > * { min-width: 0 }`, `.sm-row-meta { overflow-wrap: anywhere }`,
+  and `.sm-scroll { overflow-x: hidden }`.
+- **"##CPA-JP":** card numbers stored with their own "#" got a second one. Every Show Mode
+  display now goes through `_smCardNum()`.
+- **Dark bars on the search box:** the auto-focused input drew its focus outline inside the
+  rounded box. The ring is now on `.sm-search:focus-within` (yellow on dark, ink on light).
+- Tests: 4 new checks in `show-mode.e2e.mjs` (name text is ink, no sideways scroll, single "#",
+  a very long card number doesn't widen the screen) — 52/52 on iPhone 13 and Pixel 7.
+
+### Phase 3 — case scan, screens A–D (done, session 2026-10-24)
+Replaces the classic one-request Bulk Scan inside Show Mode (Home → **Add cards**). All code is in
+`js/show-mode-scan.js` (`sc*` names). **No migration and no server job.** The phone drives the work
+and keeps batch state in IndexedDB (DB v2 adds the stores `scanBatches` and `scanPhotos`). The only
+server change is optional: the bulk-scan prompt now also asks for a per-card `box`.
+- **A (`/add/scan[/<batchId>]`)**: dark camera with a square 3×3 guide. The shutter captures the
+  guide area at 2000px, JPEG 0.8; "Photos" picks several from the camera roll. Each photo goes into
+  IndexedDB **before** anything is uploaded, then joins the queue at once. The tray shows numbered
+  thumbnails plus "~N cards". **Done · N** → B. "Other ways to add cards" opens the classic
+  Sell / Add menu.
+- **Queue (`_scProcessLoop`)**: one photo at a time. Each photo calls the already-deployed
+  `bulk-scan` Edge Function (Claude, all cards in the photo, 60s timeout, one photo per request)
+  and `cardsight-identify` with `all: true` (every detection) in parallel.
+  - A server error or timeout retries with backoff (5s, doubling, max 60s), and fails after
+    `SC_MAX_ATTEMPTS` (5).
+  - A dropped connection is "Waiting for signal" and doesn't use up an attempt. The `online`
+    event restarts it.
+  - 413/415 fail at once.
+  - A photo left "working" by a closed app goes back in the queue on the next login
+    (`scResume()`, from `smAfterShowsLoaded()`). The queue also restarts when the page becomes
+    visible again.
+  - It keeps running while the seller sells (any screen, Show Mode open or not, while the tab is
+    alive). When a batch finishes, a toast says "Case scan ready · Review", and the home screen
+    shows a "Case scan" banner (`scHomeBannerHTML()`).
+- **Matching (`scBuildItems`)**: Claude's cards are paired with CardSight detections by player last
+  name + year.
+  - Paired → confidence 0.95, using the catalog's set/number/parallel and Claude's slab label.
+  - Claude alone → high 0.9 / medium 0.7 / low 0.4.
+  - Unpaired CardSight detections become 0.5 "Wrong card?" options on the unpaired cards.
+  - If Claude found nothing, the CardSight detections stand alone.
+  - **Rule (`scClassify`)**: matched when top ≥ `SC_MATCH_MIN` (0.85) and it leads the second by
+    ≥ `SC_MATCH_GAP` (0.10); else needs a look. A card with no player/set → failed, with Claude's
+    note (e.g. "glare on the slab label"); the prompt now lists unreadable cards too. The classic
+    bulk-scan review filters those out.
+  - Crops come from the `box` (padded 6%, 1200px). Without a box (bulk-scan not redeployed yet)
+    the whole photo is the thumbnail and no crop capture is made.
+  - A slab whose cert matches an available card is marked "Already in your case" (`existingId`).
+  - Prices: `_scPriceItems()` fills market price via `_smMarketFor()` (comp-lookup), one card at a
+    time, and pre-fills an empty price with it.
+- **B (`/add/batches/<id>`)**: ink summary (`found of ~estimate`, `role=progressbar`), one row per
+  photo (Done n cards / Working / Waiting for signal / Failed) with **Retry now**. **Review N ready
+  now** works as soon as any photo is done. Also **Keep selling** and **Add photos**.
+- **C (`/review`)**: **Needs a look** first (accent-soft rows; Pick / Fix → D), then **Matched**
+  (44px checkbox, inline price, "Your photo" / "Case photo" / "Already in your case"). **Add N to
+  case · live now** → `scCommit()`:
+  - Each checked match gets its inventory id stored **first** (state `committing`), so a second
+    tap or a crash resend the same idempotent `add_item` op (source `case_scan`, published to the
+    show).
+  - A crop becomes a `case_scan` capture attached to the new card. For an existing slab the
+    capture is linked through the new outbox op `attach_capture`, and no duplicate is created.
+  - Unchecked and needs-a-look cards stay in the batch. The batch completes (and its full photos
+    are dropped from the device) once nothing is left. Completed batches are deleted after 7 days.
+- **D (`/items/<id>`)**: the seller's crop (110×154, or the whole photo), candidate tiles (2-up),
+  "Neither? Type it in" (fields; a typed card becomes confidence 1.0), **Use this match**,
+  **Retake this card** (one photo through the single-card `smIdentify()`, replacing the
+  candidates and crop), **Skip for now** (back, unchanged), "Not a card — remove it" (skipped).
+- **`cardsight-identify.js`**: `all: true` adds `detections[]` (each normalized like
+  `detection`). Single-card calls are unchanged.
+- **Analytics:** scan_batch_started, scan_photo_uploaded (attempt, bytes, latencyMs, cards),
+  scan_photo_failed, scan_review_completed, capture_attached (`attachType: 'case_scan'`).
+- **Tests:** `tests/show-mode/case-scan.e2e.mjs`. It has 11 unit checks plus the full flow (3
+  photos with a forced 503 → Retry now → review → fix → commit → re-commit adds nothing; resume
+  after a mid-photo reload; offline → Waiting for signal → online). All pass on iPhone 13 and
+  Pixel 7.
+
+**Deviations from the spec (Phase 3):** no presigned upload / server worker / `ScanBatch` tables.
+Identification is phone-driven, because the Netlify plan's background functions are unconfirmed.
+Each request now carries one photo, which removes the old whole-case timeout. So the batch lives on
+one device: it can't be reviewed from another phone, and photos aren't stored on the server until
+they're committed as crops. D's "Search it" is "Type it in" (no catalog search). Show-local "today"
+and estimates use simple counts (~6 cards per unprocessed photo).
+
+**To get per-card crops:** redeploy bulk-scan (`supabase functions deploy bulk-scan --project-ref
+qtnqawqlmttogwnjieky`). Without it everything works, but case-scan cards use the whole photo.
+
+### Phase 4 — images, share handle, analytics (session 2026-10-26)
+**Card images.** `smCardImage(card)` / `_smCardThumb(card)` (js/show-mode.js) pick, in order:
+1. A photo saved on this device (IndexedDB blob URL).
+2. The seller's photo from another device. `_smLoadRemoteThumbs()` reads `card_captures.crop_key`
+   for cards whose `primary_capture_id` photo isn't on this device, then gets signed URLs for the
+   private bucket (`createSignedUrls`, 1 hour).
+   - Runs when Show Mode opens and on every `smRefresh()`.
+   - Only looks up what's missing or within 5 minutes of expiring. A photo that hasn't finished
+     uploading is retried after 10 minutes.
+3. The CardSight stock image for `card.CatalogCardId`, through `netlify/functions/card-image.js`
+   (`GET /v1/images/cards/{id}?format=raw` from CardSight's SDK).
+   - Netlify's CDN caches each image for 30 days, and a missing one for a day.
+   - A stock image that fails to load becomes a blank tile and isn't requested again this session
+     (`_smStockMissing`). Stock tiles use `object-fit: contain`.
+4. A blank tile.
+
+**Catalog ids** (`inventory.catalog_card_id`; `card.CatalogCardId` via `dbRowToCard()`):
+- **New Show Mode cards:** taken from the identification, on one-card add, Add & sell, Recent
+  scans and case scan, for whichever candidate the seller picked.
+- **Confirm screen edits:** changing the player, year, set or number drops the id.
+- **Writes:** `record_sale` skips unknown columns, so the id goes in `p_new_item` as is.
+  `_smOpAddItem()` strips it on a missing-column error.
+- **Existing cards:** `_saveCatalogCardId()` saves the id from comp results when the match came
+  from CardSight. That covers the classic Check Comps (`runCompCheck()`) and Show Mode market
+  prices (`_smMarketFor()`). Those matches are high-confidence only and cost no extra quota.
+- Only real CardSight UUIDs are saved (`CATALOG_ID_RE`).
+
+**Backfill** (in the migration, idempotent):
+- A card gets its newest uploaded, non-deleted attached photo as `primary_capture_id`
+  (`image_source = 'seller'`), plus that photo's catalog id.
+- A card with only a catalog id gets `image_source = 'stock'`.
+- Other existing cards fill in as comp checks run.
+
+**Share card** (The Drop, used by Show Mode's Share sale and the Report tab):
+- **Photo:** `openShareCardModal()` fills the photo step from `smCardPhotoDataUrl(card)`: the
+  photo on this device, else the seller's photo from another device, else the stock image. It's
+  fetched as a data URL so the canvas still exports. A note says which photo it is ("Your photo
+  from when you scanned this card" / "Catalog image… Change Photo to use your own"). With nothing
+  found, the photo step stays required as before.
+- **Handle opt-in** (`#dropShowHandle`, off by default):
+  - The handle is the seller's Instagram (from the profile) or, if none, their CardShow handle.
+  - When on, it's drawn on the venue line ("Cal Expo, Sacramento, CA · @handle") and the caption
+    footer starts "Sold by @handle".
+  - The choice is saved on `sellers.share_handle` (localStorage before the migration) and reset on
+    sign-out.
+  - Payment method is still never shown.
+
+**Analytics** (`show_events`):
+- `sm_images_shown` (`{seller, stock, none}`), once per Show Mode open. "stock" means the card has
+  a catalog id, before the browser has tried loading the image.
+- `share_opened` (`{photo: seller|stock|upload|none, from}`), `share_handle` (`{on}`), and
+  `share_action` (`{action: copy_caption|download|native_share, handle}`), logged under the sale's
+  show (nothing for an off-show sale).
+
+**Tests:**
+- `tests/show-mode/images.e2e.mjs`: 24 checks on iPhone 13 and Pixel 7.
+- `card-image.test.mjs`: the function, with CardSight stubbed.
+- `show-mode-images.test.sql`: the backfill, run twice.
+
+**Not done in Phase 4:**
+- Images on the buyer pages (show.html, seller-browse.html) and in the classic inventory table.
+  Seller photos are in a private bucket, so buyers would need a server-signed URL. Stock images
+  could go on those pages as they are.
+- "Sell several" and catalog search in manual entry (see "Known gaps"). The double-sale dialog
+  shipped later (see "Double-sale dialog + offline inventory").
+- Whether CardSight counts image requests against the 750/month quota isn't documented. The 30-day
+  CDN cache keeps repeat requests low.
+
+### Double-sale dialog + offline inventory (session 2026-10-27)
+**Double sale.** When `record_sale()` returns `already_sold` (the card was sold on another phone or
+in the classic view), `_smOpSale()` saves the refused sale in IndexedDB (`conflicts` store, DB v3)
+and `smShowNextConflict()` opens a dialog (`#smConflictOverlay`, a `.modal-overlay` appended to
+`<body>`, so it shows on any screen, Show Mode or classic):
+- It shows both sales. The earlier one comes from `sales` (latest completed row for the card; RLS
+  is read-own), else from the inventory row's sold fields (a classic sale).
+- **Keep the earlier sale**: drops mine (the card already shows the earlier sale after
+  `_smRefetchCard()`).
+- **Undo the earlier sale, keep mine**: only when the earlier sale is a Show Mode sale under ~10
+  minutes old. Calls `void_sale()` on it (needs a signal), then re-queues my sale with the same
+  `client_sale_id` (`record_sale()` wrote nothing for the refused attempt). A late
+  `undo_window_expired` re-renders the dialog without this option.
+- **It's a second copy, record mine too**: hidden for a card with a cert # (a slab can't have a
+  twin). Creates a new card with the same details, sold through `record_sale()`'s `p_new_item`.
+- **Decide later**: closes; the dialog comes back on the next login / Show Mode open
+  (`smAfterShowsLoaded()`). Sign-out removes the open dialog but keeps the record.
+- Several conflicts show one after another. Analytics: `sale_conflict`, `sale_conflict_resolved`
+  (`{action}`).
+- The classic-path fallback (`_smLegacySale`, before the sales migration) doesn't detect conflicts.
+
+**Offline inventory** (not behind the Show Mode flag; the classic view uses it too):
+- **Saved:** after a good load (`smInventoryLoaded()`, from `loginAsSeller()`) and after every
+  change (`smCacheInventorySoon()`, debounced 1.5s, from `updateStats()`), the seller's cards go to
+  the `cache` store as `inv:<handle>` (Sets as arrays, share-card photos left out). Their shows go
+  in as `shows:<handle>` after `loadShowsFromDB()` succeeds.
+- **Used:** `fetchSellerInventoryFromDB()` returns false (no signal) → `smLoadCachedInventory()`,
+  then queued outbox ops are re-applied, so an unsynced sale still shows sold. `loadShowsFromDB()`
+  failing (`_showsLoadFailed`, distinct from "no shows") → `smLoadCachedShows()`, so Show Mode can
+  open. Toast "No signal — showing your cards as of 3:12 PM"; Show Mode home shows the same notice.
+- **Back online:** the `online` event, or a 30s retry timer (venue wifi can be up with no
+  internet), runs `smReloadAfterOffline()`: reloads cards and shows, re-applies the outbox,
+  toasts "Back online".
+- **Sign-out** deletes the seller's cached copy (`smClearOfflineCache()`), so it doesn't stay on a
+  shared phone. The outbox is untouched, as before.
+- Classic-view edits made offline still aren't queued (they fail as before); only Show Mode sales
+  and adds go through the outbox.
+
+Tests: `tests/show-mode/double-sale-offline.e2e.mjs` (33 checks: cache saved, offline reload with
+cards and shows, offline sale survives a reload and syncs, the three choices, decide later,
+sign-out clears the cache).
 
 ## Show Configuration (Demo Data)
 - **MLP Card Show** — Oct 17-18, 2026 · Grand Hyatt Tampa Bay, FL · Code: MLPTPA (primary demo, shown to buyers without code)

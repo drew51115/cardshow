@@ -5,6 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
 <title>CardShow — Unified Inventory Platform</title>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,500;0,9..40,700;1,9..40,300&display=swap" rel="stylesheet">
+<!-- Show Mode v2 fonts (scoped to #showModeRoot) -->
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet">
+<!-- Installable app ("Add to Home Screen") + offline shell — see sw.js -->
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/assets/app-icon-192.png">
+<meta name="theme-color" content="#07080c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
+  }
+</script>
 
 <!-- Supabase client -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -1779,6 +1791,116 @@
   }
   .seller-chip button:hover { color: var(--text); }
   .chip-username { white-space: nowrap; }
+  .chip-selfjoined {
+    font-family: 'DM Mono', monospace; font-size: 0.56rem; letter-spacing: 0.06em;
+    text-transform: uppercase; white-space: nowrap; flex-shrink: 0;
+    color: var(--accent); border: 1px solid var(--accent); border-radius: 4px;
+    padding: 0.08rem 0.3rem; line-height: 1.3;
+  }
+  .join-show-modal { max-width: 480px; padding: 1.4rem; }
+  .join-show-sub { font-size: 0.82rem; color: var(--muted); margin-bottom: 0.8rem; line-height: 1.45; }
+  .join-show-reason {
+    font-size: 0.85rem; color: var(--text); background: rgba(245,200,66,0.08);
+    border: 1px solid rgba(245,200,66,0.35); border-radius: 8px; padding: 0.55rem 0.7rem; margin-bottom: 0.6rem;
+  }
+  .join-show-list { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.7rem; max-height: 55vh; overflow-y: auto; }
+  .join-show-row {
+    display: flex; align-items: center; gap: 0.7rem; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 10px; padding: 0.7rem 0.8rem;
+  }
+  .join-show-row.focus { border-color: var(--accent); }
+  .join-show-info { flex: 1; min-width: 0; }
+  .join-show-name { font-weight: 700; font-size: 0.95rem; color: var(--text); }
+  .join-show-meta { font-size: 0.78rem; color: var(--muted); margin-top: 0.15rem; overflow-wrap: anywhere; }
+  .join-show-blocked { font-size: 0.75rem; color: var(--muted); margin-top: 0.3rem; font-style: italic; }
+  .join-show-today {
+    font-family: 'DM Mono', monospace; font-size: 0.58rem; letter-spacing: 0.08em; text-transform: uppercase;
+    background: var(--accent); color: #07080c; border-radius: 4px; padding: 0.08rem 0.35rem; vertical-align: middle;
+  }
+  .join-show-btn { width: auto !important; min-height: 44px; min-width: 76px; padding: 0 1rem; flex: 0 0 auto; margin: 0; border: none; border-radius: 8px; font-weight: 700; font-size: 0.95rem; cursor: pointer; }
+  .dir-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.8rem; flex-wrap: wrap; margin-bottom: 0.9rem; }
+  .dir-title { font-family: 'Bebas Neue', sans-serif; font-size: 1.6rem; letter-spacing: 0.06em; color: var(--text); line-height: 1; }
+  .dir-sub { font-size: 0.82rem; color: var(--muted); margin-top: 0.3rem; }
+  .dir-head-actions { display: flex; gap: 0.5rem; }
+  .dir-filters { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.7rem; }
+  .dir-filter {
+    background: var(--surface); border: 1px solid var(--border); color: var(--muted); border-radius: 999px;
+    padding: 0.4rem 0.8rem; font-size: 0.8rem; cursor: pointer; min-height: 36px;
+  }
+  .dir-filter span { font-family: 'DM Mono', monospace; font-size: 0.7rem; margin-left: 0.2rem; }
+  .dir-filter.active { border-color: var(--accent); color: var(--accent); }
+  #dirSearch { width: 100%; margin: 0 0 0.8rem; }
+  .dir-list { display: flex; flex-direction: column; gap: 0.6rem; }
+  .dir-row {
+    display: flex; gap: 0.8rem; justify-content: space-between; align-items: flex-start; flex-wrap: wrap;
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 0.8rem 0.9rem;
+  }
+  .dir-req { border-color: rgba(245,200,66,0.4); }
+  .dir-row-main { flex: 1 1 280px; min-width: 0; }
+  .dir-row-name { font-weight: 700; color: var(--text); font-size: 0.95rem; }
+  .dir-row-meta { font-size: 0.78rem; color: var(--muted); margin-top: 0.2rem; overflow-wrap: anywhere; }
+  .dir-row-meta a { color: var(--accent); }
+  .dir-warn { font-size: 0.76rem; color: #f59e0b; margin-top: 0.3rem; }
+  .dir-matches { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; margin-top: 0.45rem; font-size: 0.78rem; color: var(--muted); }
+  .dir-row-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
+  .dir-btn { width: auto !important; min-height: 40px; padding: 0 0.8rem; font-size: 0.8rem; }
+  .dir-btn-danger { color: #ef4444 !important; border-color: rgba(239,68,68,0.45) !important; }
+  .dir-badge {
+    font-family: 'DM Mono', monospace; font-size: 0.58rem; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 0.06rem 0.32rem; vertical-align: middle;
+  }
+  .dir-badge.listed { color: #22c55e; border-color: rgba(34,197,94,0.4); }
+  .dir-badge.req { color: var(--accent); border-color: var(--accent); }
+  .dir-empty { color: var(--muted); font-size: 0.85rem; padding: 1.5rem 0.5rem; text-align: center; }
+  .dir-tab-badge {
+    background: var(--accent); color: #07080c; border-radius: 999px; font-size: 0.65rem; font-weight: 700;
+    padding: 0.05rem 0.4rem; margin-left: 0.25rem;
+  }
+  .dir-modal-title { font-family: 'Bebas Neue', sans-serif; font-size: 1.5rem; letter-spacing: 0.04em; color: var(--text); }
+  .join-show-request-cta {
+    display: flex; align-items: center; justify-content: space-between; gap: 0.6rem;
+    margin-top: 0.8rem; padding-top: 0.8rem; border-top: 1px solid var(--border);
+    font-size: 0.85rem; color: var(--muted);
+  }
+  .join-show-request-btn { min-height: 44px; padding: 0 1rem; font-size: 0.85rem; }
+  .join-show-myreq-title {
+    font-family: 'DM Mono', monospace; font-size: 0.62rem; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--muted); margin: 0.9rem 0 0.4rem;
+  }
+  .join-show-myreq {
+    display: flex; align-items: center; justify-content: space-between; gap: 0.6rem;
+    padding: 0.5rem 0; border-bottom: 1px solid var(--border);
+  }
+  .join-show-myreq-name { font-size: 0.88rem; font-weight: 600; color: var(--text); }
+  .join-show-myreq-status { font-size: 0.72rem; color: var(--muted); white-space: nowrap; flex-shrink: 0; }
+  .join-show-myreq-status.listed { color: #22c55e; }
+  .req-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
+  .req-field { display: flex; flex-direction: column; gap: 0.25rem; min-width: 0; }
+  .req-field span { font-family: 'DM Mono', monospace; font-size: 0.62rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+  .req-field .show-input { margin: 0; width: 100%; }
+  .req-wide { grid-column: 1 / -1; }
+  .req-actions { display: flex; gap: 0.6rem; margin-top: 1rem; }
+  .req-actions .btn { flex: 1; min-height: 44px; justify-content: center; }
+  .asc-listed {
+    font-family: 'DM Mono', monospace; font-size: 0.6rem; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 0.05rem 0.3rem;
+  }
+  .asc-status {
+    font-family: 'DM Mono', monospace; font-size: 0.6rem; letter-spacing: 0.06em; text-transform: uppercase;
+    padding: 0.1rem 0.4rem; border-radius: 4px; border: 1px solid var(--border); color: var(--muted);
+    margin-left: 0.35rem; vertical-align: middle; white-space: nowrap;
+  }
+  .asc-status.active   { color: var(--success); border-color: rgba(34,197,94,0.4); }
+  .asc-status.upcoming { color: var(--accent);  border-color: rgba(245,200,66,0.4); }
+  .asc-listed.yes { color: #22c55e; border-color: rgba(34,197,94,0.4); }
+  .join-show-empty { font-size: 0.85rem; color: var(--muted); text-align: center; padding: 1.2rem 0.5rem; line-height: 1.5; }
+  .sm-selfjoin-toggle {
+    display: flex; gap: 0.6rem; align-items: flex-start; cursor: pointer;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 0.6rem 0.7rem; font-size: 0.78rem; color: var(--muted); line-height: 1.4;
+  }
+  .sm-selfjoin-toggle strong { color: var(--text); font-weight: 600; }
+  .sm-selfjoin-toggle input { margin-top: 0.15rem; accent-color: var(--accent); width: 18px; height: 18px; flex-shrink: 0; }
   .chip-table-input {
     width: 56px; background: var(--surface); border: 1px solid var(--border);
     border-radius: 4px; color: var(--text); font-size: 0.68rem;
@@ -2455,6 +2577,9 @@
     border: 1px solid var(--border); background: var(--surface);
   }
   .drop-style-picker { display: flex; gap: 0.5rem; }
+  .drop-handle-toggle { display: flex; align-items: flex-start; gap: 0.55rem; font-size: 0.85rem; color: var(--text); cursor: pointer; line-height: 1.35; }
+  .drop-handle-toggle input { width: 18px; height: 18px; margin-top: 1px; accent-color: var(--accent); flex-shrink: 0; }
+  .drop-photo-source { font-size: 0.78rem; color: var(--muted); text-align: center; margin-top: -0.4rem; }
   .drop-style-chip {
     flex: 1; border-radius: 8px; padding: 0.55rem 0; cursor: pointer;
     font-size: 0.75rem; font-weight: 600; font-family: 'DM Sans', sans-serif;
@@ -4395,6 +4520,336 @@
   }
   .msl-photo-retake-btn:active { border-color: var(--accent); color: var(--accent); }
 
+
+  /* ── Show Mode v2 (flag: show_mode_v2) — see CLAUDE.md "Show Mode v2" ──
+     A full-screen, mobile-first layer over the seller view. Tokens are scoped
+     to #showModeRoot so the rest of the app keeps its dark theme. z-index 150:
+     above <nav> (100) and the inventory table, below every modal (200+), so
+     Add Card, the Sell Drawer, Profile etc. still open on top of it. */
+  #showModeRoot {
+    --sm-ink: #121212; --sm-paper: #FAF8F2; --sm-surface: #FFFFFF; --sm-line: #E6E2D8;
+    --sm-muted: #5C5A55; --sm-muted-on-dark: #C9C5BA; --sm-dark-raised: #2A2925;
+    --sm-dark-camera: #1E1D1A; --sm-accent: #FFD21F; --sm-accent-soft: #FFF8DB;
+    --sm-success-bg: #DDF2E4; --sm-success-fg: #0B5C2E; --sm-warn-bg: #FFF3C2; --sm-warn-fg: #6B5300;
+    --sm-placeholder: #EDE9DD; --sm-placeholder-line: #D8D3C5;
+    --sm-display: 'Bricolage Grotesque', 'DM Sans', sans-serif;
+    --sm-body: 'Manrope', 'DM Sans', sans-serif;
+    position: fixed; inset: 0; z-index: 150;
+    display: none; flex-direction: column;
+    background: var(--sm-paper); color: var(--sm-ink);
+    font-family: var(--sm-body); font-size: 15px;
+  }
+  #showModeRoot.open { display: flex; }
+  body.sm-open { overflow: hidden; }
+  body.sm-open .fab-add { display: none !important; }
+  #showModeRoot button { font-family: inherit; color: inherit; cursor: pointer; }
+  #showModeRoot :focus-visible { outline: 2px solid var(--sm-ink); outline-offset: 2px; }
+  .sm-icon { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+  .sm-scroll { flex: 1; overflow-x: hidden; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+  .sm-page { max-width: 480px; margin: 0 auto; padding: 0 16px calc(120px + env(safe-area-inset-bottom, 0px)); }
+  .sm-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: calc(10px + env(safe-area-inset-top, 0px)) 0 10px;
+  }
+  .sm-wordmark { font-family: var(--sm-display); font-weight: 800; font-size: 22px; letter-spacing: -0.5px; }
+  .sm-wordmark span { background: var(--sm-accent); padding: 0 4px; border-radius: 4px; margin-left: 1px; }
+  .sm-icon-btn {
+    width: 44px; height: 44px; border-radius: 14px; border: 1px solid var(--sm-line);
+    background: var(--sm-surface); display: inline-flex; align-items: center; justify-content: center;
+  }
+  .sm-live { background: var(--sm-ink); color: #fff; border-radius: 16px; padding: 16px; margin-bottom: 12px; }
+  .sm-live-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .sm-live-tag { display: inline-flex; align-items: center; gap: 8px; font-weight: 800; font-size: 13px; letter-spacing: 1px; text-transform: uppercase; color: var(--sm-accent); }
+  .sm-live-tag.off { color: var(--sm-muted-on-dark); }
+  .sm-live-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--sm-accent); animation: smPulse 1.6s ease-in-out infinite; }
+  .sm-live-tag.off .sm-live-dot { background: var(--sm-muted-on-dark); animation: none; }
+  @keyframes smPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(255,210,31,0.6); } 50% { box-shadow: 0 0 0 6px rgba(255,210,31,0); } }
+  @media (prefers-reduced-motion: reduce) { .sm-live-dot { animation: none; } }
+  .sm-live-name { font-family: var(--sm-display); font-weight: 800; font-size: 22px; line-height: 1.15; margin: 8px 0 4px; }
+  .sm-live-meta { font-weight: 600; font-size: 13px; color: var(--sm-muted-on-dark); }
+  .sm-share-btn {
+    min-height: 44px; padding: 0 14px; border-radius: 14px; border: 0;
+    background: var(--sm-dark-raised); color: #fff !important; font-weight: 700; font-size: 13px;
+    display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0;
+  }
+  .sm-share-btn .sm-icon { width: 18px; height: 18px; }
+  .sm-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
+  .sm-stat { background: var(--sm-surface); border: 1px solid var(--sm-line); border-radius: 14px; padding: 12px; }
+  .sm-stat-num { font-family: var(--sm-display); font-weight: 800; font-size: 26px; line-height: 1.1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sm-stat-label { font-weight: 600; font-size: 13px; color: var(--sm-muted); margin-top: 2px; }
+  .sm-hero {
+    width: 100%; display: flex; align-items: center; gap: 14px; text-align: left;
+    background: var(--sm-accent); border: 2px solid var(--sm-ink); border-radius: 18px;
+    box-shadow: 0 4px 0 var(--sm-ink); padding: 16px; min-height: 64px; margin-bottom: 18px;
+  }
+  .sm-hero:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--sm-ink); }
+  .sm-hero-tile { width: 52px; height: 52px; border-radius: 14px; background: var(--sm-ink); color: var(--sm-accent); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .sm-hero-tile .sm-icon { width: 28px; height: 28px; }
+  .sm-hero-title { font-family: var(--sm-display); font-weight: 800; font-size: 22px; line-height: 1.1; }
+  .sm-hero-sub { font-weight: 600; font-size: 13px; margin-top: 2px; }
+  .sm-secondary { display: grid; gap: 8px; margin-bottom: 20px; }
+  .sm-sec-btn {
+    width: 100%; min-height: 52px; display: flex; align-items: center; gap: 12px; text-align: left;
+    background: var(--sm-surface); border: 1px solid var(--sm-line); border-radius: 14px;
+    padding: 0 14px; font-weight: 700; font-size: 15px;
+  }
+  .sm-sec-btn .sm-chev { margin-left: auto; color: var(--sm-muted); width: 18px; height: 18px; }
+  .sm-notice--offline { background: #eef1f6; border-color: #9aa3b5; }
+  /* Double-sale dialog (js/show-mode.js smResolveConflict): opens from any screen */
+  .sm-conflict { padding: 1.4rem; max-width: 440px; }
+  .sm-conflict-title { font-family: 'Bebas Neue', sans-serif; font-size: 1.7rem; letter-spacing: .02em; margin: 0 0 .3rem; color: var(--text); }
+  .sm-conflict-card { margin: 0 0 1rem; font-weight: 600; color: var(--text); }
+  .sm-conflict-rows { display: grid; gap: .5rem; margin-bottom: .9rem; }
+  .sm-conflict-row { display: flex; justify-content: space-between; gap: 1rem; padding: .7rem .85rem; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; font-size: .9rem; }
+  .sm-conflict-row span { color: var(--muted); }
+  .sm-conflict-row b { color: var(--text); text-align: right; overflow-wrap: anywhere; }
+  .sm-conflict-note, .sm-conflict-hint { color: var(--muted); font-size: .85rem; margin: 0 0 1rem; line-height: 1.45; }
+  .sm-conflict-hint { margin: 0; }
+  .sm-conflict-actions { display: grid; gap: .6rem; }
+  .sm-conflict-actions .btn { width: 100%; min-height: 48px; justify-content: center; }
+  .sm-conflict-later { background: none; border: 0; color: var(--muted); text-decoration: underline; min-height: 44px; font: inherit; cursor: pointer; }
+  .sm-notice { background: var(--sm-accent-soft); border: 2px solid var(--sm-accent); border-radius: 14px; padding: 12px 14px; margin-bottom: 14px; font-weight: 600; font-size: 14px; }
+  .sm-notice-btn { margin-top: 10px; min-height: 44px; padding: 0 16px; border-radius: 14px; border: 2px solid var(--sm-ink); background: var(--sm-accent); font-weight: 800; font-size: 14px; }
+  .sm-section-label { font-weight: 800; font-size: 13px; letter-spacing: 1px; text-transform: uppercase; color: var(--sm-muted); margin: 4px 0 8px; }
+  .sm-list { display: grid; gap: 8px; }
+  .sm-list > * { min-width: 0; }   /* long names/numbers wrap or truncate instead of widening the page */
+  .sm-row { display: flex; align-items: center; gap: 12px; background: var(--sm-surface); border: 1px solid var(--sm-line); border-radius: 14px; padding: 10px 12px; min-height: 60px; }
+  .sm-thumb { width: 36px; height: 50px; border-radius: 6px; background: var(--sm-placeholder); border: 1px solid var(--sm-placeholder-line); flex-shrink: 0; }
+  .sm-row-body { min-width: 0; flex: 1; }
+  .sm-row-title { font-weight: 800; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sm-row-meta { font-weight: 600; font-size: 13px; color: var(--sm-muted); margin-top: 2px; overflow-wrap: anywhere; }
+  .sm-empty { font-weight: 600; font-size: 14px; color: var(--sm-muted); padding: 14px; text-align: center; background: var(--sm-surface); border: 1px dashed var(--sm-line); border-radius: 14px; }
+  .sm-bottom-nav {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    background: var(--sm-surface); border-top: 1px solid var(--sm-line);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .sm-bottom-nav-inner { max-width: 480px; margin: 0 auto; display: grid; grid-template-columns: repeat(5, 1fr); align-items: end; }
+  .sm-nav-item {
+    min-height: 60px; border: 0; background: transparent; color: var(--sm-muted) !important;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+    font-weight: 700; font-size: 12px;
+  }
+  .sm-nav-item.active { color: var(--sm-ink) !important; }
+  .sm-nav-sell { position: relative; }
+  .sm-nav-sell-circle {
+    width: 60px; height: 60px; border-radius: 50%; margin-top: -26px;
+    background: var(--sm-accent); border: 2px solid var(--sm-ink); box-shadow: 0 4px 0 var(--sm-ink);
+    display: flex; align-items: center; justify-content: center; color: var(--sm-ink);
+  }
+  .sm-nav-sell-circle .sm-icon { width: 28px; height: 28px; }
+  .sm-nav-sell span { color: var(--sm-ink); }
+  .sm-sheet-backdrop { position: absolute; inset: 0; background: rgba(18,18,18,0.55); display: none; align-items: flex-end; justify-content: center; z-index: 2; }
+  .sm-sheet-backdrop.open { display: flex; }
+  .sm-sheet { width: 100%; max-width: 480px; background: var(--sm-paper); border-radius: 28px 28px 0 0; padding: 18px 16px calc(18px + env(safe-area-inset-bottom, 0px)); display: grid; gap: 8px; }
+  .sm-sheet-title { font-family: var(--sm-display); font-weight: 800; font-size: 22px; margin-bottom: 4px; }
+  /* ── Show Mode v2 · Phase 2 screens ── */
+  .sm-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+  #showModeRoot.sm-dark { background: var(--sm-ink); color: #fff; }
+  #showModeRoot.sm-dark .sm-page { padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px)); }
+  .sm-thumb { object-fit: cover; }
+  img.sm-thumb { display: block; }
+  /* Catalog (stock) images are whole-card scans: show all of it, never crop. */
+  img.sm-thumb--stock { object-fit: contain; background: var(--sm-placeholder); }
+  .sm-topbar { display: flex; align-items: center; justify-content: space-between; padding: calc(10px + env(safe-area-inset-top, 0px)) 0 12px; }
+  .sm-title { font-family: var(--sm-display); font-weight: 800; font-size: 22px; letter-spacing: -0.3px; }
+  .sm-title--page { margin: 4px 0 6px; }
+  .sm-row--button { width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer; }
+  .sm-row--button .sm-row-title, .sm-row--button .sm-row-meta { display: block; }
+  .sm-row-price { font-weight: 800; font-size: 15px; white-space: nowrap; }
+  .sm-row--sold { opacity: 0.7; }
+  .sm-row-btn {
+    min-height: 48px; min-width: 64px; padding: 0 16px; border-radius: 14px; flex-shrink: 0;
+    border: 2px solid var(--sm-ink); background: var(--sm-accent); font-weight: 800; font-size: 15px;
+  }
+  .sm-row-btn--ghost { background: var(--sm-surface); border-color: var(--sm-line); }
+  .sm-sync { display: inline-block; margin-left: 4px; padding: 1px 8px; border-radius: 999px; background: var(--sm-warn-bg); color: var(--sm-warn-fg); font-weight: 800; font-size: 12px; }
+  .sm-sync--dark { background: var(--sm-ink); color: var(--sm-accent); }
+  .sm-badge { display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 999px; font-weight: 800; font-size: 13px; white-space: nowrap; }
+  .sm-badge--ok { background: var(--sm-success-bg); color: var(--sm-success-fg); }
+  .sm-badge--warn { background: var(--sm-warn-bg); color: var(--sm-warn-fg); }
+  .sm-link { background: none; border: 0; min-height: 44px; padding: 0 4px; font-weight: 700; font-size: 14px; text-decoration: underline; text-underline-offset: 3px; color: var(--sm-ink) !important; }
+  .sm-link--dark { color: var(--sm-ink) !important; }
+  .sm-links { display: flex; flex-wrap: wrap; gap: 4px 14px; justify-content: center; margin-top: 6px; }
+  .sm-primary {
+    width: 100%; min-height: 60px; margin-top: 14px; border-radius: 18px; border: 2px solid var(--sm-ink);
+    background: var(--sm-accent); box-shadow: 0 4px 0 var(--sm-ink); font-family: var(--sm-display); font-weight: 800; font-size: 20px;
+  }
+  .sm-primary:active, .sm-confirm-btn:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--sm-ink); }
+  .sm-primary--ink { background: var(--sm-ink); color: var(--sm-accent) !important; box-shadow: 0 4px 0 rgba(0,0,0,0.35); }
+
+  /* Scan / search (dark) */
+  .sm-dark-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: calc(10px + env(safe-area-inset-top, 0px)) 0 8px; }
+  .sm-dark-btn { width: 44px; height: 44px; border-radius: 14px; border: 0; background: var(--sm-dark-raised); color: #fff !important; display: inline-flex; align-items: center; justify-content: center; }
+  .sm-dark-btn[aria-pressed="true"] { background: var(--sm-accent); color: var(--sm-ink) !important; }
+  .sm-dark-btn--text { width: 64px; height: 56px; flex-direction: column; gap: 2px; font-weight: 700; font-size: 12px; }
+  .sm-seg { display: inline-flex; background: var(--sm-dark-raised); border-radius: 14px; padding: 4px; }
+  .sm-seg button { min-height: 44px; min-width: 88px; border: 0; border-radius: 10px; background: transparent; color: var(--sm-muted-on-dark) !important; font-weight: 800; font-size: 15px; }
+  .sm-seg button[aria-selected="true"] { background: var(--sm-accent); color: var(--sm-ink) !important; }
+  .sm-sell-title { font-family: var(--sm-display); font-weight: 800; font-size: 22px; margin: 4px 0 10px; }
+  .sm-camera { position: relative; width: 100%; aspect-ratio: 3 / 4; max-height: 58vh; border-radius: 16px; overflow: hidden; background: var(--sm-dark-camera); }
+  .sm-camera video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .sm-guide {
+    position: absolute; left: 50%; top: 50%; width: 66%; aspect-ratio: 5 / 7; transform: translate(-50%, -50%);
+    border: 3px solid var(--sm-accent); border-radius: 14px; box-shadow: 0 0 0 9999px rgba(0,0,0,0.35); max-height: 92%;
+  }
+  .sm-camera-msg { position: absolute; left: 16px; right: 16px; bottom: 16px; text-align: center; font-weight: 700; font-size: 14px; color: #fff; }
+  .sm-camera-caption { text-align: center; color: var(--sm-muted-on-dark); font-weight: 600; font-size: 14px; margin: 10px 0 6px; }
+  .sm-shutter-row { display: flex; align-items: center; justify-content: space-between; padding: 6px 4px; }
+  .sm-shutter { width: 76px; height: 76px; border-radius: 50%; border: 5px solid #fff; background: var(--sm-accent); box-shadow: 0 0 0 3px var(--sm-ink) inset; }
+  .sm-shutter:disabled { opacity: 0.5; }
+  .sm-search-wrap { display: grid; gap: 10px; }
+  .sm-search { display: flex; align-items: center; gap: 8px; min-height: 52px; padding: 0 14px; border-radius: 14px; background: var(--sm-surface); color: var(--sm-ink); border: 1px solid var(--sm-line); }
+  .sm-search input { flex: 1; min-height: 48px; border: 0; outline: 0; background: transparent; font: 600 16px var(--sm-body); color: var(--sm-ink); min-width: 0; }
+  .sm-search--light { margin-bottom: 10px; }
+  /* Focus ring on the whole box; on the bare input it showed as two dark bars. */
+  #showModeRoot .sm-search input:focus-visible { outline: none; }
+  .sm-search:focus-within { outline: 2px solid var(--sm-accent); outline-offset: 2px; }
+  .sm-search--light:focus-within { outline-color: var(--sm-ink); }
+  .sm-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+  .sm-chip { min-height: 44px; padding: 0 16px; border-radius: 14px; border: 2px solid var(--sm-line); background: var(--sm-surface); color: var(--sm-ink) !important; font-weight: 800; font-size: 15px; }
+  .sm-chip[aria-pressed="true"] { background: var(--sm-accent); border-color: var(--sm-ink); }
+  .sm-chip:disabled { opacity: 0.45; }
+  .sm-chip--big { min-height: 52px; }
+  /* Rows are white even on the dark Sell screen. The id selector beats
+     "#showModeRoot button { color: inherit }", which made the name white on white. */
+  #showModeRoot .sm-list--light .sm-row, #showModeRoot .sm-row--button { color: var(--sm-ink); }
+  .sm-dark .sm-empty { background: var(--sm-dark-raised); border-color: var(--sm-dark-raised); color: var(--sm-muted-on-dark); }
+  .sm-sec-btn--dark { background: var(--sm-dark-raised); border-color: var(--sm-dark-raised); color: #fff !important; }
+
+  /* Result sheet */
+  .sm-sheet-card {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 3; max-width: 480px; margin: 0 auto;
+    max-height: 78vh; overflow-y: auto; background: var(--sm-paper); color: var(--sm-ink);
+    border-radius: 28px 28px 0 0; padding: 16px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+    box-shadow: 0 -8px 30px rgba(0,0,0,0.35);
+  }
+  .sm-result-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+  .sm-saved { display: inline-flex; align-items: center; gap: 4px; font-weight: 700; font-size: 13px; color: var(--sm-success-fg); }
+  .sm-saved .sm-icon { width: 16px; height: 16px; }
+  .sm-result-main { display: flex; gap: 14px; align-items: center; }
+  .sm-result-img { width: 72px; height: 100px; object-fit: cover; border-radius: 8px; background: var(--sm-placeholder); border: 1px solid var(--sm-placeholder-line); flex-shrink: 0; }
+  .sm-result-name { font-family: var(--sm-display); font-weight: 800; font-size: 20px; line-height: 1.15; }
+  .sm-spinner { width: 28px; height: 28px; margin: 16px auto 4px; border-radius: 50%; border: 3px solid var(--sm-line); border-top-color: var(--sm-ink); animation: smSpin 0.8s linear infinite; }
+  @keyframes smSpin { to { transform: rotate(360deg); } }
+
+  /* Confirm */
+  .sm-market { text-align: right; font-size: 12px; color: var(--sm-muted); font-weight: 700; display: flex; flex-direction: column; }
+  .sm-market strong { font-size: 15px; color: var(--sm-ink); }
+  .sm-hero-price { font-family: var(--sm-display); font-weight: 800; font-size: 64px; letter-spacing: -2px; line-height: 1; margin: 2px 0 12px; }
+  .sm-chip-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .sm-chip-grid--3 { grid-template-columns: repeat(3, 1fr); }
+  .sm-chip-grid .sm-chip { padding: 0 6px; }
+  .sm-field { display: flex; flex-direction: column; gap: 4px; font-weight: 700; font-size: 13px; color: var(--sm-muted); margin-top: 10px; flex: 1; min-width: 0; }
+  .sm-field input, .sm-field select { min-height: 48px; padding: 0 12px; border-radius: 12px; border: 1px solid var(--sm-line); background: var(--sm-surface); font: 600 16px var(--sm-body); color: var(--sm-ink); width: 100%; }
+  .sm-form-row { display: flex; gap: 10px; }
+  .sm-details { margin-top: 10px; background: var(--sm-surface); border: 1px solid var(--sm-line); border-radius: 14px; padding: 4px 14px 14px; }
+  .sm-details summary { min-height: 44px; display: flex; align-items: center; font-weight: 800; cursor: pointer; }
+  .sm-confirm-btn {
+    width: 100%; min-height: 64px; margin-top: 22px; border-radius: 18px; border: 2px solid var(--sm-ink);
+    background: var(--sm-ink); color: var(--sm-accent) !important; box-shadow: 0 4px 0 rgba(0,0,0,0.3);
+    font-family: var(--sm-display); font-weight: 800; font-size: 22px; display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .sm-confirm-btn:disabled { opacity: 0.4; }
+  .sm-helper { text-align: center; font-weight: 600; font-size: 13px; color: var(--sm-muted); margin-top: 10px; }
+
+  /* Sold */
+  .sm-sold { position: relative; min-height: calc(100vh - 40px); min-height: calc(100dvh - 40px); margin: 0 -16px; padding: calc(56px + env(safe-area-inset-top, 0px)) 16px 120px; background: var(--sm-accent); text-align: center; overflow: hidden; }
+  .sm-sold-check { width: 84px; height: 84px; margin: 0 auto 12px; border-radius: 50%; background: var(--sm-ink); color: var(--sm-accent); display: flex; align-items: center; justify-content: center; }
+  .sm-sold-check .sm-icon { width: 44px; height: 44px; stroke-width: 3; }
+  .sm-sold-title { font-family: var(--sm-display); font-weight: 800; font-size: 52px; letter-spacing: -1px; line-height: 1; }
+  .sm-sold-detail { font-weight: 800; font-size: 17px; margin-top: 10px; }
+  .sm-sold-sub { font-weight: 600; font-size: 15px; margin-top: 6px; }
+  .sm-sold .sm-primary { margin-top: 28px; }
+  .sm-sold-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+  .sm-sold-actions .sm-sec-btn { justify-content: center; }
+  .sm-confetti { position: absolute; inset: 0; pointer-events: none; }
+  .sm-confetti i { position: absolute; top: -12px; left: calc(var(--i) * 5.5%); width: 8px; height: 14px; border-radius: 2px; background: var(--sm-ink); opacity: 0.85; animation: smConfetti 1.6s ease-in forwards; animation-delay: calc(var(--i) * 40ms); }
+  .sm-confetti i:nth-child(3n) { background: #fff; }
+  .sm-confetti i:nth-child(4n) { width: 10px; height: 10px; border-radius: 50%; }
+  @keyframes smConfetti { to { transform: translateY(105vh) rotate(540deg); opacity: 0.9; } }
+  @media (prefers-reduced-motion: reduce) { .sm-confetti { display: none; } .sm-spinner { animation-duration: 2.4s; } }
+  .sm-toast {
+    position: absolute; left: 16px; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 4;
+    max-width: 448px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    background: var(--sm-ink); color: #fff; border-radius: 14px; padding: 8px 8px 8px 16px; font-weight: 700; font-size: 14px;
+  }
+  .sm-toast-btn { min-height: 44px; padding: 0 16px; border-radius: 10px; border: 0; background: var(--sm-accent); color: var(--sm-ink) !important; font-weight: 800; font-size: 15px; }
+
+  /* Inventory + recent scans */
+  .sm-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 12px; background: var(--sm-surface); border: 1px solid var(--sm-line); border-radius: 14px; padding: 4px; }
+  .sm-tabs button { min-height: 44px; border: 0; border-radius: 10px; background: transparent; font-weight: 800; font-size: 15px; color: var(--sm-muted) !important; }
+  .sm-tabs button[aria-selected="true"] { background: var(--sm-ink); color: #fff !important; }
+  .sm-scan-row { background: var(--sm-surface); border: 1px solid var(--sm-line); border-radius: 14px; }
+  .sm-scan-row .sm-row { border: 0; background: transparent; }
+  .sm-scan-actions { display: flex; gap: 8px; padding: 0 12px 12px; flex-wrap: wrap; }
+  .sm-scan-actions .sm-row-btn { flex: 1; }
+
+  /* ── Show Mode: Add cards sheet + one-card add ── */
+  .sm-choice { min-height: 64px; padding: 8px 14px; }
+  .sm-choice strong { display: block; font-weight: 800; font-size: 16px; }
+  .sm-choice .sm-row-meta { display: block; }
+  .sm-added-count { display: inline-block; vertical-align: 4px; margin-left: 6px; padding: 2px 10px; border-radius: 999px; background: var(--sm-accent); color: var(--sm-ink); font: 800 13px var(--sm-body); }
+  #showModeRoot .sm-link--on-dark { color: #fff !important; }
+  /* ── Show Mode v2 · Phase 3: case scan (js/show-mode-scan.js) ── */
+  .sc-camera { aspect-ratio: 1 / 1; max-height: 52vh; }
+  .sc-guide {
+    position: absolute; left: 50%; top: 50%; width: 88%; aspect-ratio: 1 / 1; max-height: 92%; transform: translate(-50%, -50%);
+    border: 3px solid var(--sm-accent); border-radius: 14px; box-shadow: 0 0 0 9999px rgba(0,0,0,0.35);
+    background-image:
+      linear-gradient(to right, transparent calc(33.33% - 0.5px), rgba(255,210,31,0.45) calc(33.33% - 0.5px), rgba(255,210,31,0.45) calc(33.33% + 0.5px), transparent calc(33.33% + 0.5px), transparent calc(66.66% - 0.5px), rgba(255,210,31,0.45) calc(66.66% - 0.5px), rgba(255,210,31,0.45) calc(66.66% + 0.5px), transparent calc(66.66% + 0.5px)),
+      linear-gradient(to bottom, transparent calc(33.33% - 0.5px), rgba(255,210,31,0.45) calc(33.33% - 0.5px), rgba(255,210,31,0.45) calc(33.33% + 0.5px), transparent calc(33.33% + 0.5px), transparent calc(66.66% - 0.5px), rgba(255,210,31,0.45) calc(66.66% - 0.5px), rgba(255,210,31,0.45) calc(66.66% + 0.5px), transparent calc(66.66% + 0.5px));
+  }
+  .sc-shutter { width: 84px; height: 84px; }
+  .sc-done-btn {
+    min-width: 88px; min-height: 52px; padding: 0 14px; border-radius: 14px; border: 2px solid var(--sm-ink);
+    background: var(--sm-accent); color: var(--sm-ink) !important; font-weight: 800; font-size: 15px; white-space: nowrap;
+  }
+  .sc-done-btn:disabled { background: var(--sm-dark-raised); border-color: var(--sm-dark-raised); color: var(--sm-muted-on-dark) !important; }
+  .sc-tray { min-height: 64px; margin: 4px 0 6px; }
+  .sc-tray-empty { color: var(--sm-muted-on-dark); font-weight: 600; font-size: 13px; text-align: center; padding: 18px 0; }
+  .sc-tray-row { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+  .sc-tray-thumb { position: relative; width: 52px; height: 52px; border-radius: 8px; overflow: hidden; flex-shrink: 0; background: var(--sm-dark-raised); }
+  .sc-tray-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .sc-tray-thumb span { position: absolute; left: 3px; top: 3px; min-width: 18px; height: 18px; border-radius: 9px; background: var(--sm-accent); color: var(--sm-ink); font-weight: 800; font-size: 12px; text-align: center; line-height: 18px; padding: 0 4px; }
+  .sc-tray-meta { color: var(--sm-muted-on-dark); font-weight: 700; font-size: 13px; margin-top: 4px; }
+  .sc-summary { background: var(--sm-ink); color: #fff; border-radius: 16px; padding: 16px; margin-bottom: 12px; }
+  .sc-summary-num { font-family: var(--sm-display); font-weight: 800; font-size: 34px; line-height: 1.1; }
+  .sc-summary-num span { font-family: var(--sm-body); font-size: 15px; font-weight: 700; color: var(--sm-muted-on-dark); }
+  .sc-progress { height: 10px; border-radius: 5px; background: var(--sm-dark-raised); margin: 12px 0 10px; overflow: hidden; }
+  .sc-progress i { display: block; height: 100%; background: var(--sm-accent); border-radius: 5px; transition: width 0.3s; }
+  .sc-summary-text { font-weight: 600; font-size: 13px; color: var(--sm-muted-on-dark); }
+  .sc-photo-thumb { width: 50px; height: 50px; border-radius: 8px; object-fit: cover; background: var(--sm-placeholder); flex-shrink: 0; }
+  .sc-two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+  .sc-two .sm-sec-btn { justify-content: center; }
+  .sm-primary:disabled { opacity: 0.45; box-shadow: none; }
+  .sc-badge--bad { background: #FBE3E1; color: #8A1C12; }
+  .sm-row-title .sm-badge { font-size: 12px; padding: 2px 8px; margin-left: 4px; vertical-align: 1px; }
+  .sc-needs-label { color: var(--sm-warn-fg); }
+  .sc-needs { background: var(--sm-accent-soft); border: 2px solid var(--sm-accent); }
+  .sc-match.sc-off { opacity: 0.55; }
+  .sc-check { display: flex; flex-shrink: 0; }
+  .sc-check input {
+    -webkit-appearance: none; appearance: none; margin: 0; width: 44px; height: 44px; border-radius: 12px;
+    border: 2px solid var(--sm-ink); background: var(--sm-surface) center / 26px no-repeat; cursor: pointer;
+  }
+  .sc-check input:checked {
+    background-color: var(--sm-accent);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23121212' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E");
+  }
+  .sc-img-btn { border: 0; background: none; padding: 0; min-width: 44px; min-height: 50px; display: flex; align-items: center; justify-content: center; }
+  .sc-price { display: flex; align-items: center; gap: 2px; font-weight: 800; font-size: 15px; flex-shrink: 0; }
+  .sc-price input { width: 72px; min-height: 44px; padding: 0 8px; border-radius: 10px; border: 1px solid var(--sm-line); background: var(--sm-paper); font: 800 16px var(--sm-body); color: var(--sm-ink); text-align: right; }
+  .sc-home-banner { background: var(--sm-accent-soft); border: 2px solid var(--sm-accent); min-height: 60px; }
+  .sc-fix-top { display: flex; gap: 14px; align-items: flex-start; margin-bottom: 14px; }
+  .sc-fix-img { width: 110px; height: 154px; object-fit: cover; border-radius: 10px; background: var(--sm-placeholder); border: 1px solid var(--sm-placeholder-line); flex-shrink: 0; }
+  .sc-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .sc-tile {
+    display: flex; flex-direction: column; gap: 2px; text-align: left; min-height: 88px; padding: 12px;
+    border-radius: 14px; border: 2px solid var(--sm-line); background: var(--sm-surface); color: var(--sm-ink) !important;
+  }
+  .sc-tile[aria-pressed="true"] { border-color: var(--sm-ink); background: var(--sm-accent-soft); }
+  .sc-tile-name { font-weight: 800; font-size: 15px; }
 </style>
 </head>
 <body>
@@ -4484,6 +4939,9 @@
     <button class="nav-tab" id="navTabBuyer" onclick="switchView('buyer')">◎ Buyer</button>
   </div>
   <div class="nav-right">
+    <!-- Show Mode v2 entry — seller only, shown when the show_mode_v2 flag is on -->
+    <button class="nav-help-btn" id="navShowModeBtn" onclick="smOpenFromNav()" style="display:none;width:auto;padding:0 0.7rem;font-size:0.72rem"
+      title="Open Show Mode">▶ Show Mode</button>
     <!-- Help menu — seller only. Replays the onboarding tour and opens the Feature guide. -->
     <div class="nav-help-wrap" id="navHelpWrap" style="display:none">
       <button class="nav-help-btn" id="navHelpBtn" onclick="toggleHelpMenu(event)"
@@ -4601,7 +5059,10 @@
 
       <!-- Seller: Show selector -->
       <div id="sellerShowsPanel" style="display:none">
-        <div class="section-label" style="margin-bottom:0.6rem">My Shows</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:0.5rem;margin-bottom:0.6rem">
+          <div class="section-label" style="margin:0">My Shows</div>
+          <button class="btn-xs primary" id="joinShowBtn" onclick="openJoinShow()">+ Join a show</button>
+        </div>
         <div id="sellerShowsList" style="display:flex;flex-direction:column;gap:0.5rem"></div>
       </div>
 
@@ -4668,10 +5129,30 @@
           <button class="admin-tab active" id="adminTabShows" onclick="switchAdminTab('shows')">
             🎪 Shows
           </button>
+          <button class="admin-tab" id="adminTabDirectory" onclick="switchAdminTab('directory')" style="display:none">
+            🗂 Show Directory <span id="dirTabBadge" class="dir-tab-badge" style="display:none"></span>
+          </button>
           <button class="admin-tab" id="adminTabReport" onclick="switchAdminTab('report')" style="display:none">
             📊 Report
           </button>
         </div>
+      </div>
+
+      <!-- Platform owner: Show Directory (see "Show Directory" in CLAUDE.md) -->
+      <div id="showDirectoryPanel" style="display:none">
+        <div class="dir-head">
+          <div style="min-width:0">
+            <h2 class="dir-title">Show Directory</h2>
+            <div class="dir-sub">Every show on CardShow. Sellers can only join shows you list.</div>
+          </div>
+          <div class="dir-head-actions">
+            <button class="btn btn-ghost" onclick="loadShowDirectory()">↻ Refresh</button>
+            <button class="btn btn-primary" style="width:auto" onclick="openDirEdit(null)">+ Add show</button>
+          </div>
+        </div>
+        <div class="dir-filters" id="dirFilters"></div>
+        <input class="show-input" id="dirSearch" type="search" placeholder="Search by name, city or state" oninput="renderShowDirectory()" autocomplete="off">
+        <div id="dirList" class="dir-list"></div>
       </div>
 
       <!-- Admin: Shows Dashboard (default tab) -->
@@ -6207,6 +6688,60 @@
   </div>
 </div>
 
+<!-- ══════ SHOW MODE v2 (flag: show_mode_v2) — see CLAUDE.md "Show Mode v2" ══════ -->
+<div id="showModeRoot" role="region" aria-label="Show Mode">
+  <div class="sm-scroll" id="smScroll">
+    <div class="sm-page" id="smView"></div>
+  </div>
+  <div class="sm-bottom-nav" id="smBottomNav" role="navigation" aria-label="Show Mode">
+    <div class="sm-bottom-nav-inner">
+      <button class="sm-nav-item active" id="smNavShow" data-screen="home" onclick="smGoHome()" aria-current="page">
+        <svg class="sm-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>
+        <span>Show</span>
+      </button>
+      <button class="sm-nav-item" data-screen="inventory" onclick="smGo('/inventory')">
+        <svg class="sm-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="7" height="10" rx="1.5"/><rect x="14" y="4" width="7" height="10" rx="1.5"/><path d="M3 19h18"/></svg>
+        <span>Inventory</span>
+      </button>
+      <button class="sm-nav-item sm-nav-sell" onclick="smStartSell('nav')" aria-label="Sell a card">
+        <div class="sm-nav-sell-circle">
+          <svg class="sm-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><rect x="8.5" y="7.5" width="7" height="9" rx="1"/></svg>
+        </div>
+        <span>Sell</span>
+      </button>
+      <button class="sm-nav-item" onclick="smOpenClassic('report')">
+        <svg class="sm-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></svg>
+        <span>Sales</span>
+      </button>
+      <button class="sm-nav-item" onclick="smOpenMore()" aria-haspopup="dialog">
+        <svg class="sm-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg>
+        <span>More</span>
+      </button>
+    </div>
+  </div>
+  <div class="sm-sheet-backdrop" id="smAddBackdrop" onclick="if(event.target===this)smCloseAddSheet()">
+    <div class="sm-sheet" role="dialog" aria-modal="true" aria-labelledby="smAddTitle">
+      <div class="sm-sheet-title" id="smAddTitle">Add cards</div>
+      <button class="sm-sec-btn sm-choice" onclick="smAddChoose('one')"><span><strong>One card</strong><span class="sm-row-meta">Take a photo. We fill in the details.</span></span></button>
+      <button class="sm-sec-btn sm-choice" onclick="smAddChoose('case')"><span><strong>A whole case</strong><span class="sm-row-meta">Up to 9 cards in each photo</span></span></button>
+      <button class="sm-sec-btn sm-choice" onclick="smAddChoose('type')"><span><strong>Type it in</strong><span class="sm-row-meta">No photo needed</span></span></button>
+      <button class="sm-sec-btn sm-choice" onclick="smAddChoose('upload')"><span><strong>Upload a spreadsheet</strong><span class="sm-row-meta">CSV or Excel</span></span></button>
+      <button class="sm-sec-btn" onclick="smCloseAddSheet()">Cancel</button>
+    </div>
+  </div>
+  <div class="sm-sheet-backdrop" id="smMoreBackdrop" onclick="if(event.target===this)smCloseMore()">
+    <div class="sm-sheet" role="dialog" aria-modal="true" aria-labelledby="smMoreTitle">
+      <div class="sm-sheet-title" id="smMoreTitle">More</div>
+      <button class="sm-sec-btn" onclick="smCloseMore();smGo('/scans')">Recent scans</button>
+      <button class="sm-sec-btn" onclick="smCloseMore();openProfile()">Your profile</button>
+      <button class="sm-sec-btn" onclick="smCloseMore();openFeatureGuide()">Feature guide</button>
+      <button class="sm-sec-btn" onclick="smCloseMore();smOpenClassic('inventory')">Switch to classic view</button>
+      <button class="sm-sec-btn" onclick="smCloseMore();signOut()">Sign out</button>
+      <button class="sm-sec-btn" onclick="smCloseMore()">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <!-- ═══════════════ "THE DROP" — post-sale share prompt bar ═══════════════ -->
@@ -6239,7 +6774,7 @@
           <button type="button" class="msl-photo-btn" onclick="_dropTriggerCamera()">📷 Take Photo</button>
           <button type="button" class="msl-photo-btn" onclick="_dropTriggerLibrary()">🖼 Choose from Library</button>
         </div>
-        <div class="profile-field-hint">A photo of the card makes the post — required before you can share</div>
+        <div class="profile-field-hint" id="dropPhotoHint">A photo of the card makes the post — required before you can share</div>
       </div>
       <input type="file" id="dropPhotoInput" accept="image/*" capture="environment"
         style="display:none" onchange="_dropHandlePhoto(this)">
@@ -6251,6 +6786,7 @@
 
         <canvas id="dropShareCanvas" class="drop-share-canvas" width="1080" height="1350"></canvas>
 
+        <div class="drop-photo-source" id="dropPhotoSource" style="display:none"></div>
         <button type="button" class="msl-photo-retake-btn" onclick="_dropChangePhoto()">Change Photo</button>
 
         <div class="drop-style-picker" id="dropStylePicker">
@@ -6258,6 +6794,12 @@
           <button type="button" class="drop-style-chip drop-style-light"   data-style="light"   onclick="_dropSetStyle('light')">Light</button>
           <button type="button" class="drop-style-chip drop-style-minimal" data-style="minimal" onclick="_dropSetStyle('minimal')">Minimal</button>
         </div>
+
+        <!-- Seller handle on the image + caption: opt-in, off by default. -->
+        <label class="drop-handle-toggle" id="dropHandleRow" style="display:none">
+          <input type="checkbox" id="dropShowHandle" onchange="_dropToggleHandle(this.checked)">
+          <span>Show my handle <strong id="dropHandleLabel"></strong> on the image and caption</span>
+        </label>
 
         <div>
           <div class="drawer-field-label">Caption</div>
@@ -6390,22 +6932,18 @@
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.65rem">
         <div>
           <div class="section-label" style="margin-bottom:0.35rem">Start Date</div>
-          <input class="show-input" id="smStartDate" type="date" style="margin:0">
+          <input class="show-input" id="smStartDate" type="date" style="margin:0" oninput="smUpdateStatusPreview()">
         </div>
         <div>
           <div class="section-label" style="margin-bottom:0.35rem">End Date <span style="color:var(--muted);font-weight:400;text-transform:none">(optional)</span></div>
-          <input class="show-input" id="smEndDate" type="date" style="margin:0">
+          <input class="show-input" id="smEndDate" type="date" style="margin:0" oninput="smUpdateStatusPreview()">
         </div>
       </div>
       <input class="show-input" id="smLocation" placeholder="Location (e.g. Grand Hyatt Tampa Bay, FL)" style="margin:0">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.65rem">
         <div>
-          <div class="section-label" style="margin-bottom:0.35rem">Status</div>
-          <select class="show-input" id="smStatus" style="margin:0">
-            <option value="upcoming">Upcoming</option>
-            <option value="active">Active (Live)</option>
-            <option value="past">Past</option>
-          </select>
+          <div class="section-label" style="margin-bottom:0.35rem">Status <span style="color:var(--muted);font-weight:400;text-transform:none">(automatic)</span></div>
+          <div class="show-input" id="smStatusAuto" style="margin:0;display:flex;align-items:center;gap:0.4rem" title="Upcoming before the start date, Active (Live) through the end date, Past after it"></div>
         </div>
         <div>
           <div class="section-label" style="margin-bottom:0.35rem">Access Code</div>
@@ -6415,6 +6953,10 @@
           </div>
         </div>
       </div>
+      <label class="sm-selfjoin-toggle">
+        <input type="checkbox" id="smSelfJoin" checked>
+        <span><strong>Let sellers add themselves</strong><br>Once CardShow lists the show, any CardShow seller can join it from their own account. You can still remove them and assign tables.</span>
+      </label>
       <div>
         <div class="section-label" style="margin-bottom:0.5rem">Authorized Sellers</div>
         <div class="seller-combobox" id="smSellerCombobox">
@@ -6665,6 +7207,98 @@
   </div>
 </div>
 
+<!-- ── SHOW DIRECTORY modals (platform owner) ── -->
+<div class="modal-overlay" id="dirEditOverlay" onclick="if(event.target===this)closeDirEdit()">
+  <div class="modal join-show-modal" role="dialog" aria-labelledby="dirEditTitle">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.6rem">
+      <div id="dirEditTitle" class="dir-modal-title">Edit show</div>
+      <button class="btn-modal-close" onclick="closeDirEdit()" aria-label="Close">✕</button>
+    </div>
+    <div class="req-grid">
+      <label class="req-field req-wide"><span>Show name *</span><input class="show-input" id="dirName" maxlength="120"></label>
+      <label class="req-field"><span>Start date</span><input class="show-input" id="dirStart" type="date"></label>
+      <label class="req-field"><span>End date</span><input class="show-input" id="dirEnd" type="date"></label>
+      <label class="req-field req-wide"><span>Venue</span><input class="show-input" id="dirVenue" maxlength="120"></label>
+      <label class="req-field"><span>City</span><input class="show-input" id="dirCity" maxlength="80"></label>
+      <label class="req-field"><span>State</span><input class="show-input" id="dirState" maxlength="2" placeholder="CA" oninput="dirStateChanged(this)"></label>
+      <label class="req-field req-wide"><span>Time zone</span><select class="show-input" id="dirTimezone"></select></label>
+      <label class="req-field req-wide"><span>Website</span><input class="show-input" id="dirWebsite" maxlength="300" placeholder="Optional"></label>
+    </div>
+    <label class="sm-selfjoin-toggle" style="margin-top:0.8rem">
+      <input type="checkbox" id="dirListAfter">
+      <span><strong>List for sellers</strong><br>Needs a start date, venue, city and state.</span>
+    </label>
+    <div class="req-actions">
+      <button class="btn btn-ghost" onclick="closeDirEdit()">Cancel</button>
+      <button class="btn btn-primary" id="dirSaveBtn" onclick="saveDirEdit()">Save</button>
+    </div>
+  </div>
+</div>
+<div class="modal-overlay" id="dirMergeOverlay" onclick="if(event.target===this)closeDirMerge()">
+  <div class="modal join-show-modal" role="dialog" aria-label="Merge shows">
+    <div class="dir-modal-title" style="margin-bottom:0.5rem">Merge a duplicate</div>
+    <div class="join-show-sub">Merge <strong id="dirMergeFrom"></strong> into the show to keep. Its sellers (with table numbers) and published cards move over, and it's unlisted. Sales already recorded stay with the old show.</div>
+    <select class="show-input" id="dirMergeInto" style="width:100%;margin:0"></select>
+    <div class="req-actions">
+      <button class="btn btn-ghost" onclick="closeDirMerge()">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmDirMerge()">Merge</button>
+    </div>
+  </div>
+</div>
+<div class="modal-overlay" id="dirLinkOverlay" onclick="if(event.target===this)closeDirLink()">
+  <div class="modal join-show-modal" role="dialog" aria-label="Link request to a show">
+    <div class="dir-modal-title" style="margin-bottom:0.5rem">Link to a listed show</div>
+    <div class="join-show-sub">The seller who asked for <strong id="dirLinkReq"></strong> is added to the show you pick.</div>
+    <select class="show-input" id="dirLinkShow" style="width:100%;margin:0"></select>
+    <div class="req-actions">
+      <button class="btn btn-ghost" onclick="closeDirLink()">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmDirLink()">Link</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── JOIN A SHOW (seller self-join). Must come before initPage(): a
+     restored session can open it during page load. ── -->
+<div class="modal-overlay" id="joinShowOverlay" onclick="if(event.target===this)closeJoinShow()">
+  <div class="modal join-show-modal" role="dialog" aria-labelledby="joinShowTitle">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.4rem">
+      <div id="joinShowTitle" style="font-family:'Bebas Neue',sans-serif;font-size:1.6rem;letter-spacing:0.04em;color:var(--text)">Join a show</div>
+      <button class="btn-modal-close" onclick="closeJoinShow()" aria-label="Close">✕</button>
+    </div>
+    <div id="joinShowListView">
+      <div id="joinShowReason" class="join-show-reason" style="display:none"></div>
+      <div class="join-show-sub" id="joinShowSub">Add the show you're vending at. The organizer can still assign your table.</div>
+      <input class="show-input" id="joinShowSearch" type="search" placeholder="Search shows by name or city" oninput="renderJoinShowList()" autocomplete="off">
+      <div id="joinShowList" class="join-show-list"></div>
+      <div class="join-show-request-cta">
+        <span>Can't find your show?</span>
+        <button class="btn btn-ghost join-show-request-btn" onclick="openShowRequestForm()">Request it</button>
+      </div>
+      <div id="joinShowMyRequests"></div>
+    </div>
+    <div id="joinShowRequestView" style="display:none">
+      <div class="join-show-sub">Tell us which show you're vending at. CardShow checks the details and lists it, then adds you to it.</div>
+      <div class="req-grid">
+        <label class="req-field req-wide"><span>Show name *</span><input class="show-input" id="reqName" maxlength="120" placeholder="e.g. Fresno Card Expo"></label>
+        <label class="req-field"><span>Start date *</span><input class="show-input" id="reqStart" type="date"></label>
+        <label class="req-field"><span>End date</span><input class="show-input" id="reqEnd" type="date"></label>
+        <label class="req-field req-wide"><span>Venue</span><input class="show-input" id="reqVenue" maxlength="120" placeholder="e.g. Fresno Fairgrounds"></label>
+        <label class="req-field"><span>City</span><input class="show-input" id="reqCity" maxlength="80"></label>
+        <label class="req-field"><span>State</span><input class="show-input" id="reqState" maxlength="2" placeholder="CA" style="text-transform:uppercase"></label>
+        <label class="req-field req-wide"><span>Website or event page</span><input class="show-input" id="reqWebsite" maxlength="300" placeholder="Optional"></label>
+        <label class="req-field req-wide"><span>Anything else</span><textarea class="show-input" id="reqNotes" maxlength="1000" rows="2" placeholder="Optional"></textarea></label>
+      </div>
+      <div class="req-actions">
+        <button class="btn btn-ghost" onclick="closeShowRequestForm()">Back</button>
+        <button class="btn btn-primary" id="reqSubmitBtn" onclick="submitShowRequest()">Send request</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Show Mode v2 (flag show_mode_v2). Bump ?v= when it changes: the service worker caches by URL. -->
+<script src="/js/show-mode.js?v=20261031a"></script>
+<script src="/js/show-mode-scan.js?v=20261031a"></script>
 <script>
 // ── STATE ──
 let inventory = [];
@@ -7877,7 +8511,9 @@ async function handleBulkScanFile(input) {
       return;
     }
 
-    renderBulkScanReview(result.cards || []);
+    // Cards the model saw but couldn't read (no player or set) only matter to
+    // Show Mode's case scan, which lists them under "Needs a look".
+    renderBulkScanReview((result.cards || []).filter(c => c && (c.player || c.set)));
 
   } catch (err) {
     const reason = controller.signal.reason;
@@ -9726,6 +10362,8 @@ async function runCompCheck(cards) {
         const result = data.results?.[0];
         if (result && !result.stub && result.compPrice) {
           results.push({ card, ...result });
+          // CardSight matches carry its catalog id (high-confidence only): keep it for the stock image.
+          if (result.source === 'cardsight') _saveCatalogCardId(card, result.cardId);
           fromCache = !!result.fromCache;
           if (fromCache) cacheHits++;
         }
@@ -10052,6 +10690,8 @@ function updateStats() {
   if (soldBox) soldBox.style.display = showActive ? '' : 'none';
   if (revBox)  revBox.style.display  = showActive ? '' : 'none';
   gsRender();
+  if (_smShowId) smRefresh();
+  smCacheInventorySoon();   // keep the offline copy current
 }
 
 function renderBuyerGrid(rows) {
@@ -11279,11 +11919,13 @@ async function renderShareCard(canvas, card, style, venueLabel) {
   const priceY = y + 150;
   ctx.fillText('$' + Number(card.SoldPrice || card.Price || 0).toLocaleString(), W / 2, priceY);
 
-  // Venue only — no payment method, ever.
-  if (venueLabel) {
+  // Venue (and the seller's handle, only if they opted in) — no payment method, ever.
+  const handle = _dropHandleShown();
+  const venueLine = [venueLabel, handle ? '@' + handle : ''].filter(Boolean).join(' · ');
+  if (venueLine) {
     ctx.font = '400 26px "DM Sans", sans-serif';
     ctx.fillStyle = t.muted;
-    ctx.fillText(venueLabel, W / 2, priceY + 55);
+    ctx.fillText(venueLine, W / 2, priceY + 55);
   }
 
   if (t.showLabel) {
@@ -11355,6 +11997,7 @@ async function _dropHandlePhoto(inputEl) {
   if (!_dropPending) return;
   try {
     _dropPending.card._dropPhotoDataUrl = await _readFileAsDataURL(file);
+    _dropPending.card._dropPhotoSource = 'upload';
     await _dropRenderReady();
   } catch (e) {
     console.error('[Drop photo]', e);
@@ -11365,6 +12008,7 @@ async function _dropHandlePhoto(inputEl) {
 function _dropChangePhoto() {
   if (!_dropPending) return;
   delete _dropPending.card._dropPhotoDataUrl;
+  delete _dropPending.card._dropPhotoSource;
   _dropShowPhotoStep();
 }
 
@@ -11402,6 +12046,14 @@ async function _dropRenderReady() {
 
   const nativeBtn = document.getElementById('dropNativeShareBtn');
   if (nativeBtn) nativeBtn.style.display = (navigator.share && navigator.canShare) ? 'block' : 'none';
+
+  const srcEl = document.getElementById('dropPhotoSource');
+  if (srcEl) {
+    const note = card._dropPhotoSource === 'stock' ? 'Catalog image of this card. Change Photo to use your own.'
+      : card._dropPhotoSource === 'seller' ? 'Your photo from when you scanned this card.' : '';
+    srcEl.textContent = note;
+    srcEl.style.display = note ? 'block' : 'none';
+  }
 }
 
 // ── Caption ──
@@ -11423,7 +12075,68 @@ function generateCaptionBody(card, venueLabel) {
 function generateCaptionFooter(card) {
   const hashtag  = '#' + (card.Player || card['Card Title'] || 'cardshow').toLowerCase().replace(/[^a-z0-9]/g, '');
   const graderTag = card.Grader === 'PSA' && card.Grade == 10 ? '#PSA10' : '#gradedcards';
-  return `Tracked on @cardshow.io\n${hashtag} #cardshowhobby ${graderTag} #cardshow`;
+  const handle = _dropHandleShown();
+  return `${handle ? `Sold by @${handle} · ` : ''}Tracked on @cardshow.io\n${hashtag} #cardshowhobby ${graderTag} #cardshow`;
+}
+
+// ── Seller handle on share images (opt-in, off by default) ──
+// The handle is the seller's Instagram if they've set one, else their
+// CardShow handle. The choice is saved on sellers.share_handle (synced across
+// devices); before that migration runs it's kept on this device only.
+let _dropShareHandle = null;          // null = not loaded yet
+let _dropHandleTouched = false;       // seller changed it this session: a late DB answer mustn't undo that
+function _dropHandleKey() { return 'dropShareHandle:' + (currentSeller || ''); }
+function _dropSellerHandle() {
+  if (currentRole !== 'seller' || !currentSeller) return '';
+  const ig = (typeof sellerProfiles !== 'undefined' && sellerProfiles[currentSeller] && sellerProfiles[currentSeller].instagram) || '';
+  return String(ig).replace(/^@/, '').trim() || currentSeller;
+}
+function _dropHandleShown() { return _dropShareHandle ? _dropSellerHandle() : ''; }
+async function _dropLoadHandlePref() {
+  if (_dropShareHandle !== null) return;
+  try { _dropShareHandle = localStorage.getItem(_dropHandleKey()) === '1'; } catch (_) { _dropShareHandle = false; }
+  if (typeof db === 'undefined' || !currentSeller) return;
+  const { data, error } = await db.from('sellers').select('share_handle').eq('handle', currentSeller).maybeSingle();
+  if (!error && data && typeof data.share_handle === 'boolean' && !_dropHandleTouched) {
+    _dropShareHandle = data.share_handle;
+    try { localStorage.setItem(_dropHandleKey(), data.share_handle ? '1' : '0'); } catch (_) {}
+  }
+}
+function _dropSyncHandleRow() {
+  const row = document.getElementById('dropHandleRow');
+  const handle = _dropSellerHandle();
+  if (!row) return;
+  row.style.display = handle ? 'flex' : 'none';
+  const label = document.getElementById('dropHandleLabel');
+  if (label) label.textContent = '@' + handle;
+  const box = document.getElementById('dropShowHandle');
+  if (box) box.checked = !!_dropShareHandle;
+}
+async function _dropToggleHandle(on) {
+  _dropShareHandle = !!on;
+  _dropHandleTouched = true;
+  try { localStorage.setItem(_dropHandleKey(), on ? '1' : '0'); } catch (_) {}
+  _dropLogEvent('handle', { on: !!on });
+  if (_dropPending && _dropPending.card._dropPhotoDataUrl) {
+    await renderShareCard(document.getElementById('dropShareCanvas'), _dropPending.card, _dropStyle, _dropVenueLabel(_dropPending.showId));
+    const footerEl = document.getElementById('dropCaptionFooter');
+    if (footerEl) footerEl.textContent = generateCaptionFooter(_dropPending.card);
+    _dropUpdateCounters();
+  }
+  if (typeof db !== 'undefined' && currentSeller) {
+    const { error } = await db.from('sellers').update({ share_handle: !!on }).eq('handle', currentSeller);
+    if (error && !/share_handle/.test(error.message || '')) console.warn('[share] handle setting not saved', error.message);
+  }
+}
+
+// Share-card events go to show_events under the sale's show (none for an off-show sale).
+function _dropLogEvent(type, data) {
+  const showId = _dropPending && _dropPending.showId;
+  if (typeof db === 'undefined' || !showId || !navigator.onLine) return;
+  db.from('show_events').insert({
+    show_id: showId, event_type: 'share_' + type,
+    event_data: Object.assign({ seller: currentSeller, from: (_dropPending && _dropPending.from) || 'classic' }, data || {}),
+  }).then(({ error }) => { if (error) console.warn('[share] event log failed', error.message); });
 }
 
 function _dropUpdateCounters() {
@@ -11444,21 +12157,38 @@ function _dropUpdateCounters() {
 }
 
 // ── Modal open/close ──
-function openShareCardModal(card, showId) {
+async function openShareCardModal(card, showId, from) {
   if (!card) return;
-  _dropPending = { card, showId: showId != null ? showId : (card._shows instanceof Set ? [...card._shows][0] : activeShowId) };
+  const pending = { card, from: from || 'classic', showId: showId != null ? showId : (card._shows instanceof Set ? [...card._shows][0] : activeShowId) };
+  _dropPending = pending;
   _dropStyle = 'dark';
 
   document.getElementById('shareCardOverlay')?.classList.add('open');
+  _dropLoadHandlePref().then(() => { if (_dropPending === pending) _dropSyncHandleRow(); });
+  _dropSyncHandleRow();
 
   // A photo already attached earlier this session (e.g. reopening from the
   // Report tab) skips straight to the share body; otherwise the photo step
-  // is required before anything else in the modal is reachable.
+  // is required before anything else in the modal is reachable. The card's
+  // saved photo (Show Mode) or its catalog image fills it in when there is one.
   if (card._dropPhotoDataUrl) {
     _dropRenderReady();
   } else {
     _dropShowPhotoStep();
+    if (typeof smCardPhotoDataUrl === 'function') {
+      const hint = document.getElementById('dropPhotoHint');
+      if (hint) hint.textContent = 'Looking for a photo of this card…';
+      const found = await smCardPhotoDataUrl(card).catch(() => null);
+      if (_dropPending !== pending) return;            // closed or reopened meanwhile
+      if (hint) hint.textContent = 'A photo of the card makes the post — required before you can share';
+      if (found && !card._dropPhotoDataUrl) {
+        card._dropPhotoDataUrl = found.dataUrl;
+        card._dropPhotoSource = found.source;
+        await _dropRenderReady();
+      }
+    }
   }
+  _dropLogEvent('opened', { photo: card._dropPhotoSource || (card._dropPhotoDataUrl ? 'upload' : 'none') });
 }
 
 function closeShareCardModal() {
@@ -11476,6 +12206,7 @@ async function _dropCopyCaption() {
   try {
     await navigator.clipboard.writeText(_dropFullCaption());
     showToast('Caption copied!');
+    _dropLogEvent('action', { action: 'copy_caption', handle: !!_dropShareHandle });
   } catch (e) {
     showToast('⚠️ Could not copy — select and copy manually', 'var(--danger)');
   }
@@ -11490,6 +12221,7 @@ function _dropDownloadImage() {
     const a = document.createElement('a');
     a.href = url;
     a.download = `cardshow-drop-${Date.now()}.png`;
+    _dropLogEvent('action', { action: 'download', handle: !!_dropShareHandle });
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -11509,6 +12241,7 @@ async function _dropNativeShare() {
       } else {
         await navigator.share({ text: _dropFullCaption() });
       }
+      _dropLogEvent('action', { action: 'native_share', handle: !!_dropShareHandle });
     } catch (err) {
       if (err.name !== 'AbortError') {
         console.error('[Drop share]', err);
@@ -12559,7 +13292,8 @@ let currentSeller = null; // seller handle when role === 'seller'
 // authRoleSelected, setAuthRole, submitAuth, enterAsBuyer are hoisted to top of script
 
 
-function loginAsSeller(handle) {
+function loginAsSeller(handle, opts) {
+  const restored = !!(opts && opts.restored);
   currentRole   = 'seller';
   currentSeller = handle;
   document.getElementById('authOverlay').classList.add('hidden');
@@ -12636,11 +13370,26 @@ function loginAsSeller(handle) {
 
   // Fetch from Supabase — loads only this seller's real cards
   fetchSellerInventoryFromDB(handle).then(async loaded => {
+    // No signal: show the copy saved on this device at the last good load.
+    if (!loaded && typeof smLoadCachedInventory === 'function' && currentSeller === handle) {
+      const savedAt = await smLoadCachedInventory(handle);
+      if (savedAt) {
+        renderSellerTable(getSellerInventory());
+        updateStats();
+        updateReport();
+        smApplyPendingOps();
+        if (_smShowId) smRefresh();
+        _gsDataReady = true;
+        gsRender();
+        showToast(`No signal — showing your cards as of ${_smClock(savedAt)}`, 'gold');
+        return;
+      }
+    }
     if (loaded) {
       renderSellerTable(getSellerInventory());
       updateStats();
       const myCards = inventory.filter(c => c.Seller === handle);
-      if (myCards.length > 0) {
+      if (myCards.length > 0 && !restored) {
         showToast(`✓ ${myCards.length} cards loaded from your inventory`);
       }
       // Backfills card._shows from the DB — see hydrateCardShowMembership()'s
@@ -12648,6 +13397,9 @@ function loginAsSeller(handle) {
       // filter to work on anything but a never-refreshed session.
       await hydrateCardShowMembership(handle);
       updateReport(); // safe even if the seller isn't on the Report tab yet
+      smInventoryLoaded(handle); // saves a copy on this device for an offline reload
+      smApplyPendingOps(); // Show Mode: re-apply sales still waiting in the offline queue
+      if (_smShowId) smRefresh(); // "In case" depends on the card._shows just loaded
       gtcrHydrateLatestChecks(); // badges + "Registry clear" markers survive a reload
       gtcrHydrateRegistrations(); // "Registered with GTCR" markers
       _gsDataReady = true; // the checklist waits for real data, so returning sellers never see a false "0 done"
@@ -12657,10 +13409,13 @@ function loginAsSeller(handle) {
   });
 
   // Load shows from Supabase so seller can see which shows they're authorized for
-  loadShowsFromDB().then(() => {
+  loadShowsFromDB().then(async ok => {
+    if (ok) smCacheShows(handle);
+    else if (_showsLoadFailed && currentSeller === handle) await smLoadCachedShows(handle); // no signal
     renderSellerShowsList();
     populateReportShowSelector();
     _restoreActiveShowId(handle); // survives a reload mid-show — see comment above the function
+    smAfterShowsLoaded(); // Show Mode v2: reopen the Show Mode screen after a refresh
   });
 
   loadOnboardingState(handle); // checklist + tips state, synced across devices
@@ -12682,7 +13437,8 @@ function loginAsSeller(handle) {
       });
   }
 
-  showToast(`Welcome, @${handle}`);
+  if (!restored) showToast(`Welcome, @${handle}`);
+  smUpdateEntryPoints();
 }
 
 function showNavUser(name, role, avatarClass) {
@@ -12699,6 +13455,9 @@ function showNavUser(name, role, avatarClass) {
 }
 
 function loginAsAdmin() {
+  closeShowMode();
+  const smNavBtn = document.getElementById('navShowModeBtn');
+  if (smNavBtn) smNavBtn.style.display = 'none';
   currentRole   = 'admin';
   currentSeller = null;
   document.getElementById('authOverlay').classList.add('hidden');
@@ -12719,6 +13478,7 @@ function loginAsAdmin() {
   // Show admin-only UI elements; hide seller-only sidebar modules
   document.getElementById('adminTabBar').style.display          = 'block';
   document.getElementById('adminShowsPanel').style.display      = 'block';
+  checkPlatformAdmin();
   document.getElementById('sellerQrPanel').classList.remove('visible');
   document.getElementById('sellerShowsPanel').style.display     = 'none';
   document.getElementById('sellerUploadSection').style.display  = 'none';
@@ -12782,9 +13542,35 @@ function initSidebarState() {
   }
 }
 
+// Restores a saved seller session on page load. Returns true when a seller was
+// signed back in. Admin sessions are not restored (admins sign in each visit).
+async function _restoreSellerSession() {
+  try {
+    const { data } = await db.auth.getSession();
+    const uid = data && data.session && data.session.user && data.session.user.id;
+    if (!uid) return false;
+    const cacheKey = 'sellerHandle:' + uid;
+    const { data: seller, error } = await db.from('sellers').select('handle').eq('id', uid).maybeSingle();
+    let handle = seller && seller.handle;
+    // No signal at the show: the lookup fails, so use the handle cached at the
+    // last good restore rather than signing the seller out.
+    if (error && !navigator.onLine) { try { handle = localStorage.getItem(cacheKey); } catch (_) {} }
+    if (!handle) return false;
+    try { localStorage.setItem(cacheKey, handle); } catch (_) {}
+    loginAsSeller(handle, { restored: true });
+    return true;
+  } catch (e) {
+    console.warn('[auth] session restore failed', e);
+    return false;
+  }
+}
+
 async function signOut() {
+  _dropShareHandle = null; _dropHandleTouched = false;   // next seller loads their own share-handle choice
   if (_obStateTimer) _obSaveStateNow(); // flush a pending checklist/tips save while currentSeller is still set
   _obStateLoaded = false; _obStateSync = false;
+  if (currentRole === 'seller') smClearOfflineCache(currentSeller);   // don't leave a seller's cards on a shared phone
+  const conflictEl = document.getElementById('smConflictOverlay'); if (conflictEl) { conflictEl.remove(); _smConflict = null; }
   await db.auth.signOut().catch(() => {});
   currentRole          = null;
   currentSeller        = null;
@@ -12795,10 +13581,14 @@ async function signOut() {
   _gsDataReady = false;
   _gsLastDone  = null;
   _tipsHideAll();
+  closeShowMode();
   sellerQrMode  = 'table';
   buyerShowId   = null;
   _unsubscribeBuyerShowLive();
   _adminTab     = 'shows';
+  _isPlatformAdmin = false;
+  const dirTabOut = document.getElementById('adminTabDirectory');
+  if (dirTabOut) dirTabOut.style.display = 'none';
 
   document.getElementById('navTabSeller').style.display = '';
   document.getElementById('navTabSeller').textContent   = '⬡ Seller';
@@ -13115,15 +13905,15 @@ function openCreateShowModal(showId) {
     document.getElementById('smStartDate').value = s.startDate || '';
     document.getElementById('smEndDate').value   = s.endDate   || '';
     document.getElementById('smLocation').value  = s.location || '';
-    document.getElementById('smStatus').value    = s.status || 'upcoming';
     document.getElementById('smCode').value      = s.accessCode || '';
+    document.getElementById('smSelfJoin').checked = s.sellerSelfJoin !== false;
   } else {
     title.textContent = 'Create Show';
     document.getElementById('smName').value      = '';
     document.getElementById('smStartDate').value = '';
     document.getElementById('smEndDate').value   = '';
     document.getElementById('smLocation').value = '';
-    document.getElementById('smStatus').value   = 'upcoming';
+    document.getElementById('smSelfJoin').checked = true;
     genAccessCode();
   }
 
@@ -13139,6 +13929,7 @@ function openCreateShowModal(showId) {
   _smResetSellerSearchUI();
   _smRenderSellerChips();
 
+  smUpdateStatusPreview();
   modal.classList.add('open');
   document.body.style.overflow = 'hidden';
 
@@ -13171,6 +13962,11 @@ function _smResetSellerSearchUI() {
   _smCloseSellerDropdown();
 }
 
+function _smSellerJoinedThemselves(handle) {
+  const show = editingShowId && shows[editingShowId];
+  return !!(show && show.selfJoined instanceof Set && show.selfJoined.has(handle));
+}
+
 function _smRenderSellerChips() {
   const chipRow = document.getElementById('smSellerChipRow');
   const input = document.getElementById('smSellerSearchInput');
@@ -13182,6 +13978,7 @@ function _smRenderSellerChips() {
     chip.dataset.handle = handle;
     chip.innerHTML = `
       <span class="chip-username">${_escHtml(handle)}</span>
+      ${_smSellerJoinedThemselves(handle) ? '<span class="chip-selfjoined" title="This seller added themselves to the show">joined themselves</span>' : ''}
       <input type="text" class="chip-table-input" placeholder="Table #"
         value="${_escHtml(tableNumber || '')}" aria-label="Table number for ${_escHtml(handle)}">
       <button type="button" aria-label="Remove ${_escHtml(handle)}">×</button>`;
@@ -13358,7 +14155,8 @@ async function saveShow() {
   const date      = _formatShowDateRange(startDate, endDate);
   const location  = document.getElementById('smLocation').value.trim();
   const { city, state, venue } = parseShowLocation(location);
-  const status   = document.getElementById('smStatus').value;
+  const existingTz = editingShowId && shows[editingShowId] ? shows[editingShowId].timezone : null;
+  const status   = _showStatusFromDates({ startDate, endDate: endDate || startDate, timezone: existingTz }) || 'upcoming';
   const code     = document.getElementById('smCode').value.trim().toUpperCase();
 
   if (!name) { showToast('Show name is required', 'var(--danger)'); return; }
@@ -13398,6 +14196,8 @@ async function saveShow() {
   shows[id] = { id, name, date, startDate, endDate: endDate || startDate, location, status, accessCode: code, sellers: newSellers,
                 tables: newTables,
                 publishedAt: (shows[id] && shows[id].publishedAt) || null,
+                selfJoined: (shows[id] && shows[id].selfJoined) || new Set(),
+                sellerSelfJoin: document.getElementById('smSelfJoin').checked,
                 city, state, venue };
 
   closeShowModal();
@@ -13906,7 +14706,7 @@ function renderSellerShowsList() {
   const available = Object.values(shows).filter(s => s.sellers.has(handle));
 
   if (!available.length) {
-    el.innerHTML = '<div style="font-size:0.78rem;color:var(--muted);padding:0.3rem 0">No shows available yet.<br>The admin will grant you access.</div>';
+    el.innerHTML = '<div style="font-size:0.78rem;color:var(--muted);padding:0.3rem 0">You haven\'t joined a show yet.<br>Tap <strong style="color:var(--text)">+ Join a show</strong> to add the show you\'re vending at.</div>';
     return;
   }
 
@@ -13932,7 +14732,9 @@ function renderSellerShowsList() {
       </div>
       <div class="show-card-actions">
         <button class="btn-xs primary" onclick="sellerPublishToShow('${s.id}')">⚡ Add My Cards</button>
-        <button class="btn-xs" onclick="sellerRemoveFromShow('${s.id}')">Remove</button>
+        <button class="btn-xs" onclick="sellerRemoveFromShow('${s.id}')">Remove cards</button>
+        ${s.selfJoined instanceof Set && s.selfJoined.has(handle) ? `<button class="btn-xs" onclick="leaveShowAsSeller('${s.id}')">Leave show</button>` : ''}
+        ${smIsEnabled() ? `<button class="btn-xs" onclick="openShowMode('${s.id}')">▶ Show Mode</button>` : ''}
       </div>
     </div>`;
   }).join('');
@@ -14029,6 +14831,305 @@ function sellerRemoveFromShow(showId) {
     dbDeleteIn(ids => db.from('show_inventory').delete().eq('show_id', showId).in('card_id', ids), dbIds)
       .then(({ error }) => { if (error) console.warn('sellerRemoveFromShow DB cleanup failed:', error.message); });
   }
+}
+
+// ── Seller self-join ─────────────────────────────────────────────
+// A seller adds themselves to a show they're vending at (any show whose
+// organizer left "Let sellers add themselves" on). The server function
+// join_show_as_seller() checks the rules; see "Seller Self-Join" in CLAUDE.md.
+// Joining is required before Show Mode opens for a show.
+
+// Last day of a show as 'YYYY-MM-DD', or null when it has no usable date.
+function _showLastDayISO(show) {
+  if (!show) return null;
+  if (show.startDate) return show.endDate || show.startDate;
+  const start = _parseShowDate(show.date || '');
+  if (!start) return null;
+  const m = (show.date || '').match(/\d{1,2}\s*-\s*(\d{1,2})\s*,/);
+  if (m) start.setDate(parseInt(m[1], 10));
+  return start.toLocaleDateString('en-CA');
+}
+// Show status follows the show's dates: 'upcoming' before the first day,
+// 'active' (live) from the first through the last day, 'past' after it. Uses the
+// show's own time zone when one is set, else this device's date. Returns null
+// when the show has no usable date, so its stored status stands.
+function _showTodayISO(show) {
+  if (show && show.timezone) {
+    try { return new Date().toLocaleDateString('en-CA', { timeZone: show.timezone }); } catch (e) {}
+  }
+  return _todayISO();
+}
+function _showStatusFromDates(show) {
+  const first = _showDateISO(show), last = _showLastDayISO(show);
+  if (!first || !last) return null;
+  const today = _showTodayISO(show);
+  if (today < first) return 'upcoming';
+  if (today > last)  return 'past';
+  return 'active';
+}
+// Same, for a raw shows row from the DB.
+function _showStatusForRow(row) {
+  return _showStatusFromDates({ startDate: row.start_date, endDate: row.end_date, date: row.date, timezone: row.timezone })
+    || row.status || 'upcoming';
+}
+// Re-derive every in-memory show's status (dates roll over while a tab stays open).
+function _refreshShowStatuses() {
+  Object.values(shows).forEach(s => { const st = _showStatusFromDates(s); if (st) s.status = st; });
+}
+const SHOW_STATUS_LABEL = { upcoming: 'Upcoming', active: 'Active (Live)', past: 'Past' };
+function smUpdateStatusPreview() {
+  const el = document.getElementById('smStatusAuto');
+  if (!el) return;
+  const startDate = document.getElementById('smStartDate').value;
+  const endDate   = document.getElementById('smEndDate').value;
+  const tz = editingShowId && shows[editingShowId] ? shows[editingShowId].timezone : null;
+  const st = startDate ? _showStatusFromDates({ startDate, endDate: endDate || startDate, timezone: tz }) : null;
+  el.innerHTML = st
+    ? `<span class="show-status-dot ${st}"></span>${SHOW_STATUS_LABEL[st]}`
+    : '<span style="color:var(--muted)">Set from the dates</span>';
+}
+
+function _showHasEnded(show) {
+  const last = _showLastDayISO(show);
+  if (last) return last < _todayISO();
+  return show.status === 'past';
+}
+// Show Management order: Active (Live) first, then Upcoming (soonest first),
+// then Past (most recent first). Shows with no date go last in their group.
+const SHOW_STATUS_ORDER = { active: 0, upcoming: 1, past: 2 };
+function _sortShowsForDashboard(list) {
+  return list.slice().sort((a, b) => {
+    const ga = SHOW_STATUS_ORDER[a.status] ?? 1, gb = SHOW_STATUS_ORDER[b.status] ?? 1;
+    if (ga !== gb) return ga - gb;
+    const da = _showDateISO(a), dbb = _showDateISO(b);
+    if (!da || !dbb) return (da ? 0 : 1) - (dbb ? 0 : 1) || (a.name || '').localeCompare(b.name || '');
+    return ga === 2 ? dbb.localeCompare(da) : da.localeCompare(dbb);
+  });
+}
+function _showSortKey(show) { return show.startDate || _showDateISO(show) || '9999'; }
+
+// Shows the current seller could join right now: open to self-join, not over,
+// not already joined. Shows running today come first, then by date.
+function _joinableShows() {
+  return Object.values(shows)
+    .filter(s => !(s.sellers instanceof Set && s.sellers.has(currentSeller)))
+    .filter(s => s.listed !== false && !s.mergedInto && s.sellerSelfJoin !== false && !_showHasEnded(s))
+    .sort((a, b) => (_showIsToday(b) - _showIsToday(a)) || _showSortKey(a).localeCompare(_showSortKey(b)));
+}
+
+let _joinShowOpts = {};
+// opts: { showId, thenShowMode, reason }
+function openJoinShow(opts) {
+  _joinShowOpts = opts || {};
+  if (typeof closeHelpMenu === 'function') closeHelpMenu();
+  const reason = document.getElementById('joinShowReason');
+  reason.textContent = _joinShowOpts.reason || '';
+  reason.style.display = _joinShowOpts.reason ? '' : 'none';
+  document.getElementById('joinShowSub').style.display = _joinShowOpts.reason ? 'none' : '';
+  document.getElementById('joinShowSearch').value = '';
+  closeShowRequestForm();
+  document.getElementById('joinShowOverlay').classList.add('open');
+  renderJoinShowList();
+  loadMyShowRequests();
+  // Refresh the list in the background in case shows were added since login.
+  loadShowsFromDB().then(ok => { if (ok && document.getElementById('joinShowOverlay').classList.contains('open')) renderJoinShowList(); });
+}
+function closeJoinShow() {
+  document.getElementById('joinShowOverlay').classList.remove('open');
+  _joinShowOpts = {};
+}
+
+function renderJoinShowList() {
+  const el = document.getElementById('joinShowList');
+  if (!el) return;
+  const q = (document.getElementById('joinShowSearch').value || '').trim().toLowerCase();
+  let list = _joinableShows();
+  const focus = _joinShowOpts.showId && shows[_joinShowOpts.showId];
+  // A show the seller tried to open goes first, even if it isn't joinable,
+  // so the reason it can't be joined is shown next to it.
+  if (focus && !list.includes(focus) && !(focus.sellers instanceof Set && focus.sellers.has(currentSeller))) list = [focus, ...list];
+  else if (focus) list = [focus, ...list.filter(s => s !== focus)];
+  if (q) list = list.filter(s => [s.name, s.location, s.city, s.state, s.venue, s.date].filter(Boolean).join(' ').toLowerCase().includes(q));
+  if (!list.length) {
+    el.innerHTML = `<div class="join-show-empty">${q ? 'No shows match your search.' : 'No upcoming shows are open to join right now.'}</div>`;
+    return;
+  }
+  el.innerHTML = list.map(s => {
+    const closed = s.sellerSelfJoin === false, ended = _showHasEnded(s);
+    const unlisted = s.listed === false || !!s.mergedInto;
+    const blocked = unlisted ? 'Not open to sellers yet. CardShow reviews each show first.'
+      : closed ? 'The organizer adds sellers to this show' : ended ? 'This show is over' : '';
+    const today = _showIsToday(s) ? '<span class="join-show-today">Today</span>' : '';
+    return `
+      <div class="join-show-row${s === focus ? ' focus' : ''}">
+        <div class="join-show-info">
+          <div class="join-show-name">${_escHtml(s.name || 'Show')} ${today}</div>
+          <div class="join-show-meta">${_escHtml([s.date, s.location].filter(Boolean).join(' · '))}</div>
+          ${blocked ? `<div class="join-show-blocked">${blocked}</div>` : ''}
+        </div>
+        ${blocked ? '' : `<button class="btn-primary join-show-btn" onclick="joinShowAsSeller('${s.id}', this)">Join</button>`}
+      </div>`;
+  }).join('');
+}
+
+const JOIN_SHOW_ERRORS = {
+  not_signed_in: 'Sign in again to join a show',
+  no_seller:     'Your seller profile isn\'t set up yet',
+  not_found:     'That show no longer exists',
+  closed:        'The organizer adds sellers to this show',
+  not_listed:    'Not open to sellers yet. CardShow reviews each show first.',
+  ended:         'This show is over',
+};
+
+async function joinShowAsSeller(showId, btn) {
+  const show = shows[showId];
+  if (!show || typeof db === 'undefined') return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Joining…'; }
+  let result = null, err = null;
+  try {
+    const r = await db.rpc('join_show_as_seller', { p_show_id: showId });
+    if (r.error && (r.error.code === 'PGRST202' || /join_show_as_seller/.test(r.error.message || ''))) {
+      result = await _joinShowFallback(showId);   // migration not run yet
+    } else if (r.error) err = r.error.message;
+    else result = r.data;
+  } catch (e) { err = e.message; }
+  if (!err && result && result.error) err = JOIN_SHOW_ERRORS[result.error] || result.error;
+  if (err || !result) {
+    if (btn) { btn.disabled = false; btn.textContent = 'Join'; }
+    showToast(err ? (/fetch|network/i.test(err) ? 'No connection — try again' : err) : 'Couldn\'t join the show', '#ef4444');
+    return;
+  }
+
+  if (!(show.sellers instanceof Set)) show.sellers = new Set(show.sellers || []);
+  show.sellers.add(currentSeller);
+  if (!result.already) {
+    if (!(show.selfJoined instanceof Set)) show.selfJoined = new Set();
+    show.selfJoined.add(currentSeller);
+  }
+  const thenShowMode = _joinShowOpts.thenShowMode && typeof smIsEnabled === 'function' && smIsEnabled();
+  closeJoinShow();
+  renderSellerShowsList();
+  if (typeof populateReportShowSelector === 'function') populateReportShowSelector();
+  if (typeof smUpdateEntryPoints === 'function') smUpdateEntryPoints();
+  db.from('show_events').insert({ show_id: showId, event_type: 'seller_self_join', event_data: {} })
+    .then(({ error }) => { if (error) console.warn('[show_events]', error.message); });
+  if (thenShowMode) {
+    showToast(`You're in ${show.name}`);
+    openShowMode(showId);
+  } else {
+    showToast(`You're in ${show.name}. Tap ⚡ Add My Cards to put your cards on it.`);
+    if (typeof _helpShowSidebar === 'function' && window.innerWidth <= 599) _helpShowSidebar('sellerShowsPanel');
+  }
+  loadShowsFromDB().then(ok => { if (ok) { renderSellerShowsList(); if (typeof smUpdateEntryPoints === 'function') smUpdateEntryPoints(); } });
+}
+
+// ── Show requests (seller side) ── A seller asks for a show that isn't listed.
+// submit_show_request() files it; the platform owner lists the show from the
+// Show Directory, which also adds the seller to it.
+function openShowRequestForm() {
+  ['reqName','reqStart','reqEnd','reqVenue','reqCity','reqState','reqWebsite','reqNotes']
+    .forEach(id => { document.getElementById(id).value = ''; });
+  const q = (document.getElementById('joinShowSearch').value || '').trim();
+  if (q) document.getElementById('reqName').value = q;
+  document.getElementById('joinShowListView').style.display = 'none';
+  document.getElementById('joinShowRequestView').style.display = '';
+  document.getElementById('joinShowTitle').textContent = 'Request a show';
+  document.getElementById('reqName').focus();
+}
+function closeShowRequestForm() {
+  document.getElementById('joinShowRequestView').style.display = 'none';
+  document.getElementById('joinShowListView').style.display = '';
+  document.getElementById('joinShowTitle').textContent = 'Join a show';
+}
+
+const SHOW_REQUEST_ERRORS = {
+  not_signed_in:  'Sign in again to send a request',
+  no_seller:      'Your seller profile isn\'t set up yet',
+  missing_fields: 'Add the show name and start date',
+  too_many:       'You have 10 requests waiting already. We\'ll get to them soon.',
+};
+
+async function submitShowRequest() {
+  const v = id => document.getElementById(id).value.trim();
+  const req = {
+    name: v('reqName'), start_date: v('reqStart'), end_date: v('reqEnd'),
+    venue: v('reqVenue'), city: v('reqCity'), state: v('reqState').toUpperCase(),
+    website: v('reqWebsite'), notes: v('reqNotes'),
+  };
+  if (!req.name || !req.start_date) { showToast('Add the show name and start date', '#ef4444'); return; }
+  if (req.end_date && req.end_date < req.start_date) { showToast('End date must be on or after the start date', '#ef4444'); return; }
+  if (req.state && !/^[A-Z]{2}$/.test(req.state)) { showToast('Use the 2-letter state code, like CA', '#ef4444'); return; }
+  const btn = document.getElementById('reqSubmitBtn');
+  btn.disabled = true; btn.textContent = 'Sending…';
+  let err = null, data = null;
+  try {
+    const r = await db.rpc('submit_show_request', { p: req });
+    if (r.error) err = (r.error.code === 'PGRST202' || /submit_show_request/.test(r.error.message || ''))
+      ? 'Show requests aren\'t set up yet. Email support@getcardshow.com with the show details.'
+      : r.error.message;
+    else data = r.data;
+  } catch (e) { err = e.message; }
+  btn.disabled = false; btn.textContent = 'Send request';
+  if (!err && data && data.error) err = SHOW_REQUEST_ERRORS[data.error] || data.error;
+  if (err) { showToast(/fetch|network/i.test(err) ? 'No connection — try again' : err, '#ef4444'); return; }
+  showToast(data.already ? 'You already asked for this show. We\'ll add you once it\'s listed.'
+                         : 'Request sent. We\'ll add you to the show once it\'s listed.');
+  closeShowRequestForm();
+  loadMyShowRequests();
+}
+
+async function loadMyShowRequests() {
+  const el = document.getElementById('joinShowMyRequests');
+  if (!el || typeof db === 'undefined') return;
+  const { data, error } = await db.from('show_requests')
+    .select('id, name, start_date, status, show_id, review_note, created_at')
+    .order('created_at', { ascending: false }).limit(10);
+  if (error || !data || !data.length) { el.innerHTML = ''; return; }
+  const label = { pending: 'Waiting for review', listed: 'Listed · you\'re in', declined: 'Not listed' };
+  el.innerHTML = `<div class="join-show-myreq-title">Your requests</div>` + data.map(r => `
+    <div class="join-show-myreq">
+      <div style="min-width:0">
+        <div class="join-show-myreq-name">${_escHtml(r.name)}</div>
+        <div class="join-show-meta">${_escHtml(_formatShowDateRange(r.start_date, null))}${r.review_note ? ' · ' + _escHtml(r.review_note) : ''}</div>
+      </div>
+      <span class="join-show-myreq-status ${r.status}">${label[r.status] || r.status}</span>
+    </div>`).join('');
+}
+
+// Before the self-join migration runs: plain insert (show_sellers RLS is
+// still permissive). No organizer switch or end-date check on this path.
+async function _joinShowFallback(showId) {
+  const { data: seller } = await db.from('sellers').select('id').eq('handle', currentSeller).maybeSingle();
+  if (!seller) return { error: 'no_seller' };
+  const { data: existing } = await db.from('show_sellers').select('show_id').eq('show_id', showId).eq('seller_id', seller.id).maybeSingle();
+  if (existing) return { ok: true, already: true };
+  const { error } = await db.from('show_sellers').insert({ show_id: showId, seller_id: seller.id });
+  if (error) throw new Error(error.message);
+  return { ok: true, already: false };
+}
+
+async function leaveShowAsSeller(showId) {
+  const show = shows[showId];
+  if (!show || typeof db === 'undefined') return;
+  if (!confirm(`Leave ${show.name}? Your cards come off the show, and you'll need to join again to sell there.`)) return;
+  let result = null, err = null;
+  try {
+    const r = await db.rpc('leave_show_as_seller', { p_show_id: showId });
+    if (r.error) err = r.error.message; else result = r.data;
+  } catch (e) { err = e.message; }
+  if (!err && result && result.error) {
+    err = result.error === 'organizer_added' ? 'The organizer added you to this show — ask them to remove you' : 'You\'re not in this show';
+  }
+  if (err) { showToast(err, '#ef4444'); return; }
+  show.sellers.delete(currentSeller);
+  if (show.selfJoined instanceof Set) show.selfJoined.delete(currentSeller);
+  getSellerInventory().forEach(card => { if (card._shows) card._shows.delete(showId); });
+  if (activeShowId === showId) { activeShowId = null; _persistActiveShowId(currentSeller, null); buildSellerQrPanel(); }
+  if (typeof _smShowId !== 'undefined' && _smShowId === showId) closeShowMode();
+  renderSellerShowsList();
+  updateStats();
+  if (typeof smUpdateEntryPoints === 'function') smUpdateEntryPoints();
+  showToast(`You left ${show.name}`);
 }
 
 // ── Buyer: Show picker ──
@@ -14129,7 +15230,7 @@ async function joinShowByCode() {
           name:        showRow.name,
           date:        showRow.date        || '',
           location:    showRow.location    || '',
-          status:      showRow.status      || 'upcoming',
+          status:      _showStatusForRow(showRow),
           accessCode:  showRow.access_code || '',
           publishedAt: showRow.published_at || null,
           sellers:     new Set(),
@@ -16665,6 +17766,10 @@ function switchAdminTab(tab) {
 
   const showsTab    = document.getElementById('adminTabShows');
   const reportTab   = document.getElementById('adminTabReport');
+  const dirTab      = document.getElementById('adminTabDirectory');
+  const dirPanel    = document.getElementById('showDirectoryPanel');
+  if (dirTab) dirTab.classList.remove('active');
+  if (dirPanel) dirPanel.style.display = 'none';
   const dashboard   = document.getElementById('adminShowsDashboard');
   const invPanel    = document.getElementById('adminInventoryPanel');
   const reportPanel = document.getElementById('adminReportPanel');
@@ -16673,7 +17778,11 @@ function switchAdminTab(tab) {
   [showsTab, reportTab].forEach(t => t && t.classList.remove('active'));
   [dashboard, invPanel, reportPanel].forEach(p => p && (p.style.display = 'none'));
 
-  if (tab === 'report') {
+  if (tab === 'directory') {
+    dirTab && dirTab.classList.add('active');
+    if (dirPanel) dirPanel.style.display = 'block';
+    loadShowDirectory();
+  } else if (tab === 'report') {
     reportTab && reportTab.classList.add('active');
     if (invPanel) {
       invPanel.style.display = 'block';
@@ -16696,11 +17805,430 @@ function switchAdminTab(tab) {
   }
 }
 
+// ── SHOW DIRECTORY (platform owner) ─────────────────────────────────
+// The platform owner curates which shows sellers can join: list/unlist,
+// edit the structured fields, merge duplicates, and work through seller
+// requests. Server rules live in 20261028120000_show_directory.sql; only an
+// account in platform_admins gets the tab (is_platform_admin()).
+let _isPlatformAdmin = false;
+let _dirShows = [];          // raw shows rows, every organizer's
+let _dirSellerCounts = {};   // show_id → number of sellers
+let _dirRequests = [];       // pending show_requests
+let _dirHandles = {};        // seller uuid → handle
+let _dirFilter = null;       // 'requests' | 'needs' | 'unlisted' | 'listed' | 'all'
+let _dirEditId = null;       // show being edited, null = new
+let _dirEditRequestId = null;
+let _dirMergeFrom = null;
+let _dirLinkRequestId = null;
+
+const DIR_TIMEZONES = [
+  ['America/New_York', 'Eastern'], ['America/Chicago', 'Central'], ['America/Denver', 'Mountain'],
+  ['America/Phoenix', 'Arizona'], ['America/Los_Angeles', 'Pacific'], ['America/Anchorage', 'Alaska'],
+  ['Pacific/Honolulu', 'Hawaii'], ['America/Puerto_Rico', 'Puerto Rico'], ['America/Toronto', 'Toronto'],
+  ['America/Vancouver', 'Vancouver'],
+];
+// Best guess from the state, used only to pre-fill an empty time zone.
+const DIR_STATE_TZ = (() => {
+  const m = {};
+  'CA WA OR NV'.split(' ').forEach(s => m[s] = 'America/Los_Angeles');
+  'CO UT NM MT WY ID'.split(' ').forEach(s => m[s] = 'America/Denver');
+  'TX IL MN WI MO LA OK KS NE IA AR MS AL TN SD ND'.split(' ').forEach(s => m[s] = 'America/Chicago');
+  'NY NJ PA MA CT RI VT NH ME MD DE DC VA WV NC SC GA FL OH MI IN KY'.split(' ').forEach(s => m[s] = 'America/New_York');
+  m.AZ = 'America/Phoenix'; m.HI = 'Pacific/Honolulu'; m.AK = 'America/Anchorage'; m.PR = 'America/Puerto_Rico';
+  return m;
+})();
+
+async function checkPlatformAdmin() {
+  _isPlatformAdmin = false;
+  const tab = document.getElementById('adminTabDirectory');
+  if (tab) tab.style.display = 'none';
+  if (typeof db === 'undefined') return;
+  try {
+    const { data, error } = await db.rpc('is_platform_admin');
+    if (error || data !== true || currentRole !== 'admin') return;
+    _isPlatformAdmin = true;
+    if (tab) tab.style.display = '';
+    _dirRefreshBadge();
+  } catch (_) { /* migration not run: no directory */ }
+}
+
+async function _dirRefreshBadge() {
+  const badge = document.getElementById('dirTabBadge');
+  if (!badge) return;
+  const { data } = await db.from('show_requests').select('id').eq('status', 'pending');
+  const n = (data || []).length;
+  badge.textContent = n;
+  badge.style.display = n ? '' : 'none';
+}
+
+// Same rules as set_show_listed() on the server.
+function _dirMissing(r) {
+  const miss = [];
+  if (!String(r.name || '').trim()) miss.push('name');
+  if (!r.start_date) miss.push('start date');
+  if (!String(r.venue || '').trim()) miss.push('venue');
+  if (!String(r.city || '').trim()) miss.push('city');
+  if (!/^[A-Z]{2}$/.test(r.state || '')) miss.push('state');
+  return miss;
+}
+function _dirBucket(r) {
+  if (r.merged_into) return 'merged';
+  if (r.listed) return 'listed';
+  return _dirMissing(r).length ? 'needs' : 'unlisted';
+}
+function _dirLocation(r) { return [r.venue, r.city, r.state].filter(Boolean).join(', '); }
+function _dirDates(r) { return r.start_date ? _formatShowDateRange(r.start_date, r.end_date) : (r.date || 'No dates'); }
+function _dirOverlaps(a, b) {
+  if (!a.start_date || !b.start_date) return false;
+  return a.start_date <= (b.end_date || b.start_date) && b.start_date <= (a.end_date || a.start_date);
+}
+// Other non-merged shows in the same city and state with overlapping dates.
+function _dirPossibleDuplicates(r) {
+  const city = String(r.city || '').trim().toLowerCase();
+  if (!city) return [];
+  return _dirShows.filter(o => o.id !== r.id && !o.merged_into
+    && String(o.city || '').trim().toLowerCase() === city && (o.state || '') === (r.state || '')
+    && _dirOverlaps(o, r));
+}
+
+async function loadShowDirectory() {
+  const list = document.getElementById('dirList');
+  if (!list || !_isPlatformAdmin) return;
+  list.innerHTML = '<div class="dir-empty">Loading shows…</div>';
+  try {
+    const [showsRes, ssRes, reqRes] = await Promise.all([
+      dbSelectAllPages(() => db.from('shows').select('*').order('id')),
+      dbSelectAllPages(() => db.from('show_sellers').select('show_id, seller_id').order('show_id')),
+      db.from('show_requests').select('*').eq('status', 'pending').order('created_at'),
+    ]);
+    if (showsRes.error) throw new Error(showsRes.error.message);
+    _dirShows = showsRes.data || [];
+    _dirSellerCounts = {};
+    (ssRes.data || []).forEach(r => { _dirSellerCounts[r.show_id] = (_dirSellerCounts[r.show_id] || 0) + 1; });
+    _dirRequests = reqRes.data || [];
+    const ids = [...new Set(_dirRequests.map(r => r.seller_id))];
+    _dirHandles = {};
+    if (ids.length) {
+      const { data } = await db.from('sellers').select('id, handle').in('id', ids);
+      (data || []).forEach(r => { _dirHandles[r.id] = r.handle; });
+    }
+  } catch (e) {
+    list.innerHTML = `<div class="dir-empty">Couldn't load the directory: ${_escHtml(e.message || 'error')}</div>`;
+    return;
+  }
+  if (!_dirFilter) _dirFilter = _dirRequests.length ? 'requests' : 'unlisted';
+  _dirRefreshBadge();
+  renderShowDirectory();
+}
+
+function setDirFilter(f) { _dirFilter = f; renderShowDirectory(); }
+
+function renderShowDirectory() {
+  const list = document.getElementById('dirList');
+  if (!list) return;
+  const counts = { requests: _dirRequests.length, needs: 0, unlisted: 0, listed: 0, all: _dirShows.length };
+  _dirShows.forEach(r => { const b = _dirBucket(r); if (counts[b] !== undefined) counts[b]++; });
+  const labels = { requests: 'Requests', needs: 'Needs info', unlisted: 'Ready to list', listed: 'Listed', all: 'All' };
+  document.getElementById('dirFilters').innerHTML = Object.keys(labels).map(k =>
+    `<button class="dir-filter${_dirFilter === k ? ' active' : ''}" onclick="setDirFilter('${k}')">${labels[k]} <span>${counts[k]}</span></button>`).join('');
+
+  const q = (document.getElementById('dirSearch').value || '').trim().toLowerCase();
+  const match = (...parts) => !q || parts.filter(Boolean).join(' ').toLowerCase().includes(q);
+
+  if (_dirFilter === 'requests') {
+    const reqs = _dirRequests.filter(r => match(r.name, r.city, r.state, r.venue));
+    list.innerHTML = reqs.length ? reqs.map(_dirRequestHTML).join('')
+      : '<div class="dir-empty">No requests waiting.</div>';
+    return;
+  }
+  const rows = _dirShows
+    .filter(r => _dirFilter === 'all' || _dirBucket(r) === _dirFilter)
+    .filter(r => match(r.name, r.city, r.state, r.venue, r.slug));
+  const sorted = _sortShowsForDashboard(rows.map(r => ({
+    row: r, name: r.name, status: _showStatusForRow(r),
+    startDate: r.start_date || null, endDate: r.end_date || null, date: r.date || '', timezone: r.timezone || null,
+  }))).map(x => x.row);
+  list.innerHTML = sorted.length ? sorted.map(_dirShowHTML).join('')
+    : `<div class="dir-empty">${_dirFilter === 'needs' ? 'Every unlisted show has its details filled in.' : 'No shows here.'}</div>`;
+}
+
+function _dirShowHTML(r) {
+  const bucket = _dirBucket(r);
+  const miss = _dirMissing(r);
+  const dups = bucket === 'merged' ? [] : _dirPossibleDuplicates(r);
+  const target = r.merged_into && _dirShows.find(o => o.id === r.merged_into);
+  const badge = bucket === 'listed' ? '<span class="dir-badge listed">Listed</span>'
+    : bucket === 'merged' ? '<span class="dir-badge">Merged</span>'
+    : '<span class="dir-badge">Not listed</span>';
+  const owner = r.created_by && r.created_by === window._currentAdminUid ? 'You' : 'Another organizer';
+  return `
+    <div class="dir-row" data-show-id="${_escHtml(r.id)}">
+      <div class="dir-row-main">
+        <div class="dir-row-name">${_escHtml(r.name || 'Untitled show')} ${badge}</div>
+        <div class="dir-row-meta">${_escHtml(_dirDates(r))}${_dirLocation(r) ? ' · ' + _escHtml(_dirLocation(r)) : ''}</div>
+        <div class="dir-row-meta">${_dirSellerCounts[r.id] || 0} sellers · created by ${owner}${r.slug ? ' · ' + _escHtml(r.slug) : ''}</div>
+        ${miss.length && bucket !== 'merged' ? `<div class="dir-warn">Needs: ${miss.join(', ')}</div>` : ''}
+        ${dups.length ? `<div class="dir-warn">Possible duplicate of ${dups.map(d => _escHtml(d.name)).join(', ')} (same city, same dates)</div>` : ''}
+        ${target ? `<div class="dir-row-meta">Merged into ${_escHtml(target.name)}</div>` : ''}
+      </div>
+      <div class="dir-row-actions">
+        ${bucket === 'merged' ? '' : `
+          <button class="btn btn-ghost dir-btn" onclick="openDirEdit('${r.id}')">Edit</button>
+          ${r.listed
+            ? `<button class="btn btn-ghost dir-btn" onclick="dirSetListed('${r.id}', false)">Unlist</button>`
+            : `<button class="btn btn-primary dir-btn" onclick="dirSetListed('${r.id}', true)">List</button>`}
+          <button class="btn btn-ghost dir-btn" onclick="openDirMerge('${r.id}')">Merge…</button>`}
+        <button class="btn btn-ghost dir-btn dir-btn-danger" onclick="dirDeleteShow('${r.id}')">Delete</button>
+      </div>
+    </div>`;
+}
+
+// Listed shows that look like the requested one: shared name words, or the
+// same city on overlapping dates.
+function _dirRequestMatches(req) {
+  const words = String(req.name).toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 2 && !['show', 'card', 'cards', 'the'].includes(w));
+  return _dirShows.filter(s => s.listed && !s.merged_into).filter(s => {
+    const name = String(s.name || '').toLowerCase();
+    const nameHit = words.length && words.filter(w => name.includes(w)).length >= Math.min(2, words.length);
+    const placeHit = req.city && String(s.city || '').toLowerCase() === String(req.city).toLowerCase() && _dirOverlaps(s, req);
+    return nameHit || placeHit;
+  }).slice(0, 3);
+}
+
+function _dirRequestHTML(req) {
+  const handle = _dirHandles[req.seller_id];
+  const loc = [req.venue, req.city, req.state].filter(Boolean).join(', ');
+  const matches = _dirRequestMatches(req);
+  const site = req.website && /^https?:\/\//i.test(req.website)
+    ? `<a href="${_escHtml(req.website)}" target="_blank" rel="noopener">${_escHtml(req.website)}</a>` : _escHtml(req.website || '');
+  return `
+    <div class="dir-row dir-req" data-request-id="${req.id}">
+      <div class="dir-row-main">
+        <div class="dir-row-name">${_escHtml(req.name)} <span class="dir-badge req">Request</span></div>
+        <div class="dir-row-meta">${_escHtml(_formatShowDateRange(req.start_date, req.end_date))}${loc ? ' · ' + _escHtml(loc) : ''}</div>
+        ${site ? `<div class="dir-row-meta">${site}</div>` : ''}
+        ${req.notes ? `<div class="dir-row-meta">“${_escHtml(req.notes)}”</div>` : ''}
+        <div class="dir-row-meta">From ${handle ? '@' + _escHtml(handle) : 'a seller'} · ${_escHtml(new Date(req.created_at).toLocaleString())}</div>
+        ${matches.length ? `<div class="dir-matches">Already listed? ${matches.map(m =>
+          `<button class="btn btn-ghost dir-btn" onclick="dirResolveRequest('${req.id}', 'listed', '${m.id}')">Link to ${_escHtml(m.name)} (${_escHtml(_dirDates(m))})</button>`).join('')}</div>` : ''}
+      </div>
+      <div class="dir-row-actions">
+        <button class="btn btn-primary dir-btn" onclick="openDirEdit(null, '${req.id}')">Create &amp; list</button>
+        <button class="btn btn-ghost dir-btn" onclick="openDirLink('${req.id}')">Link to a show…</button>
+        <button class="btn btn-ghost dir-btn" onclick="dirDeclineRequest('${req.id}')">Decline</button>
+      </div>
+    </div>`;
+}
+
+// ── Edit / create ──
+function openDirEdit(showId, requestId) {
+  _dirEditId = showId || null;
+  _dirEditRequestId = requestId || null;
+  const r = showId ? (_dirShows.find(s => s.id === showId) || {}) : {};
+  const req = requestId ? (_dirRequests.find(x => x.id === requestId) || {}) : {};
+  const src = showId ? r : req;
+  const set = (id, v) => { document.getElementById(id).value = v || ''; };
+  set('dirName', src.name); set('dirStart', src.start_date); set('dirEnd', src.end_date);
+  set('dirVenue', src.venue); set('dirCity', src.city); set('dirState', src.state);
+  set('dirWebsite', src.website);
+  const tz = document.getElementById('dirTimezone');
+  tz.innerHTML = '<option value="">Time zone…</option>' + DIR_TIMEZONES.map(([v, l]) => `<option value="${v}">${l} (${v})</option>`).join('')
+    + (r.timezone && !DIR_TIMEZONES.some(([v]) => v === r.timezone) ? `<option value="${_escHtml(r.timezone)}">${_escHtml(r.timezone)}</option>` : '');
+  tz.value = r.timezone || DIR_STATE_TZ[(src.state || '').toUpperCase()] || '';
+  const listBox = document.getElementById('dirListAfter');
+  listBox.checked = !!requestId || !showId || !!r.listed;
+  document.getElementById('dirEditTitle').textContent = requestId ? 'Create show from request' : showId ? 'Edit show' : 'Add show';
+  document.getElementById('dirEditOverlay').classList.add('open');
+  document.getElementById('dirName').focus();
+}
+function closeDirEdit() { document.getElementById('dirEditOverlay').classList.remove('open'); }
+function dirStateChanged(el) {
+  el.value = el.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 2);
+  const tz = document.getElementById('dirTimezone');
+  if (!tz.value && DIR_STATE_TZ[el.value]) tz.value = DIR_STATE_TZ[el.value];
+}
+
+function _dirGenAccessCode() {
+  const used = new Set(_dirShows.map(s => s.access_code));
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code;
+  do { code = Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join(''); } while (used.has(code));
+  return code;
+}
+
+async function saveDirEdit() {
+  const v = id => document.getElementById(id).value.trim();
+  const f = {
+    name: v('dirName'), start_date: v('dirStart') || null, end_date: v('dirEnd') || null,
+    venue: v('dirVenue'), city: v('dirCity'), state: v('dirState').toUpperCase(),
+    timezone: v('dirTimezone') || null, website: v('dirWebsite') || null,
+  };
+  if (!f.name) { showToast('Show name is required', '#ef4444'); return; }
+  if (f.end_date && f.start_date && f.end_date < f.start_date) { showToast('End date must be on or after the start date', '#ef4444'); return; }
+  if (f.state && !/^[A-Z]{2}$/.test(f.state)) { showToast('Use the 2-letter state code, like CA', '#ef4444'); return; }
+  if (!f.end_date) f.end_date = f.start_date;
+  const listAfter = document.getElementById('dirListAfter').checked;
+  if (listAfter) {
+    const miss = _dirMissing(f);
+    if (miss.length) { showToast(`To list it, fill in: ${miss.join(', ')}`, '#ef4444'); return; }
+  }
+  const dups = _dirPossibleDuplicates({ ...f, id: _dirEditId });
+  if (dups.length && !confirm(`This looks like ${dups.map(d => `${d.name} (${_dirDates(d)})`).join(', ')}, same city and dates.\n\nSave it anyway? Use Merge if it's the same show.`)) return;
+
+  const row = {
+    ...f,
+    venue: f.venue || null, city: f.city || null, state: f.state || null,
+    date: f.start_date ? _formatShowDateRange(f.start_date, f.end_date) : null,
+    location: _dirLocation(f) || null,
+  };
+  const autoStatus = _showStatusFromDates({ startDate: f.start_date, endDate: f.end_date || f.start_date, timezone: f.timezone });
+  if (autoStatus) row.status = autoStatus;
+  const btn = document.getElementById('dirSaveBtn');
+  btn.disabled = true;
+  let id = _dirEditId, error;
+  if (id) {
+    ({ error } = await db.from('shows').update(row).eq('id', id));
+  } else {
+    id = genShowId();
+    ({ error } = await db.from('shows').insert({
+      id, status: 'upcoming', ...row, access_code: _dirGenAccessCode(),
+      created_by: window._currentAdminUid || null, seller_self_join: true,
+    }));
+  }
+  if (!error && listAfter) {
+    const r = await db.rpc('set_show_listed', { p_show_id: id, p_listed: true });
+    error = r.error || (r.data && r.data.error ? { message: r.data.error === 'missing_fields' ? 'Fill in: ' + r.data.fields.join(', ') : r.data.error } : null);
+  }
+  if (!error && _dirEditRequestId) {
+    const r = await db.rpc('resolve_show_request', { p_request_id: _dirEditRequestId, p_action: 'listed', p_show_id: id, p_note: null });
+    error = r.error || (r.data && r.data.error ? { message: r.data.error } : null);
+  }
+  btn.disabled = false;
+  if (error) { showToast('Couldn\'t save: ' + error.message, '#ef4444'); return; }
+  showToast(_dirEditRequestId ? `${f.name} is listed and the seller was added` : listAfter ? `${f.name} is listed` : `${f.name} saved`);
+  closeDirEdit();
+  await loadShowDirectory();
+  loadShowsFromDB().then(() => renderAdminShowsDashboard());
+}
+
+async function dirSetListed(showId, listed) {
+  const r0 = _dirShows.find(s => s.id === showId);
+  if (listed && r0) {
+    const miss = _dirMissing(r0);
+    if (miss.length) { showToast(`Fill in ${miss.join(', ')} first`, '#ef4444'); openDirEdit(showId); return; }
+    const dups = _dirPossibleDuplicates(r0).filter(d => d.listed);
+    if (dups.length && !confirm(`${dups.map(d => d.name).join(', ')} is already listed for the same city and dates.\n\nList this one too? Use Merge if it's the same show.`)) return;
+  }
+  if (!listed && !confirm(`Unlist ${r0 ? r0.name : 'this show'}? Sellers already in it stay in it, but no one new can join.`)) return;
+  const { data, error } = await db.rpc('set_show_listed', { p_show_id: showId, p_listed: listed });
+  const err = error ? error.message : data && data.error ? (data.error === 'missing_fields' ? 'Fill in: ' + data.fields.join(', ') : data.error) : null;
+  if (err) { showToast('Couldn\'t update: ' + err, '#ef4444'); return; }
+  showToast(listed ? 'Listed. Sellers can join it now.' : 'Unlisted');
+  loadShowDirectory();
+}
+
+// ── Delete ──
+// delete_show() refuses a show with recorded sales (the sales ledger is
+// immutable and points at it); unlist or merge those instead.
+async function dirDeleteShow(showId) {
+  const r = _dirShows.find(s => s.id === showId);
+  const name = r ? (r.name || 'Untitled show') : 'this show';
+  const sellers = _dirSellerCounts[showId] || 0;
+  const note = sellers ? `\n\n${sellers} seller${sellers === 1 ? ' is' : 's are'} in it and will be removed from it. Their cards stay in their inventory.` : '';
+  if (!confirm(`Delete ${name}? This can't be undone.${note}`)) return;
+  let { data, error } = await db.rpc('delete_show', { p_show_id: showId });
+  if (error && (error.code === 'PGRST202' || /delete_show/.test(error.message || ''))) ({ data, error } = await _dirDeleteShowFallback(showId));
+  if (!error && data && data.error === 'has_sales') {
+    showToast(`${name} has ${data.sales} recorded sale${data.sales === 1 ? '' : 's'}, so it can't be deleted. Unlist it or merge it instead.`, '#ef4444');
+    return;
+  }
+  const err = error ? error.message : data && data.error ? data.error : null;
+  if (err) { showToast('Couldn\'t delete: ' + err, '#ef4444'); return; }
+  if (shows[showId]) {
+    inventory.forEach(c => { if (c._shows) c._shows.delete(showId); });
+    delete shows[showId];
+    if (activeShowId === showId) activeShowId = null;
+  }
+  showToast(`${name} deleted`);
+  loadShowDirectory();
+}
+// Before 20261031120000_delete_show.sql: the same checks and deletes from the
+// client (RLS is still permissive).
+async function _dirDeleteShowFallback(showId) {
+  const { count, error: cErr } = await db.from('show_floor_transactions').select('id', { count: 'exact', head: true }).eq('show_id', showId);
+  if (cErr) return { data: null, error: cErr };
+  if (count) return { data: { error: 'has_sales', sales: count }, error: null };
+  for (const t of ['show_inventory', 'show_sellers']) {
+    const { error } = await db.from(t).delete().eq('show_id', showId);
+    if (error) return { data: null, error };
+  }
+  const { error } = await db.from('shows').delete().eq('id', showId);
+  return { data: error ? null : { ok: true }, error };
+}
+
+// ── Merge ──
+function openDirMerge(fromId) {
+  _dirMergeFrom = fromId;
+  const from = _dirShows.find(s => s.id === fromId);
+  const options = _dirShows.filter(s => s.id !== fromId && !s.merged_into)
+    .sort((a, b) => (b.listed - a.listed) || (a.start_date || '9999').localeCompare(b.start_date || '9999'));
+  const dups = new Set(_dirPossibleDuplicates(from).map(d => d.id));
+  document.getElementById('dirMergeFrom').textContent = `${from.name} (${_dirDates(from)})`;
+  document.getElementById('dirMergeInto').innerHTML = '<option value="">Choose the show to keep…</option>' + options.map(s =>
+    `<option value="${_escHtml(s.id)}"${dups.has(s.id) ? ' selected' : ''}>${_escHtml(s.name)} · ${_escHtml(_dirDates(s))}${s.city ? ' · ' + _escHtml(s.city) : ''}${s.listed ? ' · listed' : ''}</option>`).join('');
+  document.getElementById('dirMergeOverlay').classList.add('open');
+}
+function closeDirMerge() { document.getElementById('dirMergeOverlay').classList.remove('open'); }
+async function confirmDirMerge() {
+  const into = document.getElementById('dirMergeInto').value;
+  if (!into) { showToast('Choose the show to keep', '#ef4444'); return; }
+  const { data, error } = await db.rpc('merge_shows', { p_from: _dirMergeFrom, p_into: into });
+  const err = error ? error.message : data && data.error;
+  if (err) { showToast('Couldn\'t merge: ' + err, '#ef4444'); return; }
+  showToast(`Merged · ${data.sellers_moved} sellers and ${data.cards_moved} cards moved`);
+  closeDirMerge();
+  await loadShowDirectory();
+  loadShowsFromDB().then(() => renderAdminShowsDashboard());
+}
+
+// ── Requests ──
+function openDirLink(requestId) {
+  _dirLinkRequestId = requestId;
+  const req = _dirRequests.find(r => r.id === requestId);
+  const matches = new Set(_dirRequestMatches(req).map(m => m.id));
+  const listed = _dirShows.filter(s => s.listed && !s.merged_into)
+    .sort((a, b) => (matches.has(b.id) - matches.has(a.id)) || (a.start_date || '9999').localeCompare(b.start_date || '9999'));
+  document.getElementById('dirLinkReq').textContent = `${req.name} (${_formatShowDateRange(req.start_date, req.end_date)})`;
+  document.getElementById('dirLinkShow').innerHTML = '<option value="">Choose a listed show…</option>' + listed.map(s =>
+    `<option value="${_escHtml(s.id)}">${_escHtml(s.name)} · ${_escHtml(_dirDates(s))}${s.city ? ' · ' + _escHtml(s.city) : ''}</option>`).join('');
+  document.getElementById('dirLinkOverlay').classList.add('open');
+}
+function closeDirLink() { document.getElementById('dirLinkOverlay').classList.remove('open'); }
+function confirmDirLink() {
+  const showId = document.getElementById('dirLinkShow').value;
+  if (!showId) { showToast('Choose a listed show', '#ef4444'); return; }
+  closeDirLink();
+  dirResolveRequest(_dirLinkRequestId, 'listed', showId);
+}
+function dirDeclineRequest(requestId) {
+  const note = prompt('Decline this request? Optional note for the seller (e.g. "Not a card show"):', '');
+  if (note === null) return;
+  dirResolveRequest(requestId, 'declined', null, note);
+}
+async function dirResolveRequest(requestId, action, showId, note) {
+  const { data, error } = await db.rpc('resolve_show_request', { p_request_id: requestId, p_action: action, p_show_id: showId, p_note: note || null });
+  const err = error ? error.message : data && data.error;
+  if (err) { showToast('Couldn\'t update the request: ' + err, '#ef4444'); return; }
+  showToast(action === 'listed' ? 'Linked. The seller was added to the show.' : 'Request declined');
+  loadShowDirectory();
+}
+
 // ── ADMIN SHOWS DASHBOARD ──
 function renderAdminShowsDashboard() {
   const el = document.getElementById('adminShowsGrid');
   if (!el) return;
-  const list = Object.values(shows);
+  _refreshShowStatuses();
+  const list = _sortShowsForDashboard(Object.values(shows));
 
   if (!list.length) {
     el.innerHTML = `
@@ -16728,7 +18256,7 @@ function renderAdminShowsDashboard() {
     const needsTable   = sellerArr.length - assignedCnt;
     const dotClass     = s.status === 'active' ? 'active' : s.status === 'past' ? 'past' : 'upcoming';
 
-    const statusLabel  = {active:'🟢 Active', upcoming:'⏳ Upcoming', past:'⚫ Past'}[s.status] || s.status;
+    const statusLabel  = SHOW_STATUS_LABEL[dotClass];
     const setupLabel   = sellerArr.length === 0
       ? `<span style="color:var(--muted)">No sellers</span>`
       : needsTable === 0
@@ -16754,11 +18282,15 @@ function renderAdminShowsDashboard() {
           <div class="asc-name">
             <span class="show-status-dot ${dotClass}"></span>
             ${s.name}
+            <span class="asc-status ${dotClass}" title="Set automatically from the show's dates">${statusLabel}</span>
           </div>
           <div class="asc-meta">
             ${[s.date, s.location].filter(Boolean).join(' · ')}
             &nbsp;·&nbsp; 🔑 <strong>${s.accessCode}</strong>
             &nbsp;·&nbsp; ${setupLabel}
+            &nbsp;·&nbsp; ${s.listed !== false
+              ? '<span class="asc-listed yes" title="Sellers can find and join this show">Listed for sellers</span>'
+              : '<span class="asc-listed" title="CardShow reviews new shows before sellers can join them. You can still add sellers yourself.">Not listed yet · CardShow reviews new shows</span>'}
           </div>
         </div>
         <div class="asc-stats">
@@ -16819,6 +18351,7 @@ function renderAdminShowsDashboard() {
                 <div class="asc-seller-row ${tbl ? 'has-table' : ''}" id="asc-row-${s.id}-${h}">
                   <div class="asc-seller-avatar">${av}</div>
                   <div class="asc-seller-handle" title="@${h}">@${h}</div>
+                  ${s.selfJoined instanceof Set && s.selfJoined.has(h) ? '<span class="chip-selfjoined" title="This seller added themselves to the show">joined themselves</span>' : ''}
                   <input class="asc-table-input ${tbl ? 'filled' : ''}"
                     value="${tbl}" placeholder="Table #"
                     title="Assign table number for @${h}"
@@ -18455,9 +19988,9 @@ function _gsSteps() {
     { id: 'show', label: 'Put your cards in a show',
       hint: hasShowAccess
         ? 'Under My Shows, tap ⚡ Add My Cards.'
-        : 'Ask the show organizer to add you. Then tap ⚡ Add My Cards under My Shows.',
+        : 'Join the show you\'re vending at, then tap ⚡ Add My Cards under My Shows.',
       done: live,
-      go: 'Show me', action: () => _helpShowSidebar('sellerShowsPanel') },
+      go: hasShowAccess ? 'Show me' : 'Join', action: () => hasShowAccess ? _helpShowSidebar('sellerShowsPanel') : openJoinShow() },
     { id: 'qr', label: 'Get your table QR code',
       hint: 'Buyers scan it at your table. Save it or open it full screen.',
       done: !!st.qr,
@@ -18623,7 +20156,8 @@ const FEATURE_GUIDE = [
     { icon: '📊', name: 'Upload a spreadsheet', desc: 'CSV or Excel. Columns are matched automatically, including Shopify, Ludex and Flipwise exports.', action: () => document.querySelector('#uploadZone input[type="file"]')?.click() },
   ]},
   { group: 'At the show', items: [
-    { icon: '⚡', name: 'Go live at a show', desc: 'Once an organizer adds you, the show appears under My Shows. Tap Add My Cards to put your cards in front of buyers there.', action: () => _helpShowSidebar('sellerShowsList') },
+    { icon: '🎪', name: 'Join a show', desc: 'Add yourself to a show you\'re vending at. It then appears under My Shows, and you can open Show Mode for it.', action: () => openJoinShow() },
+    { icon: '⚡', name: 'Go live at a show', desc: 'Under My Shows, tap Add My Cards to put your cards in front of buyers at that show.', action: () => _helpShowSidebar('sellerShowsList') },
     { icon: '📲', name: 'Your QR code', desc: 'Buyers scan it at your table to browse your cards. Download or print it.', action: () => openSellerQRModal() },
   ]},
   { group: 'Sell', items: [
@@ -18780,6 +20314,9 @@ function showToDbRow(show) {
     state,
     venue,
   };
+  // Organizer switch for seller self-join (see "Seller Self-Join" in CLAUDE.md).
+  // Left out when unknown so an upsert never changes it by accident.
+  if (typeof show.sellerSelfJoin === 'boolean') row.seller_self_join = show.sellerSelfJoin;
   // Stamp created_by so each admin only sees their own shows.
   if (window._currentAdminUid) row.created_by = window._currentAdminUid;
   return row;
@@ -18797,7 +20334,13 @@ async function upsertShowToDB(show) {
     // Degrade gracefully if start_date/end_date haven't been migrated yet —
     // same PGRST204 "missing column" pattern as _isMissingScanColumnError()
     // on the inventory table (see CLAUDE.md).
+    // seller_self_join is newer still (20261027120000_seller_self_join.sql).
+    if (error && 'seller_self_join' in row && /seller_self_join/.test(error.message || '')) {
+      delete row.seller_self_join;
+      ({ error } = await db.from('shows').upsert(row, { onConflict: 'id' }));
+    }
     if (error && (error.code === 'PGRST204' || /schema cache/i.test(error.message || ''))) {
+      delete row.seller_self_join;
       delete row.start_date;
       delete row.end_date;
       ({ error } = await db.from('shows').upsert(row, { onConflict: 'id' }));
@@ -19047,21 +20590,30 @@ async function buildShowPageUrlFromDB(showId) {
 }
 
 
+let _showsLoadFailed = false;   // last loadShowsFromDB() hit an error (vs. no shows)
 async function loadShowsFromDB() {
   if (typeof db === 'undefined') return false;
+  _showsLoadFailed = false;
   try {
     // Fetch shows — filtered to the current admin's own shows via created_by.
     // Falls back to unfiltered if created_by column doesn't exist yet (pre-migration).
     let showQuery = db.from('shows').select('*').order('created_at', { ascending: true });
     if (window._currentAdminUid) showQuery = showQuery.eq('created_by', window._currentAdminUid);
     const { data: showRows, error: showErr } = await showQuery;
-    if (showErr) { console.warn('loadShowsFromDB: shows fetch failed:', showErr.message); return false; }
+    if (showErr) { console.warn('loadShowsFromDB: shows fetch failed:', showErr.message); _showsLoadFailed = true; return false; }
     if (!showRows || !showRows.length) return false;
 
     // Fetch show_sellers — two separate queries avoids FK join resolution issues
-    const { data: ssRows, error: ssErr } = await db
+    // self_joined comes from the seller self-join migration; retry without it
+    // on a project that hasn't run that yet.
+    let { data: ssRows, error: ssErr } = await db
       .from('show_sellers')
-      .select('show_id, seller_id, table_number');
+      .select('show_id, seller_id, table_number, self_joined');
+    if (ssErr && /self_joined/.test(ssErr.message || '')) {
+      ({ data: ssRows, error: ssErr } = await db
+        .from('show_sellers')
+        .select('show_id, seller_id, table_number'));
+    }
     if (ssErr) console.warn('loadShowsFromDB: show_sellers fetch failed:', ssErr.message);
 
     // Fetch all seller id→handle mappings needed for the shows we loaded
@@ -19077,11 +20629,13 @@ async function loadShowsFromDB() {
     // Build sellers Set and tables map per show
     const sellersByShow = {};
     const tablesByShow  = {};
+    const selfJoinedByShow = {};
     (ssRows || []).forEach(row => {
       const handle = sellerIdToHandle[row.seller_id];
       if (!handle) return;
       if (!sellersByShow[row.show_id]) sellersByShow[row.show_id] = new Set();
       sellersByShow[row.show_id].add(handle);
+      if (row.self_joined) (selfJoinedByShow[row.show_id] = selfJoinedByShow[row.show_id] || new Set()).add(handle);
       if (row.table_number) {
         if (!tablesByShow[row.show_id]) tablesByShow[row.show_id] = {};
         tablesByShow[row.show_id][handle] = row.table_number;
@@ -19098,7 +20652,7 @@ async function loadShowsFromDB() {
         startDate:   row.start_date  || null,
         endDate:     row.end_date    || null,
         location:    row.location    || '',
-        status:      row.status      || 'upcoming',
+        status:      _showStatusForRow(row),
         accessCode:  row.access_code || '',
         publishedAt: row.published_at || null,
         city:        row.city        || null,
@@ -19106,6 +20660,15 @@ async function loadShowsFromDB() {
         venue:       row.venue       || null,
         sellers:     sellersByShow[row.id] || new Set(),
         tables:      tablesByShow[row.id]  || {},
+        selfJoined:  selfJoinedByShow[row.id] || new Set(),   // handles that joined themselves
+        sellerSelfJoin: row.seller_self_join !== false,       // organizer switch, on by default
+        // Show directory: only listed shows can be joined by sellers. Before the
+        // directory migration the column doesn't exist, so every show counts as listed.
+        listed:      row.listed !== false,
+        slug:        row.slug        || null,
+        timezone:    row.timezone    || null,
+        website:     row.website     || null,
+        mergedInto:  row.merged_into || null,
       };
     });
 
@@ -19113,6 +20676,7 @@ async function loadShowsFromDB() {
     return true;
   } catch(e) {
     console.warn('loadShowsFromDB error:', e.message);
+    _showsLoadFailed = true;
     return false;
   }
 }
@@ -19481,7 +21045,7 @@ const CARD_TO_DB = Object.fromEntries(
 function _isMissingScanColumnError(error) {
   return !!error && (
     error.code === 'PGRST204' ||
-    /column .*(fingerprint|detected_confidence|sport|serial_number|print_run_size|features|category|subcategory).*schema cache/i.test(error.message || '')
+    /column .*(fingerprint|detected_confidence|sport|serial_number|print_run_size|features|category|subcategory|catalog_card_id).*schema cache/i.test(error.message || '')
   );
 }
 
@@ -19531,6 +21095,19 @@ function cardToDbRow(card) {
   };
 }
 
+// Saves a CardSight catalog id on a card that has none (from a comp check or
+// an identification), so Show Mode can show its stock image. Fire-and-forget;
+// a missing column (migration not run) just leaves it in memory.
+const CATALOG_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function _saveCatalogCardId(card, catalogId) {
+  if (!card || card.CatalogCardId || !catalogId || !CATALOG_ID_RE.test(catalogId)) return;
+  card.CatalogCardId = catalogId;
+  if (!card._dbId || typeof db === 'undefined') return;
+  db.from('inventory').update({ catalog_card_id: catalogId })
+    .eq('id', card._dbId).is('catalog_card_id', null)
+    .then(({ error }) => { if (error && !_isMissingScanColumnError(error)) console.warn('[images] catalog id save failed', error.message); });
+}
+
 function dbRowToCard(row) {
   const card = {
     _dbId:           row.id,
@@ -19560,6 +21137,9 @@ function dbRowToCard(row) {
     Category:           row.category             || '',
     Subcategory:         row.subcategory          || '',
     _trustFlag:         row.trust_flag           || null,
+    CatalogCardId:      row.catalog_card_id      || null,   // CardSight id → stock image (Show Mode)
+    _primaryCaptureId:  row.primary_capture_id   || null,   // seller photo (card_captures)
+    _imageSource:       row.image_source         || null,
     _shows:          new Set(),
   };
   if (row.sold_price     != null) card.SoldPrice     = row.sold_price;
@@ -20984,6 +22564,10 @@ async function _insertShowTransaction(card, showId) {
       api_eligible: true,
       data_version: 1,
     };
+    // Show Mode sales: client_sale_id makes the ledger row exactly-once (unique
+    // index), and a manual sale keeps its 'manual' provenance.
+    if (card._clientSaleId) row.client_sale_id = card._clientSaleId;
+    if (card._ledgerSource) row.source = card._ledgerSource;
 
     let { error } = await db
       .from('show_floor_transactions')
@@ -21213,7 +22797,8 @@ async function submitPasswordReset() {
   }
 }
 
-// Always show the login page on fresh navigation — clear any lingering Supabase session.
+// Page load: restore a signed-in seller, otherwise show the login page (clearing
+// any other lingering Supabase session).
 // Deep-link: ?code=XXXX → skip login, enter buyer mode, join show directly.
 // Awaits signOut so the Supabase client is in a clean anon state before querying.
 (async function initPage() {
@@ -21226,17 +22811,26 @@ async function submitPasswordReset() {
     return;
   }
 
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get('code');
+  const authError = window._authRedirect && window._authRedirect.mode === 'error';
+
+  // Sellers stay signed in across a refresh (supabase-js keeps the session in
+  // localStorage and refreshes it). Entry links (?code=, ?signup=, ?buyer=,
+  // auth errors) and admins still start from a clean sign-out, as before.
+  if (!code && !authError && !params.get('signup') && !params.get('buyer')) {
+    if (await _restoreSellerSession()) return;
+  }
+
   await db.auth.signOut().catch(() => {});
 
-  if (window._authRedirect && window._authRedirect.mode === 'error') {
+  if (authError) {
     _clearAuthRedirectUrl();
     const errEl = document.getElementById('authError');
     if (errEl) errEl.textContent = 'That email link is invalid or has expired. Ask for a new one.';
     return;
   }
 
-  const params = new URLSearchParams(window.location.search);
-  const code = params.get('code');
   // Landing-page entry points: ?signup=1 opens the auth box in sign-up mode,
   // ?buyer=1 goes straight to the buyer show picker.
   if (!code && (params.get('signup') || params.get('buyer'))) {
@@ -21263,7 +22857,7 @@ async function submitPasswordReset() {
       if (showRow) {
         shows[showRow.id] = {
           id: showRow.id, name: showRow.name, date: showRow.date || '',
-          location: showRow.location || '', status: showRow.status || 'upcoming',
+          location: showRow.location || '', status: _showStatusForRow(showRow),
           accessCode: showRow.access_code || '', publishedAt: showRow.published_at || null,
           sellers: new Set(), tables: {},
         };
@@ -21367,7 +22961,7 @@ async function submitPasswordReset() {
       <div class="ob-title">Go Live at a Show</div>
       <div class="ob-subtitle">Buyers at a show only see your cards after this step.</div>
       <ol class="ob-steps">
-        <li><strong>The organizer adds you.</strong> Once they do, the show appears under <em>My Shows</em>. You don't need a code.</li>
+        <li><strong>Join the show.</strong> Under <em>My Shows</em>, tap <em>+ Join a show</em> and pick the show you're vending at. If the organizer already added you, it's there already.</li>
         <li><strong>Tap ⚡ Add My Cards</strong> on that show. Your cards go live for buyers there, and your sales count toward the show.</li>
         <li><strong>Put your QR code on your table.</strong> Open <em>My QR Code</em>, then download or print it. Buyers scan it to see your cards.</li>
       </ol>

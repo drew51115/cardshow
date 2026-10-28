@@ -15,6 +15,10 @@
 [functions."expire-trade-posts"]
   schedule = "@hourly"
 
+# Show status follows the dates: Upcoming → Active (Live) → Past.
+[functions."refresh-show-statuses"]
+  schedule = "@hourly"
+
 # Disable pretty URLs globally — prevents Netlify from redirecting
 # show.html → /show which strips the URL hash fragment containing
 # the show inventory payload.
