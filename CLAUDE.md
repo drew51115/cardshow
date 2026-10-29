@@ -4322,10 +4322,14 @@ Shipped (same `onboarding_complete` gate, same `checkOnboardingStatus()`/`markOn
 - Its profile step saved WhatsApp/Instagram raw, while the Profile modal stripped non-digits and
   "@". Both now go through `_normalizeProfileContact()`, so the WhatsApp contact link gets digits.
 
-### Tour screens (`obStep0`–`obStep4`, `OB_SCREENS = 5`)
+### Tour screens (`obStep0`–`obStep5`, `OB_SCREENS = 6`)
 Welcome · Profile (prefilled from the saved profile on replay) · Add your first cards (four buttons
 that open the real tools: scan, bulk scan, spreadsheet upload, type one in, plus the template link) ·
 Go live at a show (organizer adds you → Add My Cards → table QR; a mobile-only hint points to ☰) ·
+Protect your graded cards (GTCR, added 2026-10-29: the automatic theft check and "✓ Registry
+clear", what happens on a stolen/lost report, and the optional registration with a button,
+`obAction('gtcr')`, that opens the Profile at the checkbox. The registration item and button
+(`#obGtcrRegisterItem`, `#obGtcrActions`) are hidden when `GTCR_CONSENT_UI_ENABLED` is false) ·
 Selling at your table (mark sold via the Available status, Scan to Sell, Log a Manual Sale, share).
 `obAction(kind)` launches the chosen tool **before** closing the tour and saving, inside the same
 click, so browsers still allow the file picker. `_obFinish()` (Done / Skip) saves, marks complete,
@@ -4341,7 +4345,10 @@ so a menu inside it is clipped. `toggleHelpMenu()` positions it (`position:fixed
 Every seller feature grouped as Add cards / At the show / Sell / Price and manage / After the show,
 each with a one-line description and a "Show me" button that opens the tool, switches tab, or
 opens the sidebar (`_helpShowSidebar()`), or outlines a toolbar button (`_helpPoint()`). Add new
-seller features to `FEATURE_GUIDE` when they ship. GTCR consent is deliberately not listed (dark).
+seller features to `FEATURE_GUIDE` when they ship. A "Protect your cards (GTCR)" group (2026-10-29)
+covers the theft check, what to do on a stolen/lost report, and registration. The registration item
+has `show: () => GTCR_CONSENT_UI_ENABLED`, so it disappears if the opt-in is switched off; any item
+can use `show`. `_helpShowGtcrConsent()` opens the Profile and outlines `#gtcrConsentSection`.
 
 ### Getting started checklist (`#gsChecklist`)
 Sits under the seller tab bar on the My Inventory tab (not the sidebar, which is hidden behind ☰

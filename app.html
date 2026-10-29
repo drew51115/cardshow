@@ -18038,7 +18038,7 @@ function openProfile() {
 /* ── SELLER ONBOARDING ── */
 let _onboardingStep   = 0;
 let _onboardingActive = false;
-const OB_SCREENS      = 5; // obStep0–obStep4
+const OB_SCREENS      = 6; // obStep0–obStep5
 
 async function checkOnboardingStatus(handle) {
   if (typeof db === 'undefined') return;
@@ -18095,6 +18095,12 @@ function _openOnboarding() {
   setVal('obDisplayName', p.displayName);
   setVal('obWhatsapp', p.whatsapp);
   setVal('obInstagram', p.instagram ? '@' + p.instagram : '');
+  // Registration is opt-in and can be switched off (GTCR_CONSENT_UI_LAUNCHED);
+  // the theft check part of the GTCR screen always applies.
+  ['obGtcrRegisterItem', 'obGtcrActions'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = GTCR_CONSENT_UI_ENABLED ? '' : 'none';
+  });
   _obRender();
   const el = document.getElementById('obOverlay');
   if (!el) { console.error('[onboarding] obOverlay element not found'); return; }
@@ -18162,13 +18168,14 @@ function _obFinish() {
   showToast('Replay the tour anytime from the ? button');
 }
 
-// Step 2's buttons: close the tour and open the chosen way to add cards.
+// Step 2's buttons (and step 4's GTCR button): close the tour and open the chosen tool.
 // The launch runs first, inside the click, so browsers allow the file picker.
 function obAction(kind) {
   if (kind === 'add') openAddCard();
   else if (kind === 'scan') { openAddCard(); openCertScanner(); }
   else if (kind === 'bulk') document.getElementById('bulkScanInput')?.click();
   else if (kind === 'upload') document.querySelector('#uploadZone input[type="file"]')?.click();
+  else if (kind === 'gtcr') _helpShowGtcrConsent();
   _closeOnboarding();
   _obSaveProfile();
   markOnboardingComplete(currentSeller);
@@ -18350,6 +18357,18 @@ function _helpPoint(elId) {
   el.scrollIntoView({ behavior: 'smooth', block: 'center' });
   el.classList.add('help-pulse');
   setTimeout(() => el.classList.remove('help-pulse'), 2500);
+}
+
+// Opens the Profile and outlines the GTCR registration checkbox.
+function _helpShowGtcrConsent() {
+  openProfile();
+  const el = document.getElementById('gtcrConsentSection');
+  if (!el || el.style.display === 'none') return;
+  setTimeout(() => {
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.classList.add('help-pulse');
+    setTimeout(() => el.classList.remove('help-pulse'), 2500);
+  }, 150);
 }
 
 // Opens the sidebar (collapsed on phones) and scrolls to a section of it.
@@ -18636,7 +18655,11 @@ const FEATURE_GUIDE = [
     { icon: '💲', name: 'Check comps', desc: 'Look up recent market prices for the cards you select (or all unsold cards) and update your prices.', action: () => _helpPoint('compCheckBtn') },
     { icon: '🏷️', name: 'Validate sport', desc: 'Fills in the sport for cards that show no sport badge.', action: () => _helpPoint('sportValidateBtn') },
     { icon: '⬇', name: 'Export inventory', desc: 'Download your unsold cards as CSV or Excel to list them on other platforms.', action: () => _helpPoint('exportInventoryBtn') },
-    { icon: '🛡️', name: 'Theft check', desc: 'Graded cards with a cert number are checked against the Global Trading Card Registry. A card reported stolen or lost is hidden from buyers until you decide what to do. Nothing to set up.' },
+  ]},
+  { group: 'Protect your cards (GTCR)', items: [
+    { icon: '🛡️', name: 'Theft check', desc: 'Graded cards with a cert number are checked against the Global Trading Card Registry when you add them and when they go live at a show. A clean card shows ✓ Registry clear under its cert number. Nothing to set up.' },
+    { icon: '⚠️', name: 'If a card is reported stolen or lost', desc: "Buyers can't see it and you get an alert. Remove it from your inventory, or dispute the report and keep listing it. Tap the ⚠ badge on the card to decide later." },
+    { icon: '📝', name: 'Register your graded cards', desc: "Optional, in your Profile. While it's on, your graded cards are recorded under your name with GTCR, which helps show a card is yours if it's ever stolen. Selling or deleting a card removes its registration, and turning it off removes them all. Registered cards show ✓ Registered with GTCR. Create a free GTCR account with the same email to see them.", action: () => _helpShowGtcrConsent(), show: () => GTCR_CONSENT_UI_ENABLED },
   ]},
   { group: 'After the show', items: [
     { icon: '📊', name: 'Report', desc: 'Revenue, sell-through, best sales and every transaction, for one show or all time. Export it as CSV.', action: () => switchSellerTab('report') },
@@ -18650,7 +18673,7 @@ function openFeatureGuide() {
   body.innerHTML = FEATURE_GUIDE.map((g, gi) => `
     <div class="fg-group">
       <div class="fg-group-title">${g.group}</div>
-      ${g.items.map((it, ii) => `
+      ${g.items.map((it, ii) => (it.show && !it.show()) ? '' : `
         <div class="fg-item">
           <div class="fg-item-icon">${it.icon}</div>
           <div class="fg-item-text"><strong>${it.name}</strong><span>${it.desc}</span></div>
@@ -21309,6 +21332,7 @@ async function submitPasswordReset() {
         <li>Set up how buyers reach you</li>
         <li>Add your first cards</li>
         <li>Go live at a show</li>
+        <li>Protect your graded cards</li>
         <li>Record sales at your table</li>
       </ul>
     </div>
@@ -21374,8 +21398,26 @@ async function submitPasswordReset() {
       <div class="ob-hint ob-hint-mobile">On a phone, My Shows and My QR Code are behind the <strong>☰</strong> button at the top left.</div>
     </div>
 
-    <!-- Step 4: Selling -->
+    <!-- Step 4: GTCR (theft check + optional registration) -->
     <div id="obStep4" class="ob-body" style="display:none">
+      <div class="ob-icon">🛡️</div>
+      <div class="ob-title">Protect Your Graded Cards</div>
+      <div class="ob-subtitle">CardShow works with the Global Trading Card Registry (GTCR) to keep stolen cards off the show floor.</div>
+      <ol class="ob-steps">
+        <li><strong>Theft check, automatic.</strong> Every graded card with a cert number is checked when you add it and again when it goes live at a show. Look for <em>✓ Registry clear</em> under the cert number.</li>
+        <li><strong>If a card has a stolen or lost report,</strong> buyers can't see it and you get an alert. Remove it from your inventory, or dispute the report and keep listing it. Nothing is removed without you.</li>
+        <li id="obGtcrRegisterItem"><strong>Register your cards (optional).</strong> Turn it on in your Profile and your graded cards are recorded under your name with GTCR while you own them, which helps show they're yours if one is ever stolen. When you sell or delete a card, its registration is removed. Create a free GTCR account with the same email to see them.</li>
+      </ol>
+      <div class="ob-actions" id="obGtcrActions">
+        <button class="ob-action" onclick="obAction('gtcr')">
+          <span class="ob-action-icon">🛡️</span>
+          <span class="ob-action-text"><strong>Turn on GTCR registration</strong><span>Opens your Profile. Read the details there before you tick the box.</span></span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Step 5: Selling -->
+    <div id="obStep5" class="ob-body" style="display:none">
       <div class="ob-icon">🤝</div>
       <div class="ob-title">Selling at Your Table</div>
       <div class="ob-subtitle">On a phone, tap <strong>Sell / Add</strong> at the bottom of the screen and choose <strong>Sell a card</strong>. Every sale lands in your Report tab.</div>
