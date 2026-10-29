@@ -747,7 +747,7 @@ Called from `fillFormFromVision` (vision) and several other card-creation paths 
 | `GTCR_WRITE_API_KEY` | GTCR partner write key — `gtcr-registry.js` only (issued at partner onboarding) |
 | `GTCR_PARTNER_ID` | Attribution string sent on every GTCR call (default `cardshow` — confirm with GTCR) |
 | `GTCR_API_BASE` | Optional; default `https://thegtcr.com/functions` |
-| `GTCR_REGISTRATION_ENABLED` | Must be `true` to allow consent grant + registration. Keep off until pricing is decided |
+| `GTCR_REGISTRATION_ENABLED` | Must be exactly `true` to allow consent grant + registration. `true` in production since 2026-10-28; anything else is the kill switch (removals keep running). The separate `GTCR_CONSENT_UI_LAUNCHED` flag is a constant in app.html, not a Netlify variable |
 | `CARDSIGHT_API_KEY` | CardSight AI key — secondary sports card comp source. Free tier: 750 calls/month. cardsight.ai/for-developers |
 
 ### Credential Injection (no build step workaround)
@@ -2395,8 +2395,15 @@ migration, no new external library.
 - **GTCR registration lifecycle merged to main (PR #65, session 2026-10-26)** — Option A
   registration (register while owned, remove on sale/delete/flag/opt-out), consent tied to the
   current consent wording, 24h clean Trust Check before registering, removals on any device, and a
-  post-removal Trust Check. Still dark in production. Testing showed GTCR's site keeps listing
-  removed registrations as active; raised with GTCR, blocks launch. See "Trust Check via GTCR".
+  post-removal Trust Check. Testing showed GTCR's site keeps listing removed registrations as
+  active; raised with GTCR, still open. See "Trust Check via GTCR".
+- **GTCR registration launched to all sellers (PR #79, session 2026-10-28)** — `GTCR_CONSENT_UI_LAUNCHED`
+  set to `true` after `GTCR_REGISTRATION_ENABLED=true` went into production. Launched ahead of legal
+  review of the opt-in copy, pricing, and GTCR's removed-registration fix. Rollback steps are in
+  "Trust Check via GTCR" → Status.
+- **GTCR in the onboarding tour and Feature guide (PR #80, session 2026-10-29)** — new tour screen
+  (step 5 of 6) and a "Protect your cards (GTCR)" Feature guide section. See "Seller Onboarding
+  Tour + Help Menu".
 - **XLSX import grade-column fix (session 2026-10-02)** — columns blank in the first data row
   (Grade/Grader/Cert # on a raw card) were dropped for the whole XLSX file, so graded cards
   imported as Raw. `readXLSX()`/`openMapper()` now keep every column; a re-upload repairs the
@@ -4197,7 +4204,8 @@ the response has no `card_status` at all.
 - **Test switch:** open the app with `?gtcr_consent=1` to show the section on that browser (remembered
   in localStorage as `gtcrConsentTest`; `?gtcr_consent=0` clears it). The status line reads "· test mode".
   It unlocks the UI only: the toggle stays disabled ("Not available yet") until the deploy has
-  `GTCR_REGISTRATION_ENABLED=true`, so set that on deploy previews only, never production, while testing.
+  `GTCR_REGISTRATION_ENABLED=true`. Since launch it's only useful for testing with
+  `GTCR_CONSENT_UI_LAUNCHED` set back to `false`.
 - The copy (`GTCR_CONSENT_COPY`, version `GTCR_CONSENT_COPY_VERSION`) is a **DRAFT pending legal
   review**. Bump the version whenever the text changes.
 - Every consent action goes through `gtcr-registry.js`. The server appends to `gtcr_consent_events`
@@ -4206,7 +4214,7 @@ the response has no `card_status` at all.
   row is the current state. Re-granting while already granted keeps the original timestamp.
 - `grant` is refused unless `GTCR_REGISTRATION_ENABLED=true`. `revoke` is always allowed.
 
-### Phase 4 — Registration lifecycle, Option A (built, dark, session 2026-09-30)
+### Phase 4 — Registration lifecycle, Option A (session 2026-09-30, launched 2026-10-28)
 Registration means "this person owns this card": GTCR ties each registration to an owner email and
 links it to that person's GTCR account. So a graded card is registered **while the seller owns it**
 and deregistered when that stops being true. (The first build registered cards at the moment of sale
@@ -4300,7 +4308,20 @@ under the seller's email, which recorded the card as belonging to the person who
 - **Decision A — Phase 5 transfer-on-resale** (`transferOnSaleApi`): not built. Today a sold card's
   registration is removed, so the card is left unregistered rather than registered to the wrong person.
   Transferring it to the buyer would need the buyer's email, which CardShow doesn't capture at sale.
-- **Decision B — pricing/packaging** blocks turning consent on for real sellers.
+- **Decision B — pricing/packaging**: still undecided. Registration launched free to all sellers
+  on 2026-10-28 without waiting for it.
+- **Legal review of the opt-in copy**: still `2026-09-30-draft2`. If the wording changes, bump
+  `GTCR_CONSENT_COPY_VERSION` (app.html) and `CURRENT_CONSENT_COPY_VERSION` (gtcr-registry.js)
+  together; every seller who opted in then has to tick the box again.
+- **Buyer-facing GTCR badge (proposed 2026-10-27, not built)**: today buyers see no GTCR status.
+  Mocked up two placements on the buyer card modal: a "✓ GTCR CLEAR" pill under the grade pill, and
+  a full-width "No stolen or lost report · PSA cert checked with GTCR · today" row above the contact
+  buttons. Proposed rules: graded cards with a cert # only, and only when the last Trust Check was
+  clean and recent (e.g. 7 days); show nothing otherwise; say "no stolen or lost report", never
+  "verified"/"authentic". Hold off on a "Registered" badge until GTCR fixes removed registrations
+  showing as active. Building it needs a buyer-readable field (buyers can't read
+  `cert_trust_checks`), e.g. a last-clean-check timestamp on `inventory`, plus the badge on app.html,
+  show.html and seller-browse.html. Check GTCR's terms before showing their name to buyers.
 - **GTCR display of removed registrations** (raised 2026-10-26): their seller page lists removed
   registrations as active. Also asked whether `removeRegistrationApi` can take a `registration_id`;
   if it can, `removeOne()` should send the stored `gtcr_registration_id` (don't send it before GTCR
