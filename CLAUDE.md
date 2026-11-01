@@ -239,6 +239,7 @@ trigger that clears it when `cert_number` or `grader` changes. Until it runs, th
 (the server's update fails with a console warning and the buyer SELECT retries without the column).
 Then run `supabase/migrations/20261102120000_gtcr_daily_recheck.sql` (`inventory.trust_recheck_at`)
 for the daily recheck. Until it runs, nothing is re-checked and badges lapse after 7 days.
+Both were run on the production project on 2026-11-01. They're kept here for fresh projects.
 
 Required to save the post-removal Trust Check result (diagnostic, see "Trust Check via GTCR"):
 `supabase/migrations/20261026120000_gtcr_post_removal_check.sql` adds `post_removal_card_status`,
@@ -2411,12 +2412,14 @@ migration, no new external library.
   set to `true` after `GTCR_REGISTRATION_ENABLED=true` went into production. Launched ahead of legal
   review of the opt-in copy, pricing, and GTCR's removed-registration fix. Rollback steps are in
   "Trust Check via GTCR" → Status.
-- **Buyer GTCR badge (session 2026-11-01)** — "✓ GTCR CLEAR" pill and "No stolen or lost report"
+- **Buyer GTCR badge (PR #81, session 2026-11-01)** — "✓ GTCR CLEAR" pill and "No stolen or lost report"
   row in the buyer card modal (app.html, seller-browse.html), from a clean Trust Check in the last
-  7 days. Needs the `20261101120000_gtcr_buyer_badge.sql` migration. See "Buyer GTCR badge".
-- **GTCR daily recheck (session 2026-11-01)** — hourly scheduled function re-checks every unsold
-  graded card about once a day, so the buyer badge doesn't expire. Needs
-  `20261102120000_gtcr_daily_recheck.sql`. See "Daily recheck".
+  7 days. Uses the `20261101120000_gtcr_buyer_badge.sql` migration (run in production 2026-11-01).
+  See "Buyer GTCR badge".
+- **GTCR daily recheck (PR #81, session 2026-11-01)** — hourly scheduled function re-checks every unsold
+  graded card about once a day, so the buyer badge doesn't expire. Uses
+  `20261102120000_gtcr_daily_recheck.sql` (run in production 2026-11-01). Buyer live sync also
+  debounces refreshes by 1.5s now. See "Daily recheck".
 - **GTCR in the onboarding tour and Feature guide (PR #80, session 2026-10-29)** — new tour screen
   (step 5 of 6) and a "Protect your cards (GTCR)" Feature guide section. See "Seller Onboarding
   Tour + Help Menu".
@@ -4372,7 +4375,15 @@ Keeps the buyer badge from lapsing, and catches cards reported stolen/lost after
   The automatic alert pop-up only fires for flags found during the seller's own session.
 - **Needs** `supabase/migrations/20261102120000_gtcr_daily_recheck.sql` (`inventory.trust_recheck_at`
   plus an index; the cert-change trigger now clears it too). Until it runs, the recheck query fails
-  with a console warning and nothing is re-checked.
+  with a console warning and nothing is re-checked. Run in production on 2026-11-01.
+- **Checking it works:**
+  - Netlify → Functions → `gtcr-daily-recheck` logs a counts line each hour, like
+    `{"checked":…,"clean":…,"flagged":…,"failed":…,"calls":…}`. `{"skipped":true}` means
+    `SUPABASE_SERVICE_KEY` isn't set.
+  - In Supabase, `cert_trust_checks` rows with `trigger = 'daily'` are recheck results.
+  - Unsold graded cards with `trust_recheck_at` in the last 20h should approach the total within a day.
+  - A high `failed` count with no `daily` rows means GTCR is rejecting lookups. Check
+    `GTCR_READ_API_KEY` in Netlify Production (a new variable needs a redeploy).
 
 ### Still open (not built)
 - **Decision A — Phase 5 transfer-on-resale** (`transferOnSaleApi`): not built. Today a sold card's
