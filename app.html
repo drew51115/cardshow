@@ -14250,7 +14250,7 @@ let _buyerPollTimer       = null;
 function _subscribeBuyerShowLive(showId) {
   _unsubscribeBuyerShowLive(); // a buyer can switch shows — never run two subscriptions at once
 
-  const refresh = () => {
+  const doRefresh = () => {
     const show = shows[showId];
     if (!show) return;
     loadBuyerInventoryFromDB(showId, show).then(() => {
@@ -14259,6 +14259,10 @@ function _subscribeBuyerShowLive(showId) {
       filterBuyer();
     });
   };
+  // Debounced: a burst of inventory updates (CSV import, the hourly GTCR
+  // recheck) fires one refetch instead of one per row.
+  let refreshTimer = null;
+  const refresh = () => { clearTimeout(refreshTimer); refreshTimer = setTimeout(doRefresh, 1500); };
 
   // show_inventory can be filtered server-side by show_id (INSERT = a card
   // newly published to this show, DELETE = removed/unpublished). inventory

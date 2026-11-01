@@ -22,6 +22,11 @@
 //   Any GTCR failure returns { success: false }. The client treats that as
 //   FAIL OPEN: no flag, and it re-checks on the next publish.
 //
+// POST { action: 'daily_recheck' }  (header x-cardshow-cron, see below)
+//   → { success, checked, clean, flagged, failed, remaining, auth_error }
+//   Called hourly by gtcr-daily-recheck.js. Re-checks unsold graded cards
+//   whose last check is over 20h old, so the buyer badge stays current.
+//
 // POST { action: 'resolve', inventory_id, resolution: 'removed'|'disputed', note? }
 //   Records the seller's decision on a flagged card. 'disputed' sets
 //   trust_flag = 'disputed' (publishing allowed again). For 'removed' the client
@@ -155,6 +160,51 @@ async function callTrustCheck(certNumber, gradingCompany) {
   }
 }
 
+// Saves one Trust Check result for a card the caller owns (or, for the daily
+// recheck, any card): logs cert_trust_checks, flags/unpublishes on a match,
+// clears a stale flag, and stamps trust_clear_at (buyer badge) plus
+// trust_recheck_at (daily recheck queue) in one inventory update.
+// Returns the card's trust_flag after the check.
+async function applyCheckResult(db, row, certNumber, gradingCompany, result, trigger) {
+  const { error: logErr } = await db.from('cert_trust_checks').insert({
+    inventory_id: row.id,
+    seller_id: row.seller_id,
+    cert_number: certNumber,
+    grading_company: gradingCompany,
+    source: 'gtcr',
+    trigger,
+    matched: result.matched,
+    active_count: result.active_count,
+    has_stolen_report: result.has_stolen_report,
+    has_lost_report: result.has_lost_report,
+    has_dispute_report: result.has_dispute_report,
+  });
+  if (logErr) console.warn('[gtcr-trust-check] log insert failed:', logErr.message);
+
+  let trustFlag = row.trust_flag || null;
+  if (result.matched && trustFlag !== 'disputed') {
+    trustFlag = 'flagged';
+    const { error: unpubErr } = await db.from('show_inventory').delete().eq('card_id', row.id);
+    if (unpubErr) console.warn('[gtcr-trust-check] unpublish failed:', unpubErr.message);
+  } else if (!result.matched && trustFlag === 'flagged') {
+    trustFlag = null;
+  }
+
+  const now = new Date().toISOString();
+  const clean = !result.matched && !result.has_dispute_report && trustFlag !== 'disputed';
+  const update = { trust_flag: trustFlag, trust_clear_at: clean ? now : null, trust_recheck_at: now };
+  let { error: upErr } = await db.from('inventory').update(update).eq('id', row.id);
+  // Before the buyer-badge / daily-recheck migrations run, drop the missing
+  // columns and retry so trust_flag still saves.
+  for (const col of ['trust_recheck_at', 'trust_clear_at']) {
+    if (!upErr || !new RegExp(col).test(upErr.message || '')) continue;
+    delete update[col];
+    ({ error: upErr } = await db.from('inventory').update(update).eq('id', row.id));
+  }
+  if (upErr) console.warn('[gtcr-trust-check] inventory update failed:', upErr.message);
+  return trustFlag;
+}
+
 async function handleCheck(db, event, input) {
   const certNumber = String(input.cert_number || '').trim();
   if (!certNumber) return json(400, { success: false, error: 'cert_number required' });
@@ -183,38 +233,8 @@ async function handleCheck(db, event, input) {
       const { data: row } = await db.from('inventory')
         .select('id, seller_id, trust_flag').eq('id', input.inventory_id).maybeSingle();
       if (row && row.seller_id === user.id) {
-        await db.from('cert_trust_checks').insert({
-          inventory_id: row.id,
-          seller_id: user.id,
-          cert_number: certNumber,
-          grading_company: gradingCompany,
-          source: 'gtcr',
-          trigger: ['publish', 'register'].includes(input.trigger) ? input.trigger : 'insert',
-          matched: result.matched,
-          active_count: result.active_count,
-          has_stolen_report: result.has_stolen_report,
-          has_lost_report: result.has_lost_report,
-          has_dispute_report: result.has_dispute_report,
-        }).then(({ error }) => { if (error) console.warn('[gtcr-trust-check] log insert failed:', error.message); });
-
-        trustFlag = row.trust_flag || null;
-        if (result.matched && trustFlag !== 'disputed') {
-          trustFlag = 'flagged';
-          const { error: flagErr } = await db.from('inventory').update({ trust_flag: 'flagged' }).eq('id', row.id);
-          if (flagErr) console.warn('[gtcr-trust-check] flag update failed:', flagErr.message);
-          const { error: unpubErr } = await db.from('show_inventory').delete().eq('card_id', row.id);
-          if (unpubErr) console.warn('[gtcr-trust-check] unpublish failed:', unpubErr.message);
-        } else if (!result.matched && trustFlag === 'flagged') {
-          trustFlag = null;
-          await db.from('inventory').update({ trust_flag: null }).eq('id', row.id);
-        }
-
-        // Buyer badge: stamp a clean check (no stolen, lost or dispute report),
-        // clear it otherwise. Fails quietly before the buyer-badge migration runs.
-        const clean = !result.matched && !result.has_dispute_report && trustFlag !== 'disputed';
-        const { error: clearErr } = await db.from('inventory')
-          .update({ trust_clear_at: clean ? new Date().toISOString() : null }).eq('id', row.id);
-        if (clearErr) console.warn('[gtcr-trust-check] trust_clear_at update failed:', clearErr.message);
+        trustFlag = await applyCheckResult(db, row, certNumber, gradingCompany, result,
+          ['publish', 'register'].includes(input.trigger) ? input.trigger : 'insert');
       }
     }
   }
@@ -299,6 +319,82 @@ async function handleVerifyRemoval(db, event, input) {
   return json(200, { success: true, results });
 }
 
+// ── Daily recheck (called by the gtcr-daily-recheck scheduled function) ─────
+// Re-checks unsold graded cards whose last check (trust_recheck_at) is over
+// RECHECK_AFTER_HOURS old, oldest first, so the buyer badge (7-day max age)
+// never lapses on a card the seller doesn't republish. Also catches a card
+// reported stolen/lost after it was listed, and clears a flag whose report
+// was closed. Authenticated by a token both functions derive from
+// SUPABASE_SERVICE_KEY, so no extra secret and the key never leaves the server.
+const RECHECK_AFTER_HOURS = 20;
+const RECHECK_BATCH = 60;
+const RECHECK_CONCURRENCY = 5;
+const RECHECK_BUDGET_MS = 8000;
+
+function cronToken() {
+  const key = process.env.SUPABASE_SERVICE_KEY || '';
+  return key ? require('crypto').createHash('sha256').update('gtcr-daily-recheck:' + key).digest('hex') : '';
+}
+function cronAuthorized(event) {
+  const expected = cronToken();
+  const got = String(event.headers['x-cardshow-cron'] || event.headers['X-Cardshow-Cron'] || '');
+  if (!expected || got.length !== expected.length) return false;
+  return require('crypto').timingSafeEqual(Buffer.from(got), Buffer.from(expected));
+}
+
+async function handleDailyRecheck(db, event) {
+  if (!cronAuthorized(event)) return json(401, { success: false, error: 'unauthorized' });
+  if (!db) return json(503, { success: false, error: 'persistence_unavailable' });
+  const started = Date.now();
+  const cutoff = new Date(Date.now() - RECHECK_AFTER_HOURS * 3600 * 1000).toISOString();
+
+  const { data: rows, error } = await db.from('inventory')
+    .select('id, seller_id, trust_flag, cert_number, grader')
+    .neq('status', 'Sold')
+    .not('cert_number', 'is', null).neq('cert_number', '')
+    .not('grader', 'is', null).neq('grader', '')
+    .or(`trust_recheck_at.is.null,trust_recheck_at.lt.${cutoff}`)
+    .order('trust_recheck_at', { ascending: true, nullsFirst: true })
+    .order('id', { ascending: true })
+    .limit(RECHECK_BATCH);
+  if (error) {
+    console.warn('[gtcr-trust-check] daily recheck query failed (run the daily-recheck migration?):', error.message);
+    return json(500, { success: false, error: error.message });
+  }
+
+  const counts = { checked: 0, clean: 0, flagged: 0, failed: 0 };
+  let authError = false;
+  const queue = rows.slice();
+  async function worker() {
+    while (queue.length && !authError && Date.now() - started < RECHECK_BUDGET_MS) {
+      const row = queue.shift();
+      const cert = String(row.cert_number).trim();
+      const grader = toGtcrGrader(row.grader);
+      let result;
+      try {
+        result = await callTrustCheck(cert, grader);
+      } catch (err) {
+        counts.failed++;
+        if (err.reason === 'missing_read_key' || err.reason === 'gtcr_http_401') authError = true;
+        // Mark the attempt so a cert GTCR keeps rejecting doesn't block the
+        // queue. The badge itself is untouched and lapses on its own if
+        // lookups keep failing.
+        await db.from('inventory').update({ trust_recheck_at: new Date().toISOString() }).eq('id', row.id);
+        continue;
+      }
+      const flag = await applyCheckResult(db, row, cert, grader, result, 'daily');
+      counts.checked++;
+      if (flag === 'flagged') counts.flagged++;
+      else if (!result.matched && !result.has_dispute_report && flag !== 'disputed') counts.clean++;
+    }
+  }
+  await Promise.all(Array.from({ length: RECHECK_CONCURRENCY }, worker));
+
+  const remaining = queue.length + (rows.length === RECHECK_BATCH ? 1 : 0);
+  if (authError) console.warn('[gtcr-trust-check] daily recheck stopped: GTCR read key missing or rejected');
+  return json(200, { success: true, ...counts, remaining, auth_error: authError });
+}
+
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') return json(405, { success: false, error: 'POST only' });
   let input;
@@ -307,6 +403,7 @@ exports.handler = async (event) => {
   try {
     if (input.action === 'resolve') return await handleResolve(db, event, input);
     if (input.action === 'verify_removal') return await handleVerifyRemoval(db, event, input);
+    if (input.action === 'daily_recheck') return await handleDailyRecheck(db, event);
     return await handleCheck(db, event, input);
   } catch (err) {
     console.error('[gtcr-trust-check] error:', err.message);

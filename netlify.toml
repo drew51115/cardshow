@@ -15,6 +15,11 @@
 [functions."expire-trade-posts"]
   schedule = "@hourly"
 
+# GTCR: hourly batch of the daily Trust Check recheck — every unsold graded
+# card is re-checked about once a day so the buyer GTCR badge never lapses.
+[functions."gtcr-daily-recheck"]
+  schedule = "@hourly"
+
 # Disable pretty URLs globally — prevents Netlify from redirecting
 # show.html → /show which strips the URL hash fragment containing
 # the show inventory payload.

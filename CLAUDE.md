@@ -27,6 +27,8 @@ netlify/functions/trade-og.js            → Serverless: GET /trade/:id → OG-t
 netlify/functions/gtcr-trust-check.js    → Serverless: GTCR Trust Check (READ key) — POST {action:'check'|'resolve'|'verify_removal'} → stolen/lost cert lookup, sets inventory.trust_flag, logs cert_trust_checks (see "Trust Check via GTCR")
 netlify/functions/gtcr-registry.js       → Serverless: GTCR consent + registration (WRITE key) — POST {action:'status'|'grant'|'revoke'|'reconcile'}
 scripts/gtcr-write-roundtrip.js          → Local test of GTCR's register/remove endpoints with a fake cert (needs GTCR_WRITE_API_KEY in the shell)
+netlify/functions/gtcr-daily-recheck.js → Scheduled (hourly): calls gtcr-trust-check's daily_recheck action so every unsold graded card is re-checked about once a day
+supabase/migrations/20261102120000_gtcr_daily_recheck.sql → inventory.trust_recheck_at + index (daily GTCR recheck queue)
 supabase/migrations/20261101120000_gtcr_buyer_badge.sql → inventory.trust_clear_at + trigger that clears it on a cert/grader edit (buyer GTCR badge)
 supabase/migrations/20260925120000_gtcr_trust_check.sql → inventory.trust_flag + cert_trust_checks / gtcr_consent_events / gtcr_registrations (RLS: read-own, no client writes)
 netlify/functions/expire-trade-posts.js  → Scheduled (hourly, see netlify.toml): calls expire_stale_trade_posts() RPC to hide stale trade_posts from the live board
@@ -235,6 +237,8 @@ Required for the buyer GTCR badge (see "Buyer GTCR badge" under "Trust Check via
 `supabase/migrations/20261101120000_gtcr_buyer_badge.sql` adds `inventory.trust_clear_at` and a
 trigger that clears it when `cert_number` or `grader` changes. Until it runs, the badge never shows
 (the server's update fails with a console warning and the buyer SELECT retries without the column).
+Then run `supabase/migrations/20261102120000_gtcr_daily_recheck.sql` (`inventory.trust_recheck_at`)
+for the daily recheck. Until it runs, nothing is re-checked and badges lapse after 7 days.
 
 Required to save the post-removal Trust Check result (diagnostic, see "Trust Check via GTCR"):
 `supabase/migrations/20261026120000_gtcr_post_removal_check.sql` adds `post_removal_card_status`,
@@ -2410,6 +2414,9 @@ migration, no new external library.
 - **Buyer GTCR badge (session 2026-11-01)** — "✓ GTCR CLEAR" pill and "No stolen or lost report"
   row in the buyer card modal (app.html, seller-browse.html), from a clean Trust Check in the last
   7 days. Needs the `20261101120000_gtcr_buyer_badge.sql` migration. See "Buyer GTCR badge".
+- **GTCR daily recheck (session 2026-11-01)** — hourly scheduled function re-checks every unsold
+  graded card about once a day, so the buyer badge doesn't expire. Needs
+  `20261102120000_gtcr_daily_recheck.sql`. See "Daily recheck".
 - **GTCR in the onboarding tour and Feature guide (PR #80, session 2026-10-29)** — new tour screen
   (step 5 of 6) and a "Protect your cards (GTCR)" Feature guide section. See "Seller Onboarding
   Tour + Help Menu".
@@ -4336,11 +4343,36 @@ How it works:
   buyer page refreshes through live sync.
 - **Wording:** "no stolen or lost report", never "verified" or "authentic".
 - **Not built:** a "Registered with GTCR" buyer badge (waits on GTCR's removed-registration fix),
-  a badge on grid tiles or show.html (which has no card modal), and a scheduled re-check. A card
-  whose seller never republishes and isn't opted into registration drops the badge after 7 days.
+  and a badge on grid tiles or show.html (which has no card modal).
 - **Caveat:** `inventory` RLS is still permissive, so a seller could write `trust_clear_at`
   directly. Same Tier 1 RLS caveat as `trust_flag`.
 - GTCR's terms on showing their name to buyers were not checked before building.
+
+### Daily recheck (built 2026-11-01)
+Keeps the buyer badge from lapsing, and catches cards reported stolen/lost after they were listed.
+- **`netlify/functions/gtcr-daily-recheck.js`** runs hourly (netlify.toml, production deploy only).
+  It POSTs `{action:'daily_recheck'}` to `gtcr-trust-check.js`, up to 3 calls per run while cards
+  remain.
+- **`handleDailyRecheck()`** (gtcr-trust-check.js) picks up to 60 unsold cards with a cert # and
+  grader whose `trust_recheck_at` is null or over 20h old, oldest first. It checks them 5 at a time
+  within an 8s budget.
+- Each result goes through `applyCheckResult()`, shared with the normal check. That writes a
+  `cert_trust_checks` row (trigger `'daily'`), flags and unpublishes on a match, clears a closed
+  flag, and sets `trust_clear_at` and `trust_recheck_at` in one inventory update.
+- A failed lookup still sets `trust_recheck_at`, so one bad cert can't block the queue. A missing
+  or rejected read key stops the run.
+- **Auth:** header `x-cardshow-cron` = sha256(`'gtcr-daily-recheck:' + SUPABASE_SERVICE_KEY`).
+  Both functions compute it, so there's no new secret, and the GTCR read key stays in
+  gtcr-trust-check.js only.
+- **Capacity:** about 180 cards an hour, roughly 4,000 a day. Past that, cards get re-checked less
+  than daily. Raise `MAX_CALLS` or run the schedule more often if that happens.
+- **Live sync:** buyer pages debounce the inventory-change refresh by 1.5s (app.html, show.html),
+  so a batch of recheck updates causes one refetch.
+- **Seller alert:** a card the recheck flags shows the ⚠ badge at the seller's next login.
+  The automatic alert pop-up only fires for flags found during the seller's own session.
+- **Needs** `supabase/migrations/20261102120000_gtcr_daily_recheck.sql` (`inventory.trust_recheck_at`
+  plus an index; the cert-change trigger now clears it too). Until it runs, the recheck query fails
+  with a console warning and nothing is re-checked.
 
 ### Still open (not built)
 - **Decision A — Phase 5 transfer-on-resale** (`transferOnSaleApi`): not built. Today a sold card's
