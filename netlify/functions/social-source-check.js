@@ -12,9 +12,9 @@
 // A post is marked deleted (social_posts.source_deleted_at) only when method B
 // says it doesn't exist. Anything else counts as unknown and is retried next week.
 //
-// What happens to the sale itself is a Phase 2 decision (the spec deletes a
-// show_floor_transactions row; v2 keeps social sales in social_sales and can
-// merge several posts into one sale), so this only marks the post.
+// Approved social sales live in social_sales (not show_floor_transactions,
+// decided 2026-11-01), and one social_sales row can merge several posts. How a
+// deleted post updates that row is left for Phase 2, so this only marks the post.
 //
 // The health row's detail records which method answered, so CLAUDE.md can be
 // updated with the one that works on the live token.

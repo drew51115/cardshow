@@ -5152,8 +5152,9 @@ Checks `ig_tag` posts from the last 90 days with an approved extraction:
 
 Only an oEmbed "does not exist" (code 24, or 100 with that message) marks the post
 (`source_deleted_at`); anything else is "unknown" and retried next week. **It does not delete the
-sale.** The spec deletes a `show_floor_transactions` row, but v2 keeps social sales in
-`social_sales` and can merge several posts into one sale, so what to delete is a Phase 2 decision.
+sale.** The spec deletes a `show_floor_transactions` row, but social sales live in `social_sales`
+(decided 2026-11-01, see below), and one `social_sales` row can merge several posts
+(`corroboration_count`). How a deleted post updates or removes that row is left for Phase 2.
 
 **Not verified yet (spec's "verify during build"):** there are no Meta credentials in the build
 container, so which method works on the live token is unknown. Graph normally refuses reading
@@ -5169,8 +5170,7 @@ Admins can read both new tables (v2's `is_cardshow_admin()`); writes are service
 
 ### Rules
 - **Poster identity never goes on a sale record.** It lives only in `social_posts.poster_username`
-  / `poster_ig_scoped_id` and `featured_dealers`. Approved social sales (v2's `social_sales` today;
-  `show_floor_transactions` with `source = 'social_extract'` if Phase 2 follows the spec) carry no
+  / `poster_ig_scoped_id` and `featured_dealers`. Approved social sales (`social_sales`) carry no
   username, and no buyer name or handle is ever stored.
 - Meta credentials are read only inside `netlify/lib/meta-graph.js` (and the oEmbed app token in
   `social-source-check.js`). Never in app.html, never logged.
@@ -5186,11 +5186,17 @@ Admins can read both new tables (v2's `is_cardshow_admin()`); writes are service
   the new tables or social_posts; admins can read but not write; anon has no access.
 - **Not run live** against Meta, Supabase or Claude.
 
-### Decisions for Phase 2 (raised, not decided)
-- **Where approved social sales go.** The spec writes `show_floor_transactions` rows
-  (`source = 'social_extract'`); v2's decision D1 keeps them in `social_sales` so organizer GMV and
-  sell-through stay platform-only. The spec's `approve_social_post` RPC and the delete-on-removal
-  step depend on this.
+### Decided: approved social sales stay in `social_sales` (2026-11-01)
+The spec's Phase 2 writes approved posts to `show_floor_transactions` with
+`source = 'social_extract'`. **That is overruled: they stay in `social_sales`** (v2's D1), so
+organizer GMV, sell-through and the immutable platform ledger only ever hold platform and manual
+sales. `v_comp_sales` already unions both for comps. When Phase 2 is built, its approve step uses
+v2's `publishExtraction()` instead of the spec's `approve_social_post` inserting into
+`show_floor_transactions`, and the spec's `social_post_transactions` join table isn't needed
+(`social_extractions.social_sale_id` already links a slab to its sale). Nothing writes
+`source = 'social_extract'` rows.
+
+### Still open for Phase 2
 - The spec's `social_posts.show_id uuid` and `transaction_id uuid` don't fit: `shows.id` is text,
   and v2 tracks show and sale per slab in `social_extractions`.
 - v2 already has an admin "📥 Social Sales" tab with a Review queue; Phase 2 would extend it
