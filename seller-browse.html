@@ -339,6 +339,27 @@ header {
   font-family: 'Bebas Neue', sans-serif; font-size: 2.4rem;
   color: var(--accent); letter-spacing: 0.04em;
 }
+/* GTCR badge (same as app.html's buyer card modal) */
+.modal-grade-stack { display: flex; flex-direction: column; align-items: flex-end; gap: 0.4rem; }
+.gtcr-clear-pill {
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  padding: 0.2rem 0.6rem; border-radius: 999px;
+  background: rgba(34,197,94,0.14); border: 1px solid rgba(34,197,94,0.7);
+  color: var(--success); font-family: 'DM Mono', monospace;
+  font-size: 0.66rem; font-weight: 600; letter-spacing: 0.08em; white-space: nowrap;
+}
+.gtcr-clear-row {
+  display: flex; align-items: center; gap: 0.75rem;
+  background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.5);
+  border-radius: 12px; padding: 0.7rem 0.9rem; margin-bottom: 1.2rem;
+}
+.gtcr-clear-icon {
+  flex-shrink: 0; width: 30px; height: 30px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(34,197,94,0.2); color: var(--success); font-weight: 700;
+}
+.gtcr-clear-title { font-size: 0.86rem; font-weight: 600; color: var(--text); }
+.gtcr-clear-sub { font-family: 'DM Mono', monospace; font-size: 0.66rem; color: var(--muted); margin-top: 0.15rem; }
 .modal-grid {
   display: grid; grid-template-columns: 1fr 1fr;
   gap: 0.6rem; margin-bottom: 1.2rem;
@@ -687,9 +708,19 @@ footer a { color: var(--accent); text-decoration: none; }
           <div style="font-size:0.68rem;color:var(--muted);font-family:'DM Mono',monospace;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:0.2rem">Asking Price</div>
           <div class="modal-price" id="mPrice"></div>
         </div>
-        <div id="mGradeBadge"></div>
+        <div class="modal-grade-stack">
+          <div id="mGradeBadge"></div>
+          <span class="gtcr-clear-pill" id="mGtcrPill" style="display:none">✓ GTCR CLEAR</span>
+        </div>
       </div>
       <div class="modal-grid" id="mGrid"></div>
+      <div class="gtcr-clear-row" id="mGtcrRow" style="display:none">
+        <div class="gtcr-clear-icon">✓</div>
+        <div>
+          <div class="gtcr-clear-title">No stolen or lost report</div>
+          <div class="gtcr-clear-sub" id="mGtcrSub"></div>
+        </div>
+      </div>
     </div>
     <div class="modal-actions" style="flex-direction:column;gap:0.6rem">
       <a class="btn-wa-full" id="mWhatsApp" href="#" target="_blank" rel="noopener">
@@ -1568,6 +1599,8 @@ async function init() {
             Sport:               r.sport        || '',
             Category:            r.category     || '',
             Subcategory:         r.subcategory  || '',
+            TrustClearAt:        r.trust_clear_at || null,
+            _trustFlag:          r.trust_flag   || null,
             _dbId:               r.id,
           }));
 
@@ -1846,6 +1879,28 @@ function clearPill(i) {
 
 
 
+// GTCR badge: duplicated from app.html's _gtcrBuyerClearAge()/_renderBuyerGtcrBadge()
+// (no build step to share a module). Shown only on a graded card whose last GTCR
+// Trust Check was clean within 7 days (inventory.trust_clear_at, written by
+// gtcr-trust-check.js and cleared by a DB trigger when the cert or grader changes).
+const GTCR_BUYER_BADGE_MAX_AGE_DAYS = 7;
+
+function _renderGtcrBadge(r, isGraded) {
+  let days = null;
+  if (isGraded && r.TrustClearAt && r.Grader && (r.Status || 'Available') !== 'Sold' && !r._trustFlag) {
+    const t = Date.parse(r.TrustClearAt);
+    const d = isNaN(t) ? -1 : Math.floor((Date.now() - t) / 86400000);
+    if (d >= 0 && d <= GTCR_BUYER_BADGE_MAX_AGE_DAYS) days = d;
+  }
+  const show = days !== null;
+  document.getElementById('mGtcrPill').style.display = show ? '' : 'none';
+  document.getElementById('mGtcrRow').style.display  = show ? '' : 'none';
+  if (show) {
+    const when = days === 0 ? 'today' : days === 1 ? 'yesterday' : `${days} days ago`;
+    document.getElementById('mGtcrSub').textContent = `${r.Grader} cert checked with GTCR · ${when}`;
+  }
+}
+
 async function openModal(idx) {
   _openIdx = idx;
   const r = displayRows[idx];
@@ -1858,6 +1913,7 @@ async function openModal(idx) {
   document.getElementById('mTitle').textContent   = r['Card Title'] || '';
   document.getElementById('mPrice').textContent   = '$'+Number(r.Price||0).toLocaleString();
   document.getElementById('mGradeBadge').innerHTML = gradeBadge(r.Grade, r.Grader);
+  _renderGtcrBadge(r, isGraded);
 
   const fields = [
     { label: 'Year',    value: r.Year || '—' },
