@@ -27,6 +27,7 @@ netlify/functions/trade-og.js            → Serverless: GET /trade/:id → OG-t
 netlify/functions/gtcr-trust-check.js    → Serverless: GTCR Trust Check (READ key) — POST {action:'check'|'resolve'|'verify_removal'} → stolen/lost cert lookup, sets inventory.trust_flag, logs cert_trust_checks (see "Trust Check via GTCR")
 netlify/functions/gtcr-registry.js       → Serverless: GTCR consent + registration (WRITE key) — POST {action:'status'|'grant'|'revoke'|'reconcile'}
 scripts/gtcr-write-roundtrip.js          → Local test of GTCR's register/remove endpoints with a fake cert (needs GTCR_WRITE_API_KEY in the shell)
+supabase/migrations/20261101120000_gtcr_buyer_badge.sql → inventory.trust_clear_at + trigger that clears it on a cert/grader edit (buyer GTCR badge)
 supabase/migrations/20260925120000_gtcr_trust_check.sql → inventory.trust_flag + cert_trust_checks / gtcr_consent_events / gtcr_registrations (RLS: read-own, no client writes)
 netlify/functions/expire-trade-posts.js  → Scheduled (hourly, see netlify.toml): calls expire_stale_trade_posts() RPC to hide stale trade_posts from the live board
 .env.example                             → Placeholder env vars for all keys
@@ -229,6 +230,11 @@ Required for the Getting started checklist and first-use tips to sync across a s
 `ALTER TABLE sellers ADD COLUMN IF NOT EXISTS onboarding_state jsonb;`. Until it runs,
 `loadOnboardingState()` gets a column error, logs it, and leaves syncing off. The checklist and
 tips then work exactly as before, saved per device in localStorage.
+
+Required for the buyer GTCR badge (see "Buyer GTCR badge" under "Trust Check via GTCR"):
+`supabase/migrations/20261101120000_gtcr_buyer_badge.sql` adds `inventory.trust_clear_at` and a
+trigger that clears it when `cert_number` or `grader` changes. Until it runs, the badge never shows
+(the server's update fails with a console warning and the buyer SELECT retries without the column).
 
 Required to save the post-removal Trust Check result (diagnostic, see "Trust Check via GTCR"):
 `supabase/migrations/20261026120000_gtcr_post_removal_check.sql` adds `post_removal_card_status`,
@@ -2401,6 +2407,9 @@ migration, no new external library.
   set to `true` after `GTCR_REGISTRATION_ENABLED=true` went into production. Launched ahead of legal
   review of the opt-in copy, pricing, and GTCR's removed-registration fix. Rollback steps are in
   "Trust Check via GTCR" → Status.
+- **Buyer GTCR badge (session 2026-11-01)** — "✓ GTCR CLEAR" pill and "No stolen or lost report"
+  row in the buyer card modal (app.html, seller-browse.html), from a clean Trust Check in the last
+  7 days. Needs the `20261101120000_gtcr_buyer_badge.sql` migration. See "Buyer GTCR badge".
 - **GTCR in the onboarding tour and Feature guide (PR #80, session 2026-10-29)** — new tour screen
   (step 5 of 6) and a "Protect your cards (GTCR)" Feature guide section. See "Seller Onboarding
   Tour + Help Menu".
@@ -4178,7 +4187,7 @@ the response has no `card_status` at all.
   - **disputed** (grey): the seller chose "Dispute & keep listing" on a stolen/lost match.
   - **clear**: a small green "✓ Registry clear" under the cert #, so "checked and clean" is
     distinguishable from "never checked".
-  - Buyers never see any of these.
+  - Buyers never see these seller tiers. They see only the buyer badge (see "Buyer GTCR badge" below).
   `gtcrHydrateLatestChecks()` reloads each card's latest `cert_trust_checks` row on seller login, so
   tiers survive a reload.
 - **Seller UI:** when a card becomes flagged, `#gtcrFlagOverlay` opens on its own as a blocking alert
@@ -4304,6 +4313,35 @@ under the seller's email, which recorded the card as belonging to the person who
   Rollback: set `GTCR_REGISTRATION_ENABLED` to anything but `true` and redeploy (stops new
   registrations, removals keep running), and/or set `GTCR_CONSENT_UI_LAUNCHED = false`.
 
+### Buyer GTCR badge (built 2026-11-01)
+Built from the 2026-10-27 mockup. In the buyer card modal of `app.html` (`#cardModal`) and
+`seller-browse.html` (`#cardModal`):
+- a green **✓ GTCR CLEAR** pill under the grade badge (`#modalGtcrPill` / `#mGtcrPill`)
+- a full-width row under the detail grid: **No stolen or lost report** /
+  "PSA cert checked with GTCR · today" (`#modalGtcrRow` / `#mGtcrRow`)
+
+How it works:
+- **Data:** `inventory.trust_clear_at`. `gtcr-trust-check.js` sets it to now after a clean check
+  (no stolen, lost or dispute report, and not `disputed`) and to null after any other check. Every
+  check with an `inventory_id` does this: insert, publish and the 23h pre-registration re-check.
+  A DB trigger nulls it when `cert_number` or `grader` changes, so an old check never covers a new
+  cert.
+- **Shown when:** graded card, has a grader, not Sold, no `trust_flag`, and `trust_clear_at` is
+  within `GTCR_BUYER_BADGE_MAX_AGE_DAYS` (7). Otherwise nothing shows, never a warning.
+  `_gtcrBuyerClearAge()` / `_renderBuyerGtcrBadge()` in app.html; `_renderGtcrBadge()` duplicated
+  in seller-browse.html.
+- **Reads:** `loadBuyerInventoryFromDB()` selects `trust_flag` and `trust_clear_at`, and retries
+  without any column the DB doesn't have yet. `dbRowToCard()` maps it to `card.TrustClearAt`.
+  seller-browse.html already uses `select('*')`. A new check fires an inventory UPDATE, so an open
+  buyer page refreshes through live sync.
+- **Wording:** "no stolen or lost report", never "verified" or "authentic".
+- **Not built:** a "Registered with GTCR" buyer badge (waits on GTCR's removed-registration fix),
+  a badge on grid tiles or show.html (which has no card modal), and a scheduled re-check. A card
+  whose seller never republishes and isn't opted into registration drops the badge after 7 days.
+- **Caveat:** `inventory` RLS is still permissive, so a seller could write `trust_clear_at`
+  directly. Same Tier 1 RLS caveat as `trust_flag`.
+- GTCR's terms on showing their name to buyers were not checked before building.
+
 ### Still open (not built)
 - **Decision A — Phase 5 transfer-on-resale** (`transferOnSaleApi`): not built. Today a sold card's
   registration is removed, so the card is left unregistered rather than registered to the wrong person.
@@ -4313,15 +4351,6 @@ under the seller's email, which recorded the card as belonging to the person who
 - **Legal review of the opt-in copy**: still `2026-09-30-draft2`. If the wording changes, bump
   `GTCR_CONSENT_COPY_VERSION` (app.html) and `CURRENT_CONSENT_COPY_VERSION` (gtcr-registry.js)
   together; every seller who opted in then has to tick the box again.
-- **Buyer-facing GTCR badge (proposed 2026-10-27, not built)**: today buyers see no GTCR status.
-  Mocked up two placements on the buyer card modal: a "✓ GTCR CLEAR" pill under the grade pill, and
-  a full-width "No stolen or lost report · PSA cert checked with GTCR · today" row above the contact
-  buttons. Proposed rules: graded cards with a cert # only, and only when the last Trust Check was
-  clean and recent (e.g. 7 days); show nothing otherwise; say "no stolen or lost report", never
-  "verified"/"authentic". Hold off on a "Registered" badge until GTCR fixes removed registrations
-  showing as active. Building it needs a buyer-readable field (buyers can't read
-  `cert_trust_checks`), e.g. a last-clean-check timestamp on `inventory`, plus the badge on app.html,
-  show.html and seller-browse.html. Check GTCR's terms before showing their name to buyers.
 - **GTCR display of removed registrations** (raised 2026-10-26): their seller page lists removed
   registrations as active. Also asked whether `removeRegistrationApi` can take a `registration_id`;
   if it can, `removeOne()` should send the stored `gtcr_registration_id` (don't send it before GTCR

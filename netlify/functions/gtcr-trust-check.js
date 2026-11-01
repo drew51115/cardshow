@@ -16,6 +16,9 @@
 //       already disputed) and deletes that card's show_inventory rows, which
 //       blocks publishing and hides it from buyers
 //     - on no match: clears a stale 'flagged' (the report was closed)
+//     - sets inventory.trust_clear_at to now after a clean check (no stolen,
+//       lost or dispute report), or null otherwise. Buyer pages show the
+//       GTCR badge from it.
 //   Any GTCR failure returns { success: false }. The client treats that as
 //   FAIL OPEN: no flag, and it re-checks on the next publish.
 //
@@ -205,6 +208,13 @@ async function handleCheck(db, event, input) {
           trustFlag = null;
           await db.from('inventory').update({ trust_flag: null }).eq('id', row.id);
         }
+
+        // Buyer badge: stamp a clean check (no stolen, lost or dispute report),
+        // clear it otherwise. Fails quietly before the buyer-badge migration runs.
+        const clean = !result.matched && !result.has_dispute_report && trustFlag !== 'disputed';
+        const { error: clearErr } = await db.from('inventory')
+          .update({ trust_clear_at: clean ? new Date().toISOString() : null }).eq('id', row.id);
+        if (clearErr) console.warn('[gtcr-trust-check] trust_clear_at update failed:', clearErr.message);
       }
     }
   }
