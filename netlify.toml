@@ -39,3 +39,11 @@
 
 [functions."social-slot-planner"]
   schedule = "@weekly"
+
+# Instagram Social Ingest: posts that tag @cardshow.io, every 3 hours, and a
+# weekly check that approved Instagram posts are still up (Mondays 08:00 UTC).
+[functions."ig-tags-collector"]
+  schedule = "0 */3 * * *"
+
+[functions."social-source-check"]
+  schedule = "0 8 * * 1"

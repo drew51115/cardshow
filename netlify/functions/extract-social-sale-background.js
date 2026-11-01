@@ -59,7 +59,8 @@ async function loadImages(db, postId) {
 
 async function extractOne(db, post) {
   const images = await loadImages(db, post.id);
-  if (!images.length) throw new Error('no images');
+  // Instagram posts with no usable media are read from the caption alone.
+  if (!images.length && !P.allowsCaptionOnly(post)) throw new Error('no images');
   const now = new Date().toISOString();
   const purgeAfter = P.addDays(new Date(), P.RETENTION_DAYS).toISOString();
 

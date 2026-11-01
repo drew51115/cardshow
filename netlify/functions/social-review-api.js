@@ -137,7 +137,7 @@ const RERUN_POST_STATUSES = ['extracted', 'multi_card', 'no_slab', 'rejected', '
 const FINAL_SLAB_STATUSES = ['approved', 'approved_offfloor', 'auto_approved', 'duplicate'];
 
 async function rerun(db, event, postId) {
-  const { data: post } = await db.from('social_posts').select('id, status, evidence_purged_at').eq('id', postId).maybeSingle();
+  const { data: post } = await db.from('social_posts').select('id, status, evidence_purged_at, ingest_method, caption_clean').eq('id', postId).maybeSingle();
   if (!post) return P.json(404, { success: false, error: 'post_not_found' });
   if (!RERUN_POST_STATUSES.includes(post.status)) return P.json(409, { success: false, error: 'post_in_progress', message: 'This post is still being processed.' });
   const { data: exts } = await db.from('social_extractions').select('status').eq('post_id', postId);
@@ -158,7 +158,8 @@ async function rerun(db, event, postId) {
     return P.json(200, { success: true, status: 'retrying' });
   }
   const { data: media } = await db.from('social_post_media').select('purged_at').eq('post_id', postId);
-  if (post.evidence_purged_at || !media?.length || media.some(m => m.purged_at)) {
+  const captionOnly = !media?.length && P.allowsCaptionOnly(post);
+  if (post.evidence_purged_at || (!media?.length && !captionOnly) || (media || []).some(m => m.purged_at)) {
     return P.json(409, { success: false, error: 'evidence_purged', message: 'The screenshots for this post were already deleted.' });
   }
   await db.from('social_extractions').delete().eq('post_id', postId);

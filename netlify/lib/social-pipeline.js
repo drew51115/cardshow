@@ -968,6 +968,14 @@ async function maybeSchedulePurge(db, postId) {
 // hashtag_yield under the post's source_hashtag. Returns the new status.
 const DISCOVERY_METHODS = ['ig_mention', 'ig_tag', 'ig_hashtag', 'ig_watchlist', 'x_search'];
 
+// Instagram tag/mention posts may arrive with no usable image (media_url is
+// absent for some media, and videos aren't downloaded). Those are read from
+// the caption alone. Manual intake always has screenshots, so it never needs this.
+const CAPTION_ONLY_METHODS = ['ig_tag', 'ig_mention'];
+function allowsCaptionOnly(post) {
+  return CAPTION_ONLY_METHODS.includes(post?.ingest_method) && !!norm(post?.caption_clean);
+}
+
 async function isActiveShowTag(db, tag) {
   if (!tag) return false;
   const today = isoDate(new Date());
@@ -989,12 +997,14 @@ async function prefilterPost(db, post) {
     return status;
   };
 
-  // Stage 1 — metadata: at least one stored image. (Duplicates never get this
-  // far: post_key and media sha256 are unique.)
+  // Stage 1 — metadata: at least one stored image, or (Instagram sources only,
+  // where the media can be missing or a video) a caption to read instead.
+  // (Duplicates never get this far: post_key and media sha256 are unique.)
   const { data: media } = await db.from('social_post_media')
     .select('image_index, storage_path, media_type').eq('post_id', post.id).order('image_index');
   const images = (media || []).filter(m => /^image\//.test(m.media_type || 'image/jpeg'));
-  if (!images.length) return finish('filtered_out', 1, 'no_image');
+  const captionOnly = !images.length && allowsCaptionOnly(post);
+  if (!images.length && !captionOnly) return finish('filtered_out', 1, 'no_image');
   counts.stage1_pass = 1;
 
   // Stage 2 — caption text.
@@ -1005,7 +1015,13 @@ async function prefilterPost(db, post) {
   counts.stage2_pass = 1;
 
   // Stage 3 — cheap image triage on the first image. A triage failure (null)
-  // lets the post through rather than dropping a possible sale.
+  // lets the post through rather than dropping a possible sale. A caption-only
+  // post has no image to triage; the caption filter above already passed it.
+  if (captionOnly) {
+    prefilter.stage3 = { skipped: 'no_image' };
+    counts.stage3_pass = 1;
+    return finish('queued', null, null, { prefilter });
+  }
   const { data: blob } = await db.storage.from(EVIDENCE_BUCKET).download(images[0].storage_path);
   let triage = null;
   if (blob) {
@@ -1034,7 +1050,7 @@ async function bumpYield(db, tag, counts) {
 }
 
 module.exports = {
-  DISCOVERY_METHODS, CATEGORY_SUBCATEGORIES, normalizeGrade, normalizeYear, resolveCategory,
+  DISCOVERY_METHODS, CAPTION_ONLY_METHODS, allowsCaptionOnly, CATEGORY_SUBCATEGORIES, normalizeGrade, normalizeYear, resolveCategory,
   categoryFromPsa, buildCardTitle, prefilterPost, isActiveShowTag, claimHashtagSlot,
   EXTRACT_MODEL, TRIAGE_MODEL, EVIDENCE_BUCKET, RETENTION_DAYS, GRADERS, FINAL, CRITICAL_FIELDS,
   json, getDb, sha256, norm, lc, numOrNull, isoDate, addDays,
