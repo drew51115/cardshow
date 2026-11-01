@@ -1,15 +1,21 @@
 // meta-graph-health.js — admin-only check of the Meta Graph setup (IG Social Ingest, Phase 0).
 // See "Instagram Social Ingest" in CLAUDE.md.
 //
-// POST { test: 'ping' | 'braces' | 'bad_token' } with the admin's Supabase JWT.
+// POST { test: 'ping' | 'braces' | 'bad_token' | 'collect' } with the admin's Supabase JWT.
 //   ping      GET /{IG_USER_ID}?fields=username,media_count  → { username, media_count }
 //   braces    GET /{IG_USER_ID}?fields=media.limit(5){caption} → { captions: N } (brace encoding)
 //   bad_token the same ping with a deliberately invalid token → expects TokenError and an
 //             integration_health 'token_invalid' row
+//   collect   one ig-tags-collector run, for deploy previews where scheduled functions
+//             don't run. 6s budget (this function has a ~10s limit); call it again until
+//             summary.deferred is 0. Writes to the same Supabase project as production.
 // Every test writes an integration_health row. No token is ever returned.
 
 const P = require('../lib/social-pipeline');
 const G = require('../lib/meta-graph');
+const { runCollector } = require('./ig-tags-collector');
+
+const COLLECT_BUDGET_MS = 6000;
 
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') return P.json(405, { success: false, error: 'method_not_allowed' });
@@ -43,6 +49,14 @@ exports.handler = async (event) => {
         } catch (err) {
           return P.json(200, { success: err instanceof G.TokenError, error_type: err.name, code: err.code, message: G.scrub(err.message) });
         }
+      }
+      case 'collect': {
+        const r = await runCollector({ budgetMs: COLLECT_BUDGET_MS, maxPages: 3, trigger: 'manual_test' });
+        return P.json(r.status === 'ok' ? 200 : 502, {
+          success: r.status === 'ok', health_status: r.status, error: r.error || null, code: r.code ?? null,
+          summary: r.summary || null,
+          next: r.summary?.deferred ? 'Run collect again to process the rest.' : null,
+        });
       }
       default:
         return P.json(400, { success: false, error: 'unknown_test' });

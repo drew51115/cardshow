@@ -36,7 +36,7 @@ netlify/lib/social-pipeline.js           → Shared code for Social Sale Ingesti
 netlify/lib/meta-graph.js                → Shared Meta Graph API client: graphGet / graphPaginate, retries, typed errors, token redaction (see "Instagram Social Ingest")
 netlify/functions/ig-tags-collector.js   → Scheduled (every 3h): posts that tag @cardshow.io → v2 social_posts (ingest_method 'ig_tag') → v2 pipeline
 netlify/functions/social-source-check.js → Scheduled (Mon 08:00 UTC): marks approved Instagram posts that were deleted (social_posts.source_deleted_at)
-netlify/functions/meta-graph-health.js   → Admin-only POST {test:'ping'|'braces'|'bad_token'}: checks the Meta token and setup
+netlify/functions/meta-graph-health.js   → Admin-only POST {test:'ping'|'braces'|'bad_token'|'collect'}: checks the Meta token and setup; 'collect' runs the tag collector on a deploy preview
 supabase/migrations/20261103120000_ig_social_ingest.sql → integration_health, featured_dealers, Instagram columns on social_posts — run after social_sales v1 + v2
 netlify/functions/social-intake.js       → Admin manual intake: create draft post → add_media (one image per call) → submit
 netlify/functions/prefilter-social-posts-background.js → Discovery funnel (metadata → caption → image triage); queued or filtered_out
@@ -5116,12 +5116,24 @@ Put in `netlify/lib/` next to `social-pipeline.js`, not `netlify/functions/lib/`
   expects a `TokenError` plus a `token_invalid` row. Use these for the Phase 0 acceptance checks on a
   deploy, from the browser console as an admin:
   `fetch('/.netlify/functions/meta-graph-health',{method:'POST',headers:{Authorization:'Bearer '+(await db.auth.getSession()).data.session.access_token},body:JSON.stringify({test:'ping'})}).then(r=>r.json())`
+- **`{test:'collect'}`** runs one `ig-tags-collector` pass (`runCollector()`, `trigger: 'manual_test'`)
+  so it can be tested on a deploy preview, where Netlify doesn't run scheduled functions or allow
+  calling them by URL. It uses a 6s budget and at most 3 pages (this function has Netlify's ~10s
+  limit), so repeat it while the response's `summary.deferred` is above 0. It writes to the same
+  Supabase project as production, so the migrations must have run. The pipeline kick goes to the
+  preview's own `prefilter-social-posts-background` (`siteBase()` reads `DEPLOY_PRIME_URL`). A
+  single slow image download (8s timeout) can still push one call past the limit; just call again.
 
 ### Phase 1 — `ig-tags-collector.js` (every 3 hours, netlify.toml)
 1. `GET /{IG_USER_ID}/tags` with the spec's fields plus `thumbnail_url` (so a video contributes its
    thumbnail), `limit=50`. Stops at a post already in `social_posts` (by `ig_media_id`) or one older
-   than 14 days. **The first run (no `ig_tag` rows yet) looks back 365 days** so the existing WCHE
-   posts (August) are picked up once; the spec's 14 days would have skipped them.
+   than 14 days.
+   **Backfill:** until one run has finished the backfill, the window is 365 days instead, so the
+   existing WCHE posts (August) are picked up once. In backfill mode, posts already stored are
+   skipped instead of ending the walk, so a cut-short run doesn't lose the older posts it didn't
+   reach. A run that processes everything (nothing deferred, no page cap hit, no failures) writes
+   `"backfill_complete":true` in its `integration_health` detail; later runs find that row and use
+   the 14-day window.
 2. New posts are processed oldest first, within a 20s budget (scheduled functions get 30s). If it
    runs out, the newest posts wait for the next run, which still reaches them.
 3. Each post is inserted as a `draft` (no stage claims drafts), with `ingest_method 'ig_tag'`,

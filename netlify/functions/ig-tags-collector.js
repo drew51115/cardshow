@@ -34,38 +34,54 @@ const DOWNLOAD_TIMEOUT_MS = 8000;
 const MEDIA_HOST_RE = /(^|\.)(cdninstagram\.com|fbcdn\.net)$/i;
 
 exports.handler = async () => {
+  const r = await runCollector();
+  return { statusCode: r.httpStatus };
+};
+
+// One collector run. The schedule calls it with the defaults. meta-graph-health's
+// 'collect' test calls it on a deploy preview (scheduled functions don't run
+// there) with a shorter budget, since that function has a ~10s limit.
+// Returns { status, summary, httpStatus }; never throws.
+async function runCollector({ budgetMs = TIME_BUDGET_MS, maxPages = null, trigger = 'schedule' } = {}) {
   const db = P.getDb();
-  if (!db) { console.error('[ig-tags] SUPABASE_URL / SUPABASE_SERVICE_KEY not set'); return { statusCode: 503 }; }
+  if (!db) { console.error('[ig-tags] SUPABASE_URL / SUPABASE_SERVICE_KEY not set'); return { status: 'error', error: 'SUPABASE_URL / SUPABASE_SERVICE_KEY not set', httpStatus: 503 }; }
   const igUserId = process.env.IG_USER_ID;
   if (!igUserId) {
     await G.recordHealth(db, 'error', 'IG_USER_ID not set', INTEGRATION);
-    return { statusCode: 500 };
+    return { status: 'error', error: 'IG_USER_ID not set', httpStatus: 500 };
   }
 
   const started = Date.now();
-  const summary = { fetched: 0, pages: 0, inserted: 0, caption_only: 0, images: 0, linked_existing: 0, duplicate: 0, failed: 0, deferred: 0 };
+  const summary = { trigger, fetched: 0, pages: 0, inserted: 0, caption_only: 0, images: 0, linked_existing: 0, duplicate: 0, failed: 0, deferred: 0 };
   try {
-    const result = await collect(db, igUserId, started, summary);
+    const result = await collect(db, igUserId, started, summary, { budgetMs, maxPages });
+    Object.assign(summary, result);
     if (summary.inserted) {
       const kicked = await P.kickStage(P.siteBase(), 'prefilter-social-posts-background', {});
       summary.pipeline_kicked = kicked;   // false is fine: the hourly sweep kicks it
     }
-    await G.recordHealth(db, 'ok', { new: summary.inserted, ...summary, ...result }, INTEGRATION);
+    await G.recordHealth(db, 'ok', { new: summary.inserted, ...summary }, INTEGRATION);
     console.log('[ig-tags]', JSON.stringify(summary));
-    return { statusCode: 200 };
+    return { status: 'ok', summary, httpStatus: 200 };
   } catch (err) {
     const status = G.healthStatusFor(err);
-    console.error(`[ig-tags] run stopped (${status}):`, G.scrub(err.message));
-    await G.recordHealth(db, status, { message: err.message, code: err.code ?? null, ...summary }, INTEGRATION);
-    return { statusCode: status === 'rate_limited' ? 200 : 500 };
+    const message = G.scrub(err.message);
+    console.error(`[ig-tags] run stopped (${status}):`, message);
+    await G.recordHealth(db, status, { message, code: err.code ?? null, ...summary }, INTEGRATION);
+    return { status, error: message, code: err.code ?? null, summary, httpStatus: status === 'rate_limited' ? 200 : 500 };
   }
-};
+}
 
-async function collect(db, igUserId, started, summary) {
-  const { count, error: countErr } = await db.from('social_posts')
-    .select('id', { count: 'exact', head: true }).eq('ingest_method', 'ig_tag');
-  if (countErr) throw new Error(`social_posts not readable (run the IG ingest migration?): ${countErr.message}`);
-  const backfill = !count;
+async function collect(db, igUserId, started, summary, { budgetMs = TIME_BUDGET_MS, maxPages = null } = {}) {
+  // Backfill mode until one run has walked the whole lookback and stored every
+  // post. A cut-short first run must not drop to the 14-day window, or the older
+  // posts it didn't reach (e.g. August's WCHE tags) would never be collected.
+  // In backfill mode posts we already have are skipped rather than ending the walk.
+  const { error: tableErr } = await db.from('social_posts').select('id', { count: 'exact', head: true }).eq('ingest_method', 'ig_tag');
+  if (tableErr) throw new Error(`social_posts not readable (run the IG ingest migration?): ${tableErr.message}`);
+  const { data: doneRows } = await db.from('integration_health').select('id')
+    .eq('integration', INTEGRATION).eq('status', 'ok').ilike('detail', '%"backfill_complete":true%').limit(1);
+  const backfill = !(doneRows && doneRows.length);
   const cutoff = Date.now() - (backfill ? BACKFILL_DAYS : LOOKBACK_DAYS) * 86_400_000;
 
   // Look up a whole page of ids at once the first time stopWhen sees that page.
@@ -81,21 +97,24 @@ async function collect(db, igUserId, started, summary) {
         for (const r of data || []) known.add(r.ig_media_id);
       }
     }
-    if (!item?.id || known.has(item.id)) return true;
+    if (!item?.id) return true;
+    if (!backfill && known.has(item.id)) return true;
     const ts = Date.parse(item.timestamp);
     return Number.isFinite(ts) && ts < cutoff;
   };
 
-  const { items, pages, truncated } = await G.graphPaginate(`${igUserId}/tags`,
-    { fields: FIELDS, limit: 50 }, { stopWhen, maxPages: backfill ? 20 : 5 });
-  summary.fetched = items.length;
-  summary.pages = pages;
+  const walk = await G.graphPaginate(`${igUserId}/tags`,
+    { fields: FIELDS, limit: 50 }, { stopWhen, maxPages: maxPages || (backfill ? 20 : 5) });
+  const items = walk.items.filter(i => !known.has(i.id));
+  const truncated = !!walk.truncated;
+  summary.fetched = walk.items.length;
+  summary.pages = walk.pages;
 
   // Oldest first: if the run is cut short, what's left is the newest posts,
   // which the next run still reaches before it hits one we already have.
   const ordered = items.slice().sort((a, b) => (Date.parse(a.timestamp) || 0) - (Date.parse(b.timestamp) || 0));
   for (let i = 0; i < ordered.length; i++) {
-    if (Date.now() - started > TIME_BUDGET_MS) { summary.deferred = ordered.length - i; break; }
+    if (Date.now() - started > budgetMs) { summary.deferred = ordered.length - i; break; }
     try {
       const r = await ingestItem(db, ordered[i]);
       summary[r.result]++;
@@ -106,7 +125,12 @@ async function collect(db, igUserId, started, summary) {
       console.error(`[ig-tags] media ${ordered[i].id} failed:`, G.scrub(err.message));
     }
   }
-  return { backfill, truncated: !!truncated };
+  return {
+    backfill,
+    truncated,
+    // Set once: later runs use the 14-day window and stop at the first known post.
+    backfill_complete: !backfill || (!summary.deferred && !truncated && !summary.failed),
+  };
 }
 
 async function ingestItem(db, item) {
@@ -228,4 +252,5 @@ async function storeImage(db, postId, index, url) {
 }
 
 // Exported for tests.
+exports.runCollector = runCollector;
 exports._internal = { ingestItem, mediaCandidates, sniffImageType, collect, FIELDS };
