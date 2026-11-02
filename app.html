@@ -4460,6 +4460,33 @@
   .si-table th { font-family:'DM Mono',monospace; font-size:0.64rem; letter-spacing:0.05em; text-transform:uppercase; color:var(--muted); font-weight:500; }
   .si-tablewrap { overflow-x:auto; }
   .si-nav { display:flex; align-items:center; justify-content:space-between; gap:0.5rem; margin-bottom:0.6rem; flex-wrap:wrap; }
+  /* Phase 2: confidence badge, Tagged / Story Mentions lists, read-only reviewer mode */
+  .si-conf { font-family:'DM Mono',monospace; font-size:0.68rem; padding:0.15rem 0.5rem; border-radius:999px; border:1px solid; }
+  .si-conf.high { border-color:rgba(22,163,74,0.7); color:#16a34a; }
+  .si-conf.mid  { border-color:rgba(245,158,11,0.7); color:#f59e0b; }
+  .si-conf.low  { border-color:rgba(239,68,68,0.7); color:#ef4444; }
+  .si-poster { font-size:0.8rem; color:var(--text); margin-top:0.5rem; }
+  .si-poster a { color:var(--accent); }
+  .si-plist { display:flex; flex-direction:column; gap:0.6rem; }
+  .si-pcard { display:grid; grid-template-columns:88px minmax(0,1fr) auto; gap:0.75rem; align-items:start;
+    background:var(--card); border:1px solid var(--border); border-radius:12px; padding:0.75rem; }
+  .si-pthumb { width:88px; height:88px; border-radius:8px; object-fit:cover; background:var(--surface); border:1px solid var(--border);
+    display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:1.4rem; }
+  .si-pcap { font-size:0.8rem; color:var(--text); margin-top:0.3rem; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+  .si-pside { display:flex; flex-direction:column; gap:0.35rem; align-items:flex-end; }
+  .si-empty { text-align:center; padding:2.5rem 1rem; }
+  .si-readonly-note { display:none; }
+  body.si-readonly .si-readonly-note { display:block; }
+  body.si-readonly .si-admin-only { display:none !important; }
+  body.si-readonly .seller-layout { grid-template-columns:1fr; }
+  @media (max-width: 599px) {
+    .si-pcard { grid-template-columns:64px minmax(0,1fr); }
+    .si-pthumb { width:64px; height:64px; }
+    .si-pside { grid-column:1 / -1; flex-direction:row; flex-wrap:wrap; align-items:center; }
+    .si-pside .btn { flex:1 1 100%; }
+    #siReviewBody .si-actions { flex-direction:column; align-items:stretch; }
+    #siReviewBody .si-actions .btn, #siReviewBody .si-actions select { width:100%; }
+  }
 </style>
 </head>
 <body>
@@ -4753,11 +4780,15 @@
           <h2 style="font-family:'Bebas Neue',sans-serif;font-size:1.6rem;letter-spacing:0.06em;color:var(--text);line-height:1">Social Sales</h2>
           <div style="font-size:0.75rem;color:var(--muted);margin-top:0.2rem">Graded show-floor sales from public posts · single slab · cash or stated price only</div>
         </div>
+        <div class="si-readonly-note si-card si-muted" style="padding:0.6rem 0.8rem">Read-only reviewer access: you can look at everything here, but approving, rejecting and editing are turned off.</div>
         <div class="si-subtabs">
-          <button class="si-subtab active" data-si-view="review" onclick="siShowView('review')">Review <span id="siReviewCount"></span></button>
-          <button class="si-subtab" data-si-view="intake" onclick="siShowView('intake')">Add posts</button>
+          <button class="si-subtab active" data-si-view="review" onclick="siShowView('review')">Review queue <span id="siReviewCount"></span></button>
+          <button class="si-subtab" data-si-view="tagged" onclick="siShowView('tagged')">Tagged</button>
+          <button class="si-subtab" data-si-view="stories" onclick="siShowView('stories')">Story mentions</button>
+          <button class="si-subtab" data-si-view="watchlist" onclick="siShowView('watchlist')">Watchlist</button>
+          <button class="si-subtab" data-si-view="setup" onclick="siShowView('setup')">Hashtags</button>
+          <button class="si-subtab si-admin-only" data-si-view="intake" onclick="siShowView('intake')">Add posts</button>
           <button class="si-subtab" data-si-view="report" onclick="siShowView('report')">Report</button>
-          <button class="si-subtab" data-si-view="setup" onclick="siShowView('setup')">Hashtags &amp; watchlist</button>
         </div>
 
         <!-- Review queue -->
@@ -4771,6 +4802,34 @@
             </div>
           </div>
           <div id="siReviewBody"></div>
+        </div>
+
+        <!-- Tagged / Story mentions (IG ingest Phase 2) -->
+        <div id="siViewTagged" style="display:none">
+          <div class="si-nav">
+            <div class="si-muted">Posts that tag @cardshow.io. Collected every 3 hours.</div>
+            <div style="display:flex;gap:0.4rem;align-items:center">
+              <select id="siTaggedFilter" onchange="siLoadSourcePosts('tagged')" style="background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:0.35rem;font-size:0.78rem">
+                <option value="">All</option><option value="review">In review</option><option value="approved">Approved</option>
+                <option value="not_sale">Not a sale</option><option value="processing">Processing</option>
+              </select>
+              <button class="btn btn-ghost" style="font-size:0.75rem" onclick="siLoadSourcePosts('tagged')">↻</button>
+            </div>
+          </div>
+          <div id="siTaggedList" class="si-plist"></div>
+        </div>
+        <div id="siViewStories" style="display:none">
+          <div class="si-nav">
+            <div class="si-muted">Instagram Stories that mention @cardshow.io.</div>
+            <div style="display:flex;gap:0.4rem;align-items:center">
+              <select id="siStoriesFilter" onchange="siLoadSourcePosts('stories')" style="background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:0.35rem;font-size:0.78rem">
+                <option value="">All</option><option value="review">In review</option><option value="approved">Approved</option>
+                <option value="not_sale">Not a sale</option><option value="processing">Processing</option>
+              </select>
+              <button class="btn btn-ghost" style="font-size:0.75rem" onclick="siLoadSourcePosts('stories')">↻</button>
+            </div>
+          </div>
+          <div id="siStoriesList" class="si-plist"></div>
         </div>
 
         <!-- Intake -->
@@ -4811,28 +4870,33 @@
         <!-- Report -->
         <div id="siViewReport" style="display:none"><div id="siReportBody" class="si-muted">Loading…</div></div>
 
-        <!-- Setup -->
+        <!-- Watchlist -->
+        <div id="siViewWatchlist" style="display:none">
+          <div class="si-card">
+            <div class="si-nav"><div class="si-h" style="margin:0">Dealer watchlist</div>
+              <button class="btn btn-ghost" style="font-size:0.75rem" disabled title="Needs Meta Advanced Access">Fetch recent posts · Available after Meta approval</button></div>
+            <div class="si-muted" style="margin-bottom:0.6rem">Business/Creator accounts to check once Instagram access is live. Never linked to sale records.</div>
+            <div class="si-row si-admin-only">
+              <div class="si-field" style="flex:0 1 130px"><label>Platform</label><select id="siWlPlatform"><option value="instagram">Instagram</option><option value="x">X</option></select></div>
+              <div class="si-field"><label>Account</label><input id="siWlAccount" placeholder="@dealer"></div>
+              <button class="btn btn-primary" style="font-size:0.8rem" onclick="siAddWatch()">Add</button>
+            </div>
+            <div class="si-tablewrap" id="siWatchTable" style="margin-top:0.7rem"></div>
+          </div>
+        </div>
+
+        <!-- Hashtags -->
         <div id="siViewSetup" style="display:none">
           <div class="si-card">
             <div class="si-h">Hashtags</div>
             <div class="si-muted" style="margin-bottom:0.6rem">Show tags are active from 1 day before the show to 2 days after. General tags are always on. Instagram hashtag polling starts once Meta approves hashtag search; until then this is the registry the weekly slot planner works from.</div>
-            <div class="si-row">
+            <div class="si-row si-admin-only">
               <div class="si-field"><label>Tag</label><input id="siTag" placeholder="#wche"></div>
               <div class="si-field"><label>Show (blank = general)</label><select id="siTagShow"><option value="">— General hobby tag —</option></select></div>
               <label class="si-muted" style="display:flex;gap:0.35rem;align-items:center;padding-bottom:0.5rem"><input type="checkbox" id="siTagOfficial"> Official</label>
               <button class="btn btn-primary" style="font-size:0.8rem" onclick="siAddHashtag()">Add</button>
             </div>
             <div class="si-tablewrap" id="siHashtagTable" style="margin-top:0.7rem"></div>
-          </div>
-          <div class="si-card">
-            <div class="si-h">Dealer watchlist</div>
-            <div class="si-muted" style="margin-bottom:0.6rem">Business/Creator accounts to poll once Instagram access is live. Never linked to sale records.</div>
-            <div class="si-row">
-              <div class="si-field" style="flex:0 1 130px"><label>Platform</label><select id="siWlPlatform"><option value="instagram">Instagram</option><option value="x">X</option></select></div>
-              <div class="si-field"><label>Account</label><input id="siWlAccount" placeholder="@dealer"></div>
-              <button class="btn btn-primary" style="font-size:0.8rem" onclick="siAddWatch()">Add</button>
-            </div>
-            <div class="si-tablewrap" id="siWatchTable" style="margin-top:0.7rem"></div>
           </div>
         </div>
       </div>
@@ -7219,6 +7283,8 @@ async function submitAuth() {
 
       const { data: adminRow } = await db.from('admins').select('id').eq('id', data.user.id).maybeSingle();
       if (!adminRow) {
+        // Read-only Social Sales reviewer (e.g. Meta's App Review login)?
+        if (await _isSocialReviewer(data.user.id)) { loginAsAdmin({ reviewer: true }); return; }
         await db.auth.signOut();
         _setAuthError('This account does not have admin access.');
         return;
@@ -12899,9 +12965,23 @@ function showNavUser(name, role, avatarClass) {
   }
 }
 
-function loginAsAdmin() {
+// Row in social_reviewers (RLS lets a user read only their own row). A missing
+// table (migration not run) just means "not a reviewer".
+async function _isSocialReviewer(uid) {
+  try {
+    const { data, error } = await db.from('social_reviewers').select('id').eq('id', uid).maybeSingle();
+    if (error) { console.warn('[social] reviewer check failed:', error.message); return false; }
+    return !!data;
+  } catch (_) { return false; }
+}
+
+// opts.reviewer: read-only Social Sales access only (no shows, no edits).
+function loginAsAdmin(opts = {}) {
+  const reviewer = !!opts.reviewer;
   currentRole   = 'admin';
   currentSeller = null;
+  _siReadOnly   = reviewer;
+  document.body.classList.toggle('si-readonly', reviewer);
   document.getElementById('authOverlay').classList.add('hidden');
 
   document.getElementById('navTabSeller').textContent   = '⬡ Admin';
@@ -12915,11 +12995,16 @@ function loginAsAdmin() {
   const partnerLink = document.getElementById('partnershipLink');
   if (partnerLink) partnerLink.style.display = 'none';
 
-  showNavUser('Show Admin', 'Administrator', 'admin');
+  showNavUser(reviewer ? 'Reviewer' : 'Show Admin', reviewer ? 'Read-only' : 'Administrator', 'admin');
 
-  // Show admin-only UI elements; hide seller-only sidebar modules
+  // Show admin-only UI elements; hide seller-only sidebar modules.
+  // A reviewer gets the Social Sales tab only.
   document.getElementById('adminTabBar').style.display          = 'block';
-  document.getElementById('adminShowsPanel').style.display      = 'block';
+  document.getElementById('adminShowsPanel').style.display      = reviewer ? 'none' : 'block';
+  const showsTabBtn = document.getElementById('adminTabShows');
+  if (showsTabBtn) showsTabBtn.style.display = reviewer ? 'none' : '';
+  const mainSidebarAdm = document.getElementById('mainSidebar');
+  if (mainSidebarAdm) mainSidebarAdm.style.display = reviewer ? 'none' : '';
   document.getElementById('sellerQrPanel').classList.remove('visible');
   document.getElementById('sellerShowsPanel').style.display     = 'none';
   document.getElementById('sellerUploadSection').style.display  = 'none';
@@ -12947,6 +13032,12 @@ function loginAsAdmin() {
   initSidebarState();
   window.scrollTo(0, 0);
   updateStats();
+
+  if (reviewer) {
+    switchAdminTab('social');
+    showToast('Read-only reviewer access');
+    return;
+  }
 
   // Load real shows + seller handles from Supabase, then render
   Promise.all([loadShowsFromDB(), refreshSellerHandlesCache(), refreshShowCardCounts()]).then(([loaded]) => {
@@ -12990,6 +13081,12 @@ async function signOut() {
   currentRole          = null;
   currentSeller        = null;
   window._currentAdminUid = null;
+  _siReadOnly = false;
+  document.body.classList.remove('si-readonly');
+  const showsTabSO = document.getElementById('adminTabShows');
+  if (showsTabSO) showsTabSO.style.display = '';
+  const mainSidebarSO = document.getElementById('mainSidebar');
+  if (mainSidebarSO) mainSidebarSO.style.display = '';
   _gtcrConsentState = null;
   _gtcrChecksHydrated = null;
   clearTimeout(_gtcrReconcileTimer);
@@ -16861,6 +16958,7 @@ function switchSellerTab(tab) {
 let _adminTab = 'shows'; // 'shows' | 'social' ('report' is unreachable — see switchAdminTab())
 
 function switchAdminTab(tab) {
+  if (_siReadOnly) tab = 'social';   // reviewers only get Social Sales
   _adminTab = tab;
 
   // Hide analytics/floor-map panels when switching tabs — restored via
@@ -16922,6 +17020,10 @@ let _siImg = 0;             // image index shown for the current row
 let _siShows = null;        // [{id, name, date}] from the server (all shows)
 let _siPending = [];        // [{file, url}] screenshots staged for one post
 let _siKeysBound = false;
+// Read-only reviewer (social_reviewers table, e.g. Meta's App Review login).
+// The server refuses every write for these accounts; this flag only hides the
+// controls (body.si-readonly hides .si-admin-only).
+let _siReadOnly = false;
 
 function _siEsc(v) {
   return String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -16966,14 +17068,18 @@ function siOpen() {
 function siShowView(view) {
   _siView = view;
   document.querySelectorAll('.si-subtab').forEach(b => b.classList.toggle('active', b.dataset.siView === view));
-  ['review', 'intake', 'report', 'setup'].forEach(v => {
+  if (_siReadOnly && view === 'intake') view = _siView = 'review';
+  document.querySelectorAll('.si-subtab').forEach(b => b.classList.toggle('active', b.dataset.siView === view));
+  ['review', 'tagged', 'stories', 'watchlist', 'setup', 'intake', 'report'].forEach(v => {
     const el = document.getElementById('siView' + v[0].toUpperCase() + v.slice(1));
     if (el) el.style.display = v === view ? 'block' : 'none';
   });
   if (view === 'review') siLoadQueue();
+  else if (view === 'tagged' || view === 'stories') siLoadSourcePosts(view);
+  else if (view === 'watchlist') siLoadWatch();
   else if (view === 'intake') siLoadPosts();
   else if (view === 'report') siLoadReport();
-  else if (view === 'setup') { siLoadHashtags(); siLoadWatch(); }
+  else if (view === 'setup') siLoadHashtags();
 }
 
 async function _siLoadShows() {
@@ -17006,6 +17112,11 @@ async function siLoadQueue() {
     const r = await _siCall('social-review-api', { action: 'queue', status: 'review', limit: 100 });
     _siQueue = r.rows || [];
     _siIdx = Math.min(_siIdx, Math.max(0, _siQueue.length - 1));
+    if (_siJumpPost) {
+      const i = _siQueue.findIndex(x => x.post_id === _siJumpPost);
+      if (i >= 0) _siIdx = i;
+      _siJumpPost = null;
+    }
     _siImg = _siQueue[_siIdx]?.image_index ?? 0;
     const c = r.counts || {};
     const countEl = document.getElementById('siReviewCount');
@@ -17083,7 +17194,7 @@ function _siRenderReview() {
   const sel = (id, opts, value) => `<select id="${id}">${opts.map(([v, l]) => `<option value="${v}" ${v === (value || '') ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
 
   body.innerHTML = `
-    <div class="si-nav"><div class="si-muted">${_siIdx + 1} of ${_siQueue.length} · confidence ${r.confidence != null ? Math.round(r.confidence * 100) + '%' : '—'}${r.auto_eligible ? ' · <span style="color:#16a34a">matches the auto-approve pattern</span>' : ''}</div></div>
+    <div class="si-nav"><div class="si-muted">${_siIdx + 1} of ${_siQueue.length} · ${_siConfBadge(r.confidence)}${r.auto_eligible ? ' · <span style="color:#16a34a">matches the auto-approve pattern</span>' : ''}</div></div>
     <div class="si-review">
       <div>
         <div class="si-imgwrap">
@@ -17091,9 +17202,10 @@ function _siRenderReview() {
           ${bbox ? `<div class="si-bbox" style="left:${bbox[0] * 100}%;top:${bbox[1] * 100}%;width:${bbox[2] * 100}%;height:${bbox[3] * 100}%"></div>` : ''}
         </div>
         ${images.length > 1 ? `<div class="si-thumbs">${images.map(i => `<img src="${_siEsc(i.url)}" class="${i.index === (img && img.index) ? 'active' : ''}" onclick="_siImg=${i.index};_siRenderReview()" alt="">`).join('')}</div>` : ''}
+        ${post.poster_username || post.permalink ? `<div class="si-poster">${post.poster_username ? `<b>@${_siEsc(post.poster_username)}</b>` : ''}${post.posted_at ? ` · ${_siEsc(new Date(post.posted_at).toLocaleDateString())}` : ''}${post.permalink ? ` · <a href="${_siEsc(post.permalink)}" target="_blank" rel="noopener">View on Instagram ↗</a>` : ''}</div>` : ''}
         <div class="si-caption">${_siEsc(post.caption_clean || '(no caption)')}</div>
         <div class="si-muted" style="margin-top:0.4rem">
-          ${post.post_url ? `<a href="${_siEsc(post.post_url)}" target="_blank" rel="noopener" style="color:var(--accent)">Open post ↗</a> · ` : ''}
+          ${post.post_url && post.post_url !== post.permalink ? `<a href="${_siEsc(post.post_url)}" target="_blank" rel="noopener" style="color:var(--accent)">Open post ↗</a> · ` : ''}
           ${_siEsc(post.platform || '')} · ${_siEsc(post.ingest_method || '')} · posted ${post.posted_at ? new Date(post.posted_at).toLocaleString() : '—'}
           ${post.notes ? `<br>Model notes: ${_siEsc(post.notes)}` : ''}
         </div>
@@ -17134,8 +17246,9 @@ function _siRenderReview() {
           <div class="si-field" style="flex:2 1 200px"><label>Show (${_siEsc(r.show_match_method || 'unattributed')})</label><select id="siF_show_id"><option value="">— None (approves as off-floor) —</option>${showOpts}</select></div>
           ${_siFieldHTML('sold_date', 'Sale date', r.sold_date, null, 'date')}
         </div>
-        <div class="si-actions">
+        <div class="si-actions si-admin-only">
           <button class="btn btn-primary" onclick="siApprove(false)">Approve<span class="si-kbd">A</span></button>
+          <button class="btn btn-ghost" onclick="siNotASale()">Not a sale</button>
           <button class="btn btn-ghost" onclick="siApprove(true)">Approve off-floor</button>
           <select id="siRejectReason" style="background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:0.4rem;font-size:0.8rem">
             <option value="">Reject reason…</option>
@@ -17156,6 +17269,15 @@ function _siRenderReview() {
     </div>`;
   document.getElementById('siF_asking_price_basis')?.addEventListener('change', _siSyncAsking);
   _siSyncAsking();
+  if (_siReadOnly) body.querySelectorAll('input, select, textarea').forEach(el => { el.disabled = true; });
+}
+
+// Extraction confidence: green ≥ 0.85, amber 0.6–0.85, red < 0.6.
+function _siConfBadge(c) {
+  if (c == null || c === '') return '<span class="si-conf low">confidence —</span>';
+  const n = Number(c);
+  const cls = n >= 0.85 ? 'high' : n >= 0.6 ? 'mid' : 'low';
+  return `<span class="si-conf ${cls}">confidence ${Math.round(n * 100)}%</span>`;
 }
 
 // "Same as sold" means asking = sold (the DB enforces it), so the asking
@@ -17200,6 +17322,12 @@ async function siApprove(offfloor, force = false) {
         if (confirm(`This cert already has a sale on ${e.sold_date} at $${Number(e.sold_price).toLocaleString()}. Replace that price with $${Number(fields.sold_price).toLocaleString()}?`)) return siApprove(offfloor, true);
         return;
       }
+      if (out.error === 'gtcr_flagged') {
+        r.stolen_flag = true;
+        _siRenderReview();
+        showToast(out.message || 'Cert flagged in GTCR. Review before approving.', 'var(--danger)');
+        return;
+      }
       if (out.error === 'sold_above_sticker') {
         if (confirm(out.message || 'Sold price is above the sticker. Approve anyway?')) return siApprove(offfloor, true);
         return;
@@ -17211,6 +17339,15 @@ async function siApprove(offfloor, force = false) {
   } catch (err) {
     showToast('Approve failed: ' + err.message, 'var(--danger)');
   }
+}
+
+async function siNotASale() {
+  const r = _siQueue[_siIdx];
+  if (!r) return;
+  try {
+    await _siCall('social-review-api', { action: 'reject', id: r.id, reason: 'not_a_sale' });
+    _siDone('Marked not a sale');
+  } catch (err) { showToast('Failed: ' + err.message, 'var(--danger)'); }
 }
 
 async function siReject() {
@@ -17271,6 +17408,7 @@ function _siKeydown(e) {
   const k = e.key.toLowerCase();
   if (k === 'j') { e.preventDefault(); siMove(1); }
   else if (k === 'k') { e.preventDefault(); siMove(-1); }
+  else if (_siReadOnly) return;
   else if (k === 'a') { e.preventDefault(); siApprove(false); }
   else if (k === 'r') { e.preventDefault(); siReject(); }
   else if (k === 'd') { e.preventDefault(); siFindDuplicates(); }
@@ -17416,6 +17554,67 @@ async function siRerunPost(postId, btn) {
   }
 }
 
+// ── Tagged / Story mentions (IG ingest Phase 2) ──
+const _SI_SOURCE = {
+  tagged:  { method: 'ig_tag',     list: 'siTaggedList',  filter: 'siTaggedFilter',
+             empty: 'No tagged posts yet. Posts that tag @cardshow.io are collected every 3 hours.' },
+  stories: { method: 'ig_mention', list: 'siStoriesList', filter: 'siStoriesFilter',
+             empty: 'Story mentions turn on after Meta approval.' },
+};
+const _SI_OUTCOME = {
+  review:     ['warn', 'In review'],
+  approved:   ['good', 'Approved'],
+  not_sale:   ['',     'Not a sale'],
+  processing: ['',     'Processing…'],
+};
+
+async function siLoadSourcePosts(kind) {
+  const cfg = _SI_SOURCE[kind];
+  const el = cfg && document.getElementById(cfg.list);
+  if (!el) return;
+  el.innerHTML = '<div class="si-muted">Loading…</div>';
+  try {
+    const status = document.getElementById(cfg.filter)?.value || '';
+    const out = await _siCall('social-review-api', { action: 'source_posts', ingest_method: cfg.method, status, limit: 100 });
+    const rows = out.rows || [];
+    if (!rows.length) {
+      el.innerHTML = `<div class="si-card si-empty si-muted">${status ? 'No posts match this filter.' : _siEsc(cfg.empty)}</div>`;
+      return;
+    }
+    el.innerHTML = rows.map(p => {
+      const [cls, label] = _SI_OUTCOME[p.outcome] || ['', p.outcome];
+      const why = p.outcome === 'not_sale'
+        ? (p.filter_reason || p.reject_reason || (p.slabs[0] && p.slabs[0].reject_reason) || p.status || '').replace(/_/g, ' ')
+        : '';
+      const slab = p.slabs.find(e => e.status === 'review') || p.slabs[0];
+      const link = p.permalink || p.post_url;
+      return `<div class="si-pcard">
+        ${p.thumb ? `<img class="si-pthumb" src="${_siEsc(p.thumb)}" alt="" loading="lazy">` : `<div class="si-pthumb">${p.media_type === 'VIDEO' ? '▶' : '🖼'}</div>`}
+        <div style="min-width:0">
+          <div class="si-poster" style="margin-top:0">${p.poster_username ? `<b>@${_siEsc(p.poster_username)}</b>` : '<span class="si-muted">unknown poster</span>'}
+            <span class="si-muted"> · ${p.posted_at ? _siEsc(new Date(p.posted_at).toLocaleDateString()) : '—'}</span>
+            ${p.source_deleted_at ? ' <span class="si-chip bad">deleted on Instagram</span>' : ''}</div>
+          <div class="si-pcap">${_siEsc(p.caption_clean || '(no caption)')}</div>
+          ${slab && slab.player ? `<div class="si-muted" style="margin-top:0.3rem">${_siEsc([slab.grader, slab.grade, slab.player].filter(Boolean).join(' '))}${slab.sold_price ? ` · $${Number(slab.sold_price).toLocaleString()}` : ''}${slab.confidence != null ? ' · ' + _siConfBadge(slab.confidence) : ''}</div>` : ''}
+        </div>
+        <div class="si-pside">
+          <span class="si-chip ${cls}">${_siEsc(label)}${why ? ': ' + _siEsc(why) : ''}</span>
+          ${link ? `<a class="btn btn-ghost" style="font-size:0.72rem" href="${_siEsc(link)}" target="_blank" rel="noopener">View post ↗</a>` : ''}
+          ${p.outcome === 'review' ? `<button class="btn btn-ghost" style="font-size:0.72rem" onclick="siOpenInReview('${_siEsc(p.id)}')">Open in review</button>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+  } catch (err) {
+    el.innerHTML = `<div class="si-card si-muted">Could not load posts: ${_siEsc(err.message)} <button class="btn btn-ghost" style="font-size:0.72rem" onclick="siLoadSourcePosts('${kind}')">Try again</button></div>`;
+  }
+}
+
+let _siJumpPost = null;   // post to show once the review queue has loaded
+function siOpenInReview(postId) {
+  _siJumpPost = postId;
+  siShowView('review');
+}
+
 // ── Report ──
 async function siLoadReport() {
   const el = document.getElementById('siReportBody');
@@ -17457,7 +17656,7 @@ async function siLoadHashtags(body = { op: 'list' }) {
       ? `<table class="si-table"><tr><th>Tag</th><th>Tier</th><th>Show</th><th>Active</th><th></th></tr>${rows.map(h => `<tr>
           <td>#${_siEsc(h.tag)}${h.official ? ' <span class="si-chip good">official</span>' : ''}</td><td>${_siEsc(h.tier)}</td>
           <td>${h.show_id ? _siEsc(_siShowName(h.show_id)) : '—'}</td><td>${h.active_from ? `${_siEsc(h.active_from)} → ${_siEsc(h.active_until)}` : 'always'}</td>
-          <td><button class="btn btn-ghost" style="font-size:0.72rem" onclick="siLoadHashtags({op:'remove',id:'${_siEsc(h.id)}'})">Remove</button></td></tr>`).join('')}</table>`
+          <td><button class="btn btn-ghost si-admin-only" style="font-size:0.72rem" onclick="siLoadHashtags({op:'remove',id:'${_siEsc(h.id)}'})">Remove</button></td></tr>`).join('')}</table>`
       : '<div class="si-muted">No hashtags yet.</div>';
   } catch (err) { if (el) el.innerHTML = `<div class="si-muted">${_siEsc(err.message)}</div>`; }
 }
@@ -17478,7 +17677,7 @@ async function siLoadWatch(body = { op: 'list' }) {
     const rows = out.watchlist || [];
     if (el) el.innerHTML = rows.length
       ? `<table class="si-table"><tr><th>Platform</th><th>Account</th><th></th></tr>${rows.map(w => `<tr><td>${_siEsc(w.platform)}</td><td>@${_siEsc(w.account)}</td>
-          <td><button class="btn btn-ghost" style="font-size:0.72rem" onclick="siLoadWatch({op:'remove',id:'${_siEsc(w.id)}'})">Remove</button></td></tr>`).join('')}</table>`
+          <td><button class="btn btn-ghost si-admin-only" style="font-size:0.72rem" onclick="siLoadWatch({op:'remove',id:'${_siEsc(w.id)}'})">Remove</button></td></tr>`).join('')}</table>`
       : '<div class="si-muted">No accounts yet.</div>';
   } catch (err) { if (el) el.innerHTML = `<div class="si-muted">${_siEsc(err.message)}</div>`; }
 }
@@ -22008,6 +22207,7 @@ async function submitPasswordReset() {
     const { data: seller } = await db.from('sellers').select('handle').eq('id', uid).maybeSingle();
     let adminRow = null;
     if (!seller) ({ data: adminRow } = await db.from('admins').select('id').eq('id', uid).maybeSingle());
+    const isReviewer = !seller && !adminRow && await _isSocialReviewer(uid);
     document.getElementById('pwResetOverlay').classList.add('hidden');
     document.getElementById('pwResetNew').value = '';
     document.getElementById('pwResetConfirm').value = '';
@@ -22018,6 +22218,9 @@ async function submitPasswordReset() {
     } else if (adminRow) {
       window._currentAdminUid = uid;
       loginAsAdmin();
+      showToast('✓ Password updated');
+    } else if (isReviewer) {
+      loginAsAdmin({ reviewer: true });
       showToast('✓ Password updated');
     } else {
       await db.auth.signOut().catch(() => {});

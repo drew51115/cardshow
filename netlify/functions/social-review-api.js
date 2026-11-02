@@ -1,11 +1,22 @@
 // social-review-api.js — admin review queue for Social Sale Ingestion (§9).
-// Admin only (Supabase JWT + admins table); all reads/writes use the service key.
+// Supabase JWT required; all reads/writes use the service key.
+// Admins (admins table) can call everything. Reviewers (social_reviewers table,
+// IG ingest Phase 2: e.g. Meta's App Review login) can call the read actions
+// only (READ_ACTIONS below, plus hashtags/watchlist with op 'list'); anything
+// else returns 403 read_only.
 //
 // POST { action, ... }
+//   whoami     {}                                     → { role: 'admin' | 'reviewer' }
 //   queue      { status?='review', limit?, offset? }  → rows + post + signed image URLs + counts
+//   source_posts { ingest_method: 'ig_tag'|'ig_mention', status?, limit?, offset? }
+//                                                      → Tagged / Story Mentions views: posts with
+//                                                        poster, link, thumbnail and slab outcomes
 //   posts      { limit? }                             → recent intake posts and their status
 //   approve    { id, fields, offfloor?, force? }      → writes social_sales (merges same-cert ±3d);
-//                                                      no show picked → approved_offfloor
+//                                                      no show picked → approved_offfloor.
+//                                                      Blocked (409 gtcr_flagged) when GTCR has a
+//                                                      stolen/lost report on the cert. Adds the
+//                                                      poster to featured_dealers when they consented.
 //   reject     { id, reason }
 //   duplicate  { id, sale_id }
 //   reverify   { id, fields? }                        → back to pending_verify (e.g. after fixing a cert digit)
@@ -22,6 +33,10 @@ const EDITABLE = ['grader', 'cert_number', 'grade', 'grade_label', 'year', 'card
   'asking_price_basis', 'show_id', 'sold_date'];
 const NUMERIC = ['sold_price', 'asking_price'];
 const TITLE_PARTS = ['year', 'card_set', 'player', 'parallel', 'card_number', 'category'];
+// Actions a read-only reviewer may call (hashtags/watchlist only with op 'list').
+const READ_ACTIONS = ['whoami', 'queue', 'source_posts', 'posts', 'find_sales', 'shows', 'report'];
+const SOURCE_METHODS = ['ig_tag', 'ig_mention'];
+const GTCR_FLAG_MESSAGE = 'Cert flagged in GTCR. Review before approving.';
 const LATER_STAGE_REASONS = /^(cert_card_mismatch|field_mismatch:|cert_not_found|cert_unreadable|stolen_report|outside_comp_band:|show_unattributed|show_ambiguous|possible_duplicate|conflicting_price)/;
 
 exports.handler = async (event) => {
@@ -32,12 +47,20 @@ exports.handler = async (event) => {
   try { input = JSON.parse(event.body || '{}'); }
   catch { return P.json(400, { success: false, error: 'invalid_json' }); }
 
-  const admin = await P.requireAdmin(db, event);
-  if (!admin) return P.json(401, { success: false, error: 'admin_only' });
+  const viewer = await P.requireSocialViewer(db, event);
+  if (!viewer) return P.json(401, { success: false, error: 'admin_only' });
+  const readOnlyCall = READ_ACTIONS.includes(input.action)
+    || (['hashtags', 'watchlist'].includes(input.action) && (input.op || 'list') === 'list');
+  if (viewer.role !== 'admin' && !readOnlyCall) {
+    return P.json(403, { success: false, error: 'read_only', message: 'This account can view Social Sales but not change anything.' });
+  }
+  const admin = viewer.user;
 
   try {
     switch (input.action) {
+      case 'whoami':     return P.json(200, { success: true, role: viewer.role });
       case 'queue':      return await queue(db, input);
+      case 'source_posts': return await sourcePosts(db, input);
       case 'posts':      return await posts(db, input);
       case 'approve':    return await approve(db, admin, input);
       case 'reject':     return await reject(db, admin, input);
@@ -82,7 +105,7 @@ async function queue(db, input) {
 
   const postIds = [...new Set((rows || []).map(r => r.post_id))];
   const { data: postRows } = postIds.length
-    ? await db.from('social_posts').select('id, platform, post_url, ingest_method, source_hashtag, caption_clean, posted_at, created_at, extraction_raw').in('id', postIds)
+    ? await db.from('social_posts').select('id, platform, post_url, permalink, media_type, poster_username, ingest_method, source_hashtag, caption_clean, posted_at, created_at, extraction_raw').in('id', postIds)
     : { data: [] };
   const media = await signedMedia(db, postIds);
   const postsById = Object.fromEntries((postRows || []).map(p => [p.id, {
@@ -104,6 +127,52 @@ async function queue(db, input) {
     .eq('status', 'pending_verify').in('verify_status', ['error', 'awaiting_budget']);
   counts.stalled = stalled || 0;
   return P.json(200, { success: true, rows: (rows || []).map(r => ({ ...r, post: postsById[r.post_id] || null })), counts });
+}
+
+// Tagged / Story Mentions views (IG ingest Phase 2). Status filter values:
+// 'review' (a slab waiting in Review), 'approved', 'not_sale' (filtered out or
+// nothing usable found), 'processing', or a raw social_posts status.
+const NOT_SALE_POST = ['filtered_out', 'no_slab', 'multi_card', 'rejected', 'failed'];
+const PROCESSING_POST = ['draft', 'pending_filter', 'queued', 'extracting'];
+const APPROVED_SLAB = ['approved', 'approved_offfloor', 'auto_approved', 'duplicate'];
+
+function postOutcome(post, slabs) {
+  if (slabs.some(e => e.status === 'review')) return 'review';
+  if (slabs.some(e => APPROVED_SLAB.includes(e.status))) return 'approved';
+  if (PROCESSING_POST.includes(post.status) || slabs.some(e => e.status === 'pending_verify' || e.status === 'pending_resolve')) return 'processing';
+  return 'not_sale';
+}
+
+async function sourcePosts(db, input) {
+  const method = SOURCE_METHODS.includes(input.ingest_method) ? input.ingest_method : 'ig_tag';
+  const limit = Math.min(Number(input.limit) || 50, 100);
+  const offset = Math.max(Number(input.offset) || 0, 0);
+  const filter = P.norm(input.status);
+  // Outcome filters need the slab rows, so read a wider window and filter here.
+  const outcomeFilter = ['review', 'approved', 'not_sale', 'processing'].includes(filter) ? filter : null;
+  let q = db.from('social_posts')
+    .select('id, status, reject_reason, filter_stage, filter_reason, error, caption_clean, posted_at, created_at, permalink, post_url, media_type, poster_username, source_deleted_at, distinct_slab_count')
+    .eq('ingest_method', method).order('posted_at', { ascending: false, nullsFirst: false });
+  if (filter && !outcomeFilter) q = q.eq('status', filter);
+  q = outcomeFilter ? q.limit(500) : q.range(offset, offset + limit - 1);
+  const { data, error } = await q;
+  if (error) throw error;
+
+  const ids = (data || []).map(p => p.id);
+  const { data: exts } = ids.length
+    ? await db.from('social_extractions').select('id, post_id, status, reject_reason, confidence, player, grader, grade, sold_price').in('post_id', ids)
+    : { data: [] };
+  const byPost = {};
+  for (const e of exts || []) (byPost[e.post_id] = byPost[e.post_id] || []).push(e);
+  let rows = (data || []).map(p => ({ ...p, slabs: byPost[p.id] || [], outcome: postOutcome(p, byPost[p.id] || []) }));
+  const counts = { all: rows.length };
+  if (outcomeFilter) {
+    for (const o of ['review', 'approved', 'not_sale', 'processing']) counts[o] = rows.filter(r => r.outcome === o).length;
+    rows = rows.filter(r => r.outcome === outcomeFilter).slice(offset, offset + limit);
+  }
+  const media = await signedMedia(db, rows.map(r => r.id));
+  rows = rows.map(r => ({ ...r, thumb: (media[r.id] || [])[0]?.url || null }));
+  return P.json(200, { success: true, rows, counts: outcomeFilter ? counts : null });
 }
 
 async function posts(db, input) {
@@ -235,6 +304,22 @@ async function approve(db, admin, input) {
     return P.json(409, { success: false, error: 'sold_above_sticker', message: 'Sold price is above the sticker. Approve anyway?' });
   }
 
+  // GTCR stolen/lost check on the cert being approved (it may have been edited
+  // since the verify stage). A fresh flag blocks; if GTCR can't be reached, an
+  // earlier flag from the verify stage still blocks.
+  if (next.cert_number) {
+    const certChanged = editedFields.includes('cert_number') || editedFields.includes('grader');
+    const fresh = await P.stolenCheck(next.grader, next.cert_number);
+    const flagged = fresh ? fresh.flagged : (!certChanged && !!ext.stolen_flag);
+    if (fresh) {
+      await db.from('social_extractions').update({ stolen_flag: fresh.flagged, stolen_detail: fresh, updated_at: new Date().toISOString() }).eq('id', ext.id);
+    }
+    if (flagged) {
+      return P.json(409, { success: false, error: 'gtcr_flagged', message: GTCR_FLAG_MESSAGE, detail: fresh || ext.stolen_detail || null });
+    }
+    next.stolen_flag = false;
+  }
+
   const pub = await P.publishExtraction(db, next, { method: 'reviewer', onFloor: !offfloor, force: !!input.force });
   if (pub.conflict) return P.json(409, { success: false, error: 'conflicting_price', existing: pub.existing });
 
@@ -254,9 +339,23 @@ async function approve(db, admin, input) {
   await db.from('social_extractions').update(patch).eq('id', ext.id);
   await P.maybeSchedulePurge(db, ext.post_id);
 
-  const { data: post } = await db.from('social_posts').select('source_hashtag').eq('id', ext.post_id).maybeSingle();
+  const { data: post } = await db.from('social_posts').select('source_hashtag, ingest_method, poster_username, poster_consented').eq('id', ext.post_id).maybeSingle();
   if (post?.source_hashtag) await P.bumpYield(db, post.source_hashtag, { approved: 1, approved_on_floor: offfloor ? 0 : 1 });
+  await featureDealer(db, post);
   return P.json(200, { success: true, sale_id: pub.saleId, merged: pub.merged, offfloor });
+}
+
+// A poster who tagged @cardshow.io (or mentioned it in a Story) consented to
+// being featured. Insert-only: an existing row, including one that opted out,
+// is left as it is. The username never goes on the sale record.
+async function featureDealer(db, post) {
+  const username = P.lc(post?.poster_username).replace(/^@/, '');
+  if (!username || !post.poster_consented) return;
+  const source = { ig_tag: 'tagged_post', ig_mention: 'story_mention' }[post.ingest_method];
+  if (!source) return;
+  const { error } = await db.from('featured_dealers')
+    .upsert({ username, consent_source: source }, { onConflict: 'username', ignoreDuplicates: true });
+  if (error) console.warn('[social-review-api] featured_dealers upsert failed:', error.message);
 }
 
 async function reject(db, admin, input) {
