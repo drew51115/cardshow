@@ -124,6 +124,10 @@ const srv = page => page.evaluate(() => window.__srv);
   await page.click('.dir-filter:has-text("All")'); await page.waitForTimeout(150);
   await page.click('[data-show-id="show_a"] button:has-text("Delete")'); await page.waitForTimeout(600);
   check('delete refused for a show with sales', (await srv(page)).shows.some(x => x.id === 'show_a') && (await page.textContent('#toast')).includes("can't be deleted"));
+  // Social Sales: a show with an approved social sale can't be deleted.
+  await page.evaluate(() => { const S = window.__srv; S.social_sales = [{ id: 'ss1', show_id: 'show_c' }]; localStorage.setItem('__srv', JSON.stringify(S)); });
+  await page.click('[data-show-id="show_c"] button:has-text("Delete")'); await page.waitForTimeout(600);
+  check('delete refused for a show with social sales', (await srv(page)).shows.some(x => x.id === 'show_c') && (await page.textContent('#toast')).includes('social sale'));
   await page.click('[data-show-id="show_b"] button:has-text("Delete")'); await page.waitForTimeout(700);
   s = await srv(page);
   check('merged duplicate deleted', !s.shows.some(x => x.id === 'show_b') && !(await page.$('[data-show-id="show_b"]')) && (await page.textContent('#toast')).includes('deleted'));
@@ -201,13 +205,16 @@ const sellerSeed = today => {
                { id: 'show_y', name: 'Sold Here', status: 'past', access_code: 'SLD', listed: false, created_by: 'u1' }];
     S.show_sellers = [{ show_id: 'show_x', seller_id: 'u2' }];
     S.show_floor_transactions = [{ id: 't1', show_id: 'show_y', sold_price: 5 }];
+    S.shows.push({ id: 'show_z', name: 'Tagged', status: 'upcoming', access_code: 'TAG', listed: false, created_by: 'u1' });
+    S.show_hashtags = [{ id: 'h1', show_id: 'show_z', tag: 'tagged' }];
     localStorage.setItem('__srv', JSON.stringify(S));
   }, true);
-  await page.evaluate(async () => { _isPlatformAdmin = true; await loadShowDirectory(); await dirDeleteShow('show_y'); await dirDeleteShow('show_x'); });
+  await page.evaluate(async () => { _isPlatformAdmin = true; await loadShowDirectory(); await dirDeleteShow('show_y'); await dirDeleteShow('show_z'); await dirDeleteShow('show_x'); });
   await page.waitForTimeout(400);
   const s = await srv(page);
   check('fallback delete: show and its sellers removed', !s.shows.some(x => x.id === 'show_x') && !s.show_sellers.some(r => r.show_id === 'show_x'));
   check('fallback delete: show with sales kept', s.shows.some(x => x.id === 'show_y'));
+  check('fallback delete: show with hashtags kept', s.shows.some(x => x.id === 'show_z'));
   await ctx.close();
 }
 await browser.close();

@@ -160,11 +160,17 @@
       });
       S.show_sellers = S.show_sellers.filter(r => r.show_id !== a.p_from);
       S.show_inventory = S.show_inventory.filter(r => r.show_id !== a.p_from);
+      let socialMoved = 0;
+      (S.social_sales||[]).filter(r => r.show_id === a.p_from).forEach(r => { r.show_id = a.p_into; socialMoved++; });
       Object.assign(S.shows.find(x => x.id === a.p_from), { listed:false, seller_self_join:false, merged_into:a.p_into });
-      data = { ok:true, sellers_moved:moved, cards_moved:cards };
+      data = { ok:true, sellers_moved:moved, cards_moved:cards, social_sales_moved: socialMoved };
     } else if (name === 'delete_show') {
       const sales = (S.show_floor_transactions||[]).filter(t => t.show_id === a.p_show_id).length;
+      const social = (S.social_sales||[]).filter(t => t.show_id === a.p_show_id).length;
+      const tags = (S.show_hashtags||[]).filter(t => t.show_id === a.p_show_id).length;
       if (sales) data = { error:'has_sales', sales };
+      else if (social) data = { error:'has_social_sales', social_sales: social };
+      else if (tags) data = { error:'has_hashtags', hashtags: tags };
       else {
         S.show_inventory = (S.show_inventory||[]).filter(r => r.show_id !== a.p_show_id);
         S.show_sellers = (S.show_sellers||[]).filter(r => r.show_id !== a.p_show_id);

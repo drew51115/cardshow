@@ -37,4 +37,5 @@ psql -d cs_test -f show-directory.test.sql
 psql -d cs_test -f show-status.test.sql      # runs 20261029120000_show_auto_status.sql itself
 psql -d cs_test -f show-mode-images.test.sql # runs 20261030120000_show_mode_images.sql itself (twice)
 psql -d cs_test -f delete-show.test.sql      # runs 20261031120000_delete_show.sql itself (twice)
+psql -d cs_test -f show-directory-social.test.sql # runs 20261105120000_show_directory_social_sales.sql itself (twice)
 ```

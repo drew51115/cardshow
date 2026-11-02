@@ -1,10 +1,10 @@
 -- refresh_show_statuses(): status follows the dates. Run after the migrations
 -- (see README). Prints PASS/FAIL lines.
 insert into public.shows (id, name, status, start_date, end_date) values
-  ('st_past',   'Past show',     'upcoming', current_date - 10, current_date - 8),
-  ('st_live',   'Live show',     'upcoming', current_date - 1,  current_date + 1),
-  ('st_today',  'One day',       'past',     current_date,      null),
-  ('st_future', 'Future show',   'active',   current_date + 5,  current_date + 6),
+  ('st_past',   'Past show',     'upcoming', (now() at time zone 'America/Los_Angeles')::date - 10, (now() at time zone 'America/Los_Angeles')::date - 8),
+  ('st_live',   'Live show',     'upcoming', (now() at time zone 'America/Los_Angeles')::date - 1,  (now() at time zone 'America/Los_Angeles')::date + 1),
+  ('st_today',  'One day',       'past',     (now() at time zone 'America/Los_Angeles')::date,      null),
+  ('st_future', 'Future show',   'active',   (now() at time zone 'America/Los_Angeles')::date + 5,  (now() at time zone 'America/Los_Angeles')::date + 6),
   ('st_nodate', 'No dates',      'active',   null,              null)
 on conflict (id) do update set status = excluded.status, start_date = excluded.start_date, end_date = excluded.end_date;
 update public.shows set timezone = 'Pacific/Kiritimati' where id = 'st_future';  -- UTC+14: still upcoming

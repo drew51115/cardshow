@@ -8,7 +8,7 @@ insert into shows (id, name, start_date, end_date, venue, city, state) values
   ('d_full', 'Monster Show!', current_date, current_date + 2, 'Cal Expo', 'Sacramento', 'CA'),
   ('d_dup',  'Monster Show',  current_date, current_date + 2, 'Cal Expo', 'Sacramento', 'CA'),
   ('d_bare', 'Half Done',     null, null, null, null, null),
-  ('d_tz',   'Tz Show',       current_date - 1, current_date - 1, 'Hall', 'Honolulu', 'HI');
+  ('d_tz',   'Tz Show',       (now() at time zone 'Pacific/Honolulu')::date - 1, (now() at time zone 'Pacific/Honolulu')::date - 1, 'Hall', 'Honolulu', 'HI');
 insert into inventory (id, seller_id, player) values ('d0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-00000000000c', 'X');
 
 create function pg_temp.expect(label text, got jsonb, want jsonb) returns void language plpgsql as $$

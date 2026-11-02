@@ -1154,7 +1154,10 @@ function subscribeShowLive(showId) {
   if (_liveChannel)   { _sb.removeChannel(_liveChannel); _liveChannel = null; }
   if (_livePollTimer) { clearInterval(_livePollTimer); _livePollTimer = null; }
 
-  const refresh = () => fetchInventoryFromDB(showId);
+  // Debounced: a burst of inventory updates (CSV import, the hourly GTCR
+  // recheck) fires one refetch instead of one per row.
+  let refreshTimer = null;
+  const refresh = () => { clearTimeout(refreshTimer); refreshTimer = setTimeout(() => fetchInventoryFromDB(showId), 1500); };
 
   _liveChannel = _sb.channel(`show_inventory_live_${showId}`)
     .on('postgres_changes',
