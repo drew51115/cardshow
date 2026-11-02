@@ -32,6 +32,19 @@ supabase/migrations/20261102120000_gtcr_daily_recheck.sql → inventory.trust_re
 supabase/migrations/20261101120000_gtcr_buyer_badge.sql → inventory.trust_clear_at + trigger that clears it on a cert/grader edit (buyer GTCR badge)
 supabase/migrations/20260925120000_gtcr_trust_check.sql → inventory.trust_flag + cert_trust_checks / gtcr_consent_events / gtcr_registrations (RLS: read-own, no client writes)
 netlify/functions/expire-trade-posts.js  → Scheduled (hourly, see netlify.toml): calls expire_stale_trade_posts() RPC to hide stale trade_posts from the live board
+netlify/lib/social-pipeline.js           → Shared code for Social Sale Ingestion (extraction prompt, price rules, PSA cache, show matching, dedup) — see that section
+netlify/lib/meta-graph.js                → Shared Meta Graph API client: graphGet / graphPaginate, retries, typed errors, token redaction (see "Instagram Social Ingest")
+netlify/functions/ig-tags-collector.js   → Scheduled (every 3h): posts that tag @cardshow.io → v2 social_posts (ingest_method 'ig_tag') → v2 pipeline
+netlify/functions/social-source-check.js → Scheduled (Mon 08:00 UTC): marks approved Instagram posts that were deleted (social_posts.source_deleted_at)
+netlify/functions/meta-graph-health.js   → Admin-only POST {test:'ping'|'braces'|'bad_token'|'collect'}: checks the Meta token and setup; 'collect' runs the tag collector on a deploy preview
+supabase/migrations/20261103120000_ig_social_ingest.sql → integration_health, featured_dealers, Instagram columns on social_posts — run after social_sales v1 + v2
+netlify/functions/social-intake.js       → Admin manual intake: create draft post → add_media (one image per call) → submit
+netlify/functions/prefilter-social-posts-background.js → Discovery funnel (metadata → caption → image triage); queued or filtered_out
+netlify/functions/extract-social-sale-background.js / verify-certs-background.js / resolve-and-route-background.js → the three pipeline stages
+netlify/functions/social-review-api.js   → Admin review queue API (approve / reject / duplicate / reverify / report / hashtags / watchlist)
+netlify/functions/social-pipeline-sweep.js / purge-social-evidence.js / social-slot-planner.js → Scheduled: hourly re-kick, daily evidence purge, weekly IG hashtag plan
+supabase/migrations/20261012120000_social_sales_v1.sql → Social Sale Ingestion schema, RPCs, v_comp_sales view, private social-evidence bucket
+supabase/migrations/20261012140000_social_sales_v2.sql → v1 → v2 upgrade (column names, text grade, admin read RLS, slot cap) — run after v1
 .env.example                             → Placeholder env vars for all keys
 downloads/                               → Static file downloads served by Netlify
 downloads/CardShow_Inventory_Template.xlsx → Pre-filled inventory template (13 example rows); linked from landing page and footer
@@ -760,6 +773,16 @@ Called from `fillFormFromVision` (vision) and several other card-creation paths 
 | `GTCR_API_BASE` | Optional; default `https://thegtcr.com/functions` |
 | `GTCR_REGISTRATION_ENABLED` | Must be exactly `true` to allow consent grant + registration. `true` in production since 2026-10-28; anything else is the kill switch (removals keep running). The separate `GTCR_CONSENT_UI_LAUNCHED` flag is a constant in app.html, not a Netlify variable |
 | `CARDSIGHT_API_KEY` | CardSight AI key — secondary sports card comp source. Free tier: 750 calls/month. cardsight.ai/for-developers |
+| `SOCIAL_PIPELINE_SECRET` | Required for Social Sale Ingestion: the stages send it to each other as `x-social-pipeline-secret` |
+| `SOCIAL_PSA_DAILY_LIMIT` | PSA cert lookups per UTC day for social ingestion (default 80; free tier is 100/day) |
+| `SOCIAL_AUTO_APPROVE` | `true` lets auto-approve run, but only once the precision gate also passes. Default off |
+| `SOCIAL_EVIDENCE_RETENTION_DAYS` | Days evidence images are kept after review finishes (default 30) |
+| `SOCIAL_IG_ACCOUNT` | IG business account the hashtag slot planner plans for (default `cardshow.io`) |
+| `IG_ACCESS_TOKEN` | Meta System User token for @cardshow.io (never expires). Read only by `netlify/lib/meta-graph.js` |
+| `IG_USER_ID` | @cardshow.io Instagram account ID (`17841424832601680`) |
+| `FB_PAGE_ID` | CardShow Facebook Page ID (Phase 3 webhooks, not used yet) |
+| `META_APP_ID` / `META_APP_SECRET` | Meta app. The pair is the app token for the oEmbed fallback in `social-source-check.js`; the secret will also verify webhook signatures (Phase 3) |
+| `META_GRAPH_VERSION` | Graph API version, `v23.0` |
 
 ### Credential Injection (no build step workaround)
 Supabase URL and anon key are **not** hardcoded in tracked files. `netlify.toml` has a `command` that runs `sed` to replace `SUPABASE_URL_PLACEHOLDER` / `SUPABASE_ANON_KEY_PLACEHOLDER` in all three HTML files at deploy time. `SECRETS_SCAN_OMIT_KEYS = "SUPABASE_URL,SUPABASE_ANON_KEY"` prevents Netlify's secrets scanner from blocking the build on the injected values (they are intentionally public publishable keys).
@@ -2423,6 +2446,22 @@ migration, no new external library.
 - **GTCR in the onboarding tour and Feature guide (PR #80, session 2026-10-29)** — new tour screen
   (step 5 of 6) and a "Protect your cards (GTCR)" Feature guide section. See "Seller Onboarding
   Tour + Help Menu".
+- **Instagram Social Ingest, Phases 0–1 (session 2026-11-01)** — shared Meta Graph client,
+  a 3-hourly collector for posts that tag @cardshow.io feeding the v2 social pipeline, and a weekly
+  deleted-post check. Built on PR #74's branch (merged in), which is still unmerged. Phases 2–5 not
+  built. **Requires `20261103120000_ig_social_ingest.sql`** (after the v1 and v2 social migrations).
+  See "Instagram Social Ingest".
+- **Social Sale Ingestion v2 (session 2026-10-12)** — upgrade migration plus code alignment with the
+  rest of the schema: `player`/`year`/`parallel` column names, text grades, a fingerprint copied
+  from `show_floor_transactions`, category/subcategory/card_title, admin read access, the
+  `filtered_out` discovery funnel, and a database-enforced hashtag slot cap. See "v2 upgrade"
+  under "Social Sale Ingestion". **Requires `20261012140000_social_sales_v2.sql`.**
+- **Social Sale Ingestion, Phase 1 (session 2026-10-12)** — admin "📥 Social Sales" tab: manual
+  intake of public sale posts (screenshots, optional link), Claude extraction, PSA cert check,
+  show matching, dedup, and a keyboard-driven review queue writing to a new `social_sales` table
+  (not `show_floor_transactions`). Hashtag registry, watchlist and slot planner built; Instagram/X
+  polling not built yet. See "Social Sale Ingestion". **Requires the
+  `20261012120000_social_sales_v1.sql` migration and `SOCIAL_PIPELINE_SECRET`.**
 - **XLSX import grade-column fix (session 2026-10-02)** — columns blank in the first data row
   (Grade/Grader/Cert # on a raw card) were dropped for the whole XLSX file, so graded cards
   imported as Raw. `readXLSX()`/`openMapper()` now keep every column; a re-upload repairs the
@@ -4805,6 +4844,383 @@ immutable (UPDATE blocked by RLS).
 Insert one `show_floor_transactions` row from the inventory row, joining `shows`/`sellers` for the
 snapshot fields, for `inventory.id = '480b0b72-166f-46d5-8bd2-4827f3251c7f'` and
 `show_id = 'show_mv2j09jb67yk'`. Also add its `show_inventory` row if missing.
+
+## Social Sale Ingestion — Graded Cards (session 2026-10-12)
+
+Turns public Instagram/X posts of show-floor sales into verified, deduplicated sale records.
+Built from Build Spec v1. **Phase 1 is built (manual intake + review loop).** Phase 2 registries
+(hashtags, watchlist, slot planner, caption filter, image triage) are built; the Instagram/X
+pollers are not (they need Meta App Review and an X API plan).
+
+**v1 scope:** graded slabs (PSA/BGS/SGC/CGC/TAG), USD, one slab per post, cash or stated price
+only. Trades, offers, lots and bundles are rejected.
+
+### Key decisions (from the spec)
+- **D1:** approved sales go to `social_sales`, never `show_floor_transactions`, so organizer
+  GMV and sell-through stay platform-only. `v_comp_sales` unions both for comps
+  (service_role only; `security_invoker`).
+- **D2:** no scraping. A pasted URL is only a reference and dedup key; screenshots are what
+  gets read.
+- **D3:** no poster identity on sale records. `social_posts` keeps a hashed `post_key` and a
+  caption with @handles/URLs stripped (`cleanCaption()`).
+  (Changed by the Instagram ingest, 2026-11-01: `social_posts.poster_username` now holds the
+  poster of a tagged post, so they can be credited. Still never on a sale record.)
+- **D4:** images live in the private `social-evidence` bucket until review finishes + 30 days,
+  then `purge-social-evidence` deletes them.
+- **D5:** auto-approve needs `SOCIAL_AUTO_APPROVE=true` **and** ≥200 reviewed rows of the §8
+  pattern at ≥98% precision (`autoApproveGate()`). Every row records `auto_eligible`, so
+  precision is measured while auto-approve is off.
+- **D6:** `graded_certs` caches every grader lookup permanently (PSA free tier is 100/day).
+
+### Pipeline
+```
+social-intake (admin)          create draft → add_media ×N → submit → status 'queued'
+  ↓ kickStage (x-social-pipeline-secret)
+extract-social-sale-background claim_social_posts → Claude (claude-opus-5-5, all images +
+                               caption, one call) → processExtraction():
+                                 single-card gate (distinct_slab_count ≠ 1 or bundle words → multi_card)
+                                 sticker = asking, never sold; caption "asking X, sold Y"
+                                 trade / sticker-only / no cert → rejected
+                               → social_extractions rows 'pending_verify'
+  ↓
+verify-certs-background        graded_certs cache → PSA API (claim_api_call) → card match
+                               → one-digit cert recovery (cache only) → GTCR stolen check
+                               → 'pending_resolve' (budget out: parked, sweep retries)
+  ↓
+resolve-and-route-background   comp-lookup sanity band (0.4×–2.5×) → show attribution →
+                               sale date → same-cert ±3 days check → score → auto or 'review'
+  ↓
+social-review-api (admin)      approve / approve off-floor / reject / duplicate / reverify
+                               → publishExtraction() → social_sales (merges same cert ±3 days,
+                               corroboration_count + 1)
+```
+Each stage is status-driven and idempotent. Stages hand off with `kickStage()` (POST to the next
+background function). `social-pipeline-sweep` re-kicks waiting work hourly and deletes drafts
+older than a day. Claims use `FOR UPDATE SKIP LOCKED` RPCs; a claim older than 15 minutes can be
+retaken.
+
+### Things that differ from the spec, and why
+- **Image uploads are one per call** (`create` → `add_media` → `submit`). A 10-image carousel in
+  one request would exceed Netlify's ~6MB body limit.
+- **Shared module.** The pipeline's logic is in `netlify/lib/social-pipeline.js`, required by
+  each function, rather than duplicated (the usual pattern here). Ten functions share most of
+  it.
+- **Anthropic SDK.** `@anthropic-ai/sdk` was added to `package.json`. Extraction uses
+  `claude-opus-5-5` (effort `high`, server-side `fallbacks: "default"`, checks
+  `stop_reason === 'refusal'`). Image triage uses `claude-haiku-5-5`.
+- **No Kapture.** Nothing Kapture-related exists in this repo, so the stolen check is GTCR only
+  (`GTCR_READ_API_KEY`).
+- **Non-PSA graders.** No cert API is wired for BGS/SGC/CGC/TAG yet (open question 2). They get
+  `verify_status 'unsupported_grader'` and always go to review.
+- **Show score threshold is 0.4.** A city or venue match inside the show's dates is enough, as long
+  as no other show scores within 0.1. Date alone never attributes a post. A show the submitter
+  picks at intake wins outright (`show_match_method 'submitter'`).
+- **Sold above sticker** blocks approval behind a confirm, rather than a hard reject.
+- **Reviewer edits** to a price set its source/basis to `'reviewer'`. The edit diff is stored in
+  `review_edits` / `edited_fields` for precision reporting.
+
+### Admin UI (app.html, "📥 Social Sales" admin tab, `#socialIntakePanel`)
+- **Review:** image with the slab's bbox, caption, editable fields with the grader's record under
+  each (red when it disagrees), reason chips. Keys: `A` approve, `R` reject (pick a reason first),
+  `D` duplicate lookup, `J`/`K` next/prev.
+- **Add posts:** one post (URL, posted time, optional show, caption, 1–10 screenshots), or a bulk
+  drop (each screenshot = one post), optionally run through the discovery caption filter.
+  Images are compressed client-side with `_scanCardCompressImage()` (1600px, JPEG 0.85).
+- **Report:** precision by sold-price source and grader, auto-approve gate status, pipeline
+  counts, PSA lookups used today.
+- **Hashtags & watchlist:** `show_hashtags` (show tags active −1/+2 days around the show) and
+  `social_watchlist`.
+JS lives in the `// ── SOCIAL SALES (admin)` block (`siOpen`, `siLoadQueue`, `siApprove`, …).
+
+### Setup checklist
+1. Run `supabase/migrations/20261012120000_social_sales_v1.sql` (it also creates the private
+   `social-evidence` bucket), then `20261012140000_social_sales_v2.sql`. Run the check query at the
+   end of v2.
+2. Set `SOCIAL_PIPELINE_SECRET` in Netlify (plus the existing `ANTHROPIC_API_KEY`,
+   `PSA_API_TOKEN`, `SUPABASE_SERVICE_KEY`). Redeploy.
+3. Leave `SOCIAL_AUTO_APPROVE` unset until the Report tab shows the gate would pass.
+
+### Not built yet
+- Instagram mentions webhook, tagged-media and hashtag polling, X search (Phase 2). They need Meta
+  App Review / an X plan. Pollers should insert `social_posts` rows with the right
+  `ingest_method` and `source_hashtag`, call `captionFilter()` (stage 2), set status `queued`,
+  and kick extraction. Stage 3 image triage already runs for those methods.
+- Weekly digest, community submission form (Phase 3), seller "claim" of a social sale.
+- `CERT_FORMATS` regexes are starting values; check them against real slabs before go-live.
+
+### Verified
+Pure logic (price rules, single-card gate, caption parsing, card match, show attribution, sale
+date) passed a Node test script. The migration ran twice cleanly on local Postgres 16 with a
+Supabase stub, and the claim/budget RPCs, generated columns, view, and anon/authenticated
+lock-out all behaved as intended. The admin UI was tested in a headless browser against mocked API
+responses. **No live run against Supabase, PSA or Claude has happened yet.**
+
+### v2 upgrade (session 2026-10-12)
+Built from the "v1 → v2 delta" spec. `SOCIAL_INGEST_SPEC_v2.md` and `social_sales_v1_to_v2.sql`,
+which that spec refers to, were not available (not in the repo or Drive). So
+`20261012140000_social_sales_v2.sql` was written against the schema v1 actually created (the
+"v1.2" row of the delta: sticker/sold prices and `show_hashtags` already present). Step 0 and
+Group C applied; Groups A and B were checked and the gaps filled.
+
+**Database (`20261012140000_social_sales_v2.sql`, one transaction, re-runnable):**
+- Renames: `card_subject → player`, `card_year → year`, `card_variant → parallel` on
+  `social_sales` and `social_extractions`; `graded_certs` `subject/brand/variety →
+  player/card_set/parallel`.
+- `grade` is text on all three tables, normalized like `'10'`, `'9.5'`.
+- **`social_sales.card_fingerprint` is copied from `show_floor_transactions`' own generated
+  expression** (read from `pg_attrdef`), because that table was built in the dashboard and its
+  exact expression isn't tracked anywhere. If that table has no generated fingerprint, or the
+  expression can't be reused, it falls back to the documented 7-field format and raises a
+  WARNING. The check query at the bottom of the file compares the two expressions.
+- New `social_sales` columns: `card_title`, `category`, `subcategory`, `is_test`,
+  `api_eligible`. A CHECK makes `asking_price = sold_price` whenever the basis is
+  `assumed_equal_sold`.
+- `social_posts`: `filter_stage`, `filter_reason`, status `pending_filter` / `filtered_out`
+  (v1's `rejected` / `funnel_*` rows are converted), plus a status CHECK.
+- RPCs: `consume_api_budget` → `claim_api_call`; new `claim_hashtag_slot(tag, account)` (30
+  unique tags per IG account per rolling 7 days, advisory-locked) and `claim_filter_posts`.
+  All service-role only.
+- `is_cardshow_admin()` (SECURITY DEFINER) backs an admin-only SELECT policy on every social
+  table. Writes stay service-role only.
+- `v_comp_sales` is readable by signed-in users and excludes test rows on both sides. Each
+  table's RLS decides what shows, so social rows appear only for admins and the service role.
+- v1's view block now skips itself once the columns are renamed, so re-running v1 after v2 is
+  harmless.
+
+**Code:**
+- **Extraction** now asks for `player` / `card_set` / `parallel` (v1 key names still accepted)
+  and for category/subcategory from the app's vocabulary. `resolveCategory()` validates it, with
+  accents and punctuation ignored. In verify, PSA's `Category` fills in a missing category.
+- **Text fields:** `normalizeGrade()` and `normalizeYear()` write grade and year in the formats
+  the app writes to `show_floor_transactions` (`parseFloat` grade, `parseInt` year, so
+  "2018-19" → `2018`). `card_title` keeps the full year and uses the app's `buildCardTitle()`
+  shape.
+- **Reject reason:** a sticker with no sold price is now `no_sold_price` (was `sticker_only`).
+- **Discovery funnel:**
+  - `prefilterPost()` runs three stages: metadata, caption filter, and Haiku image triage.
+  - It is driven by `prefilter-social-posts-background`, which claims `pending_filter` posts.
+  - Survivors go to `queued`; the rest go to `filtered_out` with their stage and reason, and
+    per-stage counts go to `hashtag_yield`.
+  - Image triage moved here from the extract function.
+  - A bulk drop with the filter box ticked goes through it; manual posts skip it.
+- **Show matching** also reads `shows.state`, as a weak signal that can't attribute a post on its
+  own.
+- **Review approve:**
+  - With no show picked, approve saves the sale as `approved_offfloor`, so a post matched on date
+    only lands off-floor.
+  - Under `assumed_equal_sold`, asking always equals sold. In the UI the asking field is locked
+    and follows sold.
+  - Category and subcategory are editable, and `card_title` is rebuilt when its parts change.
+- **Hashtag slots:** the slot planner aligns `week_start` to Monday, the same as
+  `claim_hashtag_slot()`. `P.claimHashtagSlot()` is the wrapper the future IG poller must call
+  before querying a new tag.
+
+**Kept as-is, differing from the delta's wording:**
+- `social_extractions` keeps flat card columns instead of a `card_read` jsonb. The keys inside are
+  the same names.
+- Image triage sends the stored image (≤1600px). There's no server-side resize library, so it is
+  not a separate low-res copy.
+
+**Verified:**
+- Local Postgres 16 with a Supabase stub. `show_floor_transactions` had a generated fingerprint,
+  an integer `year` and a numeric `grade`.
+- Run order v1 → v2 → v2 → v1 → v2: all clean.
+- Data converted as expected. A social sale and a platform sale of the same card and grade got
+  identical fingerprints.
+- A fake show id failed the FK. A mismatched `assumed_equal_sold` asking price failed the CHECK.
+- Slot cap: 30 tags granted, the 31st refused, reuse allowed, a second account independent.
+- Access: a seller saw platform rows only in `v_comp_sales` and no social rows; an admin saw both.
+  Writes from admins were denied, and anon/authenticated calls to `claim_api_call` /
+  `claim_filter_posts` were refused.
+- Node tests covered the new extraction fields, category resolution and prefilter stages (mocked
+  DB). A headless browser tested the review form.
+- **Still no live run against Supabase, PSA or Claude.**
+
+### Price-unknown sales and background slabs (session 2026-10-12)
+Two real "In/Out" posts were rejected before review (a PSA slab posed with fanned cash, "In"/"Out"
+overlays, no stated amount).
+- **Slab count:** the extraction prompt now counts only *subject* slabs (the one being shown as
+  sold), ignoring slabs in a background case or binder. It also reports `background_slab_count`
+  (kept in `extraction_raw`). The stage-3 triage question says the same.
+- **Price unknown → review:** the prompt reports `sale_signal` (In/Out overlay, posed with cash,
+  "sold"-type caption) and `cash_visible`, and only counts cash when every bill is visible.
+  `processExtraction()` sends a slab with no sold price to review (reason `price_unknown`) when
+  there's a sale signal: the model's flags, counted bills, or `SOLD_WORD_RE` in the caption. With
+  no sale signal (e.g. a sticker alone) it is still rejected as `no_sold_price`.
+- A price-unknown row has `sold_price`/`sold_price_source` null and never matches the auto-approve
+  pattern. `sanityFlag()` returns null for it, and a same-cert match is `possible_duplicate`.
+- **Review:** the form shows "sale, price not stated" and the sticker for reference. The reviewer
+  types the sold price (source becomes `reviewer`) or rejects with "Price unclear". With no
+  sticker, asking defaults to the sold price (`assumed_equal_sold`).
+- v2's one-off "reject rows with no sold price" UPDATE was removed, so re-running v2 can't reject
+  these rows.
+- **Run again:** re-uploading the same screenshot is refused (image hash dedup), so Recent posts
+  has a "↻ Run again" button for posts that ended without a sale (rejected, multi_card, no_slab,
+  filtered_out, failed, or read with a rejected slab). `social-review-api` `rerun` deletes the
+  post's extraction rows, resets the post to `queued` and kicks extraction. It refuses a post with
+  a recorded sale, a slab in review, or purged images. The posts list now also shows each read
+  post's slab outcome (e.g. "Read → rejected (no sold price)").
+- **PSA unavailable → review, not parked:** a missing `PSA_API_TOKEN` or a PSA 401/403 (account
+  not approved) now returns `unavailable` from `lookupCert()`, and the slab goes straight to review
+  as `format_only` with reason `cert_api_unavailable` ("PSA check unavailable" chip). Before, these
+  counted as transient errors and parked the slab in `pending_verify` for up to 24 hours (forever on
+  a deploy preview, where the hourly sweep doesn't run). Timeouts and 5xx are still retried.
+  The Review header shows how many slabs are parked, and "Run again" on a parked post retries the
+  stuck stage instead of re-reading the post.
+
+## Instagram Social Ingest — Phases 0 and 1 (session 2026-11-01)
+
+Built from "CardShow: Instagram Social Sales Ingest — Build Spec v1" (2026-10-26). **Only Phases 0
+(Graph client) and 1 (tagged-post collector) are built.** Phase 2 (review views, approve RPC,
+reviewer role), Phase 3 (story mention webhook) and Phases 4–5 (watchlist, hashtags) are not.
+
+### Built on the v2 pipeline, which isn't on main yet
+The spec's ground rule 1 says to reuse the v2 social sale pipeline. That pipeline exists only on
+branch `claude/youthful-dijkstra-ejp2uk` (open PR #74, not merged). This branch merges it in, so
+**merging this work also merges PR #74**, and needs its two migrations run first.
+
+Because v2 already has a `social_posts` table (with `ingest_method 'ig_tag'` already allowed) and a
+`social_watchlist` table, the spec's own `social_posts` table was **not** created. Its fields were
+added to v2's table instead:
+
+| Spec | Here |
+|---|---|
+| `social_posts.source` | v2's `ingest_method` (`'ig_tag'`) |
+| `ig_media_id`, `permalink`, `media_type`, `poster_username`, `poster_ig_scoped_id`, `poster_consented` | new columns on v2's `social_posts` |
+| `caption` | v2's `caption_clean` (@handles and URLs stripped) |
+| `media_url` | not stored; the images are downloaded into v2's private `social-evidence` bucket at collect time (the CDN URL expires) |
+| `media_storage_path` / `delete_media_after` | v2's `social_post_media` rows / `purge_after` (30-day evidence purge) |
+| status `not_sale` | v2 `filtered_out` (caption filter or image triage), `no_slab`, `multi_card` or `rejected` |
+| status `needs_review` / `extracted` | the post's `social_extractions` rows reaching `review` (auto-approve is off) |
+| `classification`, `extraction`, `confidence` | v2's `filter_reason`, `extraction_raw`, and per-slab `social_extractions.confidence` |
+| `show_id` / show matching | v2's `attributeShow()` in the resolve stage, per slab |
+| `shows.social_hashtags` | not added; v2's `show_hashtags` table is the hashtag registry |
+| `social_watchlist` (Phase 4 table) | v2's existing `social_watchlist` |
+
+### Phase 0 — `netlify/lib/meta-graph.js`
+Put in `netlify/lib/` next to `social-pipeline.js`, not `netlify/functions/lib/` as the spec said.
+- `graphGet(path, params, { db?, accessToken? })` builds the URL with `URLSearchParams`, so
+  `media.limit(5){caption}` is percent-encoded correctly.
+- `graphPaginate(path, params, { stopWhen, maxPages, db? })` follows `paging.next`. `stopWhen(item,
+  pageItems)` may be async.
+- Network errors and 5xx are retried 3 times (1s, 2s, 4s).
+- Meta error codes map to typed errors that are not retried: `190` → `TokenError`, `10` / `200–299` →
+  `PermissionError`, `4` / `17` / `32` / `613` → `RateLimitError`, anything else → `GraphError`
+  (with `code` / `subcode`).
+- With `db` passed, a typed error writes an `integration_health` row (`token_invalid` /
+  `permission_missing` / `rate_limited`).
+- The token is never logged, thrown or returned: `redactUrl()` and `scrub()` strip it from every
+  URL and message (tested with a mocked Graph that echoes the token back).
+- **`meta-graph-health.js`** (admin JWT): POST `{test:'ping'}` returns `username` / `media_count`,
+  `{test:'braces'}` reads `media.limit(5){caption}`, and `{test:'bad_token'}` sends a fake token and
+  expects a `TokenError` plus a `token_invalid` row. Use these for the Phase 0 acceptance checks on a
+  deploy, from the browser console as an admin:
+  `fetch('/.netlify/functions/meta-graph-health',{method:'POST',headers:{Authorization:'Bearer '+(await db.auth.getSession()).data.session.access_token},body:JSON.stringify({test:'ping'})}).then(r=>r.json())`
+- **`{test:'collect'}`** runs one `ig-tags-collector` pass (`runCollector()`, `trigger: 'manual_test'`)
+  so it can be tested on a deploy preview, where Netlify doesn't run scheduled functions or allow
+  calling them by URL. It reads 1 page of tags with a 6s budget (this function has Netlify's ~10s
+  limit), so repeat it while the response's `summary.deferred` is above 0. Every run (scheduled
+  too) stores at least one post even when the Instagram read used the whole budget; the first
+  preview test read 3 pages (45 posts) and ran out of time before storing any.
+  `summary.walk_ms` is how long the Instagram read took. Since a test call only reads the newest
+  page, older tagged posts are collected by the production schedule (20 pages, 20s budget). It writes to the same
+  Supabase project as production, so the migrations must have run. The pipeline kick goes to the
+  preview's own `prefilter-social-posts-background` (`siteBase()` reads `DEPLOY_PRIME_URL`). A
+  single slow image download (8s timeout) can still push one call past the limit; just call again.
+
+### Phase 1 — `ig-tags-collector.js` (every 3 hours, netlify.toml)
+1. `GET /{IG_USER_ID}/tags` with the spec's fields plus `thumbnail_url` (so a video contributes its
+   thumbnail), `limit=50`. Stops at a post already in `social_posts` (by `ig_media_id`) or one older
+   than 14 days.
+   **Backfill:** until one run has finished the backfill, the window is 365 days instead, so the
+   existing WCHE posts (August) are picked up once. In backfill mode, posts already stored are
+   skipped instead of ending the walk, so a cut-short run doesn't lose the older posts it didn't
+   reach. A run that processes everything (nothing deferred, no page cap hit, no failures) writes
+   `"backfill_complete":true` in its `integration_health` detail; later runs find that row and use
+   the 14-day window.
+2. New posts are processed oldest first, within a 20s budget (scheduled functions get 30s). If it
+   runs out, the newest posts wait for the next run, which still reaches them.
+3. Each post is inserted as a `draft` (no stage claims drafts), with `ingest_method 'ig_tag'`,
+   `poster_username`, `poster_consented = true`, and the same `post_key` manual intake gives that
+   link. A post already added by manual intake gets its Instagram id attached instead of a duplicate.
+4. Images (each carousel image, a video's thumbnail; max 10, ≤3.3MB, JPEG/PNG/WebP by magic bytes,
+   only from `*.cdninstagram.com` / `*.fbcdn.net`) go into `social-evidence` as `social_post_media`.
+5. The post moves to `pending_filter`, and `prefilter-social-posts-background` is kicked once per run
+   (also when earlier `ig_tag` posts are still waiting in `pending_filter`). If the kick fails, the
+   summary's `pipeline_kick_issue` says why; the usual cause on a deploy preview is
+   `SOCIAL_PIPELINE_SECRET` not being set for the Deploy Previews context. The hourly sweep only
+   runs on production, so on a preview nothing else hands those posts on.
+   From there it's the v2 pipeline: caption filter (enforced for discovery posts), image triage,
+   Claude extraction, PSA check, show matching, review. No sale is written; nothing reaches
+   `show_floor_transactions`.
+6. One `integration_health` row per run (`integration = 'ig_tags_collector'`), `ok` with counts or
+   the typed error's status.
+
+**Change to v2 for caption-only posts.** v2 filtered out any post with no image. `prefilterPost()`,
+`extract-social-sale-background` and `social-review-api`'s `rerun` now accept an `ig_tag` /
+`ig_mention` post with no image when it has a caption (`allowsCaptionOnly()`); image triage is
+skipped for it. Manual intake is unchanged.
+
+Run it by hand: Netlify → Functions → `ig-tags-collector` → Run now (production deploy only, like
+every scheduled function).
+
+### Deleted posts — `social-source-check.js` (Mondays 08:00 UTC)
+Checks `ig_tag` posts from the last 90 days with an approved extraction:
+1. `GET /{ig_media_id}?fields=id` with the system user token.
+2. If that fails, `GET /instagram_oembed?url={permalink}` with the app token
+   (`META_APP_ID|META_APP_SECRET`).
+
+Only an oEmbed "does not exist" (code 24, or 100 with that message) marks the post
+(`source_deleted_at`); anything else is "unknown" and retried next week. **It does not delete the
+sale.** The spec deletes a `show_floor_transactions` row, but social sales live in `social_sales`
+(decided 2026-11-01, see below), and one `social_sales` row can merge several posts
+(`corroboration_count`). How a deleted post updates or removes that row is left for Phase 2.
+
+**Not verified yet (spec's "verify during build"):** there are no Meta credentials in the build
+container, so which method works on the live token is unknown. Graph normally refuses reading
+another account's media by id (error 100/33), so expect method 2. The weekly health row records
+`present_media_id` / `present_oembed` / `oembed_unavailable` counts; update this note from the first
+real run. If `oembed_unavailable` is high, the app needs the "oEmbed Read" feature.
+
+### Migration — `20261103120000_ig_social_ingest.sql`
+Run after `20261012120000_social_sales_v1.sql` and `20261012140000_social_sales_v2.sql`. Adds
+`integration_health`, `featured_dealers` (empty until Phase 2 approval fills it), and the Instagram
+columns on `social_posts` (unique `ig_media_id`, plus `source_checked_at` / `source_deleted_at`).
+Admins can read both new tables (v2's `is_cardshow_admin()`); writes are service-role only.
+
+### Rules
+- **Poster identity never goes on a sale record.** It lives only in `social_posts.poster_username`
+  / `poster_ig_scoped_id` and `featured_dealers`. Approved social sales (`social_sales`) carry no
+  username, and no buyer name or handle is ever stored.
+- Meta credentials are read only inside `netlify/lib/meta-graph.js` (and the oEmbed app token in
+  `social-source-check.js`). Never in app.html, never logged.
+
+### Verified
+- Graph client against a mocked `fetch`: brace encoding, retries and backoff, error mapping,
+  pagination/stop, health rows, token absent from logs, errors and health rows.
+- Collector against a mocked Graph + in-memory DB: inserts tagged posts, carousel/video media, links a
+  post already added by link, no duplicates on a second run (stops on page 1), one health row per
+  run, a token error writes `token_invalid`. Handing the rows to v2's real `prefilterPost()`: the
+  WCHE-style promo was `filtered_out`, the "PSA 10 Charizard sold $850 at WCHE" post was `queued`.
+- Migration on local Postgres 16 with a Supabase stub, after v1 + v2, run twice. Sellers can't read
+  the new tables or social_posts; admins can read but not write; anon has no access.
+- **Not run live** against Meta, Supabase or Claude.
+
+### Decided: approved social sales stay in `social_sales` (2026-11-01)
+The spec's Phase 2 writes approved posts to `show_floor_transactions` with
+`source = 'social_extract'`. **That is overruled: they stay in `social_sales`** (v2's D1), so
+organizer GMV, sell-through and the immutable platform ledger only ever hold platform and manual
+sales. `v_comp_sales` already unions both for comps. When Phase 2 is built, its approve step uses
+v2's `publishExtraction()` instead of the spec's `approve_social_post` inserting into
+`show_floor_transactions`, and the spec's `social_post_transactions` join table isn't needed
+(`social_extractions.social_sale_id` already links a slab to its sale). Nothing writes
+`source = 'social_extract'` rows.
+
+### Still open for Phase 2
+- The spec's `social_posts.show_id uuid` and `transaction_id uuid` don't fit: `shows.id` is text,
+  and v2 tracks show and sale per slab in `social_extractions`.
+- v2 already has an admin "📥 Social Sales" tab with a Review queue; Phase 2 would extend it
+  (Tagged / Story Mentions / Watchlist tabs, reviewer role) rather than add a second section.
 
 ## Show Configuration (Demo Data)
 - **MLP Card Show** — Oct 17-18, 2026 · Grand Hyatt Tampa Bay, FL · Code: MLPTPA (primary demo, shown to buyers without code)

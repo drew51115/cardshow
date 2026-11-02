@@ -28,3 +28,22 @@
 
 [build.processing.html]
   pretty_urls = false
+
+# Social Sale Ingestion: hourly re-kick of any stage with waiting work,
+# daily evidence purge (D4), weekly Instagram hashtag slot plan.
+[functions."social-pipeline-sweep"]
+  schedule = "@hourly"
+
+[functions."purge-social-evidence"]
+  schedule = "@daily"
+
+[functions."social-slot-planner"]
+  schedule = "@weekly"
+
+# Instagram Social Ingest: posts that tag @cardshow.io, every 3 hours, and a
+# weekly check that approved Instagram posts are still up (Mondays 08:00 UTC).
+[functions."ig-tags-collector"]
+  schedule = "0 */3 * * *"
+
+[functions."social-source-check"]
+  schedule = "0 8 * * 1"
