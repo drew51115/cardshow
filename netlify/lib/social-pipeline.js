@@ -167,9 +167,14 @@ function siteBase(event) {
 
 // Fire the next stage. Background functions answer 202 right away, so this
 // returns quickly. Failure is logged; the hourly sweep re-kicks stuck rows.
+let _lastKickError = null;
+function lastKickError() { return _lastKickError; }
+
 async function kickStage(base, fnName, body = {}) {
   const secret = process.env.SOCIAL_PIPELINE_SECRET;
+  _lastKickError = null;
   if (!secret || !base) {
+    _lastKickError = !secret ? 'SOCIAL_PIPELINE_SECRET not set' : 'no site URL';
     console.warn(`[social] cannot kick ${fnName}: ${!secret ? 'SOCIAL_PIPELINE_SECRET not set' : 'no site URL'}`);
     return false;
   }
@@ -179,9 +184,13 @@ async function kickStage(base, fnName, body = {}) {
       headers: { 'Content-Type': 'application/json', [PIPELINE_SECRET_HEADER]: secret },
       body: JSON.stringify({ ...body, base }),
     });
-    if (!res.ok && res.status !== 202) console.warn(`[social] kick ${fnName} → HTTP ${res.status}`);
+    if (!res.ok && res.status !== 202) {
+      _lastKickError = `HTTP ${res.status} from ${base.replace(/^https?:\/\//, '')}`;
+      console.warn(`[social] kick ${fnName} → HTTP ${res.status}`);
+    }
     return res.ok || res.status === 202;
   } catch (err) {
+    _lastKickError = `${err.message} (${base.replace(/^https?:\/\//, '')})`;
     console.warn(`[social] kick ${fnName} failed:`, err.message);
     return false;
   }
@@ -1054,7 +1063,7 @@ module.exports = {
   categoryFromPsa, buildCardTitle, prefilterPost, isActiveShowTag, claimHashtagSlot,
   EXTRACT_MODEL, TRIAGE_MODEL, EVIDENCE_BUCKET, RETENTION_DAYS, GRADERS, FINAL, CRITICAL_FIELDS,
   json, getDb, sha256, norm, lc, numOrNull, isoDate, addDays,
-  requireAdmin, isPipelineCall, siteBase, kickStage,
+  requireAdmin, isPipelineCall, siteBase, kickStage, lastKickError,
   parsePostUrl, postKeyFor, cleanCaption,
   captionAmounts, captionAskSoldPattern, captionFilter,
   extractPost, triageImage, processExtraction, normalizeGrader, normalizeCert,

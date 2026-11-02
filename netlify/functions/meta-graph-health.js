@@ -52,7 +52,7 @@ exports.handler = async (event) => {
         }
       }
       case 'collect': {
-        const r = await runCollector({ budgetMs: COLLECT_BUDGET_MS, maxPages: 1, trigger: 'manual_test' });
+        const r = await runCollector({ budgetMs: COLLECT_BUDGET_MS, maxPages: 1, trigger: 'manual_test', base: P.siteBase(event) });
         return P.json(r.status === 'ok' ? 200 : 502, {
           success: r.status === 'ok', health_status: r.status, error: r.error || null, code: r.code ?? null,
           summary: r.summary || null,

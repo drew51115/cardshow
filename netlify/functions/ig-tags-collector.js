@@ -42,7 +42,7 @@ exports.handler = async () => {
 // 'collect' test calls it on a deploy preview (scheduled functions don't run
 // there) with a shorter budget, since that function has a ~10s limit.
 // Returns { status, summary, httpStatus }; never throws.
-async function runCollector({ budgetMs = TIME_BUDGET_MS, maxPages = null, trigger = 'schedule' } = {}) {
+async function runCollector({ budgetMs = TIME_BUDGET_MS, maxPages = null, trigger = 'schedule', base: baseOverride = null } = {}) {
   const db = P.getDb();
   if (!db) { console.error('[ig-tags] SUPABASE_URL / SUPABASE_SERVICE_KEY not set'); return { status: 'error', error: 'SUPABASE_URL / SUPABASE_SERVICE_KEY not set', httpStatus: 503 }; }
   const igUserId = process.env.IG_USER_ID;
@@ -63,14 +63,17 @@ async function runCollector({ budgetMs = TIME_BUDGET_MS, maxPages = null, trigge
       .eq('ingest_method', 'ig_tag').eq('status', 'pending_filter');
     summary.waiting_for_pipeline = waiting || 0;
     if (summary.inserted || waiting) {
-      const base = P.siteBase();
+      // The manual test passes the URL it was called on, so a deploy preview hands
+      // off to itself rather than to whatever URL the environment names.
+      const base = baseOverride || P.siteBase();
+      summary.pipeline_base = base ? base.replace(/^https?:\/\//, '') : null;
       const kicked = await P.kickStage(base, 'prefilter-social-posts-background', {});
       summary.pipeline_kicked = kicked;
       if (!kicked) {
         summary.pipeline_kick_issue = !process.env.SOCIAL_PIPELINE_SECRET
           ? 'SOCIAL_PIPELINE_SECRET is not set for this deploy context'
           : !base ? 'no site URL (URL / DEPLOY_PRIME_URL) available'
-          : 'kick request failed; see this function log';
+          : `kick request failed (${P.lastKickError() || 'unknown'})`;
       }
     }
     await G.recordHealth(db, 'ok', { new: summary.inserted, ...summary }, INTEGRATION);
