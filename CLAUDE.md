@@ -5145,7 +5145,11 @@ Put in `netlify/lib/` next to `social-pipeline.js`, not `netlify/functions/lib/`
    link. A post already added by manual intake gets its Instagram id attached instead of a duplicate.
 4. Images (each carousel image, a video's thumbnail; max 10, ≤3.3MB, JPEG/PNG/WebP by magic bytes,
    only from `*.cdninstagram.com` / `*.fbcdn.net`) go into `social-evidence` as `social_post_media`.
-5. The post moves to `pending_filter`, and `prefilter-social-posts-background` is kicked once per run.
+5. The post moves to `pending_filter`, and `prefilter-social-posts-background` is kicked once per run
+   (also when earlier `ig_tag` posts are still waiting in `pending_filter`). If the kick fails, the
+   summary's `pipeline_kick_issue` says why; the usual cause on a deploy preview is
+   `SOCIAL_PIPELINE_SECRET` not being set for the Deploy Previews context. The hourly sweep only
+   runs on production, so on a preview nothing else hands those posts on.
    From there it's the v2 pipeline: caption filter (enforced for discovery posts), image triage,
    Claude extraction, PSA check, show matching, review. No sale is written; nothing reaches
    `show_floor_transactions`.

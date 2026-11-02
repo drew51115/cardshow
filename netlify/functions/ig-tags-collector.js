@@ -56,9 +56,22 @@ async function runCollector({ budgetMs = TIME_BUDGET_MS, maxPages = null, trigge
   try {
     const result = await collect(db, igUserId, started, summary, { budgetMs, maxPages });
     Object.assign(summary, result);
-    if (summary.inserted) {
-      const kicked = await P.kickStage(P.siteBase(), 'prefilter-social-posts-background', {});
-      summary.pipeline_kicked = kicked;   // false is fine: the hourly sweep kicks it
+    // Hand off to the v2 pipeline when this run stored posts or earlier ones are
+    // still waiting (an earlier hand-off failed). On production the hourly sweep
+    // would also catch them; on a deploy preview nothing else does.
+    const { count: waiting } = await db.from('social_posts').select('id', { count: 'exact', head: true })
+      .eq('ingest_method', 'ig_tag').eq('status', 'pending_filter');
+    summary.waiting_for_pipeline = waiting || 0;
+    if (summary.inserted || waiting) {
+      const base = P.siteBase();
+      const kicked = await P.kickStage(base, 'prefilter-social-posts-background', {});
+      summary.pipeline_kicked = kicked;
+      if (!kicked) {
+        summary.pipeline_kick_issue = !process.env.SOCIAL_PIPELINE_SECRET
+          ? 'SOCIAL_PIPELINE_SECRET is not set for this deploy context'
+          : !base ? 'no site URL (URL / DEPLOY_PRIME_URL) available'
+          : 'kick request failed; see this function log';
+      }
     }
     await G.recordHealth(db, 'ok', { new: summary.inserted, ...summary }, INTEGRATION);
     console.log('[ig-tags]', JSON.stringify(summary));
