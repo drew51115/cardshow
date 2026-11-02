@@ -38,6 +38,7 @@ netlify/functions/ig-tags-collector.js   → Scheduled (every 3h): posts that ta
 netlify/functions/social-source-check.js → Scheduled (Mon 08:00 UTC): marks approved Instagram posts that were deleted (social_posts.source_deleted_at)
 netlify/functions/meta-graph-health.js   → Admin-only POST {test:'ping'|'braces'|'bad_token'|'collect'}: checks the Meta token and setup; 'collect' runs the tag collector on a deploy preview
 supabase/migrations/20261103120000_ig_social_ingest.sql → integration_health, featured_dealers, Instagram columns on social_posts — run after social_sales v1 + v2
+supabase/migrations/20261104120000_social_reviewer_role.sql → social_reviewers + is_social_reviewer() read-only RLS policies (IG ingest Phase 2)
 netlify/functions/social-intake.js       → Admin manual intake: create draft post → add_media (one image per call) → submit
 netlify/functions/prefilter-social-posts-background.js → Discovery funnel (metadata → caption → image triage); queued or filtered_out
 netlify/functions/extract-social-sale-background.js / verify-certs-background.js / resolve-and-route-background.js → the three pipeline stages
@@ -2446,10 +2447,15 @@ migration, no new external library.
 - **GTCR in the onboarding tour and Feature guide (PR #80, session 2026-10-29)** — new tour screen
   (step 5 of 6) and a "Protect your cards (GTCR)" Feature guide section. See "Seller Onboarding
   Tour + Help Menu".
-- **Instagram Social Ingest, Phases 0–1 (session 2026-11-01)** — shared Meta Graph client,
-  a 3-hourly collector for posts that tag @cardshow.io feeding the v2 social pipeline, and a weekly
-  deleted-post check. Built on PR #74's branch (merged in), which is still unmerged. Phases 2–5 not
-  built. **Requires `20261103120000_ig_social_ingest.sql`** (after the v1 and v2 social migrations).
+- **Instagram Social Ingest, Phase 2 (session 2026-11-02)** — Social Sales tab gains Tagged /
+  Story mentions / Watchlist views, a confidence badge, poster + Instagram link on review cards,
+  "Not a sale", a GTCR block at approval, `featured_dealers` on approval, and a read-only reviewer
+  role for Meta's App Review. **Requires `20261104120000_social_reviewer_role.sql`.** See "Phase 2"
+  under "Instagram Social Ingest".
+- **Instagram Social Ingest, Phases 0–1 (session 2026-11-01, merged with PR #83)** — shared Meta
+  Graph client, a 3-hourly collector for posts that tag @cardshow.io feeding the v2 social pipeline,
+  and a weekly deleted-post check. PR #83 also merged #74 (v2 social pipeline). **Requires
+  `20261103120000_ig_social_ingest.sql`** (after the v1 and v2 social migrations).
   See "Instagram Social Ingest".
 - **Social Sale Ingestion v2 (session 2026-10-12)** — upgrade migration plus code alignment with the
   rest of the schema: `player`/`year`/`parallel` column names, text grades, a fingerprint copied
@@ -5068,11 +5074,17 @@ overlays, no stated amount).
   The Review header shows how many slabs are parked, and "Run again" on a parked post retries the
   stuck stage instead of re-reading the post.
 
-## Instagram Social Ingest — Phases 0 and 1 (session 2026-11-01)
+## Instagram Social Ingest — Phases 0, 1 and 2 (sessions 2026-11-01/02)
 
-Built from "CardShow: Instagram Social Sales Ingest — Build Spec v1" (2026-10-26). **Only Phases 0
-(Graph client) and 1 (tagged-post collector) are built.** Phase 2 (review views, approve RPC,
-reviewer role), Phase 3 (story mention webhook) and Phases 4–5 (watchlist, hashtags) are not.
+Built from "CardShow: Instagram Social Sales Ingest — Build Spec v1" (2026-10-26). **Phases 0
+(Graph client), 1 (tagged-post collector) and 2 (admin views, reviewer role) are built.** Phase 3
+(story mention webhook) and Phases 4–5 (watchlist collector, hashtag search) are not.
+
+**Live since 2026-11-02:** PR #83 merged; the first scheduled production run collected 7 posts.
+All tagged posts so far were vendor announcements and promos, which the caption filter correctly
+dropped (`kill_signal` / `no_sale_signal`). A deploy preview's hand-off to the next stage must go to
+the preview itself: the `collect` test passes its own URL (`runCollector({ base })`), and a failed
+hand-off now reports where it went and why (`summary.pipeline_kick_issue`, `pipeline_base`).
 
 ### Built on the v2 pipeline, which isn't on main yet
 The spec's ground rule 1 says to reuse the v2 social sale pipeline. That pipeline exists only on
@@ -5216,11 +5228,58 @@ v2's `publishExtraction()` instead of the spec's `approve_social_post` inserting
 (`social_extractions.social_sale_id` already links a slab to its sale). Nothing writes
 `source = 'social_extract'` rows.
 
-### Still open for Phase 2
-- The spec's `social_posts.show_id uuid` and `transaction_id uuid` don't fit: `shows.id` is text,
-  and v2 tracks show and sale per slab in `social_extractions`.
-- v2 already has an admin "📥 Social Sales" tab with a Review queue; Phase 2 would extend it
-  (Tagged / Story Mentions / Watchlist tabs, reviewer role) rather than add a second section.
+### Phase 2 — Social Sales admin views and reviewer role (session 2026-11-02)
+Extends v2's existing "📥 Social Sales" admin tab instead of adding a second section.
+
+**Sub-tabs:** Review queue (default) · Tagged · Story mentions · Watchlist · Hashtags · Add posts
+(admin only) · Report.
+- **Tagged / Story mentions** (`siLoadSourcePosts()`, API `source_posts`): `ig_tag` / `ig_mention`
+  posts, newest first, each with thumbnail, @poster, date, caption, the slab read, and an outcome
+  chip (In review / Approved / Not a sale + reason / Processing). Filter by outcome. "Open in review"
+  jumps to that post in the queue; "View post" opens the Instagram permalink. Story mentions shows
+  "Story mentions turn on after Meta approval." until Phase 3 exists.
+- **Watchlist** is its own sub-tab now, with a disabled "Fetch recent posts · Available after Meta
+  approval" button (Phase 4).
+- **Review card:** confidence badge (green ≥ 0.85, amber 0.6–0.85, red < 0.6, `_siConfBadge()`),
+  @poster, date and "View on Instagram" link, plus a **Not a sale** button (`siNotASale()`, rejects
+  with reason `not_a_sale`). Below 600px the action buttons stack full-width.
+
+**Approve (`social-review-api.js` `approve`):**
+- Still writes `social_sales` through v2's `publishExtraction()` (decided 2026-11-01, see below), so
+  the spec's `approve_social_post` RPC and `social_post_transactions` table were not built.
+- **GTCR block:** when the cert number is set, a fresh `P.stolenCheck()` runs. A stolen or lost
+  report returns 409 `gtcr_flagged` with "Cert flagged in GTCR. Review before approving." If GTCR
+  can't be reached, an earlier flag from the verify stage still blocks, unless the reviewer changed
+  the cert or grader. Nothing overrides the block; fix the cert (if it was misread) or reject.
+- **Featured dealers:** on approval, a post with `poster_consented = true` adds its poster to
+  `featured_dealers` (`tagged_post` for `ig_tag`, `story_mention` for `ig_mention`). Insert-only, so
+  an existing row, including an opted-out one, is left alone. The username is never put on the sale.
+- `reviewed_by` / `reviewed_at` are set as before.
+
+**Reviewer role (for Meta's App Review test login):**
+- Table `social_reviewers` (id → `auth.users`), from `20261104120000_social_reviewer_role.sql`.
+  `is_social_reviewer()` adds read-only SELECT policies on the social tables. There are no write
+  policies for signed-in users, so RLS refuses any write from the browser.
+- `P.requireSocialViewer()` returns `{ user, role: 'admin' | 'reviewer' }`. The API lets reviewers call
+  `whoami`, `queue`, `source_posts`, `posts`, `find_sales`, `shows`, `report`, and `hashtags` /
+  `watchlist` with op `list`; anything else returns 403 `read_only`.
+- **Sign-in:** the Show Admin login (and the password-reset landing) checks `admins`, then
+  `social_reviewers` (`_isSocialReviewer()`), and calls `loginAsAdmin({ reviewer: true })`. Reviewers
+  get only the Social Sales tab (Shows tab, sidebar and the Admin/Buyer switch hidden), "Reviewer · Read-only" in the nav,
+  a read-only notice, disabled fields, and no action buttons (`body.si-readonly` hides
+  `.si-admin-only`; the J/K keys still work, A/R/D don't). `_siReadOnly` resets on sign-out.
+- **Creating the Meta test login:** Supabase → Authentication → Users → Add user (email + password,
+  auto-confirm), then `INSERT INTO social_reviewers (id, note) VALUES ('<user uuid>', 'Meta App Review');`.
+  Give Meta that email and password, with "sign in under Show Admin".
+
+**Verified:** headless browser with mocked API responses, as admin and as reviewer, at 1280px and
+390px (no sideways scroll); the review API against a fake DB (reviewer writes refused, GTCR block,
+featured dealer insert); the migration twice on local Postgres 16 (reviewer reads, seller sees
+nothing, reviewer writes and self-insert refused). **Not run live yet.**
+
+**Spec items that don't fit this schema:** `social_posts.show_id` / `transaction_id` (show and sale
+are tracked per slab in `social_extractions`, and `shows.id` is text); the spec's per-item "price
+type" field (v2 only records sold sales and has sold/asking price sources instead).
 
 ## Show Configuration (Demo Data)
 - **MLP Card Show** — Oct 17-18, 2026 · Grand Hyatt Tampa Bay, FL · Code: MLPTPA (primary demo, shown to buyers without code)

@@ -152,6 +152,22 @@ async function requireAdmin(db, event) {
   return row ? data.user : null;
 }
 
+// Social Sales access: admins can do everything; a row in social_reviewers
+// (Phase 2, e.g. Meta's App Review login) gets read-only access.
+// Returns { user, role: 'admin' | 'reviewer' } or null.
+async function requireSocialViewer(db, event) {
+  const auth  = event.headers.authorization || event.headers.Authorization || '';
+  const token = auth.replace(/^Bearer\s+/i, '').trim();
+  if (!db || !token) return null;
+  const { data, error } = await db.auth.getUser(token);
+  if (error || !data?.user) return null;
+  const { data: admin } = await db.from('admins').select('id').eq('id', data.user.id).maybeSingle();
+  if (admin) return { user: data.user, role: 'admin' };
+  const { data: reviewer, error: rErr } = await db.from('social_reviewers').select('id').eq('id', data.user.id).maybeSingle();
+  if (rErr && !/social_reviewers/.test(rErr.message || '')) console.warn('[social] reviewer lookup failed:', rErr.message);
+  return reviewer ? { user: data.user, role: 'reviewer' } : null;
+}
+
 function isPipelineCall(event) {
   const secret = process.env.SOCIAL_PIPELINE_SECRET;
   const got = event.headers[PIPELINE_SECRET_HEADER] || event.headers[PIPELINE_SECRET_HEADER.toLowerCase()];
@@ -1063,7 +1079,7 @@ module.exports = {
   categoryFromPsa, buildCardTitle, prefilterPost, isActiveShowTag, claimHashtagSlot,
   EXTRACT_MODEL, TRIAGE_MODEL, EVIDENCE_BUCKET, RETENTION_DAYS, GRADERS, FINAL, CRITICAL_FIELDS,
   json, getDb, sha256, norm, lc, numOrNull, isoDate, addDays,
-  requireAdmin, isPipelineCall, siteBase, kickStage, lastKickError,
+  requireAdmin, requireSocialViewer, isPipelineCall, siteBase, kickStage, lastKickError,
   parsePostUrl, postKeyFor, cleanCaption,
   captionAmounts, captionAskSoldPattern, captionFilter,
   extractPost, triageImage, processExtraction, normalizeGrader, normalizeCert,
