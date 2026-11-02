@@ -7,8 +7,9 @@
 //   bad_token the same ping with a deliberately invalid token → expects TokenError and an
 //             integration_health 'token_invalid' row
 //   collect   one ig-tags-collector run, for deploy previews where scheduled functions
-//             don't run. 6s budget (this function has a ~10s limit); call it again until
-//             summary.deferred is 0. Writes to the same Supabase project as production.
+//             don't run. 1 page of tags and a 6s budget (this function has a ~10s limit),
+//             always storing at least one post; call it again until summary.deferred is 0.
+//             Writes to the same Supabase project as production.
 // Every test writes an integration_health row. No token is ever returned.
 
 const P = require('../lib/social-pipeline');
@@ -51,7 +52,7 @@ exports.handler = async (event) => {
         }
       }
       case 'collect': {
-        const r = await runCollector({ budgetMs: COLLECT_BUDGET_MS, maxPages: 3, trigger: 'manual_test' });
+        const r = await runCollector({ budgetMs: COLLECT_BUDGET_MS, maxPages: 1, trigger: 'manual_test' });
         return P.json(r.status === 'ok' ? 200 : 502, {
           success: r.status === 'ok', health_status: r.status, error: r.error || null, code: r.code ?? null,
           summary: r.summary || null,

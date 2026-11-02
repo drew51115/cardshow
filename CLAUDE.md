@@ -5118,8 +5118,12 @@ Put in `netlify/lib/` next to `social-pipeline.js`, not `netlify/functions/lib/`
   `fetch('/.netlify/functions/meta-graph-health',{method:'POST',headers:{Authorization:'Bearer '+(await db.auth.getSession()).data.session.access_token},body:JSON.stringify({test:'ping'})}).then(r=>r.json())`
 - **`{test:'collect'}`** runs one `ig-tags-collector` pass (`runCollector()`, `trigger: 'manual_test'`)
   so it can be tested on a deploy preview, where Netlify doesn't run scheduled functions or allow
-  calling them by URL. It uses a 6s budget and at most 3 pages (this function has Netlify's ~10s
-  limit), so repeat it while the response's `summary.deferred` is above 0. It writes to the same
+  calling them by URL. It reads 1 page of tags with a 6s budget (this function has Netlify's ~10s
+  limit), so repeat it while the response's `summary.deferred` is above 0. Every run (scheduled
+  too) stores at least one post even when the Instagram read used the whole budget; the first
+  preview test read 3 pages (45 posts) and ran out of time before storing any.
+  `summary.walk_ms` is how long the Instagram read took. Since a test call only reads the newest
+  page, older tagged posts are collected by the production schedule (20 pages, 20s budget). It writes to the same
   Supabase project as production, so the migrations must have run. The pipeline kick goes to the
   preview's own `prefilter-social-posts-background` (`siteBase()` reads `DEPLOY_PRIME_URL`). A
   single slow image download (8s timeout) can still push one call past the limit; just call again.

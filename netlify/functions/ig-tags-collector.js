@@ -103,18 +103,22 @@ async function collect(db, igUserId, started, summary, { budgetMs = TIME_BUDGET_
     return Number.isFinite(ts) && ts < cutoff;
   };
 
+  const walkStarted = Date.now();
   const walk = await G.graphPaginate(`${igUserId}/tags`,
     { fields: FIELDS, limit: 50 }, { stopWhen, maxPages: maxPages || (backfill ? 20 : 5) });
   const items = walk.items.filter(i => !known.has(i.id));
   const truncated = !!walk.truncated;
   summary.fetched = walk.items.length;
   summary.pages = walk.pages;
+  summary.walk_ms = Date.now() - walkStarted;
 
   // Oldest first: if the run is cut short, what's left is the newest posts,
   // which the next run still reaches before it hits one we already have.
   const ordered = items.slice().sort((a, b) => (Date.parse(a.timestamp) || 0) - (Date.parse(b.timestamp) || 0));
   for (let i = 0; i < ordered.length; i++) {
-    if (Date.now() - started > budgetMs) { summary.deferred = ordered.length - i; break; }
+    // Always store at least one post per run, so a slow Instagram read can't use
+    // the whole budget every time and leave a run that never makes progress.
+    if (i > 0 && Date.now() - started > budgetMs) { summary.deferred = ordered.length - i; break; }
     try {
       const r = await ingestItem(db, ordered[i]);
       summary[r.result]++;
