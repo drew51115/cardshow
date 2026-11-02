@@ -5265,7 +5265,7 @@ Extends v2's existing "📥 Social Sales" admin tab instead of adding a second s
   `watchlist` with op `list`; anything else returns 403 `read_only`.
 - **Sign-in:** the Show Admin login (and the password-reset landing) checks `admins`, then
   `social_reviewers` (`_isSocialReviewer()`), and calls `loginAsAdmin({ reviewer: true })`. Reviewers
-  get only the Social Sales tab (Shows tab and sidebar hidden), "Reviewer · Read-only" in the nav,
+  get only the Social Sales tab (Shows tab, sidebar and the Admin/Buyer switch hidden), "Reviewer · Read-only" in the nav,
   a read-only notice, disabled fields, and no action buttons (`body.si-readonly` hides
   `.si-admin-only`; the J/K keys still work, A/R/D don't). `_siReadOnly` resets on sign-out.
 - **Creating the Meta test login:** Supabase → Authentication → Users → Add user (email + password,

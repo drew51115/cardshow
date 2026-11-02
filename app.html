@@ -13005,6 +13005,9 @@ function loginAsAdmin(opts = {}) {
   if (showsTabBtn) showsTabBtn.style.display = reviewer ? 'none' : '';
   const mainSidebarAdm = document.getElementById('mainSidebar');
   if (mainSidebarAdm) mainSidebarAdm.style.display = reviewer ? 'none' : '';
+  // Reviewers don't get the Admin/Buyer view switch (signOut() shows it again).
+  const navTabsAdm = document.getElementById('navTabs');
+  if (navTabsAdm) navTabsAdm.style.display = reviewer ? 'none' : '';
   document.getElementById('sellerQrPanel').classList.remove('visible');
   document.getElementById('sellerShowsPanel').style.display     = 'none';
   document.getElementById('sellerUploadSection').style.display  = 'none';
