@@ -13,7 +13,7 @@
 // bucket), Log a manual sale in-flow, Recent scans, and an IndexedDB outbox so
 // sales and captures made with no signal sync exactly once later.
 
-const SHOW_MODE_V2_ENABLED = false;
+const SHOW_MODE_V2_ENABLED = true;
 const SHOW_MODE_TEST_KEY = 'showModeTest';
 function _smTestOverride() {
   try {

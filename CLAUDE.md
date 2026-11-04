@@ -5070,7 +5070,7 @@ approval; seller requests included; recurring series not built).
   request status in Join a show; the owner sees the tab badge); editing a request's details before
   linking.
 
-## Show Mode v2 (in progress — Phases 1–3 shipped, sessions 2026-10-23/24)
+## Show Mode v2 (Phases 1–4 shipped, on for all sellers since 2026-11-04)
 
 Mobile-first seller screens for a live show, built from the "Show Mode Seller Flow" spec
 (Monster Show feedback: hard-to-find mark-sold, refresh logged sellers out, case-scan timeouts).
@@ -5080,9 +5080,10 @@ card etc. still open on top). All logic lives in **`js/show-mode.js`**, loaded r
 app.html's main script (it must load first: app.html's `updateStats()` reads `_smShowId`). Its
 CSS (`--sm-*` tokens, scoped to `#showModeRoot`) stays in app.html.
 
-**Flag:** `SHOW_MODE_V2_ENABLED = false` (in js/show-mode.js). Test switch `?show_mode=1` (`=0`
-off; localStorage `showModeTest`; stripped from the URL). Session restore and the service worker
-are **not** flagged.
+**Flag:** `SHOW_MODE_V2_ENABLED = true` (in js/show-mode.js), turned on for everyone 2026-11-04.
+Set it back to `false` (and bump the `?v=` on its script tag) to hide Show Mode again; the test
+switch `?show_mode=1` (`=0` off; localStorage `showModeTest`) then still opens it on one browser.
+Session restore and the service worker are **not** flagged.
 
 **Routing:** hash routes `#/sm/<showId>[/inventory|/sell|/log|/confirm|/sold/<clientSaleId>|/scans|/addone|/addtype|/add/...]`
 (`/show/*` already rewrites to show.html). `smRoute()` on `hashchange`; `smGo(path, replace)`.
