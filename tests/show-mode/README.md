@@ -19,6 +19,7 @@ node show-status.e2e.mjs "iPhone 13"         # Show status follows the dates (Up
 node images.e2e.mjs "iPhone 13"              # Phase 4: card images, catalog ids, share-card photo + handle opt-in
 node double-sale-offline.e2e.mjs "iPhone 13" # double-sale dialog + offline inventory (cards and shows saved on the device)
 node auth-signout.e2e.mjs "iPhone 13"        # sign out → the sign-in button works again (was stuck on "Loading…")
+node seller-shows-order.e2e.mjs "iPhone 13"  # My Shows lists the most recent show first, undated shows last
 node card-image.test.mjs                     # netlify/functions/card-image.js with CardSight stubbed (no browser)
 ```
 Set `CHROMIUM_PATH` to use a specific Chromium (the cloud container has `/opt/pw-browsers/chromium`).

@@ -4953,6 +4953,10 @@ still add sellers, assign tables and remove anyone.
   `show_sellers` row. An organizer-added seller gets `organizer_added` and must ask the
   organizer. Errors come back as `{error: '...'}`, mapped by `JOIN_SHOW_ERRORS`. Tested in
   `tests/show-mode/self-join.test.sql`.
+- **My Shows order (session 2026-11-04):** `renderSellerShowsList()` lists the most recent show
+  first (start date, else the date parsed from the display text, descending); shows with no
+  readable date go last. Before, the order was `shows{}` insertion order (oldest created first).
+  Test: `tests/show-mode/seller-shows-order.e2e.mjs`.
 - **Seller UI (app.html):** **+ Join a show** in the My Shows panel header opens
   `#joinShowOverlay` (`openJoinShow(opts)` / `renderJoinShowList()` / `joinShowAsSeller()`):
   shows from `_joinableShows()`, today's first (with a Today tag), then by date, searchable by

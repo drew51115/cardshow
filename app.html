@@ -15014,7 +15014,14 @@ function renderSellerShowsList() {
   if (!el || currentRole !== 'seller') return;
   gsRender();
   const handle = currentSeller;
-  const available = Object.values(shows).filter(s => s.sellers.has(handle));
+  // Most recent show first (latest start date at the top); shows with no
+  // readable date go last.
+  const available = Object.values(shows).filter(s => s.sellers.has(handle))
+    .sort((a, b) => {
+      const ka = _showSortKey(a), kb = _showSortKey(b);
+      if (ka === '9999' || kb === '9999') return (ka === '9999') - (kb === '9999');
+      return kb.localeCompare(ka);
+    });
 
   if (!available.length) {
     el.innerHTML = '<div style="font-size:0.78rem;color:var(--muted);padding:0.3rem 0">You haven\'t joined a show yet.<br>Tap <strong style="color:var(--text)">+ Join a show</strong> to add the show you\'re vending at.</div>';
