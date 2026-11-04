@@ -59,7 +59,7 @@ js/trade-zone.js                         → Guest auth, post/board/propose/conf
 js/trade-board.js                        → Realtime board rendering + report aggregation for trade-board.html
 js/trade-share.js                        → Phase 4 canvas compositor + Web Share API for the branded trade graphic
 supabase/migrations/20260825120000_trade_zone.sql → Trade Zone schema, storage buckets, RLS, and RPC functions — run in Supabase SQL editor
-js/show-mode.js                   → Show Mode v2 (flag show_mode_v2): routing, outbox, captures, identification, all Show Mode screens — loaded by app.html before its main script (bump its ?v= on change)
+js/show-mode.js                   → Show Mode v2 (SHOW_MODE_V2_ENABLED, on since 2026-11-04): routing, outbox, captures, identification, all Show Mode screens — loaded by app.html before its main script (bump its ?v= on change)
 js/show-mode-scan.js              → Show Mode case scan (screens A–D): per-photo queue, review, commit — loaded right after js/show-mode.js
 netlify/functions/cardsight-identify.js → Serverless: POST {image_base64, media_type} → CardSight catalog identification (Show Mode; runs beside scan-card.js)
 netlify/functions/card-image.js   → Serverless: GET ?id=<CardSight catalog id> → stock card image, CDN-cached 30 days (Show Mode Phase 4)
@@ -2531,6 +2531,16 @@ migration, no new external library.
 - **Seller self-join (session 2026-10-27)** — sellers add themselves to a show with
   "+ Join a show"; organizers see a "joined themselves" tag and can switch it off per show;
   Show Mode requires joining first. See "Seller Self-Join".
+- **Show Mode v2, Phases 1–4 (PR #78, merged 2026-11-04)** — mobile-first seller screens for a
+  live show: home, sell by camera or search, confirm/sold/undo, log a sale, inventory, recent
+  scans, case scan, card images, share-card handle opt-in, offline outbox, double-sale dialog and
+  offline inventory. **On for all sellers** (`SHOW_MODE_V2_ENABLED = true`). Merged together with
+  seller self-join, the Show Directory, automatic show status and the Show Directory Social Sales
+  fixes; all 7 migrations were run in production before the merge. See "Show Mode v2".
+- **Sign-in button stuck on "Loading…" after sign-out (session 2026-11-04, PR #78)** — the Enter
+  button stayed disabled after a successful sign-in and sign-out never reset it.
+  `_resetAuthSubmit()` / `#authSubmitBtn` fix it. See "Sign-in button stuck on "Loading…" after
+  sign-out".
 
 ### Tier 1 — Ship before beta show
 - **Tighten RLS policies** (urgent, high complexity) — replace `using (true)` with `auth.uid() = seller_id`
