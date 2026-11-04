@@ -4721,6 +4721,21 @@ page with no way to set a new password. There was no recovery handling at all: n
 - **8-character minimum:** sign-up still allows 6. Confirm the rule, and the Supabase
   project's own minimum.
 
+### Sign-in button stuck on "Loading…" after sign-out (session 2026-11-04)
+Seller report: after signing out, the Enter button on the sign-in screen read "Loading…" and did
+nothing, so nobody could sign back in without reloading the page.
+- **Cause:** `submitAuth()` disables the button and sets "Loading…" while it signs in. Error paths
+  reset it (`_setAuthError()`), but a successful sign-in only hides `#authOverlay`, so the button
+  stayed disabled. `signOut()` showed the overlay again without touching the button. Since session
+  restore (2026-10-23) sellers rarely reload, so the stuck button stayed stuck.
+- **Fix:** the button has an id, `#authSubmitBtn`, and every lookup uses it (the old
+  `querySelector('.auth-box .btn-primary')` depended on DOM order). `_resetAuthSubmit()` puts it
+  back to "Enter →" / "Create Account →", enabled. `_setAuthError()` and `signOut()` call it, and
+  `signOut()` also closes the Forgot password panel. `submitAuth()` ignores a second tap or Enter
+  key press while a sign-in is already running.
+- **Test:** `tests/show-mode/auth-signout.e2e.mjs` (sign in and out twice, sign out from the
+  sign-up and forgot-password states, error re-enables the button).
+
 ### Self-service "Forgot password?" (session 2026-10-02)
 - A **Forgot password?** link sits under the password field in the sign-in box (seller sign-in
   and Show Admin; hidden in seller sign-up mode via `toggleAuthMode()`/`setAuthRole()`).

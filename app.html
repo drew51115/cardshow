@@ -4983,15 +4983,14 @@
       <button type="button" class="auth-link" onclick="openForgotPassword()">Forgot password?</button>
     </div>
     <div class="auth-error" id="authError"></div>
-    <button class="btn btn-primary" style="width:100%" onclick="submitAuth()">Enter →</button>
+    <button class="btn btn-primary" id="authSubmitBtn" style="width:100%" onclick="submitAuth()">Enter →</button>
 
     <div style="margin-top:1.2rem">
       <button class="btn btn-ghost" style="width:100%;justify-content:center" onclick="enterAsBuyer()">Browse as Buyer →</button>
     </div>
     </div>
 
-    <!-- Forgot password. After the Enter button on purpose: submitAuth() finds its
-         button with querySelector('.auth-box .btn-primary'), which must match Enter first. -->
+    <!-- Forgot password panel. The Enter button above is found by its id (authSubmitBtn). -->
     <div id="authForgotPanel" style="display:none">
       <div class="pw-reset-title">Reset Your Password</div>
       <div class="auth-hint">Enter the email you sign in with. We'll email you a link to set a new password.</div>
@@ -5006,8 +5005,7 @@
 </div>
 
 <!-- ═══════════════ SET NEW PASSWORD (password-reset link) ═══════════════ -->
-<!-- After #authOverlay on purpose: submitAuth() finds its button with
-     querySelector('.auth-box .btn-primary'), which must match the sign-in box first. -->
+<!-- Set-new-password overlay. Sits after #authOverlay so it stacks on top of it. -->
 <div class="auth-overlay hidden" id="pwResetOverlay">
   <div class="auth-box">
     <div class="auth-logo">Card<span>Show</span></div>
@@ -7821,7 +7819,7 @@ function toggleAuthMode() {
   const signIn  = document.getElementById('authSignInFields');
   const signUp  = document.getElementById('authSignUpFields');
   const toggle  = document.getElementById('authToggleMode');
-  const btn     = document.querySelector('.auth-box .btn-primary');
+  const btn     = document.getElementById('authSubmitBtn');
   const forgotRow = document.getElementById('authForgotLinkRow');
   if (forgotRow) forgotRow.style.display = authMode === 'signup' ? 'none' : '';
   if (authMode === 'signup') {
@@ -7838,16 +7836,24 @@ function toggleAuthMode() {
   document.getElementById('authError').textContent = '';
 }
 
-function _setAuthError(msg) {
-  const err = document.getElementById('authError');
-  if (err) err.textContent = msg;
-  const btn = document.querySelector('.auth-box .btn-primary');
+// Puts the sign-in button back to its ready state. A successful sign-in leaves
+// it disabled on "Loading…" (the overlay just hides), so signOut() calls this
+// before showing the sign-in screen again.
+function _resetAuthSubmit() {
+  const btn = document.getElementById('authSubmitBtn');
   if (btn) { btn.disabled = false; btn.textContent = authMode === 'signup' ? 'Create Account →' : 'Enter →'; }
 }
 
+function _setAuthError(msg) {
+  const err = document.getElementById('authError');
+  if (err) err.textContent = msg;
+  _resetAuthSubmit();
+}
+
 async function submitAuth() {
+  const btn = document.getElementById('authSubmitBtn');
+  if (btn && btn.disabled) return;   // already signing in (double tap / Enter key)
   document.getElementById('authError').textContent = '';
-  const btn = document.querySelector('.auth-box .btn-primary');
   if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
 
   if (authRoleSelected === 'seller') {
@@ -13954,6 +13960,8 @@ async function signOut() {
   document.getElementById('authError').textContent      = '';
   // Reset to sign-in mode
   if (authMode !== 'signin') toggleAuthMode();
+  _resetAuthSubmit();
+  closeForgotPassword();
 
   // Clear scan history
   _scanHistory = [];
