@@ -1,0 +1,31 @@
+// netlify/functions/card-image.js with CardSight stubbed. node card-image.test.mjs
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const { handler } = require('../../netlify/functions/card-image.js');
+let fails = 0;
+const check = (label, ok, extra = '') => { if (!ok) fails++; console.log(`${ok ? 'PASS' : 'FAIL'}  ${label} ${extra}`); };
+const ID = '11111111-1111-4111-8111-111111111111';
+let calls = [];
+global.fetch = async (url, opts) => {
+  calls.push({ url, key: opts.headers['X-API-Key'] });
+  if (url.includes('22222222')) return new Response('nope', { status: 404 });
+  if (url.includes('33333333')) return new Response('err', { status: 500 });
+  return new Response(new Uint8Array([0xff, 0xd8, 0xff]), { status: 200, headers: { 'content-type': 'image/jpeg' } });
+};
+process.env.CARDSIGHT_API_KEY = 'k';
+let r = await handler({ httpMethod: 'GET', queryStringParameters: { id: ID } });
+check('image returned as base64 JPEG', r.statusCode === 200 && r.isBase64Encoded && r.headers['Content-Type'] === 'image/jpeg' && Buffer.from(r.body, 'base64').length === 3);
+check('CDN caches it 30 days', /max-age=2592000/.test(r.headers['Netlify-CDN-Cache-Control']));
+check('calls the CardSight image endpoint with the key', calls[0].url === `https://api.cardsight.ai/v1/images/cards/${ID}?format=raw` && calls[0].key === 'k');
+r = await handler({ httpMethod: 'GET', queryStringParameters: { id: '22222222-2222-4222-8222-222222222222' } });
+check('no image → 404, cached a day', r.statusCode === 404 && /max-age=86400/.test(r.headers['Netlify-CDN-Cache-Control']));
+r = await handler({ httpMethod: 'GET', queryStringParameters: { id: '33333333-3333-4333-8333-333333333333' } });
+check('CardSight error → 502, not cached', r.statusCode === 502 && r.headers['Cache-Control'] === 'no-store');
+calls = [];
+r = await handler({ httpMethod: 'GET', queryStringParameters: { id: '../../v1/subscription' } });
+check('bad id rejected without calling CardSight', r.statusCode === 400 && calls.length === 0);
+delete process.env.CARDSIGHT_API_KEY;
+r = await handler({ httpMethod: 'GET', queryStringParameters: { id: ID } });
+check('no key → 503', r.statusCode === 503);
+console.log(fails ? `${fails} FAILED` : 'ALL PASS');
+process.exit(fails ? 1 : 0);

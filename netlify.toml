@@ -15,6 +15,10 @@
 [functions."expire-trade-posts"]
   schedule = "@hourly"
 
+# Show status follows the dates: Upcoming → Active (Live) → Past.
+[functions."refresh-show-statuses"]
+  schedule = "@hourly"
+
 # GTCR: hourly batch of the daily Trust Check recheck — every unsold graded
 # card is re-checked about once a day so the buyer GTCR badge never lapses.
 [functions."gtcr-daily-recheck"]
